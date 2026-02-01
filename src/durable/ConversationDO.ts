@@ -206,7 +206,7 @@ export class ConversationOrchestratorDO_2026A {
     // Send initial prompt to DeepSeek
     const deepseekResult = await callDeepSeek(
       this.env.DEEPSEEK_API_KEY,
-      this.conversation.conversation_messages
+      this.conversation.conversation_messages!
     );
     
     if (!deepseekResult.success) {
@@ -222,7 +222,7 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     // Add DeepSeek response to conversation history
-    this.conversation.conversation_messages.push({
+    this.conversation.conversation_messages!.push({
       role: 'assistant',
       content: deepseekResult.response!
     });
@@ -296,12 +296,23 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
-    // With the new pattern, we only get the latest event (if it's an agent message)
-    const latestAgentMessage = openhandsStatus.events[0];
+    // With the new pattern, we get multiple events for better context
+    // Collect all unsent events and combine their content
+    const unsentEvents = [];
+    let newestEventId = 0;
     
-    // Check if this is a new event (id > last_sent_event_id)
-    if (latestAgentMessage.id <= this.conversation.last_sent_event_id) {
-      console.log(`[DO:${this.state.id}] No new agent message events found (latest ID: ${latestAgentMessage.id}, last sent: ${this.conversation.last_sent_event_id})`);
+    for (const event of openhandsStatus.events) {
+      if (event.id > (this.conversation.last_sent_event_id || 0)) {
+        unsentEvents.push(event);
+        if (event.id > newestEventId) {
+          newestEventId = event.id;
+        }
+      }
+    }
+    
+    // If no new events found
+    if (unsentEvents.length === 0) {
+      console.log(`[DO:${this.state.id}] No new agent message events found (latest IDs: ${openhandsStatus.events.map(e => e.id).join(', ')}, last sent: ${this.conversation.last_sent_event_id})`);
       
       // Check if we have a pending event that needs processing
       if (this.conversation.pending_event_content && this.conversation.cooldown_started_at) {
@@ -333,15 +344,24 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
-    console.log(`[DO:${this.state.id}] Found new agent message event: ${latestAgentMessage.id}`);
+    console.log(`[DO:${this.state.id}] Found ${unsentEvents.length} new agent message events, newest ID: ${newestEventId}`);
     
-    // Get message content: args.content ?? message
-    const messageContent = latestAgentMessage.args?.content || latestAgentMessage.message || latestAgentMessage.content || '';
+    // Combine content from all unsent events
+    let combinedContent = '';
+    for (const event of unsentEvents) {
+      const eventContent = event.args?.content || event.message || event.content || '';
+      if (eventContent.trim()) {
+        if (combinedContent) {
+          combinedContent += '\n\n';
+        }
+        combinedContent += eventContent;
+      }
+    }
     
-    if (!messageContent.trim()) {
-      console.log(`[DO:${this.state.id}] Agent message has no content, skipping`);
+    if (!combinedContent.trim()) {
+      console.log(`[DO:${this.state.id}] Combined agent message has no content, skipping`);
       // Update last_sent_event_id anyway to avoid infinite loop
-      this.conversation.last_sent_event_id = latestAgentMessage.id;
+      this.conversation.last_sent_event_id = newestEventId;
       await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
       return;
     }
@@ -350,16 +370,16 @@ export class ConversationOrchestratorDO_2026A {
     const previousLastEventSeenAt = this.conversation.last_event_seen_at;
     this.conversation.last_event_seen_at = Date.now();
     
-    // Store event as pending (don't process immediately)
-    this.conversation.pending_event_content = messageContent;
-    this.conversation.pending_event_id = latestAgentMessage.id;
+    // Store combined content as pending (don't process immediately)
+    this.conversation.pending_event_content = combinedContent;
+    this.conversation.pending_event_id = newestEventId;
     
     // If this is the first event in a sequence, start the cooldown timer
     if (!this.conversation.cooldown_started_at) {
       this.conversation.cooldown_started_at = Date.now();
-      console.log(`[DO:${this.state.id}] Starting cooldown timer for event ${latestAgentMessage.id}`);
+      console.log(`[DO:${this.state.id}] Starting cooldown timer for event ${newestEventId}`);
     } else {
-      console.log(`[DO:${this.state.id}] Updated pending event to ${latestAgentMessage.id}, cooldown timer continues`);
+      console.log(`[DO:${this.state.id}] Updated pending event to ${newestEventId}, cooldown timer continues`);
     }
     
     // Check if we should process immediately (edge case: first event after long pause)
@@ -378,7 +398,7 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     // Schedule next check soon (during active event stream)
-    console.log(`[DO:${this.state.id}] Event ${latestAgentMessage.id} stored as pending, checking again in ${ACTIVE_CHECK_INTERVAL/1000}s`);
+    console.log(`[DO:${this.state.id}] Event ${newestEventId} stored as pending, checking again in ${ACTIVE_CHECK_INTERVAL/1000}s`);
     await this.state.storage.setAlarm(Date.now() + ACTIVE_CHECK_INTERVAL);
   }
   
@@ -450,7 +470,7 @@ export class ConversationOrchestratorDO_2026A {
     const messageContentWithContext = `[Iteration ${this.conversation.iteration + 1} of ${this.conversation.max_iterations}]
 ${messageContent}`;
     
-    this.conversation.conversation_messages.push({
+    this.conversation.conversation_messages!.push({
       role: 'user',
       content: messageContentWithContext
     });
@@ -474,7 +494,7 @@ ${messageContent}`;
     }
     
     // Add DeepSeek response to conversation history
-    this.conversation.conversation_messages.push({
+    this.conversation.conversation_messages!.push({
       role: 'assistant',
       content: deepseekResult.response!
     });

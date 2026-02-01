@@ -97,17 +97,17 @@ export async function getOpenHandsConversation(
 
     const statusData = await statusResponse.json() as any;
     
-    // Get latest agent message event using efficient pattern
-    // Use /events?limit=1&reverse=true to get only the latest event
-    let latestAgentMessageEvent: any = null;
+    // Get recent agent events for better context
+    // Use /events?limit=3&reverse=true to get last 3 events
+    let agentEvents: any[] = [];
     let retryCount = 0;
     const maxRetries = 2;
     
     while (retryCount <= maxRetries) {
       try {
         const eventsUrl = apiUrl.endsWith('/') 
-          ? `${apiUrl}conversations/${conversationId}/events?limit=1&reverse=true`
-          : `${apiUrl}/conversations/${conversationId}/events?limit=1&reverse=true`;
+          ? `${apiUrl}conversations/${conversationId}/events?limit=3&reverse=true`
+          : `${apiUrl}/conversations/${conversationId}/events?limit=3&reverse=true`;
 
         const eventsController = new AbortController();
         const eventsTimeoutId = setTimeout(() => eventsController.abort(), OPENHANDS_TIMEOUT);
@@ -135,31 +135,46 @@ export async function getOpenHandsConversation(
 
         const eventsData = await eventsResponse.json() as any;
         
-        // Check if the latest event is an agent message
+        // Process all agent events for better context
         if (eventsData.events && eventsData.events.length > 0) {
-          const latestEvent = eventsData.events[0];
-          
-          // Check for agent message in different possible structures
-          if (latestEvent.source === 'agent') {
-            // Case 1: Direct message action
-            if (latestEvent.action === 'message') {
-              latestAgentMessageEvent = latestEvent;
-            }
-            // Case 2: Check for nested content in tool_call_metadata
-            else if (latestEvent.tool_call_metadata?.model_response?.choices?.[0]?.message?.content) {
-              // Create a synthetic message event from the nested content
-              const nestedContent = latestEvent.tool_call_metadata.model_response.choices[0].message.content;
-              latestAgentMessageEvent = {
-                ...latestEvent,
-                action: 'message',
-                args: {
-                  content: nestedContent,
-                  wait_for_response: false,
-                  file_urls: null,
-                  image_urls: []
-                },
-                message: nestedContent
-              };
+          for (const event of eventsData.events) {
+            if (event.source === 'agent') {
+              // Case 1: Direct message action
+              if (event.action === 'message') {
+                agentEvents.push(event);
+              }
+              // Case 2: Check for nested content in tool_call_metadata
+              else if (event.tool_call_metadata?.model_response?.choices?.[0]?.message?.content) {
+                // Create a synthetic message event from the nested content
+                const nestedContent = event.tool_call_metadata.model_response.choices[0].message.content;
+                agentEvents.push({
+                  ...event,
+                  action: 'message',
+                  args: {
+                    content: nestedContent,
+                    wait_for_response: false,
+                    file_urls: null,
+                    image_urls: []
+                  },
+                  message: nestedContent
+                });
+              }
+              // Case 3: Tool calls without nested content (simplify)
+              else if (event.action === 'tool_call') {
+                // Create a simplified message for tool calls
+                const toolName = event.tool_call_metadata?.tool_name || 'unknown_tool';
+                agentEvents.push({
+                  ...event,
+                  action: 'message',
+                  args: {
+                    content: `[Tool call: ${toolName}]`,
+                    wait_for_response: false,
+                    file_urls: null,
+                    image_urls: []
+                  },
+                  message: `[Tool call: ${toolName}]`
+                });
+              }
             }
           }
         }
@@ -177,8 +192,8 @@ export async function getOpenHandsConversation(
       }
     }
 
-    // Return events array with just the latest agent message (or empty)
-    const events = latestAgentMessageEvent ? [latestAgentMessageEvent] : [];
+    // Return all agent events for better context (reverse to chronological order)
+    const events = agentEvents.reverse();
 
     return {
       success: true,

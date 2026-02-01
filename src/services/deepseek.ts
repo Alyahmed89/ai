@@ -1,5 +1,6 @@
 // DeepSeek API service - pure, stateless wrapper
 import { DEEPSEEK_TIMEOUT, STOP_TOKEN } from '../constants';
+import { DeepSeekMessage } from '../types';
 import { DeepSeekResult } from '../types';
 
 /**
@@ -70,8 +71,8 @@ export function buildInitialMessages(
     max_iterations: number;
   },
   systemMessage?: string
-): Array<{role: string; content: string}> {
-  const messages: Array<{role: string; content: string}> = [];
+): DeepSeekMessage[] {
+  const messages: DeepSeekMessage[] = [];
   
   // Add system message ONLY if provided (no default)
   if (systemMessage && systemMessage.trim()) {
