@@ -301,12 +301,18 @@ export class ConversationOrchestratorDO_2026A {
     const unsentEvents = [];
     let newestEventId = 0;
     
+    console.log(`[DO:${this.state.id}] Checking ${openhandsStatus.events?.length || 0} events against last_sent_event_id: ${this.conversation.last_sent_event_id || 0}`);
+    
     for (const event of openhandsStatus.events) {
+      console.log(`[DO:${this.state.id}] Event ${event.id}: source=${event.source}, action=${event.action}, has_tool_call_metadata=${!!event.tool_call_metadata}`);
       if (event.id > (this.conversation.last_sent_event_id || 0)) {
         unsentEvents.push(event);
         if (event.id > newestEventId) {
           newestEventId = event.id;
         }
+        console.log(`[DO:${this.state.id}] Event ${event.id} is NEW (greater than last_sent_event_id: ${this.conversation.last_sent_event_id || 0})`);
+      } else {
+        console.log(`[DO:${this.state.id}] Event ${event.id} is OLD (not greater than last_sent_event_id: ${this.conversation.last_sent_event_id || 0})`);
       }
     }
     
