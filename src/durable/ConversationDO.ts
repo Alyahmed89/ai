@@ -448,8 +448,9 @@ ${messageContent}`;
     
     console.log(`[DO:${this.state.id}] Message injected to OpenHands, iteration: ${this.conversation.iteration}`);
     
-    // Switch to WAITING_DEEPSEEK state
-    this.conversation.state = 'WAITING_DEEPSEEK';
+    // Stay in WAITING_OPENHANDS state to wait for next agent response
+    // (We just injected a task, now wait for agent to execute it)
+    this.conversation.state = 'WAITING_OPENHANDS';
     await this.state.storage.put('conversation', this.conversation);
     
     // Schedule next alarm to check OpenHands status
