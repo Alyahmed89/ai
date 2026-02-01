@@ -441,17 +441,9 @@ export class ConversationOrchestratorDO_2026A {
     
     // Add OpenHands response to conversation history as user message
     if (!this.conversation.conversation_messages) {
-      // Initialize conversation messages if not already done (shouldn't happen)
-      this.conversation.conversation_messages = buildInitialMessages(
-        this.conversation.initial_user_prompt,
-        {
-          repository: this.conversation.repository,
-          branch: this.conversation.branch,
-          iteration: this.conversation.iteration,
-          max_iterations: this.conversation.max_iterations
-        },
-        this.conversation.deepseek_system
-      );
+      // This should never happen - conversation_messages should be initialized in handleInitState
+      console.error(`[DO:${this.state.id}] conversation_messages is undefined!`);
+      this.conversation.conversation_messages = [];
     }
     
     // Add iteration context to OpenHands response

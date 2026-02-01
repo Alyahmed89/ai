@@ -71,23 +71,16 @@ export function buildInitialMessages(
   },
   systemMessage?: string
 ): Array<{role: string; content: string}> {
-  // Use custom system message if provided, otherwise use default
-  const systemContent = systemMessage || `You are DeepSeek, an AI assistant working with OpenHands.
-    
-Repository: ${context.repository}${context.branch ? ` (branch: ${context.branch})` : ''}
-
-IMPORTANT: Only include ${STOP_TOKEN} in your response if the task is COMPLETELY finished and no further action is needed.
-For multi-step tasks, do NOT include ${STOP_TOKEN} until all steps are done.
-Provide clear instructions for OpenHands to continue the work.`;
-
+  const messages: Array<{role: string; content: string}> = [];
+  
+  // Add system message ONLY if provided (no default)
+  if (systemMessage && systemMessage.trim()) {
+    messages.push({ role: 'system', content: systemMessage });
+  }
+  
   // Add iteration context to the user prompt
   const userPromptWithContext = `[Iteration ${context.iteration + 1} of ${context.max_iterations}]
 ${userPrompt}`;
-
-  const messages: Array<{role: string; content: string}> = [];
-  
-  // Add system message
-  messages.push({ role: 'system', content: systemContent });
   
   // Add user message with iteration context
   messages.push({ role: 'user', content: userPromptWithContext });
