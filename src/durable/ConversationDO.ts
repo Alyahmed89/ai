@@ -273,9 +273,25 @@ export class ConversationOrchestratorDO_2026A {
     );
     
     if (!openhandsStatus.success) {
-      await this.stopConversation(`openhands_status_failed: ${openhandsStatus.error}`);
+      // Track consecutive errors instead of stopping immediately
+      this.conversation.openhands_error_count = (this.conversation.openhands_error_count || 0) + 1;
+      console.log(`[DO:${this.state.id}] OpenHands API error (${this.conversation.openhands_error_count} consecutive): ${openhandsStatus.error}`);
+      
+      // Only stop after 5 consecutive errors
+      if (this.conversation.openhands_error_count >= 5) {
+        await this.stopConversation(`openhands_status_failed_after_${this.conversation.openhands_error_count}_attempts: ${openhandsStatus.error}`);
+        return;
+      }
+      
+      // Wait longer before retrying (exponential backoff: 30s, 60s, 120s, etc.)
+      const backoffTime = Math.min(30000 * Math.pow(2, this.conversation.openhands_error_count - 1), 300000); // Max 5 minutes
+      console.log(`[DO:${this.state.id}] Backing off for ${backoffTime/1000}s before retry`);
+      await this.state.storage.setAlarm(Date.now() + backoffTime);
       return;
     }
+    
+    // Reset error count on success
+    this.conversation.openhands_error_count = 0;
     
     // Check if we have any agent message events
     if (!openhandsStatus.events || openhandsStatus.events.length === 0) {

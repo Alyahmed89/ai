@@ -9,4 +9,4 @@ export const OPENHANDS_TIMEOUT = 30000; // 30 seconds (increased from 10s due to
 // Cooldown constants for event processing - SIMPLE RULE: 10 seconds with no new events
 export const EVENT_COOLDOWN_MS = 10000; // Wait 10 seconds with no new events before processing
 export const MAX_COOLDOWN_WAIT_MS = 10000; // Same as EVENT_COOLDOWN_MS - no extended waiting
-export const ACTIVE_CHECK_INTERVAL = 2000; // Check every 2 seconds during cooldown period
+export const ACTIVE_CHECK_INTERVAL = 10000; // Check every 10 seconds during cooldown period (increased from 2s to reduce API load)

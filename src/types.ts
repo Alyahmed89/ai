@@ -40,6 +40,9 @@ export interface ConversationData {
   last_event_seen_at?: number; // Timestamp when we last saw an event
   cooldown_started_at?: number; // Timestamp when cooldown period started
   
+  // Error tracking for OpenHands API
+  openhands_error_count?: number; // Consecutive OpenHands API errors
+  
   // DeepSeek system message (optional, set via API)
   deepseek_system?: string;
   

@@ -74,28 +74,55 @@ export async function getOpenHandsConversation(
   conversationId: string
 ): Promise<OpenHandsStatusResult> {
   try {
-    // Get conversation status
+    // Get conversation status with retry logic
     const statusUrl = apiUrl.endsWith('/') 
       ? `${apiUrl}conversations/${conversationId}`
       : `${apiUrl}/conversations/${conversationId}`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
+    // Add retry logic for status endpoint (same as events endpoint)
+    let statusRetryCount = 0;
+    const maxStatusRetries = 2;
+    let statusResponse: Response;
+    
+    while (statusRetryCount <= maxStatusRetries) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
 
-    const statusResponse = await fetch(statusUrl, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal
-    });
+        statusResponse = await fetch(statusUrl, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal
+        });
 
-    clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-    if (!statusResponse.ok) {
-      const errorText = await statusResponse.text();
-      throw new Error(`OpenHands status error: ${statusResponse.status} - ${errorText}`);
+        if (!statusResponse.ok) {
+          // If 500/502 error and we have retries left, retry
+          if ((statusResponse.status === 500 || statusResponse.status === 502) && statusRetryCount < maxStatusRetries) {
+            statusRetryCount++;
+            console.log(`OpenHands status ${statusResponse.status} error, retry ${statusRetryCount}/${maxStatusRetries}`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * statusRetryCount)); // Exponential backoff
+            continue;
+          }
+          
+          const errorText = await statusResponse.text();
+          throw new Error(`OpenHands status error: ${statusResponse.status} - ${errorText}`);
+        }
+        
+        // Success, break out of retry loop
+        break;
+      } catch (error) {
+        if (statusRetryCount >= maxStatusRetries) {
+          throw error;
+        }
+        statusRetryCount++;
+        console.log(`OpenHands status fetch error, retry ${statusRetryCount}/${maxStatusRetries}: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * statusRetryCount));
+      }
     }
 
-    const statusData = await statusResponse.json() as any;
+    const statusData = await statusResponse!.json() as any;
     
     // Get recent agent events for better context
     // Use /events?limit=3&reverse=true to get last 3 events
