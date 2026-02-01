@@ -74,22 +74,22 @@ export async function getOpenHandsConversation(
   conversationId: string
 ): Promise<OpenHandsStatusResult> {
   try {
-    // Get conversation status with retry logic
-    const statusUrl = apiUrl.endsWith('/') 
-      ? `${apiUrl}conversations/${conversationId}`
-      : `${apiUrl}/conversations/${conversationId}`;
+    // SIMPLE RULE: Get last 2 events to check if agent is awaiting user input
+    const eventsUrl = apiUrl.endsWith('/') 
+      ? `${apiUrl}conversations/${conversationId}/events?limit=2&reverse=true`
+      : `${apiUrl}/conversations/${conversationId}/events?limit=2&reverse=true`;
 
-    // Add retry logic for status endpoint (same as events endpoint)
-    let statusRetryCount = 0;
-    const maxStatusRetries = 2;
-    let statusResponse: Response;
+    // Add retry logic for events endpoint
+    let retryCount = 0;
+    const maxRetries = 2;
+    let eventsResponse: Response;
     
-    while (statusRetryCount <= maxStatusRetries) {
+    while (retryCount <= maxRetries) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
 
-        statusResponse = await fetch(statusUrl, {
+        eventsResponse = await fetch(eventsUrl, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal
@@ -97,61 +97,11 @@ export async function getOpenHandsConversation(
 
         clearTimeout(timeoutId);
 
-        if (!statusResponse.ok) {
-          // If 500/502 error and we have retries left, retry
-          if ((statusResponse.status === 500 || statusResponse.status === 502) && statusRetryCount < maxStatusRetries) {
-            statusRetryCount++;
-            console.log(`OpenHands status ${statusResponse.status} error, retry ${statusRetryCount}/${maxStatusRetries}`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * statusRetryCount)); // Exponential backoff
-            continue;
-          }
-          
-          const errorText = await statusResponse.text();
-          throw new Error(`OpenHands status error: ${statusResponse.status} - ${errorText}`);
-        }
-        
-        // Success, break out of retry loop
-        break;
-      } catch (error) {
-        if (statusRetryCount >= maxStatusRetries) {
-          throw error;
-        }
-        statusRetryCount++;
-        console.log(`OpenHands status fetch error, retry ${statusRetryCount}/${maxStatusRetries}: ${error}`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * statusRetryCount));
-      }
-    }
-
-    const statusData = await statusResponse!.json() as any;
-    
-    // Get recent agent events for better context
-    // Use /events?limit=3&reverse=true to get last 3 events
-    let agentEvents: any[] = [];
-    let retryCount = 0;
-    const maxRetries = 2;
-    
-    while (retryCount <= maxRetries) {
-      try {
-        const eventsUrl = apiUrl.endsWith('/') 
-          ? `${apiUrl}conversations/${conversationId}/events?limit=3&reverse=true`
-          : `${apiUrl}/conversations/${conversationId}/events?limit=3&reverse=true`;
-
-        const eventsController = new AbortController();
-        const eventsTimeoutId = setTimeout(() => eventsController.abort(), OPENHANDS_TIMEOUT);
-
-        const eventsResponse = await fetch(eventsUrl, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: eventsController.signal
-        });
-
-        clearTimeout(eventsTimeoutId);
-
         if (!eventsResponse.ok) {
-          // If 500 error and we have retries left, retry
-          if (eventsResponse.status === 500 && retryCount < maxRetries) {
+          // If 500/502 error and we have retries left, retry
+          if ((eventsResponse.status === 500 || eventsResponse.status === 502) && retryCount < maxRetries) {
             retryCount++;
-            console.log(`OpenHands events 500 error, retry ${retryCount}/${maxRetries}`);
+            console.log(`OpenHands events ${eventsResponse.status} error, retry ${retryCount}/${maxRetries}`);
             await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
             continue;
           }
@@ -159,73 +109,24 @@ export async function getOpenHandsConversation(
           const errorText = await eventsResponse.text();
           throw new Error(`OpenHands events error: ${eventsResponse.status} - ${errorText}`);
         }
-
-        const eventsData = await eventsResponse.json() as any;
         
-        // Process all agent events for better context
-        if (eventsData.events && eventsData.events.length > 0) {
-          for (const event of eventsData.events) {
-            if (event.source === 'agent') {
-              // Case 1: Direct message action
-              if (event.action === 'message') {
-                agentEvents.push(event);
-              }
-              // Case 2: Check for nested content in tool_call_metadata
-              else if (event.tool_call_metadata?.model_response?.choices?.[0]?.message?.content) {
-                // Create a synthetic message event from the nested content
-                const nestedContent = event.tool_call_metadata.model_response.choices[0].message.content;
-                agentEvents.push({
-                  ...event,
-                  action: 'message',
-                  args: {
-                    content: nestedContent,
-                    wait_for_response: false,
-                    file_urls: null,
-                    image_urls: []
-                  },
-                  message: nestedContent
-                });
-              }
-              // Case 3: Tool calls without nested content (simplify)
-              else if (event.action === 'tool_call') {
-                // Create a simplified message for tool calls
-                const toolName = event.tool_call_metadata?.tool_name || 'unknown_tool';
-                agentEvents.push({
-                  ...event,
-                  action: 'message',
-                  args: {
-                    content: `[Tool call: ${toolName}]`,
-                    wait_for_response: false,
-                    file_urls: null,
-                    image_urls: []
-                  },
-                  message: `[Tool call: ${toolName}]`
-                });
-              }
-            }
-          }
+        // Success, break out of retry loop
+        break;
+      } catch (error) {
+        if (retryCount >= maxRetries) {
+          throw error;
         }
-        
-        break; // Success, exit retry loop
-        
-      } catch (error: any) {
-        if (retryCount < maxRetries) {
-          retryCount++;
-          console.log(`OpenHands events fetch error: ${error.message}, retry ${retryCount}/${maxRetries}`);
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-          continue;
-        }
-        throw error; // Re-throw after max retries
+        retryCount++;
+        console.log(`OpenHands events fetch error, retry ${retryCount}/${maxRetries}: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
       }
     }
 
-    // Return all agent events for better context (reverse to chronological order)
-    const events = agentEvents.reverse();
-
+    const eventsData = await eventsResponse!.json() as any;
+    
     return {
       success: true,
-      agent_state: statusData.runtime_status, // Use runtime_status instead of agent_state
-      events
+      events: eventsData?.events || []  // Return raw events
     };
 
   } catch (error: any) {

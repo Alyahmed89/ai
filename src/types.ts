@@ -123,8 +123,6 @@ export interface OpenHandsCreateResult {
 
 export interface OpenHandsStatusResult {
   success: boolean;
-  agent_state?: string;
-  messages?: OpenHandsMessage[];
   events?: OpenHandsEvent[];
   error?: string;
 }
