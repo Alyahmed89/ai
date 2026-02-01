@@ -21,39 +21,67 @@ export async function createOpenHandsConversation(
       ? `${apiUrl}conversations`
       : `${apiUrl}/conversations`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
+    // Add retry logic for create endpoint
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
 
-    const body: any = {
-      initial_user_msg: initialMessage,
-      repository: repository
-    };
+        const body: any = {
+          initial_user_msg: initialMessage,
+          repository: repository
+        };
 
-    if (branch) {
-      body.selected_branch = branch;
+        if (branch) {
+          body.selected_branch = branch;
+        }
+
+        const response = await fetch(createUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          // If 500/502 error and we have retries left, retry
+          if ((response.status === 500 || response.status === 502) && retryCount < maxRetries) {
+            retryCount++;
+            const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+            console.log(`OpenHands create ${response.status} error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            continue;
+          }
+          
+          const errorText = await response.text();
+          throw new Error(`OpenHands create error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json() as any;
+        const conversationId = data.conversation_id;
+
+        return {
+          success: true,
+          conversationId
+        };
+      } catch (error) {
+        if (retryCount >= maxRetries) {
+          throw error;
+        }
+        retryCount++;
+        const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+        console.log(`OpenHands create fetch error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
     }
 
-    const response = await fetch(createUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenHands create error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json() as any;
-    const conversationId = data.conversation_id;
-
-    return {
-      success: true,
-      conversationId
-    };
+    // This should never be reached due to throw in catch block
+    throw new Error('OpenHands create failed after all retries');
 
   } catch (error: any) {
     return {
@@ -81,7 +109,7 @@ export async function getOpenHandsConversation(
 
     // Add retry logic for events endpoint
     let retryCount = 0;
-    const maxRetries = 2;
+    const maxRetries = 3; // Increased from 2 to 3
     let eventsResponse: Response;
     
     while (retryCount <= maxRetries) {
@@ -101,8 +129,9 @@ export async function getOpenHandsConversation(
           // If 500/502 error and we have retries left, retry
           if ((eventsResponse.status === 500 || eventsResponse.status === 502) && retryCount < maxRetries) {
             retryCount++;
-            console.log(`OpenHands events ${eventsResponse.status} error, retry ${retryCount}/${maxRetries}`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+            const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+            console.log(`OpenHands events ${eventsResponse.status} error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
             continue;
           }
           
@@ -117,8 +146,9 @@ export async function getOpenHandsConversation(
           throw error;
         }
         retryCount++;
-        console.log(`OpenHands events fetch error, retry ${retryCount}/${maxRetries}: ${error}`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+        console.log(`OpenHands events fetch error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
     }
 
@@ -154,36 +184,64 @@ export async function injectMessageToOpenHands(
       ? `${apiUrl}conversations/${conversationId}/events`
       : `${apiUrl}/conversations/${conversationId}/events`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
+    // Add retry logic for inject endpoint
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
 
-    const response = await fetch(injectUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'user',
-        action: 'message',
-        message: message,
-        args: {
-          content: message,
-          wait_for_response: false,
-          file_urls: null,
-          image_urls: []
+        const response = await fetch(injectUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: 'user',
+            action: 'message',
+            message: message,
+            args: {
+              content: message,
+              wait_for_response: false,
+              file_urls: null,
+              image_urls: []
+            }
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          // If 500/502 error and we have retries left, retry
+          if ((response.status === 500 || response.status === 502) && retryCount < maxRetries) {
+            retryCount++;
+            const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+            console.log(`OpenHands inject ${response.status} error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            continue;
+          }
+          
+          const errorText = await response.text();
+          throw new Error(`OpenHands inject error: ${response.status} - ${errorText}`);
         }
-      }),
-      signal: controller.signal
-    });
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenHands inject error: ${response.status} - ${errorText}`);
+        return {
+          success: true
+        };
+      } catch (error) {
+        if (retryCount >= maxRetries) {
+          throw error;
+        }
+        retryCount++;
+        const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+        console.log(`OpenHands inject fetch error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
     }
 
-    return {
-      success: true
-    };
+    // This should never be reached due to throw in catch block
+    throw new Error('OpenHands inject failed after all retries');
 
   } catch (error: any) {
     return {
