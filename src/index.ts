@@ -33,8 +33,9 @@ app.post('/start', async (c) => {
       branch?: string;
       initial_user_prompt: string;
       max_iterations?: number;
+      deepseek_system?: string;
     };
-    const { repository, branch, initial_user_prompt, max_iterations } = body;
+    const { repository, branch, initial_user_prompt, max_iterations, deepseek_system } = body;
     
     // Validate required fields
     if (!repository || !initial_user_prompt) {
@@ -55,7 +56,8 @@ app.post('/start', async (c) => {
         repository, 
         branch: branch || 'main', 
         initial_user_prompt,
-        max_iterations: max_iterations || 20
+        max_iterations: max_iterations || 20,
+        deepseek_system
       })
     });
     
