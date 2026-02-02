@@ -20,7 +20,7 @@ app.get('/', (c) => {
       'NO resending same messages',
       'STRICT alternation',
       'HARD STOP on ANY error or <<DONE>>',
-      'MAX 10 iterations by default'
+      'MAX 20 iterations by default (configurable via max_iterations parameter)'
     ]
   });
 });
@@ -32,8 +32,9 @@ app.post('/start', async (c) => {
       repository: string;
       branch?: string;
       initial_user_prompt: string;
+      max_iterations?: number;
     };
-    const { repository, branch, initial_user_prompt } = body;
+    const { repository, branch, initial_user_prompt, max_iterations } = body;
     
     // Validate required fields
     if (!repository || !initial_user_prompt) {
@@ -54,7 +55,7 @@ app.post('/start', async (c) => {
         repository, 
         branch: branch || 'main', 
         initial_user_prompt,
-        max_iterations: 10
+        max_iterations: max_iterations || 20
       })
     });
     
