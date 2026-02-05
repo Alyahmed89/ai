@@ -25,7 +25,7 @@ new_sqlite_classes = [ "ConversationOrchestratorDO_2026A" ]
 # Migration for D1 database
 [[migrations]]
 tag = "v2"
-migration = """
+sql = """
   CREATE TABLE IF NOT EXISTS flow_runs (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
