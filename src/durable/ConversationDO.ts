@@ -4,6 +4,7 @@ import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId } from '../services/database';
+import { shouldCompleteTask } from '../services/verification';
 import { MAX_ITERATIONS, STOP_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING } from '../constants';
 import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData } from '../types';
 
@@ -225,10 +226,23 @@ export class ConversationOrchestratorDO_2026A {
     
     // Check for stop condition
     const doneData = this.checkForDone(deepseekResult.response!);
-    if (doneData.done) {
-      console.log(`[DO:${this.state.id}] DeepSeek responded with ${STOP_TOKEN}`);
-      await this.handleDoneResponse(deepseekResult.response!, 'deepseek_done');
-      await this.stopConversation('deepseek_done');
+    
+    // Check deterministic completion via external verification
+    const verificationResult = await shouldCompleteTask(
+      this.conversation.repository,
+      this.conversation.branch || 'main',
+      this.conversation.iteration,
+      deepseekResult.response!
+    );
+    
+    // Complete if either AI says done OR external verification passes
+    if (doneData.done || verificationResult.shouldComplete) {
+      const reason = doneData.done ? 'deepseek_done' : `external_verification: ${verificationResult.completionReason}`;
+      console.log(`[DO:${this.state.id}] Completion triggered: ${reason}`);
+      console.log(`[DO:${this.state.id}] Verification details: ${JSON.stringify(verificationResult.verificationResult)}`);
+      
+      await this.handleDoneResponse(deepseekResult.response!, reason);
+      await this.stopConversation(reason);
       return;
     }
     
@@ -239,6 +253,13 @@ export class ConversationOrchestratorDO_2026A {
     });
     
     this.conversation.last_deepseek_response = deepseekResult.response;
+    
+    // Save initial iteration (iteration 0)
+    await this.saveIterationToDatabase(
+      this.conversation.initial_user_prompt,
+      deepseekResult.response!
+    );
+    
     this.conversation.iteration++;
     
     // Create OpenHands conversation with DeepSeek response
@@ -431,10 +452,23 @@ ${messageContent}`;
     
     // Check for stop condition
     const doneData = this.checkForDone(deepseekResult.response!);
-    if (doneData.done) {
-      console.log(`[DO:${this.state.id}] DeepSeek responded with ${STOP_TOKEN}`);
-      await this.handleDoneResponse(deepseekResult.response!, 'deepseek_done');
-      await this.stopConversation('deepseek_done');
+    
+    // Check deterministic completion via external verification
+    const verificationResult = await shouldCompleteTask(
+      this.conversation.repository,
+      this.conversation.branch || 'main',
+      this.conversation.iteration,
+      deepseekResult.response!
+    );
+    
+    // Complete if either AI says done OR external verification passes
+    if (doneData.done || verificationResult.shouldComplete) {
+      const reason = doneData.done ? 'deepseek_done' : `external_verification: ${verificationResult.completionReason}`;
+      console.log(`[DO:${this.state.id}] Completion triggered: ${reason}`);
+      console.log(`[DO:${this.state.id}] Verification details: ${JSON.stringify(verificationResult.verificationResult)}`);
+      
+      await this.handleDoneResponse(deepseekResult.response!, reason);
+      await this.stopConversation(reason);
       return;
     }
     
@@ -445,6 +479,13 @@ ${messageContent}`;
     });
     
     this.conversation.last_deepseek_response = deepseekResult.response;
+    
+    // Save iteration with OpenHands response as prompt and DeepSeek response
+    await this.saveIterationToDatabase(
+      messageContent, // Original OpenHands response (without iteration context)
+      deepseekResult.response!
+    );
+    
     this.conversation.iteration++;
     
     // Inject DeepSeek response back to OpenHands
@@ -633,6 +674,50 @@ ${messageContent}`;
       console.error(`[DO:${this.state.id}] Failed to save flow run to database: ${result.error}`);
     } else {
       console.log(`[DO:${this.state.id}] Flow run saved to database: ${this.flowRunId}`);
+    }
+  }
+
+  /**
+   * Save an iteration to the database
+   * @param prompt Prompt sent to DeepSeek
+   * @param response DeepSeek response
+   * @param openhandsResponse OpenHands response (if any)
+   */
+  private async saveIterationToDatabase(
+    prompt: string,
+    response: string,
+    openhandsResponse?: string
+  ): Promise<void> {
+    if (!this.conversation || !this.flowRunId) return;
+    
+    // Check if database is configured
+    if (!this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Database not configured, skipping iteration save`);
+      return;
+    }
+
+    // Prepare iteration data
+    const iterationData = {
+      flow_run_id: this.flowRunId,
+      iteration_number: this.conversation.iteration,
+      prompt,
+      response,
+      openhands_response: openhandsResponse,
+      timestamp: Date.now(),
+      metadata: JSON.stringify({
+        repository: this.conversation.repository,
+        branch: this.conversation.branch,
+        iteration: this.conversation.iteration,
+        max_iterations: this.conversation.max_iterations
+      })
+    };
+
+    // Save to database
+    const result = await saveIteration(this.env.FLOW_RUNS_DB, iterationData);
+    if (!result.success) {
+      console.error(`[DO:${this.state.id}] Failed to save iteration to database: ${result.error}`);
+    } else {
+      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} saved to database`);
     }
   }
 }
