@@ -13,8 +13,36 @@ export function parseDoneResponse(response: string): DoneResponseData {
     return { done: false };
   }
 
-  // When [END_FLOW] is found, just end the flow without parsing further
-  // No new flow should be started from [END_FLOW]
+  // Try to parse the new flow information from the response
+  // Expected format: [END_FLOW] prompt: xxx deepseek_system: xxx branch: xxx
+  const lines = response.split('\n');
+  let nextPrompt = '';
+  let nextDeepseekSystem = '';
+  let nextBranch = '';
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    if (trimmed.startsWith('prompt:')) {
+      nextPrompt = trimmed.substring('prompt:'.length).trim();
+    } else if (trimmed.startsWith('deepseek_system:')) {
+      nextDeepseekSystem = trimmed.substring('deepseek_system:'.length).trim();
+    } else if (trimmed.startsWith('branch:')) {
+      nextBranch = trimmed.substring('branch:'.length).trim();
+    }
+  }
+
+  // If we have a next prompt, return the parsed data
+  if (nextPrompt) {
+    return {
+      done: true,
+      new_prompt: nextPrompt,
+      new_deepseek_system: nextDeepseekSystem || undefined,
+      new_branch: nextBranch || undefined
+    };
+  }
+
+  // When [END_FLOW] is found without next flow info, just end the flow
   return { done: true };
 }
 

@@ -99,6 +99,9 @@ export class ConversationOrchestratorDO_2026A {
       
       await this.state.storage.put('conversation', this.conversation);
       
+      // Save initial flow run to database
+      await this.saveInitialFlowRunToDatabase();
+      
       // Schedule first alarm immediately
       await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_INIT);
       
@@ -488,6 +491,104 @@ ${messageContent}`;
 
     // Save the current flow run to database
     await this.saveFlowRunToDatabase(reason);
+
+    // If there's a new prompt, start a new flow
+    if (doneData.new_prompt) {
+      await this.startNextFlow(doneData);
+    }
+  }
+
+  /**
+   * Start a new flow when [END_FLOW] contains a new prompt
+   * @param doneData Parsed done response data
+   */
+  private async startNextFlow(doneData: DoneResponseData): Promise<void> {
+    if (!doneData.new_prompt) return;
+
+    console.log(`[DO:${this.state.id}] Starting next flow with prompt: ${doneData.new_prompt.substring(0, 50)}...`);
+
+    // Generate a new conversation ID
+    const newConversationId = crypto.randomUUID();
+    
+    // Get the Durable Object stub for the new conversation
+    const newConversationIdObj = this.env.CONVERSATIONS.idFromName(newConversationId);
+    const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
+
+    // Prepare the request body for the new flow
+    const requestBody = {
+      repository: this.conversation!.repository, // Use same repository
+      branch: doneData.new_branch || this.conversation!.branch || 'main',
+      initial_user_prompt: doneData.new_prompt,
+      max_iterations: this.conversation!.max_iterations, // Use same max iterations
+      deepseek_system: doneData.new_deepseek_system || this.conversation!.deepseek_system
+    };
+
+    // Create a request to initialize the new conversation
+    const request = new Request('http://dummy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+
+    try {
+      // Call the fetch method on the new Durable Object
+      const response = await newConversationStub.fetch(request);
+      console.log(`[DO:${this.state.id}] Next flow started with ID: ${newConversationId}`);
+      
+      // Update current flow run with next_flow_id if database is available
+      if (this.env.FLOW_RUNS_DB && this.flowRunId) {
+        await this.env.FLOW_RUNS_DB.prepare(
+          'UPDATE flow_runs SET next_flow_id = ? WHERE id = ?'
+        ).bind(newConversationId, this.flowRunId).run();
+      }
+    } catch (error) {
+      console.error(`[DO:${this.state.id}] Failed to start next flow:`, error);
+    }
+  }
+
+  /**
+   * Save initial flow run to database when conversation starts
+   */
+  private async saveInitialFlowRunToDatabase(): Promise<void> {
+    if (!this.conversation || !this.flowRunId) return;
+    
+    // Check if database is configured
+    if (!this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Database not configured, skipping initial flow run save`);
+      return;
+    }
+
+    // Prepare initial flow run data
+    const flowRunData = {
+      id: this.flowRunId,
+      conversation_id: this.state.id.toString(),
+      initial_prompt: this.conversation.initial_user_prompt,
+      deepseek_system: this.conversation.deepseek_system,
+      repository: this.conversation.repository,
+      branch: this.conversation.branch || 'main',
+      max_iterations: this.conversation.max_iterations,
+      actual_iterations: 0,
+      status: 'active' as const,
+      stop_reason: null,
+      prompts_and_responses: JSON.stringify([]),
+      created_at: this.conversation.created_at,
+      updated_at: this.conversation.updated_at,
+      ended_at: null,
+      next_flow_id: null,
+      task_type: null,
+      success_score: null,
+      quality_metrics: null,
+      deployment_id: null,
+      improvement_suggestions: null
+    };
+
+    // Save to database
+    const result = await saveFlowRun(this.env.FLOW_RUNS_DB, flowRunData);
+    if (!result.success) {
+      console.error(`[DO:${this.state.id}] Failed to save initial flow run to database: ${result.error}`);
+    } else {
+      console.log(`[DO:${this.state.id}] Initial flow run saved to database: ${this.flowRunId}`);
+    }
   }
 
   /**

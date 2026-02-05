@@ -11,10 +11,9 @@ OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 name = "CONVERSATIONS"
 class_name = "ConversationOrchestratorDO_2026A"
 
-# Migration for new Durable Object class (free plan requires new_sqlite_classes)
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = [ "ConversationOrchestratorDO_2026A" ]
-
-# NO D1 DATABASE CONFIGURATION - Completely removed to fix deployment errors
-# Database functionality is optional in code and will be skipped if not configured
+# D1 database for flow runs tracking
+[[d1_databases]]
+binding = "FLOW_RUNS_DB"
+database_name = "flow-runs-db"
+database_id = "ce8f2a2c-6e4b-4398-b73e-ba8f204f609a"
+migrations_dir = "migrations"
