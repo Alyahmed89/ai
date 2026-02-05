@@ -40,9 +40,17 @@ app.get('/health', async (c) => {
     // Test database connection
     try {
       const db = c.env.FLOW_RUNS_DB;
-      // Simple query to test connection
-      const result = await db.prepare('SELECT 1 as test').first();
-      health.checks.database = result?.test === 1 ? 'connected' : 'error';
+      if (!db) {
+        health.checks.database = 'not_configured';
+        health.status = 'degraded';
+      } else {
+        // Simple query to test connection
+        const result = await db.prepare('SELECT 1 as test').first();
+        health.checks.database = result?.test === 1 ? 'connected' : 'error';
+        if (health.checks.database === 'error') {
+          health.status = 'degraded';
+        }
+      }
     } catch (dbError: any) {
       health.checks.database = `error: ${dbError.message}`;
       health.status = 'degraded';
