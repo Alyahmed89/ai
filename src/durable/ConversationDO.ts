@@ -2,13 +2,16 @@
 // ALL state management and alarm-driven logic lives here
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands } from '../services/openhands';
+import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId } from '../services/database';
 import { MAX_ITERATIONS, STOP_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING } from '../constants';
-import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent } from '../types';
+import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
   private state: DurableObjectState;
   private env: CloudflareBindings;
   private conversation: ConversationData | null = null;
+  private flowRunId: string | null = null;
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
@@ -76,6 +79,9 @@ export class ConversationOrchestratorDO_2026A {
           headers: { 'Content-Type': 'application/json' }
         });
       }
+      
+      // Generate flow run ID
+      this.flowRunId = generateFlowRunId();
       
       // Initialize conversation
       this.conversation = {
@@ -215,8 +221,10 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     // Check for stop condition
-    if (this.checkForDone(deepseekResult.response!)) {
-      console.log(`[DO:${this.state.id}] DeepSeek responded with ${STOP_TOKEN}, stopping`);
+    const doneData = this.checkForDone(deepseekResult.response!);
+    if (doneData.done) {
+      console.log(`[DO:${this.state.id}] DeepSeek responded with ${STOP_TOKEN}`);
+      await this.handleDoneResponse(deepseekResult.response!, 'deepseek_done');
       await this.stopConversation('deepseek_done');
       return;
     }
@@ -419,8 +427,10 @@ ${messageContent}`;
     }
     
     // Check for stop condition
-    if (this.checkForDone(deepseekResult.response!)) {
-      console.log(`[DO:${this.state.id}] DeepSeek responded with ${STOP_TOKEN}, stopping`);
+    const doneData = this.checkForDone(deepseekResult.response!);
+    if (doneData.done) {
+      console.log(`[DO:${this.state.id}] DeepSeek responded with ${STOP_TOKEN}`);
+      await this.handleDoneResponse(deepseekResult.response!, 'deepseek_done');
       await this.stopConversation('deepseek_done');
       return;
     }
@@ -457,7 +467,65 @@ ${messageContent}`;
     await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
   }
   
-  private checkForDone(response: string): boolean {
-    return response.includes(STOP_TOKEN);
+  private checkForDone(response: string): DoneResponseData {
+    return parseDoneResponse(response);
+  }
+
+  /**
+   * Handle a [END_FLOW] response by saving flow run and closing conversation
+   * @param response The DeepSeek response containing [END_FLOW]
+   * @param reason Reason for stopping
+   */
+  private async handleDoneResponse(response: string, reason: string): Promise<void> {
+    if (!this.conversation) return;
+
+    // Parse the done response
+    const doneData = this.checkForDone(response);
+    
+    if (!doneData.done) {
+      return;
+    }
+
+    // Save the current flow run to database
+    await this.saveFlowRunToDatabase(reason);
+  }
+
+  /**
+   * Save current flow run to database
+   * @param stopReason Reason for stopping
+   */
+  private async saveFlowRunToDatabase(stopReason: string): Promise<void> {
+    if (!this.conversation || !this.flowRunId) return;
+
+    // Extract prompts and responses
+    const promptsAndResponses = this.conversation.conversation_messages 
+      ? extractPromptsAndResponses(this.conversation.conversation_messages)
+      : JSON.stringify([]);
+
+    // Prepare flow run data
+    const flowRunData = {
+      id: this.flowRunId,
+      conversation_id: this.state.id.toString(),
+      initial_prompt: this.conversation.initial_user_prompt,
+      deepseek_system: this.conversation.deepseek_system,
+      repository: this.conversation.repository,
+      branch: this.conversation.branch || 'main',
+      max_iterations: this.conversation.max_iterations,
+      actual_iterations: this.conversation.iteration,
+      status: 'completed' as const,
+      stop_reason: stopReason,
+      prompts_and_responses: promptsAndResponses,
+      created_at: this.conversation.created_at,
+      updated_at: Date.now(),
+      ended_at: Date.now()
+    };
+
+    // Save to database
+    const result = await saveFlowRun(this.env.FLOW_RUNS_DB, flowRunData);
+    if (!result.success) {
+      console.error(`[DO:${this.state.id}] Failed to save flow run to database: ${result.error}`);
+    } else {
+      console.log(`[DO:${this.state.id}] Flow run saved to database: ${this.flowRunId}`);
+    }
   }
 }

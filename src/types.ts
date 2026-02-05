@@ -5,6 +5,7 @@ export interface CloudflareBindings {
   DEEPSEEK_API_KEY: string;
   OPENHANDS_API_URL: string;
   CONVERSATIONS: DurableObjectNamespace;
+  FLOW_RUNS_DB: D1Database;
 }
 
 // Conversation state machine
@@ -130,4 +131,47 @@ export interface OpenHandsStatusResult {
 export interface OpenHandsInjectResult {
   success: boolean;
   error?: string;
+}
+
+// Flow run types for D1 database
+export interface FlowRunData {
+  id: string;
+  conversation_id: string;
+  initial_prompt: string;
+  deepseek_system?: string;
+  repository: string;
+  branch?: string;
+  max_iterations: number;
+  actual_iterations: number;
+  status: 'active' | 'completed' | 'failed' | 'stopped' | 'new_flow_started';
+  stop_reason?: string;
+  prompts_and_responses: string; // JSON string
+  created_at: number;
+  updated_at: number;
+  ended_at?: number;
+  next_flow_id?: string;
+  // Future AI-determined fields
+  task_type?: string;
+  success_score?: number;
+  quality_metrics?: string; // JSON string
+  deployment_id?: string;
+  improvement_suggestions?: string;
+}
+
+export interface IterationData {
+  id?: number;
+  flow_run_id: string;
+  iteration_number: number;
+  prompt: string;
+  response: string;
+  openhands_response?: string;
+  timestamp: number;
+  metadata?: string; // JSON string
+}
+
+export interface DoneResponseData {
+  done: boolean;
+  new_prompt?: string;
+  new_deepseek_system?: string;
+  new_branch?: string;
 }
