@@ -42,27 +42,18 @@ export async function verifyTaskCompletion(
   // 5. Verify deployment
   
   // For now, we'll simulate different verification scenarios based on iteration
-  if (iteration >= 3) {
-    // After 3 iterations, assume task might be complete enough for verification
-    return {
-      success: true,
-      reason: 'Minimum iterations reached for verification',
-      details: {
-        iteration_threshold: 3,
-        current_iteration: iteration,
-        verification_type: 'iteration_based'
-      }
-    };
-  }
+  // REMOVED: Hardcoded 3-iteration rule that was overriding user's max_iterations setting
+  // The user explicitly sets max_iterations, and we should respect that
   
-  // Default: task not yet verifiable
+  // Default: task not yet verifiable via external verification
+  // External verification should only trigger for actual completion signals, not arbitrary iteration counts
   return {
     success: false,
-    reason: 'Insufficient iterations for deterministic verification',
+    reason: 'External verification not implemented - relying on AI completion signals',
     details: {
-      required_iterations: 3,
       current_iteration: iteration,
-      verification_type: 'iteration_based'
+      verification_type: 'not_implemented',
+      note: 'User max_iterations setting will be respected instead of hardcoded limits'
     }
   };
 }
@@ -99,16 +90,17 @@ export async function shouldCompleteTask(
   }
   
   // Even if verification fails, we might complete based on other criteria
-  // For example, if DeepSeek says it's done AND we've reached max reasonable iterations
-  const hasDeepSeekDoneSignal = deepseekResponse.includes('[END_FLOW]') || 
-                               deepseekResponse.toLowerCase().includes('done') ||
-                               deepseekResponse.toLowerCase().includes('complete');
+  // Only check for the explicit [END_FLOW] token, not generic "done" or "complete" words
+  // that could appear in normal conversation
+  const hasDeepSeekDoneSignal = deepseekResponse.includes('[END_FLOW]');
   
-  if (hasDeepSeekDoneSignal && iteration >= 5) {
+  // Only complete if we have the explicit stop token
+  // Remove the iteration >= 5 requirement since user sets their own max_iterations
+  if (hasDeepSeekDoneSignal) {
     return {
       shouldComplete: true,
       verificationResult: verification,
-      completionReason: 'AI indicates completion and sufficient iterations reached'
+      completionReason: 'AI sent explicit [END_FLOW] token'
     };
   }
   
