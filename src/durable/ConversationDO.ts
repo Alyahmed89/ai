@@ -5,6 +5,7 @@ import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToO
 import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
+import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { MAX_ITERATIONS, STOP_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING } from '../constants';
 import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData } from '../types';
 
@@ -63,6 +64,61 @@ export class ConversationOrchestratorDO_2026A {
   // HTTP HANDLERS
   // ==========================================================================
   
+  /**
+   * Load project facts from D1 database
+   * @returns Array of project facts or empty array if not configured
+   */
+  private async loadProjectFacts(): Promise<ProjectFact[]> {
+    if (!this.env.PROJECT_FACTS_DB) {
+      console.log(`[DO:${this.state.id}] PROJECT_FACTS_DB not configured, using empty facts`);
+      return [];
+    }
+    
+    try {
+      const facts = await getProjectFacts(this.env.PROJECT_FACTS_DB);
+      console.log(`[DO:${this.state.id}] Loaded ${facts.length} project facts`);
+      return facts;
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error loading project facts: ${error.message}`);
+      return [];
+    }
+  }
+  
+  /**
+   * Validate DeepSeek response uses facts correctly and resolve placeholders
+   * @param response DeepSeek response text
+   * @returns Validation and resolution result
+   */
+  private validateAndResolveDeepSeekResponse(response: string): {
+    valid: boolean;
+    error?: string;
+    resolvedText: string;
+  } {
+    if (!this.conversation?.project_facts || this.conversation.project_facts.length === 0) {
+      // No facts configured, pass through unchanged
+      return { valid: true, resolvedText: response };
+    }
+    
+    // Validate fact usage
+    const validation = validateFactUsage(response, this.conversation.project_facts);
+    if (!validation.valid) {
+      return { valid: false, error: validation.error, resolvedText: response };
+    }
+    
+    // Resolve placeholders
+    const { resolvedText, unresolvedTags } = resolveFactPlaceholders(response, this.conversation.project_facts);
+    
+    if (unresolvedTags.length > 0) {
+      return {
+        valid: false,
+        error: `Unresolved fact tags: ${unresolvedTags.join(', ')}`,
+        resolvedText: response
+      };
+    }
+    
+    return { valid: true, resolvedText };
+  }
+  
   private async handleInitialize(request: Request): Promise<Response> {
     try {
       const body = await request.json() as {
@@ -84,6 +140,9 @@ export class ConversationOrchestratorDO_2026A {
       // Generate flow run ID
       this.flowRunId = generateFlowRunId();
       
+      // Load project facts from database
+      const projectFacts = await this.loadProjectFacts();
+      
       // Initialize conversation
       this.conversation = {
         state: 'INIT',
@@ -95,7 +154,8 @@ export class ConversationOrchestratorDO_2026A {
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        deepseek_system
+        deepseek_system,
+        project_facts: projectFacts
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -262,10 +322,20 @@ export class ConversationOrchestratorDO_2026A {
     
     this.conversation.iteration++;
     
-    // Create OpenHands conversation with DeepSeek response
+    // Validate DeepSeek response uses facts correctly
+    const validationResult = this.validateAndResolveDeepSeekResponse(deepseekResult.response!);
+    if (!validationResult.valid) {
+      console.log(`[DO:${this.state.id}] Fact validation failed: ${validationResult.error}`);
+      await this.stopConversation(`FACT_VIOLATION: ${validationResult.error}`);
+      return;
+    }
+    
+    console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText.substring(0, 100)}...`);
+    
+    // Create OpenHands conversation with RESOLVED DeepSeek response
     const openhandsResult = await createOpenHandsConversation(
       this.env.OPENHANDS_API_URL,
-      deepseekResult.response!,
+      validationResult.resolvedText,
       this.conversation.repository,
       this.conversation.branch
     );
@@ -488,11 +558,21 @@ ${messageContent}`;
     
     this.conversation.iteration++;
     
-    // Inject DeepSeek response back to OpenHands
+    // Validate DeepSeek response uses facts correctly
+    const validationResult = this.validateAndResolveDeepSeekResponse(deepseekResult.response!);
+    if (!validationResult.valid) {
+      console.log(`[DO:${this.state.id}] Fact validation failed: ${validationResult.error}`);
+      await this.stopConversation(`FACT_VIOLATION: ${validationResult.error}`);
+      return;
+    }
+    
+    console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText.substring(0, 100)}...`);
+    
+    // Inject RESOLVED DeepSeek response back to OpenHands
     const injectResult = await injectMessageToOpenHands(
       this.env.OPENHANDS_API_URL,
       this.conversation.openhands_conversation_id!,
-      deepseekResult.response!
+      validationResult.resolvedText
     );
     
     if (!injectResult.success) {

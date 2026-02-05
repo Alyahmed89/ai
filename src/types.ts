@@ -6,6 +6,7 @@ export interface CloudflareBindings {
   OPENHANDS_API_URL: string;
   CONVERSATIONS: DurableObjectNamespace;
   FLOW_RUNS_DB?: D1Database; // Optional - may not be configured
+  PROJECT_FACTS_DB?: D1Database; // Optional - for authoritative project facts
 }
 
 // Conversation state machine
@@ -49,6 +50,9 @@ export interface ConversationData {
   
   // DeepSeek conversation history (maintains context across iterations)
   conversation_messages?: DeepSeekMessage[];
+  
+  // Project facts for authoritative command/URL/path enforcement
+  project_facts?: ProjectFact[];
 }
 
 // OpenHands event types
@@ -174,4 +178,10 @@ export interface DoneResponseData {
   new_prompt?: string;
   new_deepseek_system?: string;
   new_branch?: string;
+}
+
+// Project facts for authoritative command/URL/path enforcement
+export interface ProjectFact {
+  tag: string;
+  value: string;
 }
