@@ -496,6 +496,12 @@ ${messageContent}`;
    */
   private async saveFlowRunToDatabase(stopReason: string): Promise<void> {
     if (!this.conversation || !this.flowRunId) return;
+    
+    // Check if database is configured
+    if (!this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Database not configured, skipping flow run save`);
+      return;
+    }
 
     // Extract prompts and responses
     const promptsAndResponses = this.conversation.conversation_messages 

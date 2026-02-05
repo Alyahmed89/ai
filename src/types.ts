@@ -5,7 +5,7 @@ export interface CloudflareBindings {
   DEEPSEEK_API_KEY: string;
   OPENHANDS_API_URL: string;
   CONVERSATIONS: DurableObjectNamespace;
-  FLOW_RUNS_DB: D1Database;
+  FLOW_RUNS_DB?: D1Database; // Optional - may not be configured
 }
 
 // Conversation state machine
