@@ -12,17 +12,51 @@ app.get('/', (c) => {
     endpoints: [
       'POST /start - Start conversation (returns immediately, work happens in alarms)',
       'GET /status/:id - Check conversation status',
-      'POST /stop/:id - Force stop a conversation'
+      'POST /stop/:id - Force stop a conversation',
+      'GET /health - Health check with database connection test'
     ],
     flow: 'User → /start → DO alarm: DeepSeek → OpenHands → DO alarm: DeepSeek → ...',
     rules: [
       'NO simulated OpenHands responses',
       'NO resending same messages',
       'STRICT alternation',
-      'HARD STOP on ANY error or <<DONE>>',
-      'MAX 20 iterations by default (configurable via max_iterations parameter)'
+      'HARD STOP on ANY error or [END_FLOW]',
+      'MAX 500 iterations by default (configurable via max_iterations parameter)'
     ]
   });
+});
+
+// Health check endpoint with database test
+app.get('/health', async (c) => {
+  try {
+    const health = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: 'pending'
+      }
+    };
+    
+    // Test database connection
+    try {
+      const db = c.env.FLOW_RUNS_DB;
+      // Simple query to test connection
+      const result = await db.prepare('SELECT 1 as test').first();
+      health.checks.database = result?.test === 1 ? 'connected' : 'error';
+    } catch (dbError: any) {
+      health.checks.database = `error: ${dbError.message}`;
+      health.status = 'degraded';
+    }
+    
+    return c.json(health);
+    
+  } catch (error: any) {
+    return c.json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }, 500);
+  }
 });
 
 // Start endpoint - MUST return immediately (no awaits to external APIs)
