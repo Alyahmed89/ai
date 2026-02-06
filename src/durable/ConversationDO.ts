@@ -581,8 +581,8 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
-    // Reschedule check in 5 seconds (more frequent checking during iteration)
-    await this.state.storage.setAlarm(Date.now() + 5000);
+    // Reschedule check in 30 seconds (less frequent checking for long operations)
+    await this.state.storage.setAlarm(Date.now() + 30000);
   }
   
   // ==========================================================================
@@ -805,12 +805,42 @@ ${messageContent}`;
     this.conversation.state = 'WAITING_OPENHANDS';
     await this.state.storage.put('conversation', this.conversation);
     
-    // Schedule next alarm to check OpenHands status
-    await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
+    // After sending new instruction, wait LONGER for OH to start execution
+    // Check command type to determine appropriate wait time
+    const initialWaitTime = this.getInitialWaitTime(validationResult.resolvedText);
+    console.log(`[DO:${this.state.id}] After sending instruction, waiting ${initialWaitTime/1000}s for OH to start`);
+    await this.state.storage.setAlarm(Date.now() + initialWaitTime);
   }
   
   private checkForDone(response: string): DoneResponseData {
     return parseDoneResponse(response);
+  }
+
+  /**
+   * Determine appropriate wait time after sending instruction based on command type
+   */
+  private getInitialWaitTime(commandText: string): number {
+    const text = commandText.toLowerCase();
+    
+    // Long-running installation commands
+    if (text.includes('apt-get install') || text.includes('apt install')) {
+      return 120000; // 2 minutes for package installation
+    }
+    
+    if (text.includes('npm install') || text.includes('yarn install') || text.includes('pnpm install')) {
+      return 180000; // 3 minutes for npm install
+    }
+    
+    if (text.includes('docker build') || text.includes('docker-compose')) {
+      return 240000; // 4 minutes for docker builds
+    }
+    
+    if (text.includes('git clone') || text.includes('git pull')) {
+      return 60000; // 1 minute for git operations
+    }
+    
+    // Default wait time
+    return 30000; // 30 seconds
   }
 
   /**
