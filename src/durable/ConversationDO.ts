@@ -6,7 +6,7 @@ import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing'
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getProjectFacts } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
-import { MAX_ITERATIONS, END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING, OPENHANDS_TIMEOUT } from '../constants';
+import { MAX_ITERATIONS, END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING, OPENHANDS_TIMEOUT, NO_EVENT_TIMEOUT } from '../constants';
 import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
@@ -415,6 +415,8 @@ export class ConversationOrchestratorDO_2026A {
     // Initialize iteration start time if not set
     if (!this.conversation.iteration_started_at) {
       this.conversation.iteration_started_at = Date.now();
+      // Also initialize last event time
+      this.conversation.last_event_time = Date.now();
     }
     
     // Filter events to only process NEW events since last processed
@@ -425,6 +427,8 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] No new events since last processed event ID ${lastProcessedEventId}`);
     } else {
       console.log(`[DO:${this.state.id}] Processing ${newEvents.length} new events (since ID ${lastProcessedEventId})`);
+      // Update last event time when we see new events
+      this.conversation.last_event_time = Date.now();
     }
     
     // Process events to track pending actions
@@ -533,6 +537,24 @@ export class ConversationOrchestratorDO_2026A {
     
     // If we get here, iteration is not complete yet
     console.log(`[DO:${this.state.id}] Iteration not complete. Pending actions: ${newPendingActions.length}, Agent awaiting input: ${agentAwaitingInput}`);
+    
+    // Check for "no new events for 3 minutes" timeout
+    if (this.conversation.last_event_time) {
+      const timeSinceLastEvent = Date.now() - this.conversation.last_event_time;
+      if (timeSinceLastEvent > NO_EVENT_TIMEOUT) {
+        console.log(`[DO:${this.state.id}] No new events for ${timeSinceLastEvent}ms (> ${NO_EVENT_TIMEOUT}ms), assuming OH is stuck. Forcing completion.`);
+        
+        // Force move to next iteration
+        this.conversation.state = 'ITERATION_COMPLETE';
+        this.conversation.last_iteration_summary = `Iteration ${this.conversation.iteration} forced completion - no new events for ${Math.round(timeSinceLastEvent/1000)}s.`;
+        this.conversation.iteration_started_at = undefined;
+        this.conversation.last_event_time = undefined;
+        
+        await this.state.storage.put('conversation', this.conversation);
+        await this.state.storage.setAlarm(Date.now() + 1000);
+        return;
+      }
+    }
     
     // Check if iteration has timed out (general timeout check)
     if (this.conversation.iteration_started_at && 
@@ -805,42 +827,14 @@ ${messageContent}`;
     this.conversation.state = 'WAITING_OPENHANDS';
     await this.state.storage.put('conversation', this.conversation);
     
-    // After sending new instruction, wait LONGER for OH to start execution
-    // Check command type to determine appropriate wait time
-    const initialWaitTime = this.getInitialWaitTime(validationResult.resolvedText);
-    console.log(`[DO:${this.state.id}] After sending instruction, waiting ${initialWaitTime/1000}s for OH to start`);
-    await this.state.storage.setAlarm(Date.now() + initialWaitTime);
+    // After sending new instruction, wait for OH to start execution
+    // Use standard check interval (no special timing for different commands)
+    console.log(`[DO:${this.state.id}] After sending instruction, waiting ${ALARM_DELAY_WAITING/1000}s for OH to start`);
+    await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
   }
   
   private checkForDone(response: string): DoneResponseData {
     return parseDoneResponse(response);
-  }
-
-  /**
-   * Determine appropriate wait time after sending instruction based on command type
-   */
-  private getInitialWaitTime(commandText: string): number {
-    const text = commandText.toLowerCase();
-    
-    // Long-running installation commands
-    if (text.includes('apt-get install') || text.includes('apt install')) {
-      return 120000; // 2 minutes for package installation
-    }
-    
-    if (text.includes('npm install') || text.includes('yarn install') || text.includes('pnpm install')) {
-      return 180000; // 3 minutes for npm install
-    }
-    
-    if (text.includes('docker build') || text.includes('docker-compose')) {
-      return 240000; // 4 minutes for docker builds
-    }
-    
-    if (text.includes('git clone') || text.includes('git pull')) {
-      return 60000; // 1 minute for git operations
-    }
-    
-    // Default wait time
-    return 30000; // 30 seconds
   }
 
   /**

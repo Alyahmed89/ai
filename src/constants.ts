@@ -6,3 +6,4 @@ export const ALARM_DELAY_INIT = 1000; // 1 second for initial alarm
 export const ALARM_DELAY_WAITING = 30000; // 30 seconds between checks (increased from 5s)
 export const DEEPSEEK_TIMEOUT = 30000; // 30 seconds
 export const OPENHANDS_TIMEOUT = 180000; // 3 minutes for long operations (increased from 30s)
+export const NO_EVENT_TIMEOUT = 180000; // 3 minutes without new events
