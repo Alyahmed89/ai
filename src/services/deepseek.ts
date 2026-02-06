@@ -1,5 +1,5 @@
 // DeepSeek API service - pure, stateless wrapper
-import { DEEPSEEK_TIMEOUT, STOP_TOKEN } from '../constants';
+import { DEEPSEEK_TIMEOUT } from '../constants';
 import { DeepSeekMessage } from '../types';
 import { DeepSeekResult } from '../types';
 

@@ -13,6 +13,7 @@ app.get('/', (c) => {
       'POST /start - Start conversation (returns immediately, work happens in alarms)',
       'GET /status/:id - Check conversation status',
       'POST /stop/:id - Force stop a conversation',
+      'POST /api/conversations/:conversation_id/stop - API: Stop conversation',
       'GET /health - Health check with database connection test'
     ],
     flow: 'User → /start → DO alarm: DeepSeek → OpenHands → DO alarm: DeepSeek → ...',
@@ -181,6 +182,41 @@ app.post('/stop/:id', async (c) => {
   } catch (error: any) {
     console.error(`[HTTP:STOP] Endpoint error: ${error.message}`);
     return c.json({ error: error.message }, 500);
+  }
+});
+
+// API namespace: Stop conversation
+app.post('/api/conversations/:conversation_id/stop', async (c) => {
+  try {
+    const conversationId = c.req.param('conversation_id');
+    
+    // Get the Durable Object
+    const conversationDo = c.env.CONVERSATIONS.get(c.env.CONVERSATIONS.idFromString(conversationId));
+    
+    // Stop the conversation
+    const stopResponse = await conversationDo.fetch('http://placeholder/stop', {
+      method: 'POST'
+    });
+    
+    if (!stopResponse.ok) {
+      return c.json({ error: 'Failed to stop conversation' }, 500);
+    }
+    
+    const stopData = await stopResponse.json() as any;
+    
+    return c.json({
+      success: true,
+      message: stopData.message,
+      conversation_id: conversationId,
+      stopped_at: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    console.error(`[HTTP:API_STOP] Endpoint error: ${error.message}`);
+    return c.json({ 
+      error: error.message,
+      conversation_id: c.req.param('conversation_id')
+    }, 500);
   }
 });
 

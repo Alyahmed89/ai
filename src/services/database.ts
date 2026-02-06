@@ -152,7 +152,7 @@ export async function getFlowRunsByStatus(
       LIMIT ?
     `).bind(status, limit).all();
 
-    return result.results as FlowRunData[];
+    return result.results as unknown as FlowRunData[];
   } catch (error: any) {
     console.error(`[DATABASE] Error getting flow runs by status: ${error.message}`);
     return [];
@@ -173,7 +173,7 @@ export async function getIterationsForFlowRun(db: D1Database, flowRunId: string)
       ORDER BY iteration_number ASC
     `).bind(flowRunId).all();
 
-    return result.results as IterationData[];
+    return result.results as unknown as IterationData[];
   } catch (error: any) {
     console.error(`[DATABASE] Error getting iterations: ${error.message}`);
     return [];
@@ -199,7 +199,7 @@ export async function getProjectFacts(db: D1Database): Promise<ProjectFact[]> {
       SELECT tag, value FROM project_facts
     `).all();
     
-    return result.results as ProjectFact[];
+    return result.results as unknown as ProjectFact[];
   } catch (error: any) {
     console.error(`[DATABASE] Error getting project facts: ${error.message}`);
     return [];

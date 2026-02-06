@@ -10,7 +10,7 @@ export interface CloudflareBindings {
 }
 
 // Conversation state machine
-export type ConversationState = 'INIT' | 'WAITING_OPENHANDS' | 'DONE';
+export type ConversationState = 'INIT' | 'WAITING_OPENHANDS' | 'ITERATION_COMPLETE' | 'AWAITING_NEXT_ITERATION' | 'DONE';
 
 // Conversation data (persisted in Durable Object storage)
 export interface ConversationData {
@@ -53,6 +53,11 @@ export interface ConversationData {
   
   // Project facts for authoritative command/URL/path enforcement
   project_facts?: ProjectFact[];
+
+  // Iteration completion tracking
+  pending_actions?: PendingAction[]; // Track ActionEvents waiting for ObservationEvents
+  iteration_started_at?: number; // When current iteration started
+  last_iteration_summary?: string; // Summary of what was done in last iteration
 }
 
 // OpenHands event types
@@ -62,8 +67,10 @@ export interface OpenHandsEvent {
   source: string;
   message: string;
   action: string;
+  observation?: string;
   args?: {
     content?: string;
+    tool_call_id?: string;
     [key: string]: any;
   };
   content?: string;
@@ -71,6 +78,15 @@ export interface OpenHandsEvent {
     agent_state?: string;
     [key: string]: any;
   };
+}
+
+// Pending action tracking
+export interface PendingAction {
+  tool_call_id: string;
+  action_type: string;
+  started_at: number;
+  event_id: number;
+  description?: string;
 }
 
 export interface OpenHandsEventsResponse {
@@ -178,6 +194,8 @@ export interface DoneResponseData {
   new_prompt?: string;
   new_deepseek_system?: string;
   new_branch?: string;
+  is_end_flow_early?: boolean;
+  stop_reason?: string;
 }
 
 // Project facts for authoritative command/URL/path enforcement

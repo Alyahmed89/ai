@@ -3,11 +3,11 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getProjectFacts } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
-import { MAX_ITERATIONS, STOP_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING } from '../constants';
-import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData } from '../types';
+import { MAX_ITERATIONS, END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING } from '../constants';
+import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
   private state: DurableObjectState;
@@ -231,6 +231,14 @@ export class ConversationOrchestratorDO_2026A {
           await this.handleWaitingOpenHandsState();
           break;
           
+        case 'ITERATION_COMPLETE':
+          await this.handleIterationCompleteState();
+          break;
+          
+        case 'AWAITING_NEXT_ITERATION':
+          await this.handleAwaitingNextIterationState();
+          break;
+          
         case 'DONE':
           console.log(`[DO:${this.state.id}] Conversation already DONE, no action needed`);
           return;
@@ -368,7 +376,7 @@ export class ConversationOrchestratorDO_2026A {
     
     console.log(`[DO:${this.state.id}] WAITING_OPENHANDS: Checking conversation ${this.conversation.openhands_conversation_id}`);
     
-    // Get OpenHands conversation events (last 2 events, reverse=true)
+    // Get OpenHands conversation events
     const openhandsStatus = await getOpenHandsConversation(
       this.env.OPENHANDS_API_URL,
       this.conversation.openhands_conversation_id
@@ -395,58 +403,175 @@ export class ConversationOrchestratorDO_2026A {
     // Reset error count on success
     this.conversation.openhands_error_count = 0;
     
-    // SIMPLE RULE: Check last 2 events
-    // events[0] = most recent event (index 0)
-    // events[1] = previous event (index 1)
     const events = openhandsStatus.events || [];
     console.log(`[DO:${this.state.id}] Got ${events.length} events`);
     
-    if (events.length >= 2) {
-      const mostRecentEvent = events[0]; // index 0 = most recent
-      const previousEvent = events[1];   // index 1 = previous event
-      
-      console.log(`[DO:${this.state.id}] Event 0 (most recent): id=${mostRecentEvent.id}, source=${mostRecentEvent.source}, observation=${mostRecentEvent.observation}`);
-      console.log(`[DO:${this.state.id}] Event 1 (previous): id=${previousEvent.id}, source=${previousEvent.source}, action=${previousEvent.action}`);
-      
-      // Check if most recent event has agent_state: "awaiting_user_input"
-      if (mostRecentEvent.observation === 'agent_state_changed' && 
-          mostRecentEvent.extras?.agent_state === 'awaiting_user_input') {
-        
-        console.log(`[DO:${this.state.id}] Agent is awaiting user input!`);
-        
-        // Get content from previous event (the agent's message)
-        let contentToSend = '';
-        
-        if (previousEvent.args?.content) {
-          contentToSend = previousEvent.args.content;
-        } else if (previousEvent.message) {
-          contentToSend = previousEvent.message;
-        }
-        
-        if (contentToSend) {
-          console.log(`[DO:${this.state.id}] Found content to send (${contentToSend.length} chars)`);
-          
-          // Send to DeepSeek
-          await this.sendToDeepSeek(contentToSend);
-          return;
-        } else {
-          console.log(`[DO:${this.state.id}] No content found in previous event`);
-        }
-      } else {
-        console.log(`[DO:${this.state.id}] Most recent event is NOT agent_state_changed with awaiting_user_input`);
-        console.log(`[DO:${this.state.id}] observation=${mostRecentEvent.observation}, agent_state=${mostRecentEvent.extras?.agent_state}`);
-      }
-    } else {
-      console.log(`[DO:${this.state.id}] Not enough events (need 2, got ${events.length})`);
+    // Initialize pending actions if not exists
+    if (!this.conversation.pending_actions) {
+      this.conversation.pending_actions = [];
     }
     
-    // If we get here, either:
-    // 1. Not enough events
-    // 2. Agent not awaiting user input
-    // 3. No content found
+    // Initialize iteration start time if not set
+    if (!this.conversation.iteration_started_at) {
+      this.conversation.iteration_started_at = Date.now();
+    }
     
-    // Reschedule check in 10 seconds
-    await this.state.storage.setAlarm(Date.now() + 10000); // Check every 10 seconds
+    // Process events to track pending actions
+    const newPendingActions = [...this.conversation.pending_actions];
+    let iterationCompleted = false;
+    let agentAwaitingInput = false;
+    let contentToSend = '';
+    
+    // Process events in chronological order (oldest first)
+    const chronologicalEvents = [...events].reverse();
+    
+    for (const event of chronologicalEvents) {
+      console.log(`[DO:${this.state.id}] Processing event ${event.id}: action=${event.action}, observation=${event.observation}, tool_call_id=${event.args?.tool_call_id}`);
+      
+      // Check for ActionEvent (agent started a tool call)
+      if (event.action && event.action !== 'agent_state_changed' && event.args?.tool_call_id) {
+        // Check if this action is already tracked
+        const existingIndex = newPendingActions.findIndex(a => a.tool_call_id === event.args!.tool_call_id);
+        if (existingIndex === -1) {
+          // New action - add to pending list
+          newPendingActions.push({
+            tool_call_id: event.args!.tool_call_id,
+            action_type: event.action,
+            started_at: Date.now(),
+            event_id: event.id,
+            description: event.message || event.content
+          });
+          console.log(`[DO:${this.state.id}] Added pending action: ${event.action} (tool_call_id: ${event.args!.tool_call_id})`);
+        }
+      }
+      
+      // Check for ObservationEvent (tool execution completed)
+      if (event.observation && event.args?.tool_call_id) {
+        // Remove from pending actions
+        const actionIndex = newPendingActions.findIndex(a => a.tool_call_id === event.args!.tool_call_id);
+        if (actionIndex !== -1) {
+          const completedAction = newPendingActions[actionIndex];
+          console.log(`[DO:${this.state.id}] Action completed: ${completedAction.action_type} (tool_call_id: ${event.args!.tool_call_id})`);
+          newPendingActions.splice(actionIndex, 1);
+        }
+      }
+      
+      // Check for agent_state_changed to awaiting_user_input
+      if (event.observation === 'agent_state_changed' && event.extras?.agent_state === 'awaiting_user_input') {
+        agentAwaitingInput = true;
+        console.log(`[DO:${this.state.id}] Agent is awaiting user input`);
+        
+        // Look for the agent's message content
+        const messageEvent = chronologicalEvents.find(e => 
+          e.id < event.id && (e.args?.content || e.message || e.content)
+        );
+        
+        if (messageEvent) {
+          contentToSend = messageEvent.args?.content || messageEvent.message || messageEvent.content || '';
+          console.log(`[DO:${this.state.id}] Found content to send (${contentToSend.length} chars)`);
+        }
+      }
+    }
+    
+    // Update pending actions
+    this.conversation.pending_actions = newPendingActions;
+    
+    // Check if iteration is complete (no pending actions AND agent is awaiting input)
+    if (newPendingActions.length === 0 && agentAwaitingInput) {
+      iterationCompleted = true;
+      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} completed!`);
+      
+      // Generate iteration summary
+      const iterationDuration = Date.now() - (this.conversation.iteration_started_at || Date.now());
+      this.conversation.last_iteration_summary = `Iteration ${this.conversation.iteration} completed in ${iterationDuration}ms. Agent is awaiting next instructions.`;
+      
+      // Move to ITERATION_COMPLETE state
+      this.conversation.state = 'ITERATION_COMPLETE';
+      this.conversation.iteration_started_at = undefined; // Reset for next iteration
+      
+      // Save state and schedule alarm for next iteration decision
+      await this.state.storage.put('conversation', this.conversation);
+      await this.state.storage.setAlarm(Date.now() + 1000); // Check immediately for next step
+      return;
+    }
+    
+    // If we get here, iteration is not complete yet
+    console.log(`[DO:${this.state.id}] Iteration not complete. Pending actions: ${newPendingActions.length}, Agent awaiting input: ${agentAwaitingInput}`);
+    
+    // Reschedule check in 5 seconds (more frequent checking during iteration)
+    await this.state.storage.setAlarm(Date.now() + 5000);
+  }
+  
+  // ==========================================================================
+  // NEW STATE HANDLERS
+  // ==========================================================================
+  
+  private async handleIterationCompleteState(): Promise<void> {
+    if (!this.conversation) return;
+    
+    console.log(`[DO:${this.state.id}] ITERATION_COMPLETE: Iteration ${this.conversation.iteration} completed`);
+    
+    // Check if we should continue or stop
+    // For now, always continue to next iteration
+    // In the future, we could add logic to decide based on iteration summary
+    
+    // Move to AWAITING_NEXT_ITERATION state to wait for DeepSeek decision
+    this.conversation.state = 'AWAITING_NEXT_ITERATION';
+    
+    // Schedule immediate check for next iteration decision
+    await this.state.storage.setAlarm(Date.now() + 1000);
+  }
+  
+  private async handleAwaitingNextIterationState(): Promise<void> {
+    if (!this.conversation) return;
+    
+    console.log(`[DO:${this.state.id}] AWAITING_NEXT_ITERATION: Deciding next step for iteration ${this.conversation.iteration}`);
+    
+    // For now, always send to DeepSeek to get next instructions
+    // We need to get the last OpenHands response to send to DeepSeek
+    
+    // Get OpenHands conversation to find the last message
+    const openhandsStatus = await getOpenHandsConversation(
+      this.env.OPENHANDS_API_URL,
+      this.conversation.openhands_conversation_id!
+    );
+    
+    if (!openhandsStatus.success) {
+      console.log(`[DO:${this.state.id}] Failed to get OpenHands conversation: ${openhandsStatus.error}`);
+      // Retry in 10 seconds
+      await this.state.storage.setAlarm(Date.now() + 10000);
+      return;
+    }
+    
+    const events = openhandsStatus.events || [];
+    const chronologicalEvents = [...events].reverse();
+    
+    // Find the agent's last message (before awaiting_user_input)
+    let contentToSend = '';
+    for (const event of chronologicalEvents) {
+      if (event.observation === 'agent_state_changed' && event.extras?.agent_state === 'awaiting_user_input') {
+        // Look backward for the agent's message
+        const messageEvent = chronologicalEvents.find(e => 
+          e.id < event.id && (e.args?.content || e.message || e.content)
+        );
+        
+        if (messageEvent) {
+          contentToSend = messageEvent.args?.content || messageEvent.message || messageEvent.content || '';
+          break;
+        }
+      }
+    }
+    
+    if (contentToSend) {
+      console.log(`[DO:${this.state.id}] Found content to send to DeepSeek (${contentToSend.length} chars)`);
+      
+      // Send to DeepSeek for next instructions
+      await this.sendToDeepSeek(contentToSend);
+    } else {
+      console.log(`[DO:${this.state.id}] No content found to send to DeepSeek`);
+      // Wait and retry
+      await this.state.storage.setAlarm(Date.now() + 10000);
+    }
   }
   
   // ==========================================================================
@@ -596,8 +721,8 @@ ${messageContent}`;
   }
 
   /**
-   * Handle a [END_FLOW] response by saving flow run and closing conversation
-   * @param response The DeepSeek response containing [END_FLOW]
+   * Handle a [END_FLOW] or [END_FLOW_EARLY] response by saving flow run and closing conversation
+   * @param response The DeepSeek response containing [END_FLOW] or [END_FLOW_EARLY]
    * @param reason Reason for stopping
    */
   private async handleDoneResponse(response: string, reason: string): Promise<void> {
@@ -610,11 +735,32 @@ ${messageContent}`;
       return;
     }
 
-    // Save the current flow run to database
-    await this.saveFlowRunToDatabase(reason);
+    // Determine the final stop reason
+    let finalStopReason = reason;
+    let flowStatus: 'completed' | 'stopped' | 'new_flow_started' = 'completed';
+    
+    if (doneData.is_end_flow_early) {
+      // END_FLOW_EARLY: Stop without starting new flow
+      finalStopReason = `end_flow_early: ${doneData.stop_reason || 'no_reason_provided'}`;
+      flowStatus = 'stopped';
+      console.log(`[DO:${this.state.id}] END_FLOW_EARLY detected: ${doneData.stop_reason}`);
+    } else if (doneData.new_prompt) {
+      // END_FLOW with new prompt: Start new flow
+      finalStopReason = `end_flow_with_new_prompt: ${doneData.new_prompt.substring(0, 50)}...`;
+      flowStatus = 'new_flow_started';
+      console.log(`[DO:${this.state.id}] END_FLOW with new prompt detected, starting new flow`);
+    } else {
+      // END_FLOW without new prompt: Just stop
+      finalStopReason = 'end_flow_no_new_prompt';
+      flowStatus = 'completed';
+      console.log(`[DO:${this.state.id}] END_FLOW without new prompt detected`);
+    }
 
-    // If there's a new prompt, start a new flow
-    if (doneData.new_prompt) {
+    // Save the current flow run to database with appropriate status
+    await this.saveFlowRunToDatabase(finalStopReason, flowStatus);
+
+    // If there's a new prompt and it's not END_FLOW_EARLY, start a new flow
+    if (doneData.new_prompt && !doneData.is_end_flow_early) {
       await this.startNextFlow(doneData);
     }
   }
@@ -690,17 +836,17 @@ ${messageContent}`;
       max_iterations: this.conversation.max_iterations,
       actual_iterations: 0,
       status: 'active' as const,
-      stop_reason: null,
+      stop_reason: undefined,
       prompts_and_responses: JSON.stringify([]),
       created_at: this.conversation.created_at,
       updated_at: this.conversation.updated_at,
-      ended_at: null,
-      next_flow_id: null,
-      task_type: null,
-      success_score: null,
-      quality_metrics: null,
-      deployment_id: null,
-      improvement_suggestions: null
+      ended_at: undefined,
+      next_flow_id: undefined,
+      task_type: undefined,
+      success_score: undefined,
+      quality_metrics: undefined,
+      deployment_id: undefined,
+      improvement_suggestions: undefined
     };
 
     // Save to database
@@ -716,7 +862,7 @@ ${messageContent}`;
    * Save current flow run to database
    * @param stopReason Reason for stopping
    */
-  private async saveFlowRunToDatabase(stopReason: string): Promise<void> {
+  private async saveFlowRunToDatabase(stopReason: string, status: 'completed' | 'stopped' | 'new_flow_started' = 'completed'): Promise<void> {
     if (!this.conversation || !this.flowRunId) return;
     
     // Check if database is configured
@@ -740,7 +886,7 @@ ${messageContent}`;
       branch: this.conversation.branch || 'main',
       max_iterations: this.conversation.max_iterations,
       actual_iterations: this.conversation.iteration,
-      status: 'completed' as const,
+      status: status,
       stop_reason: stopReason,
       prompts_and_responses: promptsAndResponses,
       created_at: this.conversation.created_at,
@@ -753,7 +899,7 @@ ${messageContent}`;
     if (!result.success) {
       console.error(`[DO:${this.state.id}] Failed to save flow run to database: ${result.error}`);
     } else {
-      console.log(`[DO:${this.state.id}] Flow run saved to database: ${this.flowRunId}`);
+      console.log(`[DO:${this.state.id}] Flow run saved to database: ${this.flowRunId} with status: ${status}`);
     }
   }
 
