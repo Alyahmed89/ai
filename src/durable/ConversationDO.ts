@@ -376,7 +376,8 @@ export class ConversationOrchestratorDO_2026A {
     
     console.log(`[DO:${this.state.id}] WAITING_OPENHANDS: Checking conversation ${this.conversation.openhands_conversation_id}`);
     
-    // Get OpenHands conversation events
+    // Get OpenHands conversation events FIRST (before checking timeout)
+    // We need events to extract content even if we timeout
     const openhandsStatus = await getOpenHandsConversation(
       this.env.OPENHANDS_API_URL,
       this.conversation.openhands_conversation_id
@@ -416,6 +417,16 @@ export class ConversationOrchestratorDO_2026A {
       this.conversation.iteration_started_at = Date.now();
     }
     
+    // Filter events to only process NEW events since last processed
+    const lastProcessedEventId = this.conversation.last_sent_event_id || 0;
+    const newEvents = events.filter(event => event.id > lastProcessedEventId);
+    
+    if (newEvents.length === 0) {
+      console.log(`[DO:${this.state.id}] No new events since last processed event ID ${lastProcessedEventId}`);
+    } else {
+      console.log(`[DO:${this.state.id}] Processing ${newEvents.length} new events (since ID ${lastProcessedEventId})`);
+    }
+    
     // Process events to track pending actions
     const newPendingActions = [...this.conversation.pending_actions];
     let iterationCompleted = false;
@@ -423,7 +434,7 @@ export class ConversationOrchestratorDO_2026A {
     let contentToSend = '';
     
     // Process events in chronological order (oldest first)
-    const chronologicalEvents = [...events].reverse();
+    const chronologicalEvents = [...newEvents].reverse();
     
     for (const event of chronologicalEvents) {
       console.log(`[DO:${this.state.id}] Processing event ${event.id}: action=${event.action}, observation=${event.observation}, tool_call_id=${event.args?.tool_call_id}`);
@@ -476,6 +487,13 @@ export class ConversationOrchestratorDO_2026A {
     // Update pending actions
     this.conversation.pending_actions = newPendingActions;
     
+    // Update last processed event ID (track highest event ID processed)
+    if (newEvents.length > 0) {
+      const maxEventId = Math.max(...newEvents.map(e => e.id));
+      this.conversation.last_sent_event_id = maxEventId;
+      console.log(`[DO:${this.state.id}] Updated last processed event ID to ${maxEventId}`);
+    }
+    
     // Check if iteration is complete (no pending actions AND agent is awaiting input)
     if (newPendingActions.length === 0 && agentAwaitingInput) {
       iterationCompleted = true;
@@ -497,6 +515,54 @@ export class ConversationOrchestratorDO_2026A {
     
     // If we get here, iteration is not complete yet
     console.log(`[DO:${this.state.id}] Iteration not complete. Pending actions: ${newPendingActions.length}, Agent awaiting input: ${agentAwaitingInput}`);
+    
+    // Check if iteration has timed out (general timeout check)
+    if (this.conversation.iteration_started_at && 
+        Date.now() - this.conversation.iteration_started_at > OPENHANDS_TIMEOUT) {
+      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} timed out after ${OPENHANDS_TIMEOUT}ms. Forcing completion.`);
+      
+      // Try to find the MOST RECENT agent message content in NEW events
+      let fallbackContent = '';
+      
+      // Process events in chronological order (oldest to newest) to find the most recent
+      const chronologicalEvents = [...newEvents].reverse(); // Oldest first
+      let mostRecentMessage = null;
+      
+      for (const event of chronologicalEvents) {
+        if (event.args?.content || event.message || event.content) {
+          const content = event.args?.content || event.message || event.content || '';
+          if (content) {
+            mostRecentMessage = {
+              id: event.id,
+              content: content
+            };
+            // Keep going to find the MOST recent (last one in chronological order)
+          }
+        }
+      }
+      
+      if (mostRecentMessage) {
+        fallbackContent = mostRecentMessage.content;
+        console.log(`[DO:${this.state.id}] Found most recent agent message (ID: ${mostRecentMessage.id}, ${fallbackContent.length} chars)`);
+        
+        // Add timeout context
+        fallbackContent = `[OpenHands timed out after ${OPENHANDS_TIMEOUT}ms, partial response:]\n\n${fallbackContent}`;
+      }
+      
+      // Store any found content for next iteration
+      if (fallbackContent) {
+        this.conversation.pending_event_content = fallbackContent;
+      }
+      
+      // Force move to next iteration
+      this.conversation.state = 'ITERATION_COMPLETE';
+      this.conversation.last_iteration_summary = `Iteration ${this.conversation.iteration} forced completion after timeout (${OPENHANDS_TIMEOUT}ms).`;
+      this.conversation.iteration_started_at = undefined;
+      
+      await this.state.storage.put('conversation', this.conversation);
+      await this.state.storage.setAlarm(Date.now() + 1000);
+      return;
+    }
     
     // Reschedule check in 5 seconds (more frequent checking during iteration)
     await this.state.storage.setAlarm(Date.now() + 5000);
@@ -526,6 +592,16 @@ export class ConversationOrchestratorDO_2026A {
     if (!this.conversation) return;
     
     console.log(`[DO:${this.state.id}] AWAITING_NEXT_ITERATION: Deciding next step for iteration ${this.conversation.iteration}`);
+    
+    // Check if we have pending event content from timeout or previous iteration
+    if (this.conversation.pending_event_content) {
+      console.log(`[DO:${this.state.id}] Using pending event content (${this.conversation.pending_event_content.length} chars)`);
+      const contentToSend = this.conversation.pending_event_content;
+      this.conversation.pending_event_content = undefined; // Clear after use
+      await this.state.storage.put('conversation', this.conversation);
+      await this.sendToDeepSeek(contentToSend);
+      return;
+    }
     
     // For now, always send to DeepSeek to get next instructions
     // We need to get the last OpenHands response to send to DeepSeek

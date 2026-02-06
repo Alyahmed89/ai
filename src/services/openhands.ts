@@ -102,10 +102,10 @@ export async function getOpenHandsConversation(
   conversationId: string
 ): Promise<OpenHandsStatusResult> {
   try {
-    // SIMPLE RULE: Get last 2 events to check if agent is awaiting user input
+    // Get ALL events to properly track conversation state
     const eventsUrl = apiUrl.endsWith('/') 
-      ? `${apiUrl}conversations/${conversationId}/events?limit=2&reverse=true`
-      : `${apiUrl}/conversations/${conversationId}/events?limit=2&reverse=true`;
+      ? `${apiUrl}conversations/${conversationId}/events`
+      : `${apiUrl}/conversations/${conversationId}/events`;
 
     // Add retry logic for events endpoint
     let retryCount = 0;
