@@ -440,30 +440,47 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] Processing event ${event.id}: action=${event.action}, observation=${event.observation}, tool_call_id=${event.args?.tool_call_id}`);
       
       // Check for ActionEvent (agent started a tool call)
-      if (event.action && event.action !== 'agent_state_changed' && event.args?.tool_call_id) {
+      if (event.action && event.action !== 'agent_state_changed') {
+        // Try to get tool_call_id from args, or generate one from event ID
+        const tool_call_id = event.args?.tool_call_id || `event_${event.id}`;
+        
         // Check if this action is already tracked
-        const existingIndex = newPendingActions.findIndex(a => a.tool_call_id === event.args!.tool_call_id);
+        const existingIndex = newPendingActions.findIndex(a => a.tool_call_id === tool_call_id);
         if (existingIndex === -1) {
           // New action - add to pending list
           newPendingActions.push({
-            tool_call_id: event.args!.tool_call_id,
+            tool_call_id: tool_call_id,
             action_type: event.action,
             started_at: Date.now(),
             event_id: event.id,
             description: event.message || event.content
           });
-          console.log(`[DO:${this.state.id}] Added pending action: ${event.action} (tool_call_id: ${event.args!.tool_call_id})`);
+          console.log(`[DO:${this.state.id}] Added pending action: ${event.action} (tool_call_id: ${tool_call_id})`);
         }
       }
       
       // Check for ObservationEvent (tool execution completed)
-      if (event.observation && event.args?.tool_call_id) {
-        // Remove from pending actions
-        const actionIndex = newPendingActions.findIndex(a => a.tool_call_id === event.args!.tool_call_id);
-        if (actionIndex !== -1) {
-          const completedAction = newPendingActions[actionIndex];
-          console.log(`[DO:${this.state.id}] Action completed: ${completedAction.action_type} (tool_call_id: ${event.args!.tool_call_id})`);
-          newPendingActions.splice(actionIndex, 1);
+      if (event.observation) {
+        // Try to match observation to action
+        // First try tool_call_id from args
+        if (event.args?.tool_call_id) {
+          const actionIndex = newPendingActions.findIndex(a => a.tool_call_id === event.args!.tool_call_id);
+          if (actionIndex !== -1) {
+            const completedAction = newPendingActions[actionIndex];
+            console.log(`[DO:${this.state.id}] Action completed: ${completedAction.action_type} (tool_call_id: ${event.args!.tool_call_id})`);
+            newPendingActions.splice(actionIndex, 1);
+          }
+        } else {
+          // No tool_call_id - try to match by action type
+          // Look for most recent pending action of the same type
+          for (let i = newPendingActions.length - 1; i >= 0; i--) {
+            const action = newPendingActions[i];
+            if (action.action_type === event.observation) {
+              console.log(`[DO:${this.state.id}] Action completed (type match): ${action.action_type} (event_id: ${action.event_id})`);
+              newPendingActions.splice(i, 1);
+              break;
+            }
+          }
         }
       }
       
