@@ -434,7 +434,8 @@ export class ConversationOrchestratorDO_2026A {
     let contentToSend = '';
     
     // Process events in chronological order (oldest first)
-    const chronologicalEvents = [...newEvents]; // Remove .reverse() - events are already chronological
+    // Events come with ?reverse=true (newest first), so reverse them back
+    const chronologicalEvents = [...newEvents].reverse();
     
     for (const event of chronologicalEvents) {
       console.log(`[DO:${this.state.id}] Processing event ${event.id}: action=${event.action}, observation=${event.observation}, tool_call_id=${event.args?.tool_call_id}`);
@@ -637,14 +638,13 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     const events = openhandsStatus.events || [];
-    const chronologicalEvents = [...events].reverse();
-    
+    // Events come with ?reverse=true (newest first), search in that order
     // Find the agent's last message (before awaiting_user_input)
     let contentToSend = '';
-    for (const event of chronologicalEvents) {
+    for (const event of events) {
       if (event.observation === 'agent_state_changed' && event.extras?.agent_state === 'awaiting_user_input') {
-        // Look backward for the agent's message
-        const messageEvent = chronologicalEvents.find(e => 
+        // Look backward for the agent's message (events are newest-first)
+        const messageEvent = events.find(e => 
           e.id < event.id && (e.args?.content || e.message || e.content)
         );
         

@@ -103,9 +103,10 @@ export async function getOpenHandsConversation(
 ): Promise<OpenHandsStatusResult> {
   try {
     // Get ALL events to properly track conversation state
+    // Use ?reverse=true to get newest events first (better for checking current status)
     const eventsUrl = apiUrl.endsWith('/') 
-      ? `${apiUrl}conversations/${conversationId}/events`
-      : `${apiUrl}/conversations/${conversationId}/events`;
+      ? `${apiUrl}conversations/${conversationId}/events?reverse=true`
+      : `${apiUrl}/conversations/${conversationId}/events?reverse=true`;
 
     // Add retry logic for events endpoint
     let retryCount = 0;
