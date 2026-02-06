@@ -434,7 +434,7 @@ export class ConversationOrchestratorDO_2026A {
     let contentToSend = '';
     
     // Process events in chronological order (oldest first)
-    const chronologicalEvents = [...newEvents].reverse();
+    const chronologicalEvents = [...newEvents]; // Remove .reverse() - events are already chronological
     
     for (const event of chronologicalEvents) {
       console.log(`[DO:${this.state.id}] Processing event ${event.id}: action=${event.action}, observation=${event.observation}, tool_call_id=${event.args?.tool_call_id}`);
