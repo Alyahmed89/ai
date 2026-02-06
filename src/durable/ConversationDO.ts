@@ -6,7 +6,7 @@ import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing'
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getProjectFacts } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
-import { MAX_ITERATIONS, END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING } from '../constants';
+import { MAX_ITERATIONS, END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING, OPENHANDS_TIMEOUT } from '../constants';
 import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
