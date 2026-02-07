@@ -901,10 +901,6 @@ ${messageContent}`;
     // Generate a new conversation ID
     const newConversationId = crypto.randomUUID();
     
-    // Get the Durable Object stub for the new conversation
-    const newConversationIdObj = this.env.CONVERSATIONS.idFromName(newConversationId);
-    const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
-
     // Prepare the request body for the new flow
     const requestBody = {
       repository: this.conversation!.repository, // Use same repository
@@ -914,16 +910,26 @@ ${messageContent}`;
       deepseek_system: doneData.new_deepseek_system || this.conversation!.deepseek_system
     };
 
-    // Create a request to initialize the new conversation
-    const request = new Request('http://dummy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
-
     try {
-      // Call the fetch method on the new Durable Object
-      const response = await newConversationStub.fetch(request);
+      // We need to make an HTTP request to the worker's /start endpoint
+      // But we don't have the worker URL in the Durable Object
+      // For now, we'll create a new Durable Object directly
+      const newConversationIdObj = this.env.CONVERSATIONS.idFromName(newConversationId);
+      const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
+
+      // Initialize the new Durable Object
+      const initResponse = await newConversationStub.fetch('http://placeholder/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
+        console.error(`[DO:${this.state.id}] Failed to initialize next flow: ${initResponse.status} - ${errorText}`);
+        return;
+      }
+
       console.log(`[DO:${this.state.id}] Next flow started with ID: ${newConversationId}`);
       
       // Update current flow run with next_flow_id if database is available
