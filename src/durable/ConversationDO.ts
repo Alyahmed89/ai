@@ -394,8 +394,8 @@ export class ConversationOrchestratorDO_2026A {
         return;
       }
       
-      // Wait longer before retrying (exponential backoff: 5s, 10s, 20s, etc.) - reduced from 30s, 60s, 120s
-      const backoffTime = Math.min(5000 * Math.pow(2, this.conversation.openhands_error_count - 1), 60000); // Max 1 minute (reduced from 5 minutes)
+      // Wait longer before retrying (exponential backoff: 10s, 20s, 40s, etc.)
+      const backoffTime = Math.min(10000 * Math.pow(2, this.conversation.openhands_error_count - 1), 120000); // Max 2 minutes
       console.log(`[DO:${this.state.id}] Backing off for ${backoffTime/1000}s before retry`);
       await this.state.storage.setAlarm(Date.now() + backoffTime);
       return;
