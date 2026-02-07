@@ -394,8 +394,8 @@ export class ConversationOrchestratorDO_2026A {
         return;
       }
       
-      // Wait longer before retrying (exponential backoff: 30s, 60s, 120s, etc.)
-      const backoffTime = Math.min(30000 * Math.pow(2, this.conversation.openhands_error_count - 1), 300000); // Max 5 minutes
+      // Wait longer before retrying (exponential backoff: 5s, 10s, 20s, etc.) - reduced from 30s, 60s, 120s
+      const backoffTime = Math.min(5000 * Math.pow(2, this.conversation.openhands_error_count - 1), 60000); // Max 1 minute (reduced from 5 minutes)
       console.log(`[DO:${this.state.id}] Backing off for ${backoffTime/1000}s before retry`);
       await this.state.storage.setAlarm(Date.now() + backoffTime);
       return;
@@ -531,7 +531,7 @@ export class ConversationOrchestratorDO_2026A {
       
       // Save state and schedule alarm for next iteration decision
       await this.state.storage.put('conversation', this.conversation);
-      await this.state.storage.setAlarm(Date.now() + 1000); // Check immediately for next step
+      await this.state.storage.setAlarm(Date.now() + 100); // Check almost immediately for next step (reduced from 1000ms)
       return;
     }
     
@@ -551,7 +551,7 @@ export class ConversationOrchestratorDO_2026A {
         this.conversation.last_event_time = undefined;
         
         await this.state.storage.put('conversation', this.conversation);
-        await this.state.storage.setAlarm(Date.now() + 1000);
+        await this.state.storage.setAlarm(Date.now() + 100); // Reduced from 1000ms
         return;
       }
     }
@@ -600,7 +600,7 @@ export class ConversationOrchestratorDO_2026A {
       this.conversation.iteration_started_at = undefined;
       
       await this.state.storage.put('conversation', this.conversation);
-      await this.state.storage.setAlarm(Date.now() + 1000);
+      await this.state.storage.setAlarm(Date.now() + 100); // Reduced from 1000ms
       return;
     }
     
@@ -608,16 +608,8 @@ export class ConversationOrchestratorDO_2026A {
     const iterationDuration = Date.now() - this.conversation.iteration_started_at!;
     let nextCheckDelay = ALARM_DELAY_WAITING; // Default 5 seconds
     
-    if (iterationDuration < 30000) {
-      // First 30 seconds: Check every 2 seconds (quick commands)
-      nextCheckDelay = 2000;
-    } else if (iterationDuration < 120000) {
-      // 30-120 seconds: Check every 5 seconds (medium commands)
-      nextCheckDelay = 5000;
-    } else {
-      // After 2 minutes: Check every 10 seconds (long commands)
-      nextCheckDelay = 10000;
-    }
+    // Always check every 1 second (simplified from complex logic)
+    nextCheckDelay = 1000;
     
     console.log(`[DO:${this.state.id}] Next check in ${nextCheckDelay}ms (iteration duration: ${iterationDuration}ms)`);
     await this.state.storage.setAlarm(Date.now() + nextCheckDelay);
@@ -640,7 +632,7 @@ export class ConversationOrchestratorDO_2026A {
     this.conversation.state = 'AWAITING_NEXT_ITERATION';
     
     // Schedule immediate check for next iteration decision
-    await this.state.storage.setAlarm(Date.now() + 1000);
+    await this.state.storage.setAlarm(Date.now() + 100); // Reduced from 1000ms
   }
   
   private async handleAwaitingNextIterationState(): Promise<void> {

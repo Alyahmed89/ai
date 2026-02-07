@@ -52,7 +52,7 @@ export async function createOpenHandsConversation(
           // If 500/502 error and we have retries left, retry
           if ((response.status === 500 || response.status === 502) && retryCount < maxRetries) {
             retryCount++;
-            const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+            const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s (reduced from 2s, 4s, 8s)
             console.log(`OpenHands create ${response.status} error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms`);
             await new Promise(resolve => setTimeout(resolve, backoffMs));
             continue;
@@ -74,7 +74,7 @@ export async function createOpenHandsConversation(
           throw error;
         }
         retryCount++;
-        const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+        const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s (reduced from 2s, 4s, 8s)
         console.log(`OpenHands create fetch error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms: ${error}`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
@@ -130,7 +130,7 @@ export async function getOpenHandsConversation(
           // If 500/502 error and we have retries left, retry
           if ((eventsResponse.status === 500 || eventsResponse.status === 502) && retryCount < maxRetries) {
             retryCount++;
-            const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+            const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s (reduced from 2s, 4s, 8s)
             console.log(`OpenHands events ${eventsResponse.status} error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms`);
             await new Promise(resolve => setTimeout(resolve, backoffMs));
             continue;
@@ -147,7 +147,7 @@ export async function getOpenHandsConversation(
           throw error;
         }
         retryCount++;
-        const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+        const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s (reduced from 2s, 4s, 8s)
         console.log(`OpenHands events fetch error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms: ${error}`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
@@ -217,7 +217,7 @@ export async function injectMessageToOpenHands(
           // If 500/502 error and we have retries left, retry
           if ((response.status === 500 || response.status === 502) && retryCount < maxRetries) {
             retryCount++;
-            const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+            const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s (reduced from 2s, 4s, 8s)
             console.log(`OpenHands inject ${response.status} error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms`);
             await new Promise(resolve => setTimeout(resolve, backoffMs));
             continue;
@@ -235,7 +235,7 @@ export async function injectMessageToOpenHands(
           throw error;
         }
         retryCount++;
-        const backoffMs = 2000 * Math.pow(2, retryCount - 1); // 2s, 4s, 8s
+        const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s (reduced from 2s, 4s, 8s)
         console.log(`OpenHands inject fetch error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms: ${error}`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
