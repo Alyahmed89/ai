@@ -165,10 +165,7 @@ export class ConversationOrchestratorDO_2026A {
       // Generate flow run ID
       this.flowRunId = generateFlowRunId();
       
-      // Load project facts from database
-      const projectFacts = await this.loadProjectFacts();
-      
-      // Initialize conversation
+      // Initialize conversation - SIMPLIFIED: No database dependencies
       this.conversation = {
         state: 'INIT',
         initial_user_prompt,
@@ -180,13 +177,10 @@ export class ConversationOrchestratorDO_2026A {
         created_at: Date.now(),
         updated_at: Date.now(),
         deepseek_system,
-        project_facts: projectFacts
+        project_facts: [] // Empty array instead of database query
       };
       
       await this.state.storage.put('conversation', this.conversation);
-      
-      // Save initial flow run to database
-      await this.saveInitialFlowRunToDatabase();
       
       // Schedule first alarm immediately
       await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_INIT);
@@ -251,8 +245,8 @@ export class ConversationOrchestratorDO_2026A {
       
       await this.state.storage.put('conversation', this.conversation);
       
-      // Save initial flow run to database
-      await this.saveInitialFlowRunToDatabase();
+      // Save initial flow run to database - DISABLED for simplicity
+      // await this.saveInitialFlowRunToDatabase();
       
       // Schedule first alarm immediately to start monitoring
       await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_INIT);
