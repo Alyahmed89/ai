@@ -416,7 +416,7 @@ export class ConversationOrchestratorDO_2026A {
     if (!this.conversation.iteration_started_at) {
       this.conversation.iteration_started_at = Date.now();
       // Also initialize last event time
-      this.conversation.last_event_time = Date.now();
+      this.conversation.last_event_seen_at = Date.now();
     }
     
     // Filter events to only process NEW events since last processed
@@ -428,7 +428,7 @@ export class ConversationOrchestratorDO_2026A {
     } else {
       console.log(`[DO:${this.state.id}] Processing ${newEvents.length} new events (since ID ${lastProcessedEventId})`);
       // Update last event time when we see new events
-      this.conversation.last_event_time = Date.now();
+      this.conversation.last_event_seen_at = Date.now();
     }
     
     // Process events to track pending actions
@@ -539,16 +539,50 @@ export class ConversationOrchestratorDO_2026A {
     console.log(`[DO:${this.state.id}] Iteration not complete. Pending actions: ${newPendingActions.length}, Agent awaiting input: ${agentAwaitingInput}`);
     
     // Check for "no new events for 3 minutes" timeout
-    if (this.conversation.last_event_time) {
-      const timeSinceLastEvent = Date.now() - this.conversation.last_event_time;
+    if (this.conversation.last_event_seen_at) {
+      const timeSinceLastEvent = Date.now() - this.conversation.last_event_seen_at;
       if (timeSinceLastEvent > NO_EVENT_TIMEOUT) {
         console.log(`[DO:${this.state.id}] No new events for ${timeSinceLastEvent}ms (> ${NO_EVENT_TIMEOUT}ms), assuming OH is stuck. Forcing completion.`);
+        
+        // Try to find any content in existing events to send to DeepSeek
+        let fallbackContent = '';
+        if (newEvents.length > 0) {
+          // Look for the most recent message in new events
+          const chronologicalEvents = [...newEvents].reverse(); // Oldest first
+          let mostRecentMessage = null;
+          
+          for (const event of chronologicalEvents) {
+            if (event.args?.content || event.message || event.content) {
+              const content = event.args?.content || event.message || event.content || '';
+              if (content) {
+                mostRecentMessage = {
+                  id: event.id,
+                  content: content
+                };
+                // Keep going to find the MOST recent (last one in chronological order)
+              }
+            }
+          }
+          
+          if (mostRecentMessage) {
+            fallbackContent = mostRecentMessage.content;
+            console.log(`[DO:${this.state.id}] Found most recent message in events (ID: ${mostRecentMessage.id}, ${fallbackContent.length} chars)`);
+            
+            // Add timeout context
+            fallbackContent = `[OpenHands timed out after ${Math.round(timeSinceLastEvent/1000)}s without new events, last available response:]\n\n${fallbackContent}`;
+          }
+        }
+        
+        // Store any found content for next iteration
+        if (fallbackContent) {
+          this.conversation.pending_event_content = fallbackContent;
+        }
         
         // Force move to next iteration
         this.conversation.state = 'ITERATION_COMPLETE';
         this.conversation.last_iteration_summary = `Iteration ${this.conversation.iteration} forced completion - no new events for ${Math.round(timeSinceLastEvent/1000)}s.`;
         this.conversation.iteration_started_at = undefined;
-        this.conversation.last_event_time = undefined;
+        this.conversation.last_event_seen_at = undefined;
         
         await this.state.storage.put('conversation', this.conversation);
         await this.state.storage.setAlarm(Date.now() + 100); // Reduced from 1000ms
@@ -691,8 +725,18 @@ export class ConversationOrchestratorDO_2026A {
       await this.sendToDeepSeek(contentToSend);
     } else {
       console.log(`[DO:${this.state.id}] No content found to send to DeepSeek`);
-      // Wait and retry
-      await this.state.storage.setAlarm(Date.now() + 10000);
+      
+      // If we have a last iteration summary (e.g., from timeout), use that
+      if (this.conversation.last_iteration_summary) {
+        console.log(`[DO:${this.state.id}] Using last iteration summary as fallback content`);
+        const timeoutMessage = `OpenHands timed out or didn't provide a response. ${this.conversation.last_iteration_summary}`;
+        await this.sendToDeepSeek(timeoutMessage);
+      } else {
+        // No content and no summary - send a generic message
+        console.log(`[DO:${this.state.id}] No content or summary available, sending generic timeout message`);
+        const timeoutMessage = `OpenHands didn't provide a response for iteration ${this.conversation.iteration}. Please provide simpler instructions or check if OpenHands is working.`;
+        await this.sendToDeepSeek(timeoutMessage);
+      }
     }
   }
   
