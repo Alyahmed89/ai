@@ -239,6 +239,37 @@ app.post('/stop/:id', async (c) => {
   }
 });
 
+// Delete a specific Durable Object
+app.post('/delete/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    
+    // Get the Durable Object
+    const conversationDo = c.env.CONVERSATIONS.get(c.env.CONVERSATIONS.idFromString(id));
+    
+    // Delete the Durable Object
+    const deleteResponse = await conversationDo.fetch('http://placeholder/delete', {
+      method: 'POST'
+    });
+    
+    if (!deleteResponse.ok) {
+      return c.json({ error: 'Failed to delete Durable Object' }, 500);
+    }
+    
+    const deleteData = await deleteResponse.json() as any;
+    
+    return c.json({
+      success: true,
+      message: deleteData.message,
+      id: deleteData.id
+    });
+    
+  } catch (error: any) {
+    console.error(`[HTTP:DELETE] Endpoint error: ${error.message}`);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 // API namespace: Stop conversation
 app.post('/api/conversations/:conversation_id/stop', async (c) => {
   try {

@@ -76,9 +76,14 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleStop();
     }
     
+    // Delete this Durable Object (cleanup)
+    if (path === '/delete' && request.method === 'POST') {
+      return this.handleDelete();
+    }
+    
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'POST /attach', 'GET /get-state', 'POST /stop']
+      available_endpoints: ['POST /initialize', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
@@ -289,6 +294,41 @@ export class ConversationOrchestratorDO_2026A {
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
+  }
+
+  private async handleDelete(): Promise<Response> {
+    console.log(`[DO:${this.state.id}] Deleting Durable Object`);
+    
+    try {
+      // Clear all storage
+      await this.state.storage.deleteAll();
+      
+      // Cancel any pending alarms
+      try {
+        await this.state.storage.deleteAlarm();
+      } catch (error) {
+        // Ignore errors if no alarm exists
+      }
+      
+      console.log(`[DO:${this.state.id}] Durable Object storage cleared, will auto-delete when idle`);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Durable Object marked for deletion',
+        id: this.state.id.toString()
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error deleting Durable Object: ${error.message}`);
+      return new Response(JSON.stringify({
+        success: false,
+        error: error.message
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
   }
   
   // ==========================================================================
