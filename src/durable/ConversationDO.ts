@@ -343,6 +343,15 @@ export class ConversationOrchestratorDO_2026A {
     
     console.log(`[DO:${this.state.id}] Alarm triggered, state: ${this.conversation.state}, iteration: ${this.conversation.iteration}`);
     
+    // Check if conversation has been idle for too long (30 minutes)
+    const idleTimeout = 30 * 60 * 1000; // 30 minutes
+    const timeSinceUpdate = Date.now() - this.conversation.updated_at;
+    if (timeSinceUpdate > idleTimeout) {
+      console.log(`[DO:${this.state.id}] Conversation idle for too long (${timeSinceUpdate}ms > ${idleTimeout}ms), deleting to free resources`);
+      await this.cleanupStorage();
+      return;
+    }
+    
     // Update timestamp
     this.conversation.updated_at = Date.now();
     
@@ -978,7 +987,12 @@ export class ConversationOrchestratorDO_2026A {
           await this.state.storage.setAlarm(Date.now() + RESTART_DELAY);
         } else {
           console.log(`[DO:${this.state.id}] Max restarts reached (${MAX_RESTARTS}), not auto-restarting`);
+          // After max restarts, delete storage to free resources
+          await this.cleanupStorage();
         }
+      } else {
+        // If not auto-restarting, delete storage to free resources
+        await this.cleanupStorage();
       }
     }
     
@@ -987,6 +1001,17 @@ export class ConversationOrchestratorDO_2026A {
       await this.state.storage.deleteAlarm();
     } catch (error) {
       // Ignore errors if no alarm exists
+    }
+  }
+  
+  private async cleanupStorage(): Promise<void> {
+    try {
+      console.log(`[DO:${this.state.id}] Cleaning up storage to free resources`);
+      // Delete all storage to reduce Durable Object usage
+      await this.state.storage.deleteAll();
+      console.log(`[DO:${this.state.id}] Storage cleaned up successfully`);
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error cleaning up storage: ${error.message}`);
     }
   }
   
