@@ -58,6 +58,9 @@ export interface ConversationData {
   pending_actions?: PendingAction[]; // Track ActionEvents waiting for ObservationEvents
   iteration_started_at?: number; // When current iteration started
   last_iteration_summary?: string; // Summary of what was done in last iteration
+  
+  // Aggressive mode tracking
+  restart_count?: number; // Number of times conversation has been auto-restarted
 }
 
 // OpenHands event types

@@ -6,7 +6,24 @@ import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing'
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getProjectFacts } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
-import { MAX_ITERATIONS, END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN, ALARM_DELAY_INIT, ALARM_DELAY_WAITING, OPENHANDS_TIMEOUT, NO_EVENT_TIMEOUT } from '../constants';
+import { 
+  MAX_ITERATIONS, 
+  END_FLOW_TOKEN, 
+  END_FLOW_EARLY_TOKEN, 
+  ALARM_DELAY_INIT, 
+  ALARM_DELAY_WAITING, 
+  OPENHANDS_TIMEOUT, 
+  NO_EVENT_TIMEOUT,
+  AGGRESSIVE_MODE,
+  AGGRESSIVE_NO_EVENT_TIMEOUT,
+  AGGRESSIVE_OPENHANDS_TIMEOUT,
+  STATIC_PROMPT_MODE,
+  STATIC_PROMPTS,
+  FORCE_END_FLOW_AFTER_TIMEOUT,
+  AUTO_RESTART_CONVERSATION,
+  RESTART_DELAY,
+  MAX_RESTARTS
+} from '../constants';
 import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
@@ -219,6 +236,18 @@ export class ConversationOrchestratorDO_2026A {
     
     // Update timestamp
     this.conversation.updated_at = Date.now();
+    
+    // In aggressive mode, check if conversation has been stuck for too long
+    if (AGGRESSIVE_MODE && FORCE_END_FLOW_AFTER_TIMEOUT) {
+      const conversationAge = Date.now() - this.conversation.created_at;
+      const maxConversationAge = AGGRESSIVE_OPENHANDS_TIMEOUT * 2; // 20 minutes
+      
+      if (conversationAge > maxConversationAge) {
+        console.log(`[DO:${this.state.id}] Conversation too old (${conversationAge}ms > ${maxConversationAge}ms), force ending`);
+        await this.forceEndAndRestartConversation(`conversation_too_old: ${conversationAge}ms`);
+        return;
+      }
+    }
     
     try {
       // State machine
@@ -538,11 +567,12 @@ export class ConversationOrchestratorDO_2026A {
     // If we get here, iteration is not complete yet
     console.log(`[DO:${this.state.id}] Iteration not complete. Pending actions: ${newPendingActions.length}, Agent awaiting input: ${agentAwaitingInput}`);
     
-    // Check for "no new events for 3 minutes" timeout
+    // Check for "no new events" timeout (use aggressive timeout if enabled)
     if (this.conversation.last_event_seen_at) {
+      const timeoutToUse = AGGRESSIVE_MODE ? AGGRESSIVE_NO_EVENT_TIMEOUT : NO_EVENT_TIMEOUT;
       const timeSinceLastEvent = Date.now() - this.conversation.last_event_seen_at;
-      if (timeSinceLastEvent > NO_EVENT_TIMEOUT) {
-        console.log(`[DO:${this.state.id}] No new events for ${timeSinceLastEvent}ms (> ${NO_EVENT_TIMEOUT}ms), assuming OH is stuck. Forcing completion.`);
+      if (timeSinceLastEvent > timeoutToUse) {
+        console.log(`[DO:${this.state.id}] No new events for ${timeSinceLastEvent}ms (> ${timeoutToUse}ms), assuming OH is stuck. Forcing completion.`);
         
         // Try to find any content in existing events to send to DeepSeek
         let fallbackContent = '';
@@ -591,9 +621,10 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     // Check if iteration has timed out (general timeout check)
+    const openhandsTimeoutToUse = AGGRESSIVE_MODE ? AGGRESSIVE_OPENHANDS_TIMEOUT : OPENHANDS_TIMEOUT;
     if (this.conversation.iteration_started_at && 
-        Date.now() - this.conversation.iteration_started_at > OPENHANDS_TIMEOUT) {
-      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} timed out after ${OPENHANDS_TIMEOUT}ms. Forcing completion.`);
+        Date.now() - this.conversation.iteration_started_at > openhandsTimeoutToUse) {
+      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} timed out after ${openhandsTimeoutToUse}ms. Forcing completion.`);
       
       // Try to find the MOST RECENT agent message content in NEW events
       let fallbackContent = '';
@@ -684,6 +715,21 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
+    // In aggressive mode with static prompts, use a static prompt instead of getting content from OpenHands
+    if (AGGRESSIVE_MODE && STATIC_PROMPT_MODE) {
+      console.log(`[DO:${this.state.id}] Using static prompt mode for iteration ${this.conversation.iteration}`);
+      
+      // Get the appropriate static prompt based on iteration
+      const promptIndex = (this.conversation.iteration - 1) % STATIC_PROMPTS.length;
+      const staticPrompt = STATIC_PROMPTS[promptIndex];
+      
+      console.log(`[DO:${this.state.id}] Using static prompt ${promptIndex + 1}/${STATIC_PROMPTS.length}: ${staticPrompt.substring(0, 100)}...`);
+      
+      // Send the static prompt to DeepSeek
+      await this.sendToDeepSeek(staticPrompt);
+      return;
+    }
+    
     // For now, always send to DeepSeek to get next instructions
     // We need to get the last OpenHands response to send to DeepSeek
     
@@ -762,6 +808,23 @@ export class ConversationOrchestratorDO_2026A {
       this.conversation.conversation_messages = undefined;
       
       await this.state.storage.put('conversation', this.conversation);
+      
+      // In aggressive mode with auto-restart, schedule a new conversation
+      if (AGGRESSIVE_MODE && AUTO_RESTART_CONVERSATION) {
+        const restartCount = this.conversation.restart_count || 0;
+        if (restartCount < MAX_RESTARTS) {
+          console.log(`[DO:${this.state.id}] Scheduling auto-restart in ${RESTART_DELAY}ms (restart ${restartCount + 1}/${MAX_RESTARTS})`);
+          
+          // Store restart count
+          this.conversation.restart_count = restartCount + 1;
+          await this.state.storage.put('conversation', this.conversation);
+          
+          // Schedule restart alarm
+          await this.state.storage.setAlarm(Date.now() + RESTART_DELAY);
+        } else {
+          console.log(`[DO:${this.state.id}] Max restarts reached (${MAX_RESTARTS}), not auto-restarting`);
+        }
+      }
     }
     
     // Cancel any pending alarms
@@ -770,6 +833,15 @@ export class ConversationOrchestratorDO_2026A {
     } catch (error) {
       // Ignore errors if no alarm exists
     }
+  }
+  
+  private async forceEndAndRestartConversation(reason: string): Promise<void> {
+    console.log(`[DO:${this.state.id}] Force ending and restarting conversation: ${reason}`);
+    
+    // First, stop the current conversation
+    await this.stopConversation(`force_ended: ${reason}`);
+    
+    // The stopConversation method will handle auto-restart if enabled
   }
   
   /**
