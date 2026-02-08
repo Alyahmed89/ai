@@ -10,7 +10,8 @@ app.get('/', (c) => {
   return c.json({ 
     message: 'DeepSeek Agent for OpenHands - Durable Object Controller',
     endpoints: [
-      'POST /start - Start conversation (returns immediately, work happens in alarms)',
+      'POST /start - Start new conversation (creates new OpenHands conversation)',
+      'POST /attach - Attach to existing OpenHands conversation',
       'GET /status/:id - Check conversation status',
       'POST /stop/:id - Force stop a conversation',
       'POST /api/conversations/:conversation_id/stop - API: Stop conversation',
@@ -121,6 +122,59 @@ app.post('/start', async (c) => {
     
   } catch (error: any) {
     console.error(`[HTTP:START] Endpoint error: ${error.message}`);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Attach to existing OpenHands conversation
+app.post('/attach', async (c) => {
+  try {
+    const body = await c.req.json() as {
+      openhands_conversation_id: string;
+      deepseek_system?: string;
+      max_iterations?: number;
+    };
+    const { openhands_conversation_id, deepseek_system, max_iterations } = body;
+    
+    // Validate required field
+    if (!openhands_conversation_id) {
+      return c.json({ error: 'Need openhands_conversation_id' }, 400);
+    }
+
+    console.log(`[HTTP:ATTACH] Attaching to existing OpenHands conversation: ${openhands_conversation_id}`);
+    
+    // Create a new Durable Object for this attachment
+    const id = c.env.CONVERSATIONS.newUniqueId();
+    const conversationDo = c.env.CONVERSATIONS.get(id);
+    
+    // Initialize with existing OpenHands conversation ID
+    const initResponse = await conversationDo.fetch('http://placeholder/attach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        openhands_conversation_id,
+        max_iterations: max_iterations || 20,
+        deepseek_system
+      })
+    });
+    
+    if (!initResponse.ok) {
+      const errorText = await initResponse.text();
+      console.error(`[HTTP:ATTACH] Durable Object attach failed: ${initResponse.status} - ${errorText}`);
+      return c.json({ error: `Failed to attach to conversation: ${initResponse.status}` }, 500);
+    }
+    
+    // Return immediately - monitoring happens in alarms
+    return c.json({
+      success: true,
+      message: 'Attached to existing OpenHands conversation. DeepSeek will monitor and respond.',
+      conversation_id: id.toString(),
+      openhands_conversation_id: openhands_conversation_id,
+      check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}`
+    });
+    
+  } catch (error: any) {
+    console.error(`[HTTP:ATTACH] Endpoint error: ${error.message}`);
     return c.json({ error: error.message }, 500);
   }
 });

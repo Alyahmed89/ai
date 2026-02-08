@@ -61,6 +61,11 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleInitialize(request);
     }
     
+    // Attach to existing OpenHands conversation
+    if (path === '/attach' && request.method === 'POST') {
+      return this.handleAttach(request);
+    }
+    
     // Get conversation state
     if (path === '/get-state' && request.method === 'GET') {
       return this.handleGetState();
@@ -73,7 +78,7 @@ export class ConversationOrchestratorDO_2026A {
     
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'GET /get-state', 'POST /stop']
+      available_endpoints: ['POST /initialize', 'POST /attach', 'GET /get-state', 'POST /stop']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
@@ -199,6 +204,73 @@ export class ConversationOrchestratorDO_2026A {
       
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Initialize error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  private async handleAttach(request: Request): Promise<Response> {
+    try {
+      const body = await request.json() as {
+        openhands_conversation_id: string;
+        max_iterations?: number;
+        deepseek_system?: string;
+      };
+      const { openhands_conversation_id, max_iterations, deepseek_system } = body;
+      
+      if (!openhands_conversation_id) {
+        return new Response(JSON.stringify({ error: 'Need openhands_conversation_id' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Generate flow run ID
+      this.flowRunId = generateFlowRunId();
+      
+      // Load project facts from database
+      const projectFacts = await this.loadProjectFacts();
+      
+      // Initialize conversation with existing OpenHands ID
+      this.conversation = {
+        state: 'WAITING_OPENHANDS', // Start by monitoring the existing conversation
+        initial_user_prompt: '[ATTACHED TO EXISTING CONVERSATION]',
+        iteration: 0,
+        repository: '[EXISTING]',
+        branch: '[EXISTING]',
+        max_iterations: max_iterations || MAX_ITERATIONS,
+        status: 'active',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        deepseek_system: deepseek_system || 'You are an AI assistant that coordinates between OpenHands and DeepSeek. When OpenHands completes a task and asks "Proceed?", you should analyze the results and provide the next instruction. Always be concise and focused on the task.',
+        project_facts: projectFacts,
+        openhands_conversation_id: openhands_conversation_id
+      };
+      
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Save initial flow run to database
+      await this.saveInitialFlowRunToDatabase();
+      
+      // Schedule first alarm immediately to start monitoring
+      await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_INIT);
+      
+      console.log(`[DO:${this.state.id}] Attached to existing OpenHands conversation: ${openhands_conversation_id}, alarm scheduled`);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        conversation_id: this.state.id.toString(),
+        openhands_conversation_id: openhands_conversation_id,
+        state: 'WAITING_OPENHANDS',
+        message: 'Attached to existing OpenHands conversation. Monitoring started.'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Attach error: ${error.message}`);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
