@@ -12,6 +12,7 @@ import {
   END_FLOW_EARLY_TOKEN, 
   ALARM_DELAY_INIT, 
   ALARM_DELAY_WAITING, 
+  ALARM_DELAY_ACTIVE,
   OPENHANDS_TIMEOUT, 
   NO_EVENT_TIMEOUT,
   AGGRESSIVE_MODE,
@@ -551,6 +552,17 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Found content to send (${contentToSend.length} chars)`);
         }
       }
+      
+      // INSTANT DETECTION: Check for agent message with wait_for_response: true
+      // This happens BEFORE agent_state_changed, so we can detect it instantly
+      if (event.source === 'agent' && event.action === 'message' && event.args?.wait_for_response === true) {
+        agentAwaitingInput = true;
+        console.log(`[DO:${this.state.id}] INSTANT DETECTION: Agent message with wait_for_response=true`);
+        
+        // Use this event's content directly
+        contentToSend = event.args?.content || event.message || event.content || '';
+        console.log(`[DO:${this.state.id}] Using content from wait_for_response message (${contentToSend.length} chars)`);
+      }
     }
     
     // Update pending actions
@@ -689,9 +701,26 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
-    // Use the configured polling delay (now 250ms for faster response)
+    // ADAPTIVE POLLING: Poll faster as we approach expected completion
     const iterationDuration = Date.now() - this.conversation.iteration_started_at!;
-    const nextCheckDelay = ALARM_DELAY_WAITING; // Now 250ms
+    let nextCheckDelay = ALARM_DELAY_WAITING; // Default 50ms
+    
+    // If we just started (first 5 seconds), poll less frequently
+    if (iterationDuration < 5000) {
+      nextCheckDelay = 1000; // 1 second for long operations
+    } 
+    // If we're in the middle (5-30 seconds), poll moderately
+    else if (iterationDuration < 30000) {
+      nextCheckDelay = 500; // 500ms for medium operations
+    }
+    // If we're past 30 seconds, poll very frequently (expecting completion soon)
+    else if (iterationDuration < 60000) {
+      nextCheckDelay = 100; // 100ms for operations nearing completion
+    }
+    // After 1 minute, poll extremely frequently
+    else {
+      nextCheckDelay = ALARM_DELAY_ACTIVE; // 10ms for immediate detection
+    }
     
     console.log(`[DO:${this.state.id}] Next check in ${nextCheckDelay}ms (iteration duration: ${iterationDuration}ms)`);
     await this.state.storage.setAlarm(Date.now() + nextCheckDelay);
