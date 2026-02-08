@@ -436,11 +436,11 @@ export class ConversationOrchestratorDO_2026A {
     // Clear DeepSeek response pending flag since we got a response
     this.conversation.deepseek_response_pending = false;
     
-    // Save initial iteration (iteration 0)
-    await this.saveIterationToDatabase(
-      this.conversation.initial_user_prompt,
-      deepseekResult.response!
-    );
+    // Save initial iteration (iteration 0) - DISABLED to avoid database writes
+    // await this.saveIterationToDatabase(
+    //   this.conversation.initial_user_prompt,
+    //   deepseekResult.response!
+    // );
     
     this.conversation.iteration++;
     
@@ -1035,11 +1035,11 @@ ${messageContent}`;
     // Clear DeepSeek response pending flag since we got a response
     this.conversation.deepseek_response_pending = false;
     
-    // Save iteration with OpenHands response as prompt and DeepSeek response
-    await this.saveIterationToDatabase(
-      messageContent, // Original OpenHands response (without iteration context)
-      deepseekResult.response!
-    );
+    // Save iteration with OpenHands response as prompt and DeepSeek response - DISABLED to avoid database writes
+    // await this.saveIterationToDatabase(
+    //   messageContent, // Original OpenHands response (without iteration context)
+    //   deepseekResult.response!
+    // );
     
     this.conversation.iteration++;
     
@@ -1125,11 +1125,11 @@ ${messageContent}`;
     // Clear DeepSeek response pending flag
     this.conversation.deepseek_response_pending = false;
     
-    // Save checking prompt iteration
-    await this.saveIterationToDatabase(
-      CHECKING_PROMPT,
-      deepseekResult.response!
-    );
+    // Save checking prompt iteration - DISABLED to avoid database writes
+    // await this.saveIterationToDatabase(
+    //   CHECKING_PROMPT,
+    //   deepseekResult.response!
+    // );
     
     console.log(`[DO:${this.state.id}] Checking prompt sent and response received`);
     
@@ -1180,8 +1180,8 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] END_FLOW without new prompt detected`);
     }
 
-    // Save the current flow run to database with appropriate status
-    await this.saveFlowRunToDatabase(finalStopReason, flowStatus);
+    // Save the current flow run to database with appropriate status - DISABLED to avoid database writes
+    // await this.saveFlowRunToDatabase(finalStopReason, flowStatus);
 
     // If there's a new prompt and it's not END_FLOW_EARLY, start a new flow
     if (doneData.new_prompt && !doneData.is_end_flow_early) {
