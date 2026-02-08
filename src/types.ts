@@ -61,6 +61,10 @@ export interface ConversationData {
   
   // Aggressive mode tracking
   restart_count?: number; // Number of times conversation has been auto-restarted
+  
+  // DeepSeek response tracking
+  last_deepseek_request_at?: number; // When we last sent a request to DeepSeek
+  deepseek_response_pending?: boolean; // Whether we're waiting for DeepSeek response
 }
 
 // OpenHands event types

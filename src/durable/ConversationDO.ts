@@ -22,7 +22,9 @@ import {
   FORCE_END_FLOW_AFTER_TIMEOUT,
   AUTO_RESTART_CONVERSATION,
   RESTART_DELAY,
-  MAX_RESTARTS
+  MAX_RESTARTS,
+  DEEPSEEK_RESPONSE_TIMEOUT,
+  CHECKING_PROMPT
 } from '../constants';
 import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact } from '../types';
 
@@ -249,6 +251,19 @@ export class ConversationOrchestratorDO_2026A {
       }
     }
     
+    // Check if DeepSeek is taking too long to respond (2 minutes max)
+    if (this.conversation.deepseek_response_pending && this.conversation.last_deepseek_request_at) {
+      const timeSinceRequest = Date.now() - this.conversation.last_deepseek_request_at;
+      
+      if (timeSinceRequest > DEEPSEEK_RESPONSE_TIMEOUT) {
+        console.log(`[DO:${this.state.id}] DeepSeek response timeout (${timeSinceRequest}ms > ${DEEPSEEK_RESPONSE_TIMEOUT}ms), sending checking prompt`);
+        
+        // Send checking prompt to DeepSeek
+        await this.sendCheckingPrompt();
+        return;
+      }
+    }
+    
     try {
       // State machine
       switch (this.conversation.state) {
@@ -350,6 +365,9 @@ export class ConversationOrchestratorDO_2026A {
     });
     
     this.conversation.last_deepseek_response = deepseekResult.response;
+    
+    // Clear DeepSeek response pending flag since we got a response
+    this.conversation.deepseek_response_pending = false;
     
     // Save initial iteration (iteration 0)
     await this.saveIterationToDatabase(
@@ -856,6 +874,10 @@ export class ConversationOrchestratorDO_2026A {
     
     console.log(`[DO:${this.state.id}] Sending to DeepSeek: ${messageContent.length} chars`);
     
+    // Track DeepSeek request time and mark response as pending
+    this.conversation.last_deepseek_request_at = Date.now();
+    this.conversation.deepseek_response_pending = true;
+    
     // Add OpenHands response to conversation history as user message
     if (!this.conversation.conversation_messages) {
       // This should never happen - conversation_messages should be initialized in handleInitState
@@ -913,6 +935,9 @@ ${messageContent}`;
     
     this.conversation.last_deepseek_response = deepseekResult.response;
     
+    // Clear DeepSeek response pending flag since we got a response
+    this.conversation.deepseek_response_pending = false;
+    
     // Save iteration with OpenHands response as prompt and DeepSeek response
     await this.saveIterationToDatabase(
       messageContent, // Original OpenHands response (without iteration context)
@@ -953,6 +978,68 @@ ${messageContent}`;
     // After sending new instruction, wait for OH to start execution
     // Use standard check interval (no special timing for different commands)
     console.log(`[DO:${this.state.id}] After sending instruction, waiting ${ALARM_DELAY_WAITING/1000}s for OH to start`);
+    await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
+  }
+  
+  /**
+   * Send a checking prompt to DeepSeek when response is taking too long
+   */
+  private async sendCheckingPrompt(): Promise<void> {
+    if (!this.conversation) {
+      console.log(`[DO:${this.state.id}] No conversation to send checking prompt`);
+      return;
+    }
+    
+    console.log(`[DO:${this.state.id}] Sending checking prompt to DeepSeek`);
+    
+    // Update last DeepSeek request time to prevent immediate re-check
+    this.conversation.last_deepseek_request_at = Date.now();
+    
+    // Add checking prompt to conversation history
+    if (!this.conversation.conversation_messages) {
+      this.conversation.conversation_messages = [];
+    }
+    
+    this.conversation.conversation_messages!.push({
+      role: 'user',
+      content: CHECKING_PROMPT
+    });
+    
+    // Send checking prompt to DeepSeek
+    const deepseekResult = await callDeepSeek(
+      this.env.DEEPSEEK_API_KEY,
+      this.conversation.conversation_messages
+    );
+    
+    if (!deepseekResult.success) {
+      console.error(`[DO:${this.state.id}] Checking prompt failed: ${deepseekResult.error}`);
+      // Don't stop conversation on checking prompt failure
+      return;
+    }
+    
+    // Add DeepSeek response to conversation history
+    this.conversation.conversation_messages!.push({
+      role: 'assistant',
+      content: deepseekResult.response!
+    });
+    
+    this.conversation.last_deepseek_response = deepseekResult.response;
+    
+    // Clear DeepSeek response pending flag
+    this.conversation.deepseek_response_pending = false;
+    
+    // Save checking prompt iteration
+    await this.saveIterationToDatabase(
+      CHECKING_PROMPT,
+      deepseekResult.response!
+    );
+    
+    console.log(`[DO:${this.state.id}] Checking prompt sent and response received`);
+    
+    // Save state
+    await this.state.storage.put('conversation', this.conversation);
+    
+    // Set alarm for next check
     await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
   }
   
