@@ -6,15 +6,10 @@ compatibility_date = "2024-01-01"
 DEEPSEEK_API_KEY = "sk-57370a37c79f4b7db9dbd1e253c25b8b"
 OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 
-# Use completely new class name for clean slate
+# Use same class name as production to avoid migration issues
 [[durable_objects.bindings]]
 name = "CONVERSATIONS"
-class_name = "ConversationOrchestratorDO_2026A"
-
-# Migrations for Durable Objects
-[[migrations]]
-tag = "v1"
-new_classes = ["ConversationOrchestratorDO_2026A"]
+class_name = "ConversationDO_v2"
 
 # D1 database for flow runs tracking
 [[d1_databases]]
