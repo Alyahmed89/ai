@@ -572,13 +572,15 @@ export class ConversationOrchestratorDO_2026A {
       const iterationDuration = Date.now() - (this.conversation.iteration_started_at || Date.now());
       this.conversation.last_iteration_summary = `Iteration ${this.conversation.iteration} completed in ${iterationDuration}ms. Agent is awaiting next instructions.`;
       
-      // Move to ITERATION_COMPLETE state
+      // Move to ITERATION_COMPLETE state and process immediately
       this.conversation.state = 'ITERATION_COMPLETE';
       this.conversation.iteration_started_at = undefined; // Reset for next iteration
       
-      // Save state and schedule alarm for next iteration decision
+      // Save state
       await this.state.storage.put('conversation', this.conversation);
-      await this.state.storage.setAlarm(Date.now() + 100); // Check almost immediately for next step (reduced from 1000ms)
+      
+      // Process immediately instead of scheduling alarm
+      await this.handleIterationCompleteState();
       return;
     }
     
@@ -626,14 +628,14 @@ export class ConversationOrchestratorDO_2026A {
           this.conversation.pending_event_content = fallbackContent;
         }
         
-        // Force move to next iteration
+        // Force move to next iteration and process immediately
         this.conversation.state = 'ITERATION_COMPLETE';
         this.conversation.last_iteration_summary = `Iteration ${this.conversation.iteration} forced completion - no new events for ${Math.round(timeSinceLastEvent/1000)}s.`;
         this.conversation.iteration_started_at = undefined;
         this.conversation.last_event_seen_at = undefined;
         
         await this.state.storage.put('conversation', this.conversation);
-        await this.state.storage.setAlarm(Date.now() + 100); // Reduced from 1000ms
+        await this.handleIterationCompleteState();
         return;
       }
     }
@@ -677,22 +679,19 @@ export class ConversationOrchestratorDO_2026A {
         this.conversation.pending_event_content = fallbackContent;
       }
       
-      // Force move to next iteration
+      // Force move to next iteration and process immediately
       this.conversation.state = 'ITERATION_COMPLETE';
       this.conversation.last_iteration_summary = `Iteration ${this.conversation.iteration} forced completion after timeout (${OPENHANDS_TIMEOUT}ms).`;
       this.conversation.iteration_started_at = undefined;
       
       await this.state.storage.put('conversation', this.conversation);
-      await this.state.storage.setAlarm(Date.now() + 100); // Reduced from 1000ms
+      await this.handleIterationCompleteState();
       return;
     }
     
-    // Adaptive polling: Check more frequently early, less frequently later
+    // Use the configured polling delay (now 250ms for faster response)
     const iterationDuration = Date.now() - this.conversation.iteration_started_at!;
-    let nextCheckDelay = ALARM_DELAY_WAITING; // Default 5 seconds
-    
-    // Always check every 1 second (simplified from complex logic)
-    nextCheckDelay = 1000;
+    const nextCheckDelay = ALARM_DELAY_WAITING; // Now 250ms
     
     console.log(`[DO:${this.state.id}] Next check in ${nextCheckDelay}ms (iteration duration: ${iterationDuration}ms)`);
     await this.state.storage.setAlarm(Date.now() + nextCheckDelay);
@@ -711,11 +710,14 @@ export class ConversationOrchestratorDO_2026A {
     // For now, always continue to next iteration
     // In the future, we could add logic to decide based on iteration summary
     
-    // Move to AWAITING_NEXT_ITERATION state to wait for DeepSeek decision
+    // Move to AWAITING_NEXT_ITERATION state and process immediately
     this.conversation.state = 'AWAITING_NEXT_ITERATION';
     
-    // Schedule immediate check for next iteration decision
-    await this.state.storage.setAlarm(Date.now() + 100); // Reduced from 1000ms
+    // Save state
+    await this.state.storage.put('conversation', this.conversation);
+    
+    // Process immediately instead of scheduling alarm
+    await this.handleAwaitingNextIterationState();
   }
   
   private async handleAwaitingNextIterationState(): Promise<void> {
