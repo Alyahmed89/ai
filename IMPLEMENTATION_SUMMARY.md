@@ -1,118 +1,82 @@
 # DeepSeek Agent Implementation Summary
 
-## Changes Made
+## Issues Fixed
 
-### 1. Stop Token Update
-- **Changed**: `<<DONE>>` → `[END_FLOW]`
-- **Location**: `/src/constants.ts`
-- **Behavior**: When DeepSeek responds with `[END_FLOW]`, the conversation closes immediately without going to OpenHands
+### 1. DeepSeek doesn't respond immediately after OpenHands reports
+**Solution**: Added aggressive mode with 2-minute DeepSeek response timeout
+- Added `DEEPSEEK_RESPONSE_TIMEOUT` constant (120000ms = 2 minutes)
+- Added `CHECKING_PROMPT` constant: "Are you still working on the task? Please provide an update."
+- Added tracking fields to `ConversationData` type:
+  - `last_deepseek_request_at`: Timestamp of last DeepSeek request
+  - `deepseek_response_pending`: Boolean flag for pending response
+- Added `sendCheckingPrompt()` method to send checking prompt when timeout occurs
+- Updated `handleAlarm()` to check for DeepSeek response timeout
 
-### 2. Max Iterations Increase
-- **Changed**: `20` → `500`
-- **Location**: `/src/constants.ts`
-- **Purpose**: Allow longer-running conversations as requested
+### 2. New conversation is not starting
+**Solution**: Implemented aggressive mode with auto-restart logic
+- Added aggressive mode constants in `constants.ts`:
+  - `AGGRESSIVE_MODE`: true
+  - `AGGRESSIVE_NO_EVENT_TIMEOUT`: 300000ms (5 minutes)
+  - `AGGRESSIVE_OPENHANDS_TIMEOUT`: 120000ms (2 minutes)
+  - `STATIC_PROMPT_MODE`: true
+  - `STATIC_PROMPTS`: Array of static prompts for different scenarios
+  - `FORCE_END_FLOW_AFTER_TIMEOUT`: 1200000ms (20 minutes)
+  - `AUTO_RESTART_CONVERSATION`: true
+  - `RESTART_DELAY`: 5000ms
+  - `MAX_RESTARTS`: 3
+- Added `restart_count` field to `ConversationData` type
+- Added `forceEndAndRestartConversation()` method
+- Enhanced `stopConversation()` with auto-restart logic
+- Updated `handleAwaitingNextIterationState()` to use static prompts
 
-### 3. Database Implementation (D1)
+## Key Changes Made
 
-#### Schema Design
-**flow_runs table**:
-- `id`: Unique flow run identifier
-- `conversation_id`: Reference to Durable Object conversation
-- `initial_prompt`: The starting prompt for the flow
-- `deepseek_system`: System prompt used for DeepSeek
-- `repository`: Target repository
-- `branch`: Target branch (default: 'main')
-- `max_iterations`: Maximum allowed iterations (500)
-- `actual_iterations`: Actual iterations completed
-- `status`: Flow status (active, completed, failed)
-- `stop_reason`: Why the flow stopped
-- `prompts_and_responses`: JSON array of all prompts and responses
-- `created_at`, `updated_at`, `ended_at`: Timestamps
-- `next_flow_id`: For future chaining (not used with [END_FLOW])
-- **AI tracking fields** (for future implementation):
-  - `task_type`: Type of task performed
-  - `success_score`: AI-determined success metric
-  - `quality_metrics`: JSON metrics for quality assessment
-  - `deployment_id`: Deployment identifier
-  - `improvement_suggestions`: AI suggestions for improvement
+### File: `src/constants.ts`
+- Added aggressive mode configuration constants
+- Added DeepSeek response timeout and checking prompt constants
 
-**iterations table**:
-- `flow_run_id`: Reference to flow run
-- `iteration_number`: Sequential iteration number
-- `prompt`: The prompt sent to DeepSeek
-- `response`: DeepSeek's response
-- `openhands_response`: OpenHands response (if any)
-- `timestamp`: When the iteration occurred
-- `metadata`: Additional iteration data
+### File: `src/types.ts`
+- Added `restart_count` to `ConversationData`
+- Added `last_deepseek_request_at` and `deepseek_response_pending` fields
 
-#### Database Configuration
-- **Binding**: `FLOW_RUNS_DB` added to wrangler.toml
-- **Migrations**: Configured for schema creation
-- **Service**: `/src/services/database.ts` with CRUD operations
+### File: `src/durable/ConversationDO.ts`
+- Updated imports to include all aggressive mode constants
+- Updated `handleAlarm()` to:
+  - Check for conversation age and force end after 20 minutes
+  - Check for DeepSeek response timeout and send checking prompt
+- Updated `sendToDeepSeek()` to track request timing
+- Added `sendCheckingPrompt()` method
+- Added `forceEndAndRestartConversation()` method
+- Enhanced `stopConversation()` with auto-restart logic
+- Updated `handleAwaitingNextIterationState()` to use static prompts
 
-### 4. Response Parsing Logic
-- **File**: `/src/utils/parsing.ts`
-- **Function**: `parseDoneResponse()` now simply checks for `[END_FLOW]`
-- **Behavior**: Returns `{ done: true }` when `[END_FLOW]` is found, `{ done: false }` otherwise
-- **No parsing**: Unlike the original *[done]* design, no new prompt/deepseek_system/branch parsing occurs
+### File: `aggressive_config.json`
+- Created configuration file with aggressive mode settings
 
-### 5. ConversationDO Updates
+## Testing Results
 
-#### New Fields
-- `flowRunId`: Generated at conversation initialization
+### Local Testing
+- TypeScript compilation passes successfully
+- Code changes are syntactically correct
+- Implementation follows existing patterns
 
-#### Modified Methods
-1. `checkForDone()`: Now returns `DoneResponseData` instead of boolean
-2. `handleDoneResponse()`: Saves flow run to database when `[END_FLOW]` detected
-3. `saveFlowRunToDatabase()`: Extracts conversation history and saves to D1
-4. `handleInitialize()`: Generates flowRunId at start
+### GitHub Deployment
+- Changes pushed to `fix-openhands-405-error` branch
+- Commit: `c6818ca` - "Add DeepSeek response timeout and checking prompt"
 
-#### Integration Points
-1. **Initial DeepSeek call** (line 221-227): Checks for `[END_FLOW]` after first response
-2. **Subsequent DeepSeek calls** (line 430-436): Checks for `[END_FLOW]` in loop responses
+## Next Steps
 
-### 6. Types Updates
-- **File**: `/src/types.ts`
-- **Added**: `FlowRunData`, `IterationData`, `DoneResponseData` interfaces
-- **Updated**: `CloudflareBindings` to include `FLOW_RUNS_DB`
+1. **Deploy to production**: Merge changes to main branch
+2. **Monitor performance**: Track conversation success rates
+3. **Adjust timeouts**: Fine-tune timeout values based on real usage
+4. **Add metrics**: Track DeepSeek response times and timeout occurrences
 
-## Key Behavior Changes
+## Configuration Notes
 
-### Before
-1. DeepSeek responds with `<<DONE>>`
-2. Conversation stops
-3. No data persistence
-4. Max 20 iterations
+The implementation is configuration-driven:
+- Aggressive mode can be toggled via `AGGRESSIVE_MODE` constant
+- Timeout values are configurable
+- Static prompts can be customized
+- Auto-restart behavior is configurable
 
-### After
-1. DeepSeek responds with `[END_FLOW]`
-2. Flow run data saved to D1 database
-3. Conversation stops immediately (no OpenHands interaction)
-4. Max 500 iterations
-5. All prompts/responses stored for analysis
-
-## Files Modified
-
-1. `/src/constants.ts` - STOP_TOKEN and MAX_ITERATIONS
-2. `/src/types.ts` - New types and bindings
-3. `/src/utils/parsing.ts` - Simplified parsing logic
-4. `/src/services/database.ts` - New database service
-5. `/src/durable/ConversationDO.ts` - Core logic updates
-6. `/wrangler.toml` - D1 database configuration
-
-## Files Created
-
-1. `/migrations/0001_create_flow_runs.sql` - Database schema
-2. `/src/services/database.ts` - Database service
-3. `/src/utils/parsing.ts` - Parsing utilities
-
-## Future Implementation Notes
-
-The database schema includes fields for AI-determined data tracking:
-- `task_type`: Could categorize flows (bug fix, feature, refactor, etc.)
-- `success_score`: 0-100 score based on completion metrics
-- `quality_metrics`: JSON with code quality, test coverage, etc.
-- `deployment_id`: Link to deployment systems
-- `improvement_suggestions`: AI-generated suggestions for future improvements
-
-These fields are ready for implementation when the specific data requirements are determined.
+This ensures flexibility for different deployment scenarios and allows easy adjustment based on performance monitoring.
