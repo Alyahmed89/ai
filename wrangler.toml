@@ -11,6 +11,11 @@ OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 name = "CONVERSATIONS"
 class_name = "ConversationOrchestratorDO_2026A"
 
+# Migrations for Durable Objects
+[[migrations]]
+tag = "v1"
+new_classes = ["ConversationOrchestratorDO_2026A"]
+
 # D1 database for flow runs tracking
 [[d1_databases]]
 binding = "FLOW_RUNS_DB"
