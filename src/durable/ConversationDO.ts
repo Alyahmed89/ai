@@ -136,6 +136,11 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleInitialize(request);
     }
     
+    // Initialize a new flow execution
+    if (path === '/initialize-flow' && request.method === 'POST') {
+      return this.handleInitializeFlow(request);
+    }
+    
     // Attach to existing OpenHands conversation
     if (path === '/attach' && request.method === 'POST') {
       return this.handleAttach(request);
@@ -158,7 +163,7 @@ export class ConversationOrchestratorDO_2026A {
     
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete']
+      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
@@ -281,6 +286,75 @@ export class ConversationOrchestratorDO_2026A {
       
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Initialize error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  private async handleInitializeFlow(request: Request): Promise<Response> {
+    try {
+      const body = await request.json() as {
+        flow_id: string;
+        repository?: string;
+        branch?: string;
+        initial_user_prompt?: string;
+        max_iterations?: number;
+        deepseek_system?: string;
+      };
+      const { flow_id, repository, branch, initial_user_prompt, max_iterations, deepseek_system } = body;
+      
+      if (!flow_id) {
+        return new Response(JSON.stringify({ error: 'Need flow_id' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Ensure reasonable minimum iterations
+      const effectiveMaxIterations = max_iterations && max_iterations >= 10 ? max_iterations : MAX_ITERATIONS;
+      
+      // Generate flow run ID
+      this.flowRunId = generateFlowRunId();
+      
+      // Initialize conversation for flow execution
+      this.conversation = {
+        state: 'INIT',
+        initial_user_prompt: initial_user_prompt || `Execute flow: ${flow_id}`,
+        iteration: 0,
+        repository: repository || 'flow/execution',
+        branch: branch || 'main',
+        max_iterations: effectiveMaxIterations,
+        status: 'active',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        deepseek_system: deepseek_system || 'You are a flow execution assistant. Follow the flow steps precisely. Return structured JSON when asked.',
+        project_facts: [], // Empty array instead of database query
+        flow_id: flow_id, // Store flow ID for flow execution
+        flow_execution_mode: true // Flag to indicate flow execution mode
+      };
+      
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Schedule first alarm immediately
+      await this.scheduleNextAlarm(ALARM_DELAY_INIT);
+      
+      console.log(`[DO:${this.state.id}] Initialized flow execution for flow: ${flow_id}, alarm scheduled`);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        conversation_id: this.state.id.toString(),
+        flow_id: flow_id,
+        state: 'INIT',
+        message: 'Flow execution initialized. First alarm scheduled.',
+        note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Initialize flow error: ${error.message}`);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }

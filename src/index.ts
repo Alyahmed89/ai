@@ -183,65 +183,125 @@ app.get('/health', async (c) => {
 app.post('/start', async (c) => {
   try {
     const body = await c.req.json() as {
-      repository: string;
+      repository?: string;
       branch?: string;
-      initial_user_prompt: string;
+      initial_user_prompt?: string;
       max_iterations?: number;
       deepseek_system?: string;
+      flow?: string; // New: flow ID for flow-based execution
+      flow_id?: string; // Alternative name for flow
     };
-    const { repository, branch, initial_user_prompt, max_iterations, deepseek_system } = body;
     
-    // Validate required fields
-    if (!repository || !initial_user_prompt) {
-      return c.json({ error: 'Need repository and initial_user_prompt (branch is optional)' }, 400);
-    }
-
-    console.log(`[HTTP:START] Creating conversation for repository: ${repository}`);
+    const { repository, branch, initial_user_prompt, max_iterations, deepseek_system, flow, flow_id } = body;
     
-    // Create a new Durable Object for this conversation
-    const id = c.env.CONVERSATIONS.newUniqueId();
-    const conversationDo = c.env.CONVERSATIONS.get(id);
+    // Check if this is a flow-based execution
+    const targetFlowId = flow || flow_id;
     
-    // Initialize the Durable Object - NO AWAIT to external APIs
-    const initResponse = await conversationDo.fetch('http://placeholder/initialize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        repository, 
-        branch: branch || 'main', 
-        initial_user_prompt,
-        max_iterations: max_iterations || 20,
-        deepseek_system
-      })
-    });
-    
-    if (!initResponse.ok) {
-      const errorText = await initResponse.text();
-      console.error(`[HTTP:START] Durable Object init failed: ${initResponse.status} - ${errorText}`);
-      return c.json({ error: `Failed to start conversation: ${initResponse.status}` }, 500);
-    }
-    
-    // Track active conversation count
-    try {
-      if (c.env.RATE_LIMIT_KV) {
-        const activeConversationsKey = 'global:active_conversations';
-        const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
-        const newCount = parseInt(currentCount || '0') + 1;
-        await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
-        console.log(`[RATE_LIMIT] Active conversations: ${newCount}`);
+    if (targetFlowId) {
+      // FLOW-BASED EXECUTION
+      console.log(`[HTTP:START:FLOW] Starting flow execution: ${targetFlowId}`);
+      
+      // Create a new Durable Object for this flow execution
+      const id = c.env.CONVERSATIONS.newUniqueId();
+      const conversationDo = c.env.CONVERSATIONS.get(id);
+      
+      // Initialize the Durable Object for flow execution - NO AWAIT to external APIs
+      const initResponse = await conversationDo.fetch('http://placeholder/initialize-flow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          flow_id: targetFlowId,
+          repository: repository || 'flow/execution', // Default repo for flow execution
+          branch: branch || 'main',
+          initial_user_prompt: initial_user_prompt || `Execute flow: ${targetFlowId}`,
+          max_iterations: max_iterations || 20,
+          deepseek_system: deepseek_system || 'You are a flow execution assistant. Follow the flow steps precisely.'
+        })
+      });
+      
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
+        console.error(`[HTTP:START:FLOW] Durable Object init failed: ${initResponse.status} - ${errorText}`);
+        return c.json({ error: `Failed to start flow execution: ${initResponse.status}` }, 500);
       }
-    } catch (error) {
-      console.error(`[RATE_LIMIT] Error tracking active conversation: ${error}`);
+      
+      // Track active conversation count
+      try {
+        if (c.env.RATE_LIMIT_KV) {
+          const activeConversationsKey = 'global:active_conversations';
+          const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
+          const newCount = parseInt(currentCount || '0') + 1;
+          await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
+          console.log(`[RATE_LIMIT] Active conversations: ${newCount}`);
+        }
+      } catch (error) {
+        console.error(`[RATE_LIMIT] Error tracking active conversation: ${error}`);
+      }
+      
+      // Return IMMEDIATELY - work happens in alarms
+      return c.json({
+        success: true,
+        message: 'Flow execution started. Work will happen in background via alarms.',
+        conversation_id: id.toString(),
+        flow_id: targetFlowId,
+        note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step',
+        check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}`
+      });
+      
+    } else {
+      // ORIGINAL REPOSITORY-BASED CONVERSATION
+      // Validate required fields
+      if (!repository || !initial_user_prompt) {
+        return c.json({ error: 'Need repository and initial_user_prompt (branch is optional), or provide flow ID' }, 400);
+      }
+
+      console.log(`[HTTP:START] Creating conversation for repository: ${repository}`);
+      
+      // Create a new Durable Object for this conversation
+      const id = c.env.CONVERSATIONS.newUniqueId();
+      const conversationDo = c.env.CONVERSATIONS.get(id);
+      
+      // Initialize the Durable Object - NO AWAIT to external APIs
+      const initResponse = await conversationDo.fetch('http://placeholder/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          repository, 
+          branch: branch || 'main', 
+          initial_user_prompt,
+          max_iterations: max_iterations || 20,
+          deepseek_system
+        })
+      });
+      
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
+        console.error(`[HTTP:START] Durable Object init failed: ${initResponse.status} - ${errorText}`);
+        return c.json({ error: `Failed to start conversation: ${initResponse.status}` }, 500);
+      }
+      
+      // Track active conversation count
+      try {
+        if (c.env.RATE_LIMIT_KV) {
+          const activeConversationsKey = 'global:active_conversations';
+          const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
+          const newCount = parseInt(currentCount || '0') + 1;
+          await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
+          console.log(`[RATE_LIMIT] Active conversations: ${newCount}`);
+        }
+      } catch (error) {
+        console.error(`[RATE_LIMIT] Error tracking active conversation: ${error}`);
+      }
+      
+      // Return IMMEDIATELY - work happens in alarms
+      return c.json({
+        success: true,
+        message: 'Conversation started. Work will happen in background via alarms.',
+        conversation_id: id.toString(),
+        note: 'DeepSeek will process first, then OpenHands, then back to DeepSeek, etc.',
+        check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}`
+      });
     }
-    
-    // Return IMMEDIATELY - work happens in alarms
-    return c.json({
-      success: true,
-      message: 'Conversation started. Work will happen in background via alarms.',
-      conversation_id: id.toString(),
-      note: 'DeepSeek will process first, then OpenHands, then back to DeepSeek, etc.',
-      check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}`
-    });
     
   } catch (error: any) {
     console.error(`[HTTP:START] Endpoint error: ${error.message}`);

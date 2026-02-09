@@ -71,6 +71,12 @@ export interface ConversationData {
   current_poll_interval?: number; // Current polling interval in ms
   last_activity_at?: number; // When we last saw activity
   consecutive_idle_checks?: number; // Number of consecutive checks with no activity
+
+  // Flow execution mode
+  flow_id?: string; // Flow ID for flow-based execution
+  flow_execution_mode?: boolean; // Flag to indicate flow execution mode
+  current_flow_step?: number; // Current step in flow execution
+  flow_steps_completed?: number[]; // Array of completed step numbers
 }
 
 // OpenHands event types
