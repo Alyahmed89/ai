@@ -709,7 +709,8 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] Processing event ${event.id}: action=${event.action}, observation=${event.observation}, tool_call_id=${event.args?.tool_call_id}`);
       
       // Check for ActionEvent (agent started a tool call)
-      if (event.action && event.action !== 'agent_state_changed') {
+      // EXCLUDE 'message' actions from pending actions - they're not actions that need completion
+      if (event.action && event.action !== 'agent_state_changed' && event.action !== 'message') {
         // Try to get tool_call_id from args, or generate one from event ID
         const tool_call_id = event.args?.tool_call_id || `event_${event.id}`;
         
