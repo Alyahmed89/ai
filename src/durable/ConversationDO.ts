@@ -458,16 +458,17 @@ export class ConversationOrchestratorDO_2026A {
     this.conversation.updated_at = Date.now();
     
     // In aggressive mode, check if conversation has been stuck for too long
-    if (AGGRESSIVE_MODE && FORCE_END_FLOW_AFTER_TIMEOUT) {
-      const aggressiveConversationAge = Date.now() - this.conversation.created_at;
-      const maxConversationAge = AGGRESSIVE_OPENHANDS_TIMEOUT * 2; // 20 minutes
-      
-      if (aggressiveConversationAge > maxConversationAge) {
-        console.log(`[DO:${this.state.id}] Conversation too old (${aggressiveConversationAge}ms > ${maxConversationAge}ms), force ending`);
-        await this.forceEndAndRestartConversation(`conversation_too_old: ${aggressiveConversationAge}ms`);
-        return;
-      }
-    }
+    // COMMENTED OUT: Too aggressive for complex tasks (20 minutes)
+    // if (AGGRESSIVE_MODE && FORCE_END_FLOW_AFTER_TIMEOUT) {
+    //   const aggressiveConversationAge = Date.now() - this.conversation.created_at;
+    //   const maxConversationAge = AGGRESSIVE_OPENHANDS_TIMEOUT * 2; // 20 minutes
+    //   
+    //   if (aggressiveConversationAge > maxConversationAge) {
+    //     console.log(`[DO:${this.state.id}] Conversation too old (${aggressiveConversationAge}ms > ${maxConversationAge}ms), force ending`);
+    //     await this.forceEndAndRestartConversation(`conversation_too_old: ${aggressiveConversationAge}ms`);
+    //     return;
+    //   }
+    // }
     
     // Check if DeepSeek is taking too long to respond (2 minutes max)
     if (this.conversation.deepseek_response_pending && this.conversation.last_deepseek_request_at) {
@@ -607,6 +608,13 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText ? validationResult.resolvedText.substring(0, 100) + "..." : "EMPTY"}...`);
+    
+    // TEST: Simulate OpenHands API failure
+    const TEST_OPENHANDS_FAILURE = false; // Set to true to test failure
+    if (TEST_OPENHANDS_FAILURE) {
+      await this.stopConversation(`openhands_create_failed: TEST_SIMULATED_ERROR`);
+      return;
+    }
     
     // Create OpenHands conversation with RESOLVED DeepSeek response
     const openhandsResult = await createOpenHandsConversation(
@@ -765,14 +773,32 @@ export class ConversationOrchestratorDO_2026A {
         agentAwaitingInput = true;
         console.log(`[DO:${this.state.id}] Agent is awaiting user input`);
         
-        // Look for the agent's message content
-        const messageEvent = chronologicalEvents.find(e => 
-          e.id < event.id && (e.args?.content || e.message || e.content)
-        );
+        // SIMPLE RULE: Get the event right before this one
+        // Events are in chronological order (oldest first) in chronologicalEvents
+        const eventIndex = chronologicalEvents.findIndex(e => e.id === event.id);
+        if (eventIndex > 0) {
+          // Get the event right before awaiting_user_input
+          const prevEvent = chronologicalEvents[eventIndex - 1];
+          
+          // Use message field first, then args.content, then content
+          contentToSend = prevEvent.message || prevEvent.args?.content || prevEvent.content || '';
+          
+          if (contentToSend) {
+            console.log(`[DO:${this.state.id}] Found content from previous event (ID: ${prevEvent.id}, Action: ${prevEvent.action}): ${contentToSend.length} chars`);
+          } else {
+            // Try one more event back if needed
+            if (eventIndex > 1) {
+              const prevPrevEvent = chronologicalEvents[eventIndex - 2];
+              contentToSend = prevPrevEvent.message || prevPrevEvent.args?.content || prevPrevEvent.content || '';
+              if (contentToSend) {
+                console.log(`[DO:${this.state.id}] Found content from event before previous (ID: ${prevPrevEvent.id}, Action: ${prevPrevEvent.action}): ${contentToSend.length} chars`);
+              }
+            }
+          }
+        }
         
-        if (messageEvent) {
-          contentToSend = messageEvent.args?.content || messageEvent.message || messageEvent.content || '';
-          console.log(`[DO:${this.state.id}] Found content to send (${contentToSend.length} chars)`);
+        if (!contentToSend) {
+          console.log(`[DO:${this.state.id}] No content found in event before awaiting_user_input`);
         }
       }
       
@@ -1025,17 +1051,39 @@ export class ConversationOrchestratorDO_2026A {
     // Events come with ?reverse=true (newest first), search in that order
     // Find the agent's last message (before awaiting_user_input)
     let contentToSend = '';
-    for (const event of events) {
+    
+    // Reverse events to chronological order (oldest first) for easier processing
+    const chronologicalEvents = [...events].reverse();
+    
+    for (let i = 0; i < chronologicalEvents.length; i++) {
+      const event = chronologicalEvents[i];
       if (event.observation === 'agent_state_changed' && event.extras?.agent_state === 'awaiting_user_input') {
-        // Look backward for the agent's message (events are newest-first)
-        const messageEvent = events.find(e => 
-          e.id < event.id && (e.args?.content || e.message || e.content)
-        );
-        
-        if (messageEvent) {
-          contentToSend = messageEvent.args?.content || messageEvent.message || messageEvent.content || '';
-          break;
+        // Get the event right before this one (if exists)
+        if (i > 0) {
+          const prevEvent = chronologicalEvents[i - 1];
+          // Use message field first, then args.content, then content
+          contentToSend = prevEvent.message || prevEvent.args?.content || prevEvent.content || '';
+          
+          if (contentToSend) {
+            console.log(`[DO:${this.state.id}] Found content from event before awaiting_user_input (ID: ${prevEvent.id}, Action: ${prevEvent.action}): ${contentToSend.length} chars`);
+            break;
+          }
+          
+          // Try one more event back if needed
+          if (i > 1 && !contentToSend) {
+            const prevPrevEvent = chronologicalEvents[i - 2];
+            contentToSend = prevPrevEvent.message || prevPrevEvent.args?.content || prevPrevEvent.content || '';
+            if (contentToSend) {
+              console.log(`[DO:${this.state.id}] Found content from event before previous (ID: ${prevPrevEvent.id}, Action: ${prevPrevEvent.action}): ${contentToSend.length} chars`);
+              break;
+            }
+          }
         }
+        
+        if (!contentToSend) {
+          console.log(`[DO:${this.state.id}] No content found in event before awaiting_user_input`);
+        }
+        break;
       }
     }
     
