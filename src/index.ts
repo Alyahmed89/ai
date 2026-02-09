@@ -5,6 +5,116 @@ import { ConversationOrchestratorDO_2026A } from './durable/ConversationDO';
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
+// Rate limiting middleware with token bucket algorithm
+const rateLimitMiddleware = async (c: any, next: any) => {
+  // Skip rate limiting for health checks
+  if (c.req.path === '/health') {
+    return next();
+  }
+  
+  // Get client IP (using CF-Connecting-IP header in Cloudflare Workers)
+  const clientIp = c.req.header('CF-Connecting-IP') || 'unknown';
+  const now = Date.now();
+  
+  // Rate limiting configuration
+  const RATE_LIMIT_WINDOW = 60000; // 1 minute window
+  const MAX_REQUESTS_PER_MINUTE = 60; // 60 requests per minute per IP
+  const MAX_CONCURRENT_CONVERSATIONS = 50; // Global limit
+  
+  // Check if KV is available
+  if (!c.env.RATE_LIMIT_KV) {
+    console.log(`[RATE_LIMIT] KV not available, skipping rate limiting for ${clientIp} to ${c.req.path}`);
+    return next();
+  }
+  
+  const kv = c.env.RATE_LIMIT_KV;
+  
+  // ==========================================================================
+  // 1. Check global concurrent conversation limit
+  // ==========================================================================
+  if (c.req.path === '/start' || c.req.path === '/attach') {
+    try {
+      const activeConversationsKey = 'global:active_conversations';
+      const activeConversations = await kv.get(activeConversationsKey);
+      const currentCount = parseInt(activeConversations || '0');
+      
+      if (currentCount >= MAX_CONCURRENT_CONVERSATIONS) {
+        console.log(`[RATE_LIMIT] Global conversation limit reached: ${currentCount}/${MAX_CONCURRENT_CONVERSATIONS}`);
+        return c.json({
+          error: 'Too many active conversations. Please try again later.',
+          limit: MAX_CONCURRENT_CONVERSATIONS,
+          current: currentCount
+        }, 429);
+      }
+    } catch (error) {
+      console.error(`[RATE_LIMIT] Error checking global limit: ${error}`);
+      // Continue if KV fails
+    }
+  }
+  
+  // ==========================================================================
+  // 2. Check per-IP rate limit using token bucket algorithm
+  // ==========================================================================
+  const bucketKey = `rate_limit:${clientIp}`;
+  
+  try {
+    // Get current bucket state
+    const bucketData = await kv.get(bucketKey, 'json');
+    let tokens = MAX_REQUESTS_PER_MINUTE;
+    let lastRefill = now;
+    
+    if (bucketData) {
+      tokens = bucketData.tokens;
+      lastRefill = bucketData.lastRefill;
+      
+      // Refill tokens based on time passed
+      const timePassed = now - lastRefill;
+      const refillAmount = Math.floor(timePassed / RATE_LIMIT_WINDOW) * MAX_REQUESTS_PER_MINUTE;
+      
+      if (refillAmount > 0) {
+        tokens = Math.min(MAX_REQUESTS_PER_MINUTE, tokens + refillAmount);
+        lastRefill = now;
+      }
+    }
+    
+    // Check if we have tokens
+    if (tokens <= 0) {
+      console.log(`[RATE_LIMIT] Rate limit exceeded for ${clientIp}: ${tokens} tokens remaining`);
+      
+      // Calculate retry-after time
+      const timeUntilNextToken = RATE_LIMIT_WINDOW - (now - lastRefill);
+      const retryAfterSeconds = Math.ceil(timeUntilNextToken / 1000);
+      
+      return c.json({
+        error: 'Rate limit exceeded. Please try again later.',
+        retry_after: retryAfterSeconds,
+        limit: MAX_REQUESTS_PER_MINUTE,
+        window: '1 minute'
+      }, 429);
+    }
+    
+    // Consume one token
+    tokens -= 1;
+    
+    // Update bucket state with 1 minute expiration
+    await kv.put(bucketKey, JSON.stringify({
+      tokens,
+      lastRefill
+    }), { expirationTtl: 120 }); // 2 minutes TTL
+    
+    console.log(`[RATE_LIMIT] Request from ${clientIp} to ${c.req.path} - ${tokens} tokens remaining`);
+    
+  } catch (error) {
+    console.error(`[RATE_LIMIT] Error processing rate limit for ${clientIp}: ${error}`);
+    // If KV fails, allow the request to proceed
+  }
+  
+  return next();
+};
+
+// Apply rate limiting middleware to all routes
+app.use('*', rateLimitMiddleware);
+
 // Root endpoint - documentation only
 app.get('/', (c) => {
   return c.json({ 
@@ -111,6 +221,19 @@ app.post('/start', async (c) => {
       return c.json({ error: `Failed to start conversation: ${initResponse.status}` }, 500);
     }
     
+    // Track active conversation count
+    try {
+      if (c.env.RATE_LIMIT_KV) {
+        const activeConversationsKey = 'global:active_conversations';
+        const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
+        const newCount = parseInt(currentCount || '0') + 1;
+        await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
+        console.log(`[RATE_LIMIT] Active conversations: ${newCount}`);
+      }
+    } catch (error) {
+      console.error(`[RATE_LIMIT] Error tracking active conversation: ${error}`);
+    }
+    
     // Return IMMEDIATELY - work happens in alarms
     return c.json({
       success: true,
@@ -162,6 +285,19 @@ app.post('/attach', async (c) => {
       const errorText = await initResponse.text();
       console.error(`[HTTP:ATTACH] Durable Object attach failed: ${initResponse.status} - ${errorText}`);
       return c.json({ error: `Failed to attach to conversation: ${initResponse.status}` }, 500);
+    }
+    
+    // Track active conversation count
+    try {
+      if (c.env.RATE_LIMIT_KV) {
+        const activeConversationsKey = 'global:active_conversations';
+        const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
+        const newCount = parseInt(currentCount || '0') + 1;
+        await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
+        console.log(`[RATE_LIMIT] Active conversations: ${newCount}`);
+      }
+    } catch (error) {
+      console.error(`[RATE_LIMIT] Error tracking active conversation: ${error}`);
     }
     
     // Return immediately - monitoring happens in alarms

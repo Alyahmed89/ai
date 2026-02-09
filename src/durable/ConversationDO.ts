@@ -25,7 +25,18 @@ import {
   RESTART_DELAY,
   MAX_RESTARTS,
   DEEPSEEK_RESPONSE_TIMEOUT,
-  CHECKING_PROMPT
+  CHECKING_PROMPT,
+  ADAPTIVE_POLLING_ENABLED,
+  MIN_POLL_INTERVAL,
+  MAX_POLL_INTERVAL,
+  POLL_INTERVAL_INCREMENT,
+  POLL_INTERVAL_RESET,
+  ENABLE_REQUEST_CACHING,
+  CACHE_TTL,
+  MAX_CONCURRENT_CONVERSATIONS,
+  MAX_DO_LIFETIME,
+  IDLE_TIMEOUT,
+  COMPLETED_CLEANUP_DELAY
 } from '../constants';
 import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact } from '../types';
 
@@ -43,6 +54,70 @@ export class ConversationOrchestratorDO_2026A {
     this.state.blockConcurrencyWhile(async () => {
       this.conversation = await this.state.storage.get('conversation') || null;
     });
+  }
+  
+  /**
+   * Get next poll interval using adaptive polling logic
+   */
+  private getNextPollInterval(): number {
+    if (!ADAPTIVE_POLLING_ENABLED || !this.conversation) {
+      return ALARM_DELAY_WAITING;
+    }
+    
+    // Initialize adaptive polling fields if not set
+    if (this.conversation.current_poll_interval === undefined) {
+      this.conversation.current_poll_interval = POLL_INTERVAL_RESET;
+    }
+    if (this.conversation.consecutive_idle_checks === undefined) {
+      this.conversation.consecutive_idle_checks = 0;
+    }
+    if (this.conversation.last_activity_at === undefined) {
+      this.conversation.last_activity_at = Date.now();
+    }
+    
+    const timeSinceLastActivity = Date.now() - this.conversation.last_activity_at;
+    const isActive = timeSinceLastActivity < 30000; // 30 seconds since last activity
+    
+    if (isActive) {
+      // Reset to base interval when active
+      this.conversation.current_poll_interval = POLL_INTERVAL_RESET;
+      this.conversation.consecutive_idle_checks = 0;
+      console.log(`[DO:${this.state.id}] Active conversation, reset poll interval to ${POLL_INTERVAL_RESET}ms`);
+    } else {
+      // Increase interval when idle
+      this.conversation.consecutive_idle_checks = (this.conversation.consecutive_idle_checks || 0) + 1;
+      this.conversation.current_poll_interval = Math.min(
+        this.conversation.current_poll_interval! + POLL_INTERVAL_INCREMENT,
+        MAX_POLL_INTERVAL
+      );
+      console.log(`[DO:${this.state.id}] Idle conversation (${this.conversation.consecutive_idle_checks} checks), increased poll interval to ${this.conversation.current_poll_interval}ms`);
+    }
+    
+    return Math.max(MIN_POLL_INTERVAL, Math.min(MAX_POLL_INTERVAL, this.conversation.current_poll_interval));
+  }
+  
+  /**
+   * Update activity tracking
+   */
+  private updateActivityTracking(): void {
+    if (!this.conversation) return;
+    
+    this.conversation.last_activity_at = Date.now();
+    this.conversation.consecutive_idle_checks = 0;
+    
+    // Reset poll interval on activity if adaptive polling is enabled
+    if (ADAPTIVE_POLLING_ENABLED) {
+      this.conversation.current_poll_interval = POLL_INTERVAL_RESET;
+    }
+  }
+  
+  /**
+   * Schedule next alarm with adaptive interval
+   */
+  private async scheduleNextAlarm(interval?: number): Promise<void> {
+    const nextInterval = interval || this.getNextPollInterval();
+    await this.state.storage.setAlarm(Date.now() + nextInterval);
+    console.log(`[DO:${this.state.id}] Next alarm scheduled in ${nextInterval}ms`);
   }
   
   // Alarm handler (called by Cloudflare when alarm triggers)
@@ -188,7 +263,7 @@ export class ConversationOrchestratorDO_2026A {
       await this.state.storage.put('conversation', this.conversation);
       
       // Schedule first alarm immediately
-      await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_INIT);
+      await this.scheduleNextAlarm(ALARM_DELAY_INIT);
       
       console.log(`[DO:${this.state.id}] Initialized conversation, alarm scheduled`);
       
@@ -254,7 +329,7 @@ export class ConversationOrchestratorDO_2026A {
       // await this.saveInitialFlowRunToDatabase();
       
       // Schedule first alarm immediately to start monitoring
-      await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_INIT);
+      await this.scheduleNextAlarm(ALARM_DELAY_INIT);
       
       console.log(`[DO:${this.state.id}] Attached to existing OpenHands conversation: ${openhands_conversation_id}, alarm scheduled`);
       
@@ -343,13 +418,34 @@ export class ConversationOrchestratorDO_2026A {
     
     console.log(`[DO:${this.state.id}] Alarm triggered, state: ${this.conversation.state}, iteration: ${this.conversation.iteration}`);
     
-    // Check if conversation has been idle for too long (30 minutes)
-    const idleTimeout = 30 * 60 * 1000; // 30 minutes
-    const timeSinceUpdate = Date.now() - this.conversation.updated_at;
-    if (timeSinceUpdate > idleTimeout) {
-      console.log(`[DO:${this.state.id}] Conversation idle for too long (${timeSinceUpdate}ms > ${idleTimeout}ms), deleting to free resources`);
+    // ==========================================================================
+    // LIFECYCLE MANAGEMENT CHECKS
+    // ==========================================================================
+    
+    // 1. Check maximum lifetime (1 hour)
+    const conversationAge = Date.now() - this.conversation.created_at;
+    if (conversationAge > MAX_DO_LIFETIME) {
+      console.log(`[DO:${this.state.id}] Maximum lifetime exceeded (${conversationAge}ms > ${MAX_DO_LIFETIME}ms), cleaning up to free resources`);
       await this.cleanupStorage();
       return;
+    }
+    
+    // 2. Check idle timeout (30 minutes since last update)
+    const timeSinceUpdate = Date.now() - this.conversation.updated_at;
+    if (timeSinceUpdate > IDLE_TIMEOUT) {
+      console.log(`[DO:${this.state.id}] Conversation idle for too long (${timeSinceUpdate}ms > ${IDLE_TIMEOUT}ms), deleting to free resources`);
+      await this.cleanupStorage();
+      return;
+    }
+    
+    // 3. Check if conversation is completed and should be cleaned up
+    if (this.conversation.state === 'DONE' || this.conversation.status === 'stopped') {
+      const timeSinceCompletion = Date.now() - this.conversation.updated_at;
+      if (timeSinceCompletion > COMPLETED_CLEANUP_DELAY) {
+        console.log(`[DO:${this.state.id}] Conversation completed ${timeSinceCompletion}ms ago, cleaning up to free resources`);
+        await this.cleanupStorage();
+        return;
+      }
     }
     
     // Update timestamp
@@ -357,12 +453,12 @@ export class ConversationOrchestratorDO_2026A {
     
     // In aggressive mode, check if conversation has been stuck for too long
     if (AGGRESSIVE_MODE && FORCE_END_FLOW_AFTER_TIMEOUT) {
-      const conversationAge = Date.now() - this.conversation.created_at;
+      const aggressiveConversationAge = Date.now() - this.conversation.created_at;
       const maxConversationAge = AGGRESSIVE_OPENHANDS_TIMEOUT * 2; // 20 minutes
       
-      if (conversationAge > maxConversationAge) {
-        console.log(`[DO:${this.state.id}] Conversation too old (${conversationAge}ms > ${maxConversationAge}ms), force ending`);
-        await this.forceEndAndRestartConversation(`conversation_too_old: ${conversationAge}ms`);
+      if (aggressiveConversationAge > maxConversationAge) {
+        console.log(`[DO:${this.state.id}] Conversation too old (${aggressiveConversationAge}ms > ${maxConversationAge}ms), force ending`);
+        await this.forceEndAndRestartConversation(`conversation_too_old: ${aggressiveConversationAge}ms`);
         return;
       }
     }
@@ -452,6 +548,9 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
+    // Update activity tracking for adaptive polling
+    this.updateActivityTracking();
+    
     // Check for stop condition
     const doneData = this.checkForDone(deepseekResult.response!);
     
@@ -520,8 +619,8 @@ export class ConversationOrchestratorDO_2026A {
     this.conversation.state = 'WAITING_OPENHANDS';
     
     // Schedule next alarm to check OpenHands status
-    await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
-    console.log(`[DO:${this.state.id}] OpenHands conversation created: ${openhandsResult.conversationId}, next alarm in ${ALARM_DELAY_WAITING}ms`);
+    await this.scheduleNextAlarm();
+    console.log(`[DO:${this.state.id}] OpenHands conversation created: ${openhandsResult.conversationId}, next alarm scheduled`);
   }
   
   private async handleWaitingOpenHandsState(): Promise<void> {
@@ -560,7 +659,7 @@ export class ConversationOrchestratorDO_2026A {
       // Wait longer before retrying (exponential backoff: 10s, 20s, 40s, etc.)
       const backoffTime = Math.min(10000 * Math.pow(2, this.conversation.openhands_error_count - 1), 120000); // Max 2 minutes
       console.log(`[DO:${this.state.id}] Backing off for ${backoffTime/1000}s before retry`);
-      await this.state.storage.setAlarm(Date.now() + backoffTime);
+      await this.scheduleNextAlarm(backoffTime);
       return;
     }
     
@@ -592,6 +691,8 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] Processing ${newEvents.length} new events (since ID ${lastProcessedEventId})`);
       // Update last event time when we see new events
       this.conversation.last_event_seen_at = Date.now();
+      // Update activity tracking for adaptive polling
+      this.updateActivityTracking();
     }
     
     // Process events to track pending actions
@@ -838,7 +939,7 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     console.log(`[DO:${this.state.id}] Next check in ${nextCheckDelay}ms (iteration duration: ${iterationDuration}ms)`);
-    await this.state.storage.setAlarm(Date.now() + nextCheckDelay);
+    await this.scheduleNextAlarm(nextCheckDelay);
   }
   
   // ==========================================================================
@@ -906,7 +1007,7 @@ export class ConversationOrchestratorDO_2026A {
     if (!openhandsStatus.success) {
       console.log(`[DO:${this.state.id}] Failed to get OpenHands conversation: ${openhandsStatus.error}`);
       // Retry in 10 seconds
-      await this.state.storage.setAlarm(Date.now() + 10000);
+      await this.scheduleNextAlarm(10000);
       return;
     }
     
@@ -984,7 +1085,7 @@ export class ConversationOrchestratorDO_2026A {
           await this.state.storage.put('conversation', this.conversation);
           
           // Schedule restart alarm
-          await this.state.storage.setAlarm(Date.now() + RESTART_DELAY);
+          await this.scheduleNextAlarm(RESTART_DELAY);
         } else {
           console.log(`[DO:${this.state.id}] Max restarts reached (${MAX_RESTARTS}), not auto-restarting`);
           // After max restarts, delete storage to free resources
@@ -1007,6 +1108,22 @@ export class ConversationOrchestratorDO_2026A {
   private async cleanupStorage(): Promise<void> {
     try {
       console.log(`[DO:${this.state.id}] Cleaning up storage to free resources`);
+      
+      // Decrement active conversation count in KV
+      try {
+        if (this.env.RATE_LIMIT_KV) {
+          const activeConversationsKey = 'global:active_conversations';
+          const currentCount = await this.env.RATE_LIMIT_KV.get(activeConversationsKey);
+          if (currentCount) {
+            const newCount = Math.max(0, parseInt(currentCount) - 1);
+            await this.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 });
+            console.log(`[DO:${this.state.id}] Decremented active conversations to ${newCount}`);
+          }
+        }
+      } catch (kvError) {
+        console.error(`[DO:${this.state.id}] Error updating active conversation count: ${kvError}`);
+      }
+      
       // Delete all storage to reduce Durable Object usage
       await this.state.storage.deleteAll();
       console.log(`[DO:${this.state.id}] Storage cleaned up successfully`);
@@ -1066,6 +1183,9 @@ ${messageContent}`;
       await this.stopConversation(`deepseek_failed: ${deepseekResult.error}`);
       return;
     }
+    
+    // Update activity tracking for adaptive polling
+    this.updateActivityTracking();
     
     // Check for stop condition
     const doneData = this.checkForDone(deepseekResult.response!);
@@ -1132,6 +1252,9 @@ ${messageContent}`;
     
     console.log(`[DO:${this.state.id}] Message injected to OpenHands, iteration: ${this.conversation.iteration}`);
     
+    // Update activity tracking for adaptive polling
+    this.updateActivityTracking();
+    
     // Stay in WAITING_OPENHANDS state to wait for next agent response
     // (We just injected a task, now wait for agent to execute it)
     this.conversation.state = 'WAITING_OPENHANDS';
@@ -1139,8 +1262,8 @@ ${messageContent}`;
     
     // After sending new instruction, wait for OH to start execution
     // Use standard check interval (no special timing for different commands)
-    console.log(`[DO:${this.state.id}] After sending instruction, waiting ${ALARM_DELAY_WAITING/1000}s for OH to start`);
-    await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
+    console.log(`[DO:${this.state.id}] After sending instruction, waiting for OH to start`);
+    await this.scheduleNextAlarm();
   }
   
   /**
@@ -1179,6 +1302,9 @@ ${messageContent}`;
       return;
     }
     
+    // Update activity tracking for adaptive polling
+    this.updateActivityTracking();
+    
     // Add DeepSeek response to conversation history
     this.conversation.conversation_messages!.push({
       role: 'assistant',
@@ -1202,7 +1328,7 @@ ${messageContent}`;
     await this.state.storage.put('conversation', this.conversation);
     
     // Set alarm for next check
-    await this.state.storage.setAlarm(Date.now() + ALARM_DELAY_WAITING);
+    await this.scheduleNextAlarm();
   }
   
   private checkForDone(response: string): DoneResponseData {

@@ -1,6 +1,67 @@
 // OpenHands API service - pure, stateless wrapper
-import { OPENHANDS_TIMEOUT } from '../constants';
+import { OPENHANDS_TIMEOUT, ENABLE_REQUEST_CACHING, CACHE_TTL } from '../constants';
 import { OpenHandsCreateResult, OpenHandsStatusResult, OpenHandsInjectResult } from '../types';
+
+// Simple in-memory cache for request optimization
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+const openhandsCache = new Map<string, CacheEntry>();
+
+/**
+ * Get cache key for OpenHands conversation status
+ */
+function getCacheKey(apiUrl: string, conversationId: string): string {
+  return `${apiUrl}:${conversationId}`;
+}
+
+/**
+ * Get cached data if available and not expired
+ */
+function getFromCache(cacheKey: string): any | null {
+  if (!ENABLE_REQUEST_CACHING) {
+    return null;
+  }
+  
+  const entry = openhandsCache.get(cacheKey);
+  if (!entry) {
+    return null;
+  }
+  
+  const now = Date.now();
+  if (now - entry.timestamp > CACHE_TTL) {
+    openhandsCache.delete(cacheKey);
+    return null;
+  }
+  
+  return entry.data;
+}
+
+/**
+ * Store data in cache
+ */
+function setInCache(cacheKey: string, data: any): void {
+  if (!ENABLE_REQUEST_CACHING) {
+    return;
+  }
+  
+  openhandsCache.set(cacheKey, {
+    data,
+    timestamp: Date.now()
+  });
+  
+  // Clean up old entries periodically (simple cleanup on set)
+  if (openhandsCache.size > 1000) {
+    const now = Date.now();
+    for (const [key, entry] of openhandsCache.entries()) {
+      if (now - entry.timestamp > CACHE_TTL * 10) { // 10x TTL for cleanup
+        openhandsCache.delete(key);
+      }
+    }
+  }
+}
 
 /**
  * Create a new OpenHands conversation
@@ -102,6 +163,18 @@ export async function getOpenHandsConversation(
   conversationId: string
 ): Promise<OpenHandsStatusResult> {
   try {
+    // Check cache first
+    const cacheKey = getCacheKey(apiUrl, conversationId);
+    const cachedData = getFromCache(cacheKey);
+    
+    if (cachedData) {
+      console.log(`[CACHE HIT] OpenHands conversation ${conversationId}`);
+      return {
+        success: true,
+        events: cachedData.events || []
+      };
+    }
+    
     // Get ALL events to properly track conversation state
     // Use ?reverse=true to get newest events first (better for checking current status)
     const eventsUrl = apiUrl.endsWith('/') 
@@ -154,6 +227,9 @@ export async function getOpenHandsConversation(
     }
 
     const eventsData = await eventsResponse!.json() as any;
+    
+    // Cache the successful response
+    setInCache(cacheKey, eventsData);
     
     return {
       success: true,
@@ -227,6 +303,10 @@ export async function injectMessageToOpenHands(
           throw new Error(`OpenHands inject error: ${response.status} - ${errorText}`);
         }
 
+        // Invalidate cache for this conversation since we just changed its state
+        const cacheKey = getCacheKey(apiUrl, conversationId);
+        openhandsCache.delete(cacheKey);
+        
         return {
           success: true
         };

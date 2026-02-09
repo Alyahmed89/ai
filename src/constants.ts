@@ -2,12 +2,12 @@
 export const MAX_ITERATIONS = 500;
 export const END_FLOW_TOKEN = '[END_FLOW]';
 export const END_FLOW_EARLY_TOKEN = '[END_FLOW_EARLY]';
-export const ALARM_DELAY_INIT = 100; // 100ms for initial alarm (reduced from 1ms to limit writes)
-export const ALARM_DELAY_WAITING = 1000; // 1 second between checks (reduced from 50ms to limit writes)
-export const ALARM_DELAY_ACTIVE = 500; // 500ms when we expect immediate response (reduced from 10ms)
-export const DEEPSEEK_TIMEOUT = 10000; // 10 seconds for DeepSeek API (reduced from 15s)
-export const OPENHANDS_TIMEOUT = 180000; // 3 minutes for long operations (restored from original)
-export const NO_EVENT_TIMEOUT = 60000; // 1 minute without new events (reduced from 3 minutes)
+export const ALARM_DELAY_INIT = 1000; // 1 second for initial alarm (increased from 100ms)
+export const ALARM_DELAY_WAITING = 10000; // 10 seconds between checks (increased from 1s - 90% reduction)
+export const ALARM_DELAY_ACTIVE = 3000; // 3 seconds when we expect immediate response (increased from 500ms - 83% reduction)
+export const DEEPSEEK_TIMEOUT = 10000; // 10 seconds for DeepSeek API
+export const OPENHANDS_TIMEOUT = 180000; // 3 minutes for long operations
+export const NO_EVENT_TIMEOUT = 120000; // 2 minutes without new events (increased from 1 minute)
 
 // Aggressive mode constants (for forced conversation management)
 export const AGGRESSIVE_MODE = true; // Enable aggressive mode
@@ -34,3 +34,20 @@ export const FORCE_END_FLOW_MESSAGE = '[END_FLOW] prompt: Please continue with t
 // DeepSeek response timeout and checking prompt
 export const DEEPSEEK_RESPONSE_TIMEOUT = 120000; // 2 minutes max for DeepSeek response
 export const CHECKING_PROMPT = "Checking in: Are you still processing? Please provide a status update or continue with the analysis.";
+
+// Adaptive polling optimization
+export const ADAPTIVE_POLLING_ENABLED = true;
+export const MIN_POLL_INTERVAL = 5000; // 5 seconds minimum
+export const MAX_POLL_INTERVAL = 60000; // 60 seconds maximum
+export const POLL_INTERVAL_INCREMENT = 5000; // Increase by 5 seconds each time
+export const POLL_INTERVAL_RESET = 10000; // Reset to 10 seconds on activity
+
+// Request optimization
+export const ENABLE_REQUEST_CACHING = true;
+export const CACHE_TTL = 10000; // 10 seconds cache TTL
+export const MAX_CONCURRENT_CONVERSATIONS = 50; // Limit concurrent conversations
+
+// Durable Object lifecycle optimization
+export const MAX_DO_LIFETIME = 3600000; // 1 hour maximum lifetime
+export const IDLE_TIMEOUT = 1800000; // 30 minutes idle timeout (reduced from default)
+export const COMPLETED_CLEANUP_DELAY = 300000; // 5 minutes delay before cleaning up completed conversations

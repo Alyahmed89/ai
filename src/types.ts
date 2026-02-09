@@ -7,6 +7,7 @@ export interface CloudflareBindings {
   CONVERSATIONS: DurableObjectNamespace;
   FLOW_RUNS_DB?: D1Database; // Optional - may not be configured
   PROJECT_FACTS_DB?: D1Database; // Optional - for authoritative project facts
+  RATE_LIMIT_KV?: KVNamespace; // Optional - for rate limiting
 }
 
 // Conversation state machine
@@ -65,6 +66,11 @@ export interface ConversationData {
   // DeepSeek response tracking
   last_deepseek_request_at?: number; // When we last sent a request to DeepSeek
   deepseek_response_pending?: boolean; // Whether we're waiting for DeepSeek response
+  
+  // Adaptive polling optimization
+  current_poll_interval?: number; // Current polling interval in ms
+  last_activity_at?: number; // When we last saw activity
+  consecutive_idle_checks?: number; // Number of consecutive checks with no activity
 }
 
 // OpenHands event types
