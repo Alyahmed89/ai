@@ -792,10 +792,12 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] Updated last processed event ID to ${maxEventId}`);
     }
     
-    // Check if iteration is complete (no pending actions AND agent is awaiting input)
-    if (newPendingActions.length === 0 && agentAwaitingInput) {
+    // Check if iteration is complete (agent is awaiting input)
+    // When agent is awaiting_user_input, we should respond immediately regardless of pending actions
+    // The agent is DONE and waiting for our response
+    if (agentAwaitingInput && contentToSend) {
       iterationCompleted = true;
-      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} completed!`);
+      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} completed! Agent awaiting input with content (${contentToSend.length} chars)`);
       
       // Generate iteration summary
       const iterationDuration = Date.now() - (this.conversation.iteration_started_at || Date.now());
@@ -803,6 +805,7 @@ export class ConversationOrchestratorDO_2026A {
       
       // Move to ITERATION_COMPLETE state and process immediately
       this.conversation.state = 'ITERATION_COMPLETE';
+      this.conversation.pending_event_content = contentToSend;
       this.conversation.iteration_started_at = undefined; // Reset for next iteration
       
       // Save state
