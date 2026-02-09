@@ -600,7 +600,7 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
-    console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText.substring(0, 100)}...`);
+    console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText ? validationResult.resolvedText.substring(0, 100) + "..." : "EMPTY"}...`);
     
     // Create OpenHands conversation with RESOLVED DeepSeek response
     const openhandsResult = await createOpenHandsConversation(
@@ -989,7 +989,7 @@ export class ConversationOrchestratorDO_2026A {
       const promptIndex = (this.conversation.iteration - 1) % STATIC_PROMPTS.length;
       const staticPrompt = STATIC_PROMPTS[promptIndex];
       
-      console.log(`[DO:${this.state.id}] Using static prompt ${promptIndex + 1}/${STATIC_PROMPTS.length}: ${staticPrompt.substring(0, 100)}...`);
+      console.log(`[DO:${this.state.id}] Using static prompt ${promptIndex + 1}/${STATIC_PROMPTS.length}: ${staticPrompt ? staticPrompt.substring(0, 100) + "..." : "EMPTY"}`);
       
       // Send the static prompt to DeepSeek
       await this.sendToDeepSeek(staticPrompt);
@@ -1237,7 +1237,7 @@ ${messageContent}`;
       return;
     }
     
-    console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText.substring(0, 100)}...`);
+    console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText ? validationResult.resolvedText.substring(0, 100) + "..." : "EMPTY"}...`);
     
     // Inject RESOLVED DeepSeek response back to OpenHands
     const injectResult = await injectMessageToOpenHands(
@@ -1362,7 +1362,7 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] END_FLOW_EARLY detected: ${doneData.stop_reason}`);
     } else if (doneData.new_prompt) {
       // END_FLOW with new prompt: Start new flow
-      finalStopReason = `end_flow_with_new_prompt: ${doneData.new_prompt.substring(0, 50)}...`;
+      finalStopReason = `end_flow_with_new_prompt: ${doneData.new_prompt ? doneData.new_prompt.substring(0, 50) + "..." : "EMPTY"}`;
       flowStatus = 'new_flow_started';
       console.log(`[DO:${this.state.id}] END_FLOW with new prompt detected, starting new flow`);
     } else {
@@ -1388,7 +1388,7 @@ ${messageContent}`;
   private async startNextFlow(doneData: DoneResponseData): Promise<void> {
     if (!doneData.new_prompt) return;
 
-    console.log(`[DO:${this.state.id}] Starting next flow with prompt: ${doneData.new_prompt.substring(0, 50)}...`);
+    console.log(`[DO:${this.state.id}] Starting next flow with prompt: ${doneData.new_prompt ? doneData.new_prompt.substring(0, 50) + "..." : "EMPTY"}`);
 
     // Generate a new conversation ID
     const newConversationId = crypto.randomUUID();
