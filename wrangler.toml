@@ -18,10 +18,12 @@ database_name = "flow-runs-db"
 database_id = "ce8f2a2c-6e4b-4398-b73e-ba8f204f609a"
 migrations_dir = "migrations"
 
-# KV namespace for rate limiting
-[[kv_namespaces]]
-binding = "RATE_LIMIT_KV"
-id = "e39371fc55a5c9ef7ed83e16660bd7bb"  # Using account ID as namespace ID
+# KV namespace for rate limiting (optional - uncomment after creating namespace)
+# First create namespace with: npx wrangler kv namespace create "RATE_LIMIT_KV"
+# Then update the id below with the generated namespace ID
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = ""  # TODO: Create namespace and add ID here
 
 # Durable Object migrations
 [[migrations]]
