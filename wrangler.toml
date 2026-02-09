@@ -25,7 +25,7 @@ migrations_dir = "migrations"
 # binding = "RATE_LIMIT_KV"
 # id = ""  # TODO: Create namespace and add ID here
 
-# Durable Object migrations
-[[migrations]]
-tag = "v1"
-new_classes = ["ConversationDO_v2"]
+# Durable Object migrations - commented out since DO already exists
+# [[migrations]]
+# tag = "v1"
+# new_classes = ["ConversationDO_v2"]
