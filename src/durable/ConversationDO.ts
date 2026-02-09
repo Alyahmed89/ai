@@ -242,6 +242,9 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
+      // Ensure reasonable minimum iterations
+      const effectiveMaxIterations = max_iterations && max_iterations >= 10 ? max_iterations : MAX_ITERATIONS;
+      
       // Generate flow run ID
       this.flowRunId = generateFlowRunId();
       
@@ -252,7 +255,7 @@ export class ConversationOrchestratorDO_2026A {
         iteration: 0,
         repository,
         branch,
-        max_iterations: max_iterations || MAX_ITERATIONS,
+        max_iterations: effectiveMaxIterations,
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
@@ -301,6 +304,9 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
+      // Ensure reasonable minimum iterations
+      const effectiveMaxIterations = max_iterations && max_iterations >= 10 ? max_iterations : MAX_ITERATIONS;
+      
       // Generate flow run ID
       this.flowRunId = generateFlowRunId();
       
@@ -314,7 +320,7 @@ export class ConversationOrchestratorDO_2026A {
         iteration: 0,
         repository: '[EXISTING]',
         branch: '[EXISTING]',
-        max_iterations: max_iterations || MAX_ITERATIONS,
+        max_iterations: effectiveMaxIterations,
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
