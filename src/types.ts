@@ -77,6 +77,13 @@ export interface ConversationData {
   flow_execution_mode?: boolean; // Flag to indicate flow execution mode
   current_flow_step?: number; // Current step in flow execution
   flow_steps_completed?: number[]; // Array of completed step numbers
+
+  // Task-based execution (deterministic task system)
+  current_task_id?: string; // Current task ID being executed
+  current_task_title?: string; // Title of current task (for prompt injection)
+  current_task_description?: string; // Description of current task (for prompt injection)
+  task_execution_mode?: boolean; // Flag to indicate task-based execution mode
+  current_execution_step_id?: string; // ID of current task execution step for tracking
 }
 
 // OpenHands event types
@@ -221,4 +228,13 @@ export interface DoneResponseData {
 export interface ProjectFact {
   tag: string;
   value: string;
+}
+
+// Task data for deterministic task system
+export interface TaskData {
+  task_id: string;
+  title: string;
+  description: string | null;
+  task_type: 'TASK' | 'FOLLOWUP';
+  parent_task_id: string | null;
 }

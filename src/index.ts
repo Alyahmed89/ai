@@ -501,6 +501,125 @@ app.post('/api/conversations/:conversation_id/stop', async (c) => {
   }
 });
 
+// Task completion API - SINGLE SOURCE OF TRUTH for task completion
+app.post('/tasks/:id/complete', async (c) => {
+  try {
+    const taskId = c.req.param('id');
+    const body = await c.req.json() as {
+      conversation_id?: string; // Optional: ConversationDO to ping after completion
+    };
+    const conversationId = body.conversation_id;
+    
+    // Validate database is available
+    if (!c.env.FLOW_RUNS_DB) {
+      return c.json({ 
+        error: 'Database not configured',
+        note: 'FLOW_RUNS_DB binding is required for task completion'
+      }, 500);
+    }
+    
+    console.log(`[HTTP:TASK_COMPLETE] Marking task ${taskId} as DONE${conversationId ? ` (will ping conversation ${conversationId})` : ''}`);
+    
+    // Update task status to DONE - NO SIDE EFFECTS, NO LOGIC
+    const db = c.env.FLOW_RUNS_DB;
+    
+    // Try to update in tasks table first
+    let result = await db.prepare(
+      'UPDATE tasks SET status = ? WHERE id = ? AND status = ?'
+    ).bind('DONE', taskId, 'PENDING').run();
+    
+    // If no rows affected in tasks table, try task_followups
+    if (result.meta.changes === 0) {
+      result = await db.prepare(
+        'UPDATE task_followups SET status = ? WHERE id = ? AND status = ?'
+      ).bind('DONE', taskId, 'PENDING').run();
+    }
+    
+    if (result.meta.changes === 0) {
+      return c.json({ 
+        error: 'Task not found or already completed',
+        task_id: taskId,
+        note: 'Task must exist and be in PENDING status'
+      }, 404);
+    }
+    
+    console.log(`[HTTP:TASK_COMPLETE] Task ${taskId} marked as DONE (${result.meta.changes} rows updated)`);
+    
+    // Also complete any pending task execution tracking for this task
+    try {
+      // Find the most recent PENDING execution step for this task
+      const executionStepResult = await db.prepare(`
+        SELECT id FROM task_execution_steps 
+        WHERE task_id = ? AND status = 'PENDING'
+        ORDER BY started_at DESC
+        LIMIT 1
+      `).bind(taskId).first();
+      
+      if (executionStepResult) {
+        const executionStepId = (executionStepResult as any).id;
+        await db.prepare(`
+          UPDATE task_execution_steps 
+          SET finished_at = ?, status = 'DONE', updated_at = ?
+          WHERE id = ?
+        `).bind(Date.now(), Date.now(), executionStepId).run();
+        
+        console.log(`[HTTP:TASK_COMPLETE] Also completed task execution tracking: ${executionStepId}`);
+      }
+    } catch (trackingError: any) {
+      console.error(`[HTTP:TASK_COMPLETE] Error completing task execution tracking: ${trackingError.message}`);
+      // Continue even if tracking update fails
+    }
+    
+    // Ping ConversationDO if conversation_id provided
+    let pingResult = null;
+    if (conversationId && c.env.CONVERSATIONS) {
+      try {
+        const conversationDo = c.env.CONVERSATIONS.get(c.env.CONVERSATIONS.idFromString(conversationId));
+        const pingResponse = await conversationDo.fetch('http://placeholder/trigger-next-iteration', {
+          method: 'POST'
+        });
+        
+        if (pingResponse.ok) {
+          pingResult = await pingResponse.json();
+          console.log(`[HTTP:TASK_COMPLETE] Successfully pinged ConversationDO ${conversationId}`);
+        } else {
+          console.error(`[HTTP:TASK_COMPLETE] Failed to ping ConversationDO ${conversationId}: ${pingResponse.status}`);
+        }
+      } catch (pingError: any) {
+        console.error(`[HTTP:TASK_COMPLETE] Error pinging ConversationDO ${conversationId}: ${pingError.message}`);
+      }
+    }
+    
+    // Return response
+    const response: any = {
+      success: true,
+      task_id: taskId,
+      status: 'DONE',
+      updated_at: new Date().toISOString(),
+      note: 'Task marked as DONE. This is the ONLY way tasks move to DONE.'
+    };
+    
+    if (conversationId) {
+      response.conversation_id = conversationId;
+      response.ping_sent = pingResult !== null;
+      if (pingResult) {
+        response.ping_result = pingResult;
+      }
+    } else {
+      response.note += ' No ConversationDO pinged. External system must manually trigger next iteration.';
+    }
+    
+    return c.json(response);
+    
+  } catch (error: any) {
+    console.error(`[HTTP:TASK_COMPLETE] Endpoint error: ${error.message}`);
+    return c.json({ 
+      error: error.message,
+      task_id: c.req.param('id')
+    }, 500);
+  }
+});
+
 export default app;
 export { ConversationOrchestratorDO_2026A };
 // Export old class names for reference (not used)

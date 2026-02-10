@@ -205,3 +205,223 @@ export async function getProjectFacts(db: D1Database): Promise<ProjectFact[]> {
     return [];
   }
 }
+
+// ==========================================================================
+// TASK MANAGEMENT FUNCTIONS
+// ==========================================================================
+
+export interface TaskData {
+  task_id: string;
+  title: string;
+  description: string | null;
+  task_type: 'TASK' | 'FOLLOWUP';
+  parent_task_id: string | null;
+}
+
+/**
+ * Get the next pending task for a flow
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with next task data or null if no pending tasks
+ */
+export async function getNextTaskForFlow(db: D1Database, flow_id: string): Promise<TaskData | null> {
+  try {
+    // Use the exact logic from task_selection_logic.sql
+    // 1. First check for PENDING follow-ups where parent is DONE
+    const followupResult = await db.prepare(`
+      SELECT 
+        tf.id as task_id,
+        tf.title,
+        tf.description,
+        'FOLLOWUP' as task_type,
+        tf.parent_task_id
+      FROM task_followups tf
+      INNER JOIN tasks t ON tf.parent_task_id = t.id
+      WHERE t.flow_id = ? 
+        AND t.status = 'DONE'
+        AND tf.status = 'PENDING'
+      ORDER BY tf.order_index
+      LIMIT 1
+    `).bind(flow_id).first();
+    
+    if (followupResult) {
+      return followupResult as unknown as TaskData;
+    }
+    
+    // 2. If no such follow-up, get first PENDING task
+    const taskResult = await db.prepare(`
+      SELECT 
+        t.id as task_id,
+        t.title,
+        t.description,
+        'TASK' as task_type,
+        NULL as parent_task_id
+      FROM tasks t
+      WHERE t.flow_id = ? 
+        AND t.status = 'PENDING'
+      ORDER BY t.order_index
+      LIMIT 1
+    `).bind(flow_id).first();
+    
+    return taskResult as unknown as TaskData | null;
+    
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting next task for flow ${flow_id}: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Update task status
+ * @param db D1Database instance
+ * @param task_id Task ID
+ * @param status New status ('PENDING' or 'DONE')
+ * @returns Promise with success status
+ */
+export async function updateTaskStatus(
+  db: D1Database,
+  task_id: string,
+  status: 'PENDING' | 'DONE'
+): Promise<{success: boolean; error?: string}> {
+  try {
+    // Check if this is a task or follow-up
+    const taskCheck = await db.prepare(`
+      SELECT id FROM tasks WHERE id = ?
+      UNION ALL
+      SELECT id FROM task_followups WHERE id = ?
+    `).bind(task_id, task_id).first();
+    
+    if (!taskCheck) {
+      return { success: false, error: `Task not found: ${task_id}` };
+    }
+    
+    // Update task status
+    const taskUpdate = await db.prepare(`
+      UPDATE tasks SET status = ? WHERE id = ?
+    `).bind(status, task_id).run();
+    
+    if (taskUpdate.meta.changes > 0) {
+      return { success: true };
+    }
+    
+    // If not a task, try updating as follow-up
+    const followupUpdate = await db.prepare(`
+      UPDATE task_followups SET status = ? WHERE id = ?
+    `).bind(status, task_id).run();
+    
+    if (followupUpdate.meta.changes > 0) {
+      return { success: true };
+    }
+    
+    return { success: false, error: 'Failed to update task status' };
+    
+  } catch (error: any) {
+    console.error(`[DATABASE] Error updating task status: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+// ==========================================================================
+// TASK EXECUTION TRACKING FUNCTIONS (minimal, hard facts only)
+// ==========================================================================
+
+/**
+ * Start tracking a task execution
+ * @param db D1Database instance
+ * @param execution_id Execution ID
+ * @param task_id Task ID
+ * @returns Promise with success status and execution step ID
+ */
+export async function startTaskExecution(
+  db: D1Database,
+  execution_id: string,
+  task_id: string
+): Promise<{success: boolean; execution_step_id?: string; error?: string}> {
+  try {
+    const execution_step_id = `task_exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = Date.now();
+    
+    await db.prepare(`
+      INSERT INTO task_execution_steps (
+        id, execution_id, task_id, started_at, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      execution_step_id,
+      execution_id,
+      task_id,
+      now,
+      'PENDING',
+      now,
+      now
+    ).run();
+
+    return { success: true, execution_step_id };
+
+  } catch (error: any) {
+    console.error(`[DATABASE] Error starting task execution: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Complete a task execution
+ * @param db D1Database instance
+ * @param execution_step_id Execution step ID
+ * @returns Promise with success status
+ */
+export async function completeTaskExecution(
+  db: D1Database,
+  execution_step_id: string
+): Promise<{success: boolean; error?: string}> {
+  try {
+    const now = Date.now();
+    
+    const result = await db.prepare(`
+      UPDATE task_execution_steps 
+      SET finished_at = ?, status = 'DONE', updated_at = ?
+      WHERE id = ? AND status = 'PENDING'
+    `).bind(now, now, execution_step_id).run();
+
+    if (result.meta.changes === 0) {
+      return { success: false, error: 'Execution step not found or already completed' };
+    }
+
+    return { success: true };
+
+  } catch (error: any) {
+    console.error(`[DATABASE] Error completing task execution: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get task execution history for an execution
+ * @param db D1Database instance
+ * @param execution_id Execution ID
+ * @returns Promise with task execution history
+ */
+export async function getTaskExecutionHistory(
+  db: D1Database,
+  execution_id: string
+): Promise<{success: boolean; history?: Array<{
+  id: string;
+  task_id: string;
+  started_at: number;
+  finished_at: number | null;
+  status: string;
+}>; error?: string}> {
+  try {
+    const result = await db.prepare(`
+      SELECT id, task_id, started_at, finished_at, status
+      FROM task_execution_steps
+      WHERE execution_id = ?
+      ORDER BY started_at
+    `).bind(execution_id).all();
+
+    return { success: true, history: result.results as any };
+
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting task execution history: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}

@@ -161,9 +161,14 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleDelete();
     }
     
+    // Trigger next iteration (after task completion)
+    if (path === '/trigger-next-iteration' && request.method === 'POST') {
+      return this.handleTriggerNextIteration();
+    }
+    
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete']
+      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
@@ -318,10 +323,57 @@ export class ConversationOrchestratorDO_2026A {
       // Generate flow run ID
       this.flowRunId = generateFlowRunId();
       
+      // Load next task for the flow (if database is available)
+      let currentTask = null;
+      let taskPrompt = initial_user_prompt || `Execute flow: ${flow_id}`;
+      
+      if (this.env.FLOW_RUNS_DB) {
+        try {
+          // Import the task function
+          const { getNextTaskForFlow, startTaskExecution } = await import('../services/database');
+          currentTask = await getNextTaskForFlow(this.env.FLOW_RUNS_DB, flow_id);
+          
+          if (currentTask) {
+            // Build task prompt with MINIMAL injection (title + description only)
+            taskPrompt = `Execute: ${currentTask.title}`;
+            if (currentTask.description) {
+              taskPrompt += `\n${currentTask.description}`;
+            }
+            
+            console.log(`[DO:${this.state.id}] Loaded task for flow ${flow_id}: ${currentTask.title}`);
+            
+            // Start tracking task execution (minimal observability)
+            try {
+              const executionResult = await startTaskExecution(
+                this.env.FLOW_RUNS_DB, 
+                this.flowRunId!,
+                currentTask.task_id
+              );
+              
+              if (executionResult.success) {
+                console.log(`[DO:${this.state.id}] Started tracking task execution: ${executionResult.execution_step_id}`);
+                // Store execution step ID for later completion
+                this.conversation!.current_execution_step_id = executionResult.execution_step_id;
+              }
+            } catch (trackingError: any) {
+              console.error(`[DO:${this.state.id}] Error tracking task execution: ${trackingError.message}`);
+              // Continue even if tracking fails
+            }
+          } else {
+            console.log(`[DO:${this.state.id}] No pending tasks found for flow ${flow_id}`);
+          }
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error loading tasks for flow ${flow_id}: ${error.message}`);
+          // Continue without task injection if database error occurs
+        }
+      } else {
+        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not available, proceeding without task loading`);
+      }
+      
       // Initialize conversation for flow execution
       this.conversation = {
         state: 'INIT',
-        initial_user_prompt: initial_user_prompt || `Execute flow: ${flow_id}`,
+        initial_user_prompt: taskPrompt,
         iteration: 0,
         repository: repository || 'flow/execution',
         branch: branch || 'main',
@@ -332,7 +384,13 @@ export class ConversationOrchestratorDO_2026A {
         deepseek_system: deepseek_system || 'You are a flow execution assistant. Follow the flow steps precisely. Return structured JSON when asked.',
         project_facts: [], // Empty array instead of database query
         flow_id: flow_id, // Store flow ID for flow execution
-        flow_execution_mode: true // Flag to indicate flow execution mode
+        flow_execution_mode: true, // Flag to indicate flow execution mode
+        
+        // Task-based execution fields
+        task_execution_mode: currentTask !== null,
+        current_task_id: currentTask?.task_id,
+        current_task_title: currentTask?.title,
+        current_task_description: currentTask?.description || undefined
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -342,14 +400,27 @@ export class ConversationOrchestratorDO_2026A {
       
       console.log(`[DO:${this.state.id}] Initialized flow execution for flow: ${flow_id}, alarm scheduled`);
       
-      return new Response(JSON.stringify({
+      const responseData: any = {
         success: true,
         conversation_id: this.state.id.toString(),
         flow_id: flow_id,
         state: 'INIT',
         message: 'Flow execution initialized. First alarm scheduled.',
         note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step'
-      }), {
+      };
+      
+      // Include task info if available
+      if (currentTask) {
+        responseData.task = {
+          task_id: currentTask.task_id,
+          title: currentTask.title,
+          description: currentTask.description,
+          task_type: currentTask.task_type
+        };
+        responseData.note = 'Task-based execution: Task injected into first prompt';
+      }
+      
+      return new Response(JSON.stringify(responseData), {
         headers: { 'Content-Type': 'application/json' }
       });
       
@@ -479,6 +550,144 @@ export class ConversationOrchestratorDO_2026A {
       return new Response(JSON.stringify({
         success: false,
         error: error.message
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  private async handleTriggerNextIteration(): Promise<Response> {
+    console.log(`[DO:${this.state.id}] Triggering next iteration`);
+    
+    try {
+      // Only proceed if we have a conversation and it's in task execution mode
+      if (!this.conversation || !this.conversation.task_execution_mode || !this.conversation.flow_id) {
+        return new Response(JSON.stringify({
+          error: 'Not in task execution mode or no flow_id',
+          note: 'This endpoint only works for task-based flow execution'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      const flowId = this.conversation.flow_id;
+      
+      // Load next task for the flow
+      if (!this.env.FLOW_RUNS_DB) {
+        return new Response(JSON.stringify({
+          error: 'Database not configured',
+          note: 'FLOW_RUNS_DB binding is required for task loading'
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      const { getNextTaskForFlow, startTaskExecution } = await import('../services/database');
+      const nextTask = await getNextTaskForFlow(this.env.FLOW_RUNS_DB, flowId);
+      
+      if (!nextTask) {
+        // NO MORE TASKS - FLOW TERMINATION
+        console.log(`[DO:${this.state.id}] No more tasks for flow ${flowId}, terminating flow`);
+        
+        // Mark flow as DONE in database
+        try {
+          const { updateFlowRunStatus } = await import('../services/database');
+          await updateFlowRunStatus(this.env.FLOW_RUNS_DB, this.flowRunId!, 'DONE');
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error updating flow run status: ${error.message}`);
+        }
+        
+        // Cancel alarms
+        try {
+          await this.state.storage.deleteAlarm();
+        } catch (error) {
+          // Ignore errors if no alarm exists
+        }
+        
+        // Update conversation state
+        this.conversation.state = 'DONE';
+        this.conversation.status = 'completed';
+        this.conversation.updated_at = Date.now();
+        await this.state.storage.put('conversation', this.conversation);
+        
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'Flow terminated - no more tasks',
+          flow_id: flowId,
+          flow_run_id: this.flowRunId,
+          state: 'DONE',
+          note: 'All tasks completed. Alarms cancelled. No further prompts.'
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // NEXT TASK EXISTS - INJECT AND CONTINUE
+      console.log(`[DO:${this.state.id}] Loaded next task for flow ${flowId}: ${nextTask.title}`);
+      
+      // Start tracking task execution (minimal observability)
+      let executionStepId = null;
+      try {
+        const executionResult = await startTaskExecution(
+          this.env.FLOW_RUNS_DB, 
+          this.flowRunId!,
+          nextTask.task_id
+        );
+        
+        if (executionResult.success) {
+          console.log(`[DO:${this.state.id}] Started tracking task execution: ${executionResult.execution_step_id}`);
+          executionStepId = executionResult.execution_step_id;
+        }
+      } catch (trackingError: any) {
+        console.error(`[DO:${this.state.id}] Error tracking task execution: ${trackingError.message}`);
+        // Continue even if tracking fails
+      }
+      
+      // Build task prompt with MINIMAL injection
+      let taskPrompt = `Execute: ${nextTask.title}`;
+      if (nextTask.description) {
+        taskPrompt += `\n${nextTask.description}`;
+      }
+      
+      // Update conversation with new task
+      this.conversation.current_task_id = nextTask.task_id;
+      this.conversation.current_task_title = nextTask.title;
+      this.conversation.current_task_description = nextTask.description || undefined;
+      this.conversation.current_execution_step_id = executionStepId || undefined;
+      this.conversation.initial_user_prompt = taskPrompt;
+      this.conversation.state = 'INIT';
+      this.conversation.iteration = 0;
+      this.conversation.updated_at = Date.now();
+      
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Schedule alarm to start execution
+      await this.scheduleNextAlarm(ALARM_DELAY_INIT);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Next task loaded and execution scheduled',
+        flow_id: flowId,
+        task: {
+          task_id: nextTask.task_id,
+          title: nextTask.title,
+          description: nextTask.description,
+          task_type: nextTask.task_type
+        },
+        state: 'INIT',
+        note: 'Task injected into prompt. Alarm scheduled for execution.'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error triggering next iteration: ${error.message}`);
+      return new Response(JSON.stringify({
+        error: error.message,
+        note: 'Failed to trigger next iteration'
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
