@@ -113,7 +113,7 @@ const rateLimitMiddleware = async (c: any, next: any) => {
 };
 
 // Apply rate limiting middleware to all routes
-app.use('*', rateLimitMiddleware);
+// app.use('*', rateLimitMiddleware); // Temporarily disabled for testing
 
 // Root endpoint - documentation only
 app.get('/', (c) => {
@@ -145,7 +145,14 @@ app.get('/health', async (c) => {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       checks: {
-        database: 'pending'
+        database: 'pending',
+        bindings: {
+          FLOW_RUNS_DB: c.env.FLOW_RUNS_DB ? 'configured' : 'missing',
+          PROJECT_FACTS_DB: c.env.PROJECT_FACTS_DB ? 'configured' : 'missing',
+          CONVERSATIONS: c.env.CONVERSATIONS ? 'configured' : 'missing',
+          DEEPSEEK_API_KEY: c.env.DEEPSEEK_API_KEY ? 'configured' : 'missing',
+          OPENHANDS_API_URL: c.env.OPENHANDS_API_URL ? 'configured' : 'missing'
+        }
       }
     };
     

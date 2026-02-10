@@ -84,6 +84,14 @@ export interface ConversationData {
   current_task_description?: string; // Description of current task (for prompt injection)
   task_execution_mode?: boolean; // Flag to indicate task-based execution mode
   current_execution_step_id?: string; // ID of current task execution step for tracking
+  
+  // Flow context from database
+  flow_context?: {
+    definition?: any;
+    has_project_context: boolean;
+    has_testing_priorities: boolean;
+    has_api_commands: boolean;
+  };
 }
 
 // OpenHands event types

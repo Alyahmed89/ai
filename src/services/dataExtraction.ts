@@ -41,10 +41,10 @@ const defaultExtractionRules: ExtractionRule[] = [
     name: 'Extract Tasks from Actions',
     description: 'Extract task information from OpenHands action events',
     matchPattern: (event: OpenHandsEvent) => 
-      event.action && 
+      !!(event.action && 
       event.action !== 'agent_state_changed' && 
       event.action !== 'message' &&
-      !event.observation,
+      !event.observation),
     extractData: (event: OpenHandsEvent): ExtractedDataItem => {
       const taskDescription = event.message || event.content || `Action: ${event.action}`;
       return {
@@ -72,9 +72,9 @@ const defaultExtractionRules: ExtractionRule[] = [
     name: 'Extract Errors from Observations',
     description: 'Extract error information from OpenHands observation events',
     matchPattern: (event: OpenHandsEvent) => 
-      event.observation === 'error' || 
+      !!(event.observation === 'error' || 
       (event.message && event.message.toLowerCase().includes('error')) ||
-      (event.content && event.content.toLowerCase().includes('error')),
+      (event.content && event.content.toLowerCase().includes('error'))),
     extractData: (event: OpenHandsEvent): ExtractedDataItem => {
       const errorMessage = event.message || event.content || `Error in ${event.action}`;
       return {

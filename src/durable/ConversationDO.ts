@@ -300,6 +300,8 @@ export class ConversationOrchestratorDO_2026A {
 
   private async handleInitializeFlow(request: Request): Promise<Response> {
     try {
+      console.log(`[DO:${this.state.id}] handleInitializeFlow called`);
+      
       const body = await request.json() as {
         flow_id: string;
         repository?: string;
@@ -310,6 +312,8 @@ export class ConversationOrchestratorDO_2026A {
       };
       const { flow_id, repository, branch, initial_user_prompt, max_iterations, deepseek_system } = body;
       
+      console.log(`[DO:${this.state.id}] Parsed request: flow_id=${flow_id}`);
+      
       if (!flow_id) {
         return new Response(JSON.stringify({ error: 'Need flow_id' }), {
           status: 400,
@@ -318,20 +322,56 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Ensure reasonable minimum iterations
-      const effectiveMaxIterations = max_iterations && max_iterations >= 10 ? max_iterations : MAX_ITERATIONS;
+      let effectiveMaxIterations = max_iterations && max_iterations >= 10 ? max_iterations : MAX_ITERATIONS;
       
       // Generate flow run ID
       this.flowRunId = generateFlowRunId();
+      console.log(`[DO:${this.state.id}] Generated flow run ID: ${this.flowRunId}`);
       
-      // Load next task for the flow (if database is available)
+      // Load flow context from database (if available)
+      let flowContext = null;
+      let flowDefinition = null;
       let currentTask = null;
       let taskPrompt = initial_user_prompt || `Execute flow: ${flow_id}`;
       
+      // Variables that might be overridden by flow definition
+      let effectiveRepository = repository;
+      let effectiveBranch = branch;
+      let effectiveDeepseekSystem = deepseek_system;
+      
       if (this.env.FLOW_RUNS_DB) {
+        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB is available`);
         try {
-          // Import the task function
-          const { getNextTaskForFlow, startTaskExecution } = await import('../services/database');
+          // Import the database functions
+          console.log(`[DO:${this.state.id}] Attempting to import database functions...`);
+          const { getFlowContext, getNextTaskForFlow, startTaskExecution } = await import('../services/database');
+          console.log(`[DO:${this.state.id}] Database functions imported successfully`);
+          
+          // Load flow context from database
+          flowContext = await getFlowContext(this.env.FLOW_RUNS_DB, flow_id);
+          console.log(`[DO:${this.state.id}] Flow context loaded: ${flowContext ? 'yes' : 'no'}`);
+          
+          if (flowContext) {
+            flowDefinition = flowContext.definition;
+            console.log(`[DO:${this.state.id}] Loaded flow context for ${flow_id}: ${flowDefinition.name}`);
+            
+            // Use flow definition values if not provided in request
+            effectiveRepository = repository || flowDefinition.repository;
+            effectiveBranch = branch || flowDefinition.branch;
+            effectiveDeepseekSystem = deepseek_system || flowDefinition.deepseek_system;
+            const effectiveFlowMaxIterations = flowDefinition.max_iterations;
+            
+            // Use flow max iterations if not specified in request
+            if (!max_iterations && effectiveFlowMaxIterations > 0) {
+              effectiveMaxIterations = Math.max(effectiveFlowMaxIterations, effectiveMaxIterations);
+            }
+          } else {
+            console.log(`[DO:${this.state.id}] No flow context found for ${flow_id}, using request parameters`);
+          }
+          
+          // Load next task for the flow
           currentTask = await getNextTaskForFlow(this.env.FLOW_RUNS_DB, flow_id);
+          console.log(`[DO:${this.state.id}] Next task loaded: ${currentTask ? currentTask.title : 'none'}`);
           
           if (currentTask) {
             // Build task prompt with MINIMAL injection (title + description only)
@@ -363,11 +403,12 @@ export class ConversationOrchestratorDO_2026A {
             console.log(`[DO:${this.state.id}] No pending tasks found for flow ${flow_id}`);
           }
         } catch (error: any) {
-          console.error(`[DO:${this.state.id}] Error loading tasks for flow ${flow_id}: ${error.message}`);
-          // Continue without task injection if database error occurs
+          console.error(`[DO:${this.state.id}] Error loading flow context for ${flow_id}: ${error.message}`);
+          console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
+          // Continue without flow context if database error occurs
         }
       } else {
-        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not available, proceeding without task loading`);
+        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not available, proceeding without flow context loading`);
       }
       
       // Initialize conversation for flow execution
@@ -385,6 +426,14 @@ export class ConversationOrchestratorDO_2026A {
         project_facts: [], // Empty array instead of database query
         flow_id: flow_id, // Store flow ID for flow execution
         flow_execution_mode: true, // Flag to indicate flow execution mode
+        
+        // Store flow context for reference
+        flow_context: flowContext ? {
+          definition: flowDefinition,
+          has_project_context: flowContext.project_context.length > 0,
+          has_testing_priorities: flowContext.testing_priorities.length > 0,
+          has_api_commands: flowContext.api_commands.length > 0
+        } : undefined,
         
         // Task-based execution fields
         task_execution_mode: currentTask !== null,
@@ -592,10 +641,10 @@ export class ConversationOrchestratorDO_2026A {
         // NO MORE TASKS - FLOW TERMINATION
         console.log(`[DO:${this.state.id}] No more tasks for flow ${flowId}, terminating flow`);
         
-        // Mark flow as DONE in database
+        // Mark flow as completed in database
         try {
           const { updateFlowRunStatus } = await import('../services/database');
-          await updateFlowRunStatus(this.env.FLOW_RUNS_DB, this.flowRunId!, 'DONE');
+          await updateFlowRunStatus(this.env.FLOW_RUNS_DB, this.flowRunId!, 'completed');
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error updating flow run status: ${error.message}`);
         }
@@ -609,7 +658,7 @@ export class ConversationOrchestratorDO_2026A {
         
         // Update conversation state
         this.conversation.state = 'DONE';
-        this.conversation.status = 'completed';
+        this.conversation.status = 'stopped';
         this.conversation.updated_at = Date.now();
         await this.state.storage.put('conversation', this.conversation);
         

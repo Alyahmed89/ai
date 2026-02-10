@@ -425,3 +425,167 @@ export async function getTaskExecutionHistory(
     return { success: false, error: error.message };
   }
 }
+
+/**
+ * Get flow definition from database
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with flow definition or null
+ */
+export async function getFlowDefinition(
+  db: D1Database,
+  flow_id: string
+): Promise<{
+  id: string;
+  name: string;
+  description: string;
+  deepseek_system: string;
+  max_iterations: number;
+  repository: string;
+  branch: string;
+} | null> {
+  try {
+    const result = await db.prepare(`
+      SELECT id, name, description, deepseek_system, max_iterations, repository, branch
+      FROM flow_definitions
+      WHERE id = ?
+    `).bind(flow_id).first();
+
+    return result as any;
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting flow definition: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Get project context for a flow
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with project context items
+ */
+export async function getFlowProjectContext(
+  db: D1Database,
+  flow_id: string
+): Promise<Array<{
+  id: string;
+  context_type: string;
+  key: string;
+  value: string;
+  metadata?: string;
+}>> {
+  try {
+    const result = await db.prepare(`
+      SELECT id, context_type, key, value, metadata
+      FROM project_context
+      WHERE flow_id = ?
+      ORDER BY context_type, key
+    `).bind(flow_id).all();
+
+    return result.results as any;
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting flow project context: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Get testing priorities for a flow
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with testing priorities
+ */
+export async function getFlowTestingPriorities(
+  db: D1Database,
+  flow_id: string
+): Promise<Array<{
+  id: string;
+  priority: number;
+  name: string;
+  description: string;
+  tests?: string;
+  ui_requirements?: string;
+  sections?: string;
+}>> {
+  try {
+    const result = await db.prepare(`
+      SELECT id, priority, name, description, tests, ui_requirements, sections
+      FROM testing_priorities
+      WHERE flow_id = ?
+      ORDER BY priority
+    `).bind(flow_id).all();
+
+    return result.results as any;
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting flow testing priorities: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Get API commands for a flow
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with API commands
+ */
+export async function getFlowApiCommands(
+  db: D1Database,
+  flow_id: string
+): Promise<Array<{
+  id: string;
+  name: string;
+  command: string;
+  description: string;
+  placeholder_example?: string;
+}>> {
+  try {
+    const result = await db.prepare(`
+      SELECT id, name, command, description, placeholder_example
+      FROM api_commands
+      WHERE flow_id = ?
+      ORDER BY name
+    `).bind(flow_id).all();
+
+    return result.results as any;
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting flow API commands: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Build comprehensive flow context from database
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with complete flow context
+ */
+export async function getFlowContext(
+  db: D1Database,
+  flow_id: string
+): Promise<{
+  definition: any;
+  project_context: any[];
+  testing_priorities: any[];
+  api_commands: any[];
+} | null> {
+  try {
+    const definition = await getFlowDefinition(db, flow_id);
+    if (!definition) {
+      return null;
+    }
+
+    const project_context = await getFlowProjectContext(db, flow_id);
+    const testing_priorities = await getFlowTestingPriorities(db, flow_id);
+    const api_commands = await getFlowApiCommands(db, flow_id);
+
+    return {
+      definition,
+      project_context,
+      testing_priorities,
+      api_commands
+    };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting flow context: ${error.message}`);
+    return null;
+  }
+}
