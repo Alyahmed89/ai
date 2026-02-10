@@ -77,6 +77,7 @@ export interface ConversationData {
   flow_execution_mode?: boolean; // Flag to indicate flow execution mode
   current_flow_step?: number; // Current step in flow execution
   flow_steps_completed?: number[]; // Array of completed step numbers
+  current_step?: StepData; // Current step data for flow execution
 
   // Task-based execution (deterministic task system)
   current_task_id?: string; // Current task ID being executed
@@ -245,4 +246,18 @@ export interface TaskData {
   description: string | null;
   task_type: 'TASK' | 'FOLLOWUP';
   parent_task_id: string | null;
+}
+
+// Step data for flow execution steps
+export interface StepData {
+  step_id: string;
+  step_key: string;
+  title: string;
+  description: string | null;
+  step_type: string;
+  order_index: number;
+  page_key: string | null;
+  blocking: boolean;
+  auto_fail_on_error: boolean;
+  retryable: boolean;
 }

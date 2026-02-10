@@ -272,6 +272,58 @@ export async function getNextTaskForFlow(db: D1Database, flow_id: string): Promi
 }
 
 /**
+ * Get next step for a flow from flow_steps table
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @param flow_run_id Optional flow run ID to check for completed steps
+ * @returns Promise with step data or null
+ */
+export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_run_id?: string): Promise<StepData | null> {
+  try {
+    // Get the next step that hasn't been completed yet
+    // We check task_execution_steps table for completed steps
+    let query = `
+      SELECT 
+        fs.id as step_id,
+        fs.step_key,
+        fs.title,
+        fs.instructions as description,
+        fs.step_type,
+        fs.order_index,
+        fs.page_key,
+        fs.blocking,
+        fs.auto_fail_on_error,
+        fs.retryable
+      FROM flow_steps fs
+      WHERE fs.flow_id = ? 
+    `;
+    
+    // If we have a flow_run_id, exclude steps that have been completed
+    if (flow_run_id) {
+      query += `
+        AND fs.id NOT IN (
+          SELECT tes.task_id 
+          FROM task_execution_steps tes 
+          WHERE tes.execution_id = ? 
+            AND tes.status = 'DONE'
+        )
+      `;
+    }
+    
+    query += ` ORDER BY fs.order_index LIMIT 1`;
+    
+    const bindings = flow_run_id ? [flow_id, flow_run_id] : [flow_id];
+    const stepResult = await db.prepare(query).bind(...bindings).first();
+    
+    return stepResult as unknown as StepData | null;
+    
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting next step for flow ${flow_id}: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Update task status
  * @param db D1Database instance
  * @param task_id Task ID

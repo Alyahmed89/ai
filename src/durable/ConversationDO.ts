@@ -344,7 +344,7 @@ export class ConversationOrchestratorDO_2026A {
         try {
           // Import the database functions
           console.log(`[DO:${this.state.id}] Attempting to import database functions...`);
-          const { getFlowContext, getNextTaskForFlow, startTaskExecution } = await import('../services/database');
+          const { getFlowContext, getNextStepForFlow, startTaskExecution } = await import('../services/database');
           console.log(`[DO:${this.state.id}] Database functions imported successfully`);
           
           // Load flow context from database
@@ -369,38 +369,49 @@ export class ConversationOrchestratorDO_2026A {
             console.log(`[DO:${this.state.id}] No flow context found for ${flow_id}, using request parameters`);
           }
           
-          // Load next task for the flow
-          currentTask = await getNextTaskForFlow(this.env.FLOW_RUNS_DB, flow_id);
-          console.log(`[DO:${this.state.id}] Next task loaded: ${currentTask ? currentTask.title : 'none'}`);
+          // Load next step for the flow (using flow_steps table instead of tasks)
+          const currentStep = await getNextStepForFlow(this.env.FLOW_RUNS_DB, flow_id, this.flowRunId!);
+          console.log(`[DO:${this.state.id}] Next step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
-          if (currentTask) {
-            // Build task prompt with MINIMAL injection (title + description only)
-            taskPrompt = `Execute: ${currentTask.title}`;
-            if (currentTask.description) {
-              taskPrompt += `\n${currentTask.description}`;
+          if (currentStep) {
+            // Build step prompt with step details
+            taskPrompt = `Execute step: ${currentStep.title}`;
+            if (currentStep.description) {
+              taskPrompt += `\n${currentStep.description}`;
             }
             
-            console.log(`[DO:${this.state.id}] Loaded task for flow ${flow_id}: ${currentTask.title}`);
+            // Add step metadata for context
+            taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
+            if (currentStep.page_key) {
+              taskPrompt += `\nPage: ${currentStep.page_key}`;
+            }
+            if (currentStep.blocking === false) {
+              taskPrompt += `\nNote: This step is non-blocking - flow can continue even if this step fails`;
+            }
             
-            // Start tracking task execution (minimal observability)
+            console.log(`[DO:${this.state.id}] Loaded step for flow ${flow_id}: ${currentStep.title} (${currentStep.step_type})`);
+            
+            // Start tracking step execution (using task_execution_steps table for now)
             try {
               const executionResult = await startTaskExecution(
                 this.env.FLOW_RUNS_DB, 
                 this.flowRunId!,
-                currentTask.task_id
+                currentStep.step_id
               );
               
               if (executionResult.success) {
-                console.log(`[DO:${this.state.id}] Started tracking task execution: ${executionResult.execution_step_id}`);
+                console.log(`[DO:${this.state.id}] Started tracking step execution: ${executionResult.execution_step_id}`);
                 // Store execution step ID for later completion
                 this.conversation!.current_execution_step_id = executionResult.execution_step_id;
+                // Store step data for reference
+                this.conversation!.current_step = currentStep;
               }
             } catch (trackingError: any) {
-              console.error(`[DO:${this.state.id}] Error tracking task execution: ${trackingError.message}`);
+              console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);
               // Continue even if tracking fails
             }
           } else {
-            console.log(`[DO:${this.state.id}] No pending tasks found for flow ${flow_id}`);
+            console.log(`[DO:${this.state.id}] No steps found for flow ${flow_id}`);
           }
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error loading flow context for ${flow_id}: ${error.message}`);
@@ -436,10 +447,10 @@ export class ConversationOrchestratorDO_2026A {
         } : undefined,
         
         // Task-based execution fields
-        task_execution_mode: currentTask !== null,
-        current_task_id: currentTask?.task_id,
-        current_task_title: currentTask?.title,
-        current_task_description: currentTask?.description || undefined
+        task_execution_mode: currentStep !== null,
+        current_task_id: currentStep?.step_id,
+        current_task_title: currentStep?.title,
+        current_task_description: currentStep?.description || undefined
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -634,12 +645,12 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
-      const { getNextTaskForFlow, startTaskExecution } = await import('../services/database');
-      const nextTask = await getNextTaskForFlow(this.env.FLOW_RUNS_DB, flowId);
+      const { getNextStepForFlow, startTaskExecution } = await import('../services/database');
+      const nextStep = await getNextStepForFlow(this.env.FLOW_RUNS_DB, flowId, this.flowRunId!);
       
-      if (!nextTask) {
-        // NO MORE TASKS - FLOW TERMINATION
-        console.log(`[DO:${this.state.id}] No more tasks for flow ${flowId}, terminating flow`);
+      if (!nextStep) {
+        // NO MORE STEPS - FLOW TERMINATION
+        console.log(`[DO:${this.state.id}] No more steps for flow ${flowId}, terminating flow`);
         
         // Mark flow as completed in database
         try {
@@ -664,48 +675,58 @@ export class ConversationOrchestratorDO_2026A {
         
         return new Response(JSON.stringify({
           success: true,
-          message: 'Flow terminated - no more tasks',
+          message: 'Flow terminated - no more steps',
           flow_id: flowId,
           flow_run_id: this.flowRunId,
           state: 'DONE',
-          note: 'All tasks completed. Alarms cancelled. No further prompts.'
+          note: 'All steps completed. Alarms cancelled. No further prompts.'
         }), {
           headers: { 'Content-Type': 'application/json' }
         });
       }
       
-      // NEXT TASK EXISTS - INJECT AND CONTINUE
-      console.log(`[DO:${this.state.id}] Loaded next task for flow ${flowId}: ${nextTask.title}`);
+      // NEXT STEP EXISTS - INJECT AND CONTINUE
+      console.log(`[DO:${this.state.id}] Loaded next step for flow ${flowId}: ${nextStep.title} (${nextStep.step_type})`);
       
-      // Start tracking task execution (minimal observability)
+      // Start tracking step execution (minimal observability)
       let executionStepId = null;
       try {
         const executionResult = await startTaskExecution(
           this.env.FLOW_RUNS_DB, 
           this.flowRunId!,
-          nextTask.task_id
+          nextStep.step_id
         );
         
         if (executionResult.success) {
-          console.log(`[DO:${this.state.id}] Started tracking task execution: ${executionResult.execution_step_id}`);
+          console.log(`[DO:${this.state.id}] Started tracking step execution: ${executionResult.execution_step_id}`);
           executionStepId = executionResult.execution_step_id;
         }
       } catch (trackingError: any) {
-        console.error(`[DO:${this.state.id}] Error tracking task execution: ${trackingError.message}`);
+        console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);
         // Continue even if tracking fails
       }
       
-      // Build task prompt with MINIMAL injection
-      let taskPrompt = `Execute: ${nextTask.title}`;
-      if (nextTask.description) {
-        taskPrompt += `\n${nextTask.description}`;
+      // Build step prompt with step details
+      let taskPrompt = `Execute step: ${nextStep.title}`;
+      if (nextStep.description) {
+        taskPrompt += `\n${nextStep.description}`;
       }
       
-      // Update conversation with new task
-      this.conversation.current_task_id = nextTask.task_id;
-      this.conversation.current_task_title = nextTask.title;
-      this.conversation.current_task_description = nextTask.description || undefined;
+      // Add step metadata for context
+      taskPrompt += `\n\nStep Type: ${nextStep.step_type}`;
+      if (nextStep.page_key) {
+        taskPrompt += `\nPage: ${nextStep.page_key}`;
+      }
+      if (nextStep.blocking === false) {
+        taskPrompt += `\nNote: This step is non-blocking - flow can continue even if this step fails`;
+      }
+      
+      // Update conversation with new step
+      this.conversation.current_task_id = nextStep.step_id;
+      this.conversation.current_task_title = nextStep.title;
+      this.conversation.current_task_description = nextStep.description || undefined;
       this.conversation.current_execution_step_id = executionStepId || undefined;
+      this.conversation.current_step = nextStep;
       this.conversation.initial_user_prompt = taskPrompt;
       this.conversation.state = 'INIT';
       this.conversation.iteration = 0;
@@ -718,16 +739,17 @@ export class ConversationOrchestratorDO_2026A {
       
       return new Response(JSON.stringify({
         success: true,
-        message: 'Next task loaded and execution scheduled',
+        message: 'Next step loaded and execution scheduled',
         flow_id: flowId,
-        task: {
-          task_id: nextTask.task_id,
-          title: nextTask.title,
-          description: nextTask.description,
-          task_type: nextTask.task_type
+        step: {
+          step_id: nextStep.step_id,
+          step_key: nextStep.step_key,
+          title: nextStep.title,
+          description: nextStep.description,
+          step_type: nextStep.step_type
         },
         state: 'INIT',
-        note: 'Task injected into prompt. Alarm scheduled for execution.'
+        note: 'Step injected into prompt. Alarm scheduled for execution.'
       }), {
         headers: { 'Content-Type': 'application/json' }
       });
