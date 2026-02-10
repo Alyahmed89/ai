@@ -31,7 +31,7 @@ database_id = "ce8f2a2c-6e4b-4398-b73e-ba8f204f609a"
 # binding = "RATE_LIMIT_KV"
 # id = ""  # TODO: Create namespace and add ID here
 
-# Durable Object migrations - commented out since DO already exists
-# [[migrations]]
-# tag = "v1"
-# new_sqlite_classes = ["ConversationDO_v2"]
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ConversationDO_v2"]

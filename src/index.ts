@@ -140,50 +140,13 @@ app.get('/', (c) => {
 
 // Health check endpoint with database test
 app.get('/health', async (c) => {
-  try {
-    const health = {
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      checks: {
-        database: 'pending',
-        bindings: {
-          FLOW_RUNS_DB: c.env.FLOW_RUNS_DB ? 'configured' : 'missing',
-          PROJECT_FACTS_DB: c.env.PROJECT_FACTS_DB ? 'configured' : 'missing',
-          CONVERSATIONS: c.env.CONVERSATIONS ? 'configured' : 'missing',
-          DEEPSEEK_API_KEY: c.env.DEEPSEEK_API_KEY ? 'configured' : 'missing',
-          OPENHANDS_API_URL: c.env.OPENHANDS_API_URL ? 'configured' : 'missing'
-        }
-      }
-    };
-    
-    // Test database connection
-    try {
-      const db = c.env.FLOW_RUNS_DB;
-      if (!db) {
-        health.checks.database = 'not_configured';
-        health.status = 'degraded';
-      } else {
-        // Simple query to test connection
-        const result = await db.prepare('SELECT 1 as test').first();
-        health.checks.database = result?.test === 1 ? 'connected' : 'error';
-        if (health.checks.database === 'error') {
-          health.status = 'degraded';
-        }
-      }
-    } catch (dbError: any) {
-      health.checks.database = `error: ${dbError.message}`;
-      health.status = 'degraded';
-    }
-    
-    return c.json(health);
-    
-  } catch (error: any) {
-    return c.json({
-      status: 'unhealthy',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    }, 500);
-  }
+  // TEMPORARY: Return simple response without touching DB or DO
+  // To debug server hanging issue
+  return c.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    note: 'Health check simplified for debugging - no DB/DO access'
+  });
 });
 
 // Start endpoint - MUST return immediately (no awaits to external APIs)

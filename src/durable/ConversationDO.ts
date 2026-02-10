@@ -50,10 +50,17 @@ export class ConversationOrchestratorDO_2026A {
     this.state = state;
     this.env = env;
     
-    // Load conversation state from storage
-    this.state.blockConcurrencyWhile(async () => {
+    // NO async work in constructor - load state lazily in fetch handlers
+    this.conversation = null;
+  }
+  
+  /**
+   * Lazily load conversation state from storage
+   */
+  private async loadConversationState(): Promise<void> {
+    if (this.conversation === null) {
       this.conversation = await this.state.storage.get('conversation') || null;
-    });
+    }
   }
   
   /**
