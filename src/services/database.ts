@@ -498,8 +498,8 @@ export async function getFlowDefinition(
 } | null> {
   try {
     const result = await db.prepare(`
-      SELECT id, name, description, deepseek_system, max_iterations, repository, branch
-      FROM flow_definitions
+      SELECT id, name, first_prompt as description, deepseek_system, max_iterations, repo as repository, branch
+      FROM flows
       WHERE id = ?
     `).bind(flow_id).first();
 
