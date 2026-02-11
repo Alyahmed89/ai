@@ -32,7 +32,7 @@ database_id = "ce8f2a2c-6e4b-4398-b73e-ba8f204f609a"
 # binding = "RATE_LIMIT_KV"
 # id = ""  # TODO: Create namespace and add ID here
 
-# Durable Object migration for new class
+# Durable Object migration for new class (using new_sqlite_classes for free plan)
 [[migrations]]
 tag = "v1"
-new_classes = ["ConversationOrchestratorDO_2026A"]
+new_sqlite_classes = ["ConversationOrchestratorDO_2026A"]
