@@ -434,13 +434,13 @@ export class ConversationOrchestratorDO_2026A {
         state: 'INIT',
         initial_user_prompt: taskPrompt,
         iteration: 0,
-        repository: repository || 'flow/execution',
-        branch: branch || 'main',
+        repository: effectiveRepository || 'flow/execution',
+        branch: effectiveBranch || 'main',
         max_iterations: effectiveMaxIterations,
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        deepseek_system: deepseek_system || 'You are a flow execution assistant. Follow the flow steps precisely. Return structured JSON when asked.',
+        deepseek_system: effectiveDeepseekSystem || 'You are a flow execution assistant. Follow the flow steps precisely. Return structured JSON when asked.',
         project_facts: [], // Empty array instead of database query
         flow_id: flow_id, // Store flow ID for flow execution
         flow_execution_mode: true, // Flag to indicate flow execution mode
