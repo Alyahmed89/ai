@@ -31,7 +31,7 @@ database_id = "ce8f2a2c-6e4b-4398-b73e-ba8f204f609a"
 # binding = "RATE_LIMIT_KV"
 # id = ""  # TODO: Create namespace and add ID here
 
-# NO Durable Object migrations - version uploads will work but constructor stays old
-# [[migrations]]
-# tag = "v3"
-# new_sqlite_classes = ["ConversationOrchestratorDO_2026A"]
+# Durable Object migration for new class
+[[migrations]]
+tag = "v1"
+new_classes = ["ConversationOrchestratorDO_2026A"]
