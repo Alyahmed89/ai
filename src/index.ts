@@ -181,11 +181,11 @@ app.post('/start', async (c) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           flow_id: targetFlowId,
-          repository: repository || 'flow/execution', // Default repo for flow execution
-          branch: branch || 'main',
+          repository: repository, // Don't provide default - let flow definition determine it
+          branch: branch, // Don't provide default - let flow definition determine it
           initial_user_prompt: initial_user_prompt || `Execute flow: ${targetFlowId}`,
           max_iterations: max_iterations || 20,
-          deepseek_system: deepseek_system || 'You are a flow execution assistant. Follow the flow steps precisely.'
+          deepseek_system: deepseek_system // Don't provide default - let flow definition determine it
         })
       });
       
