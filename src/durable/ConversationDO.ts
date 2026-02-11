@@ -38,7 +38,7 @@ import {
   IDLE_TIMEOUT,
   COMPLETED_CLEANUP_DELAY
 } from '../constants';
-import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact } from '../types';
+import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
   private state: DurableObjectState;
@@ -328,6 +328,8 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
+      let currentStep: StepData | null = null;
+      
       // Ensure reasonable minimum iterations
       let effectiveMaxIterations = max_iterations && max_iterations >= 10 ? max_iterations : MAX_ITERATIONS;
       
@@ -338,7 +340,6 @@ export class ConversationOrchestratorDO_2026A {
       // Load flow context from database (if available)
       let flowContext = null;
       let flowDefinition = null;
-      let currentTask = null;
       let taskPrompt = initial_user_prompt || `Execute flow: ${flow_id}`;
       
       // Variables that might be overridden by flow definition
@@ -377,7 +378,7 @@ export class ConversationOrchestratorDO_2026A {
           }
           
           // Load next step for the flow (using flow_steps table instead of tasks)
-          const currentStep = await getNextStepForFlow(this.env.FLOW_RUNS_DB, flow_id, this.flowRunId!);
+          currentStep = await getNextStepForFlow(this.env.FLOW_RUNS_DB, flow_id, this.flowRunId!);
           console.log(`[DO:${this.state.id}] Next step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
           if (currentStep) {
@@ -476,16 +477,7 @@ export class ConversationOrchestratorDO_2026A {
         note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step'
       };
       
-      // Include task info if available
-      if (currentTask) {
-        responseData.task = {
-          task_id: currentTask.task_id,
-          title: currentTask.title,
-          description: currentTask.description,
-          task_type: currentTask.task_type
-        };
-        responseData.note = 'Task-based execution: Task injected into first prompt';
-      }
+      // Task info not available in flow execution mode - using currentStep instead
       
       return new Response(JSON.stringify(responseData), {
         headers: { 'Content-Type': 'application/json' }
@@ -980,6 +972,7 @@ export class ConversationOrchestratorDO_2026A {
     // Create OpenHands conversation with RESOLVED DeepSeek response
     const openhandsResult = await createOpenHandsConversation(
       this.env.OPENHANDS_API_URL,
+      this.env.OPENHANDS_API_KEY || '',
       validationResult.resolvedText,
       this.conversation.repository,
       this.conversation.branch
@@ -1017,6 +1010,7 @@ export class ConversationOrchestratorDO_2026A {
     // We need events to extract content even if we timeout
     const openhandsStatus = await getOpenHandsConversation(
       this.env.OPENHANDS_API_URL,
+      this.env.OPENHANDS_API_KEY || '',
       this.conversation.openhands_conversation_id
     );
     
@@ -1398,6 +1392,7 @@ export class ConversationOrchestratorDO_2026A {
     // Get OpenHands conversation to find the last message
     const openhandsStatus = await getOpenHandsConversation(
       this.env.OPENHANDS_API_URL,
+      this.env.OPENHANDS_API_KEY || '',
       this.conversation.openhands_conversation_id!
     );
     
@@ -1660,6 +1655,7 @@ ${messageContent}`;
     // Inject RESOLVED DeepSeek response back to OpenHands
     const injectResult = await injectMessageToOpenHands(
       this.env.OPENHANDS_API_URL,
+      this.env.OPENHANDS_API_KEY || '',
       this.conversation.openhands_conversation_id!,
       validationResult.resolvedText
     );

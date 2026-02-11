@@ -1,5 +1,5 @@
 // Database service for flow runs tracking
-import { FlowRunData, IterationData, ProjectFact } from '../types';
+import { FlowRunData, IterationData, ProjectFact, StepData } from '../types';
 
 /**
  * Save a flow run to the database

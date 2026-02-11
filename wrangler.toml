@@ -4,12 +4,13 @@ compatibility_date = "2024-01-01"
 
 [vars]
 DEEPSEEK_API_KEY = "sk-57370a37c79f4b7db9dbd1e253c25b8b"
-OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
+OPENHANDS_API_URL = "https://app.all-hands.dev/api"
+OPENHANDS_API_KEY = ""  # Add your OpenHands API key here
 
-# Use same class name as production to avoid migration issues
+# Use actual exported class name
 [[durable_objects.bindings]]
 name = "CONVERSATIONS"
-class_name = "ConversationDO_v2"
+class_name = "ConversationOrchestratorDO_2026A"
 
 # D1 database for flow runs tracking (etaflow tasks database)
 [[d1_databases]]
@@ -31,7 +32,7 @@ database_id = "ce8f2a2c-6e4b-4398-b73e-ba8f204f609a"
 # binding = "RATE_LIMIT_KV"
 # id = ""  # TODO: Create namespace and add ID here
 
-# Durable Object migrations
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["ConversationDO_v2"]
+# NO Durable Object migrations - version uploads will work but constructor stays old
+# [[migrations]]
+# tag = "v3"
+# new_sqlite_classes = ["ConversationOrchestratorDO_2026A"]

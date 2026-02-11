@@ -73,6 +73,7 @@ function setInCache(cacheKey: string, data: any): void {
  */
 export async function createOpenHandsConversation(
   apiUrl: string,
+  apiKey: string,
   initialMessage: string,
   repository: string,
   branch?: string
@@ -100,9 +101,17 @@ export async function createOpenHandsConversation(
           body.selected_branch = branch;
         }
 
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
         const response = await fetch(createUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(body),
           signal: controller.signal
         });
@@ -160,6 +169,7 @@ export async function createOpenHandsConversation(
  */
 export async function getOpenHandsConversation(
   apiUrl: string,
+  apiKey: string,
   conversationId: string
 ): Promise<OpenHandsStatusResult> {
   try {
@@ -191,9 +201,17 @@ export async function getOpenHandsConversation(
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
 
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
         eventsResponse = await fetch(eventsUrl, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           signal: controller.signal
         });
 
@@ -253,6 +271,7 @@ export async function getOpenHandsConversation(
  */
 export async function injectMessageToOpenHands(
   apiUrl: string,
+  apiKey: string,
   conversationId: string,
   message: string
 ): Promise<OpenHandsInjectResult> {
@@ -270,9 +289,17 @@ export async function injectMessageToOpenHands(
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
 
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
         const response = await fetch(injectUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             source: 'user',
             action: 'message',
