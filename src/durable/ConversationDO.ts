@@ -476,17 +476,16 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Next step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
           if (currentStep) {
-            // For subsequent steps, build step prompt with step details
-            // But keep the initial first_prompt for the first step
-            if (this.conversation.current_step_index > 0) {
-              taskPrompt = `Execute step: ${currentStep.title}`;
-              if (currentStep.description) {
-                taskPrompt += `\n${currentStep.description}`;
-              }
-              
-              // Add step metadata for context
-              taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
+            // For ALL steps (including first step), use the step instructions
+            // The step instructions contain the exact command to execute
+            taskPrompt = `Execute step: ${currentStep.title}`;
+            if (currentStep.description) {
+              taskPrompt += `\n${currentStep.description}`;
             }
+            
+            // Add step metadata for context
+            taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
+            
             if (currentStep.page_key) {
               taskPrompt += `\nPage: ${currentStep.page_key}`;
             }
