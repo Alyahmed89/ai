@@ -461,6 +461,12 @@ export class ConversationOrchestratorDO_2026A {
             if (!max_iterations && effectiveFlowMaxIterations > 0) {
               effectiveMaxIterations = Math.max(effectiveFlowMaxIterations, effectiveMaxIterations);
             }
+            
+            // Use flow's first_prompt (stored as description) for initial task prompt
+            if (flowDefinition.description) {
+              taskPrompt = flowDefinition.description;
+              console.log(`[DO:${this.state.id}] Using flow first_prompt: ${taskPrompt.substring(0, 100)}...`);
+            }
           } else {
             console.log(`[DO:${this.state.id}] No flow context found for ${flow_id}, using request parameters`);
           }
@@ -470,14 +476,17 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Next step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
           if (currentStep) {
-            // Build step prompt with step details
-            taskPrompt = `Execute step: ${currentStep.title}`;
-            if (currentStep.description) {
-              taskPrompt += `\n${currentStep.description}`;
+            // For subsequent steps, build step prompt with step details
+            // But keep the initial first_prompt for the first step
+            if (this.state.stepIndex > 0) {
+              taskPrompt = `Execute step: ${currentStep.title}`;
+              if (currentStep.description) {
+                taskPrompt += `\n${currentStep.description}`;
+              }
+              
+              // Add step metadata for context
+              taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
             }
-            
-            // Add step metadata for context
-            taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
             if (currentStep.page_key) {
               taskPrompt += `\nPage: ${currentStep.page_key}`;
             }
