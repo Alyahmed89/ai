@@ -84,3 +84,33 @@ WHERE id="etaflow";
 - Database changes made via direct Cloudflare API calls
 - Git repository contains code changes only
 - This document serves as reference for database state
+
+## **ABSOLUTE CONTROL SYSTEM ADDED (2026-02-12)**
+
+### **Problem Fixed:**
+- DeepSeek was not controlling OpenHands properly
+- OpenHands was asking "Should I...?" and reporting "Then: ..."
+- 20 iterations limit was arbitrary
+
+### **Solution Implemented:**
+1. **Updated `first_prompt`**: Changed from 20 iterations to 6 iterations (one per step)
+2. **Updated `deepseek_system`**: Added ABSOLUTE CONTROL RULES
+3. **Updated all `flow_steps`**: Each step now includes absolute control mechanism
+
+### **ABSOLUTE CONTROL RULES (NON-NEGOTIABLE):**
+1. OpenHands does NOTHING unless explicitly told
+2. OpenHands waits SILENTLY for commands
+3. OpenHands NEVER asks "Should I...?"
+4. OpenHands NEVER reports "Then: ..."
+5. One exact command per prompt
+6. If OpenHands deviates, next prompt gets STRICTER
+
+### **CONTROL MECHANISM:**
+- Every prompt MUST include: "WAIT FOR COMMAND"
+- Zero autonomy, zero initiative
+- OpenHands is a tool, not a partner
+- Every flow_step now has absolute control rules embedded
+
+### **Iteration Limit:**
+- Changed from arbitrary "20 iterations" to "6 iterations" (one per systematic step)
+- Each iteration corresponds to one step in the 6-step workflow
