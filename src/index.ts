@@ -19,7 +19,7 @@ const rateLimitMiddleware = async (c: any, next: any) => {
   // Rate limiting configuration
   const RATE_LIMIT_WINDOW = 60000; // 1 minute window
   const MAX_REQUESTS_PER_MINUTE = 60; // 60 requests per minute per IP
-  const MAX_CONCURRENT_CONVERSATIONS = 50; // Global limit
+  const MAX_CONCURRENT_CONVERSATIONS = 20; // Global limit (reduced from 50 for 24-hour operation)
   
   // Check if KV is available
   if (!c.env.RATE_LIMIT_KV) {
