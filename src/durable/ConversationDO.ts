@@ -980,6 +980,47 @@ export class ConversationOrchestratorDO_2026A {
   private async handleInitState(): Promise<void> {
     if (!this.conversation) return;
     
+    // Check if this is a flow execution and we should bypass DeepSeek
+    if (this.conversation.flow_execution_mode && this.conversation.current_step) {
+      // For flow execution, check if this is a decision step (Step 7)
+      const isDecisionStep = this.conversation.current_step.step_key === 'gap_analysis';
+      
+      if (!isDecisionStep) {
+        // For non-decision steps, send directly to OpenHands
+        console.log(`[DO:${this.state.id}] INIT state: Flow step ${this.conversation.current_step.step_key} - bypassing DeepSeek, sending directly to OpenHands`);
+        
+        // Build initial conversation messages
+        const initialMessages = buildInitialMessages(
+          this.conversation.initial_user_prompt,
+          {
+            repository: this.conversation.repository,
+            branch: this.conversation.branch,
+            iteration: this.conversation.iteration,
+            max_iterations: this.conversation.max_iterations
+          },
+          this.conversation.deepseek_system
+        );
+        
+        // Store initial messages in conversation
+        this.conversation.conversation_messages = initialMessages;
+        
+        // Add the step command as if DeepSeek sent it (but it's actually the exact command from DB)
+        this.conversation.conversation_messages!.push({
+          role: 'assistant',
+          content: this.conversation.initial_user_prompt // This contains the exact command
+        });
+        
+        this.conversation.last_deepseek_response = this.conversation.initial_user_prompt;
+        this.conversation.deepseek_response_pending = false;
+        
+        // Transition to WAITING_OPENHANDS state
+        this.conversation.state = 'WAITING_OPENHANDS';
+        console.log(`[DO:${this.state.id}] Transitioned to WAITING_OPENHANDS for flow step execution`);
+        return;
+      }
+    }
+    
+    // Normal flow: send to DeepSeek
     console.log(`[DO:${this.state.id}] INIT state: Sending to DeepSeek`);
     
     // Build initial conversation messages
@@ -1484,8 +1525,129 @@ export class ConversationOrchestratorDO_2026A {
       return;
     }
     
-    // For now, always send to DeepSeek to get next instructions
-    // We need to get the last OpenHands response to send to DeepSeek
+    // Check if this is flow execution mode
+    if (this.conversation.flow_execution_mode) {
+      console.log(`[DO:${this.state.id}] Flow execution mode: Getting next step for flow ${this.conversation.flow_id}`);
+      
+      // Get next step from database
+      const nextStep = await this.getNextStep();
+      
+      if (!nextStep) {
+        console.log(`[DO:${this.state.id}] No more steps in flow, completing flow execution`);
+        await this.stopConversation('flow_completed');
+        return;
+      }
+      
+      // Check if this is a decision step (Step 7 - gap_analysis)
+      const isDecisionStep = nextStep.step_key === 'gap_analysis';
+      
+      if (!isDecisionStep) {
+        // EXECUTION STEP: Send directly to OpenHands
+        console.log(`[DO:${this.state.id}] Execution step ${nextStep.step_key}: Sending command directly to OpenHands`);
+        
+        // Build step command
+        let stepCommand = `Execute step: ${nextStep.title}`;
+        if (nextStep.description) {
+          stepCommand += `\n${nextStep.description}`;
+        }
+        stepCommand += `\n\nStep Type: ${nextStep.step_type}`;
+        if (nextStep.page_key) {
+          stepCommand += `\nPage: ${nextStep.page_key}`;
+        }
+        if (nextStep.blocking === false) {
+          stepCommand += `\nNote: This step is non-blocking - flow can continue even if this step fails`;
+        }
+        
+        // Store step in conversation for reference
+        this.conversation.current_step = nextStep;
+        
+        // Start tracking step execution
+        try {
+          const { startTaskExecution } = await import('../services/database');
+          const executionResult = await startTaskExecution(
+            this.env.FLOW_RUNS_DB, 
+            this.flowRunId!,
+            nextStep.step_id
+          );
+          
+          if (executionResult.success) {
+            console.log(`[DO:${this.state.id}] Started tracking step execution: ${executionResult.execution_step_id}`);
+            this.conversation.current_execution_step_id = executionResult.execution_step_id;
+          }
+        } catch (trackingError: any) {
+          console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);
+          // Continue even if tracking fails
+        }
+        
+        // Increment step index for next iteration
+        await this.incrementStepIndex();
+        
+        // Send step command directly to OpenHands (bypassing DeepSeek)
+        // Add to conversation messages as if DeepSeek sent it
+        this.conversation.conversation_messages!.push({
+          role: 'assistant',
+          content: stepCommand
+        });
+        
+        this.conversation.last_deepseek_response = stepCommand;
+        this.conversation.deepseek_response_pending = false;
+        
+        // Transition to WAITING_OPENHANDS state
+        this.conversation.state = 'WAITING_OPENHANDS';
+        console.log(`[DO:${this.state.id}] Transitioned to WAITING_OPENHANDS for execution step ${nextStep.step_key}`);
+        return;
+      } else {
+        // DECISION STEP: Get OpenHands report and send to DeepSeek
+        console.log(`[DO:${this.state.id}] Decision step ${nextStep.step_key}: Getting OpenHands report to send to DeepSeek`);
+        
+        // Get OpenHands conversation to find the last message (report)
+        const openhandsStatus = await getOpenHandsConversation(
+          this.env.OPENHANDS_API_URL,
+          this.conversation.openhands_conversation_id!
+        );
+        
+        if (!openhandsStatus.success) {
+          console.log(`[DO:${this.state.id}] Failed to get OpenHands conversation: ${openhandsStatus.error}`);
+          // Retry in 10 seconds
+          await this.scheduleNextAlarm(10000);
+          return;
+        }
+        
+        const events = openhandsStatus.events || [];
+        // Find the agent's last message (report)
+        let reportContent = '';
+        const chronologicalEvents = [...events].reverse();
+        
+        for (let i = 0; i < chronologicalEvents.length; i++) {
+          const event = chronologicalEvents[i];
+          if (event.observation === 'agent_state_changed' && event.extras?.agent_state === 'awaiting_user_input') {
+            if (i > 0) {
+              const prevEvent = chronologicalEvents[i - 1];
+              reportContent = prevEvent.message || prevEvent.args?.content || prevEvent.content || '';
+              if (reportContent) break;
+            }
+            break;
+          }
+        }
+        
+        if (reportContent) {
+          console.log(`[DO:${this.state.id}] Found OpenHands report (${reportContent.length} chars), sending to DeepSeek for decision`);
+          
+          // Store step in conversation for reference
+          this.conversation.current_step = nextStep;
+          
+          // Send report to DeepSeek for decision
+          await this.sendToDeepSeek(reportContent);
+        } else {
+          console.log(`[DO:${this.state.id}] No OpenHands report found, sending generic message to DeepSeek`);
+          await this.sendToDeepSeek(`OpenHands completed previous step. Please analyze and decide next action for step: ${nextStep.title}`);
+        }
+        return;
+      }
+    }
+    
+    // NON-FLOW MODE: Original logic - always send to DeepSeek
+    console.log(`[DO:${this.state.id}] Non-flow mode: Getting OpenHands response to send to DeepSeek`);
     
     // Get OpenHands conversation to find the last message
     const openhandsStatus = await getOpenHandsConversation(
