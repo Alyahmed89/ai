@@ -485,8 +485,8 @@ export class ConversationOrchestratorDO_2026A {
               taskPrompt += `\n${currentStep.description}`;
             }
             
-            // Add step metadata for context
-            taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
+            // REMOVED: Step Type metadata - not needed for OpenHands
+            // taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
             
             if (currentStep.page_key) {
               taskPrompt += `\nPage: ${currentStep.page_key}`;
