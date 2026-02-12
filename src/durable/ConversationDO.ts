@@ -471,9 +471,11 @@ export class ConversationOrchestratorDO_2026A {
             console.log(`[DO:${this.state.id}] No flow context found for ${flow_id}, using request parameters`);
           }
           
-          // Load next step for the flow using caching system
-          currentStep = await this.getNextStep();
-          console.log(`[DO:${this.state.id}] Next step loaded: ${currentStep ? currentStep.title : 'none'}`);
+          // Load first step directly from database (bypass getNextStep which needs conversation)
+          const { getFlowSteps } = await import('../services/database');
+          const steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flow_id);
+          currentStep = steps && steps.length > 0 ? steps[0] : null;
+          console.log(`[DO:${this.state.id}] First step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
           if (currentStep) {
             // For ALL steps (including first step), use the step instructions
@@ -509,8 +511,8 @@ export class ConversationOrchestratorDO_2026A {
                 this.conversation!.current_execution_step_id = executionResult.execution_step_id;
                 // Store step data for reference
                 this.conversation!.current_step = currentStep;
-                // Increment step index for next iteration
-                await this.incrementStepIndex();
+                // Set current step index to 0 (first step)
+                this.conversation!.current_step_index = 0;
               }
             } catch (trackingError: any) {
               console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);
