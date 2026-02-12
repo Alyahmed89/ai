@@ -45,6 +45,9 @@ export class ConversationOrchestratorDO_2026A {
   private env: CloudflareBindings;
   private conversation: ConversationData | null = null;
   private flowRunId: string | null = null;
+  private flowStepsCache: StepData[] | null = null; // Cache for flow steps
+  private flowStepsCacheTime: number = 0; // When cache was last updated
+  private readonly FLOW_STEPS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
@@ -52,6 +55,8 @@ export class ConversationOrchestratorDO_2026A {
     
     // NO async work in constructor - load state lazily in fetch handlers
     this.conversation = null;
+    this.flowStepsCache = null;
+    this.flowStepsCacheTime = 0;
   }
   
   /**
@@ -185,6 +190,89 @@ export class ConversationOrchestratorDO_2026A {
   // ==========================================================================
   // HTTP HANDLERS
   // ==========================================================================
+  
+  /**
+   * Load and cache flow steps from D1 database
+   * @param flowId The flow ID to load steps for
+   * @returns Array of flow steps or null if not configured
+   */
+  private async loadFlowSteps(flowId: string): Promise<StepData[] | null> {
+    if (!this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not configured, cannot load flow steps`);
+      return null;
+    }
+    
+    // Check cache first
+    const now = Date.now();
+    if (this.flowStepsCache && 
+        (now - this.flowStepsCacheTime) < this.FLOW_STEPS_CACHE_TTL &&
+        this.conversation?.flow_id === flowId) {
+      console.log(`[DO:${this.state.id}] Using cached flow steps for ${flowId}`);
+      return this.flowStepsCache;
+    }
+    
+    try {
+      console.log(`[DO:${this.state.id}] Loading flow steps for ${flowId} from database`);
+      const { getFlowSteps } = await import('../services/database');
+      const steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flowId);
+      
+      // Update cache
+      this.flowStepsCache = steps;
+      this.flowStepsCacheTime = now;
+      console.log(`[DO:${this.state.id}] Cached ${steps.length} flow steps for ${flowId}`);
+      
+      return steps;
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error loading flow steps: ${error.message}`);
+      return null;
+    }
+  }
+  
+  /**
+   * Get next step for current flow using cache
+   * @returns Next step or null if no more steps
+   */
+  private async getNextStep(): Promise<StepData | null> {
+    if (!this.conversation?.flow_id) {
+      console.log(`[DO:${this.state.id}] No flow_id in conversation`);
+      return null;
+    }
+    
+    const flowId = this.conversation.flow_id;
+    const steps = await this.loadFlowSteps(flowId);
+    
+    if (!steps || steps.length === 0) {
+      console.log(`[DO:${this.state.id}] No steps found for flow ${flowId}`);
+      return null;
+    }
+    
+    // Get current step index from conversation state
+    const currentStepIndex = this.conversation.current_step_index || 0;
+    
+    if (currentStepIndex >= steps.length) {
+      console.log(`[DO:${this.state.id}] All ${steps.length} steps completed for flow ${flowId}`);
+      return null;
+    }
+    
+    const nextStep = steps[currentStepIndex];
+    console.log(`[DO:${this.state.id}] Next step for flow ${flowId}: ${nextStep.title} (index ${currentStepIndex + 1}/${steps.length})`);
+    
+    return nextStep;
+  }
+  
+  /**
+   * Increment step index and save to conversation state
+   */
+  private async incrementStepIndex(): Promise<void> {
+    if (!this.conversation) return;
+    
+    const currentIndex = this.conversation.current_step_index || 0;
+    this.conversation.current_step_index = currentIndex + 1;
+    this.conversation.updated_at = Date.now();
+    
+    await this.state.storage.put('conversation', this.conversation);
+    console.log(`[DO:${this.state.id}] Incremented step index to ${this.conversation.current_step_index}`);
+  }
   
   /**
    * Load project facts from D1 database
@@ -377,8 +465,8 @@ export class ConversationOrchestratorDO_2026A {
             console.log(`[DO:${this.state.id}] No flow context found for ${flow_id}, using request parameters`);
           }
           
-          // Load next step for the flow (using flow_steps table instead of tasks)
-          currentStep = await getNextStepForFlow(this.env.FLOW_RUNS_DB, flow_id, this.flowRunId!);
+          // Load next step for the flow using caching system
+          currentStep = await this.getNextStep();
           console.log(`[DO:${this.state.id}] Next step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
           if (currentStep) {
@@ -413,6 +501,8 @@ export class ConversationOrchestratorDO_2026A {
                 this.conversation!.current_execution_step_id = executionResult.execution_step_id;
                 // Store step data for reference
                 this.conversation!.current_step = currentStep;
+                // Increment step index for next iteration
+                await this.incrementStepIndex();
               }
             } catch (trackingError: any) {
               console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);
@@ -644,8 +734,8 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
-      const { getNextStepForFlow, startTaskExecution } = await import('../services/database');
-      const nextStep = await getNextStepForFlow(this.env.FLOW_RUNS_DB, flowId, this.flowRunId!);
+      const { startTaskExecution } = await import('../services/database');
+      const nextStep = await this.getNextStep();
       
       if (!nextStep) {
         // NO MORE STEPS - FLOW TERMINATION
@@ -699,6 +789,8 @@ export class ConversationOrchestratorDO_2026A {
         if (executionResult.success) {
           console.log(`[DO:${this.state.id}] Started tracking step execution: ${executionResult.execution_step_id}`);
           executionStepId = executionResult.execution_step_id;
+          // Increment step index for next iteration
+          await this.incrementStepIndex();
         }
       } catch (trackingError: any) {
         console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);

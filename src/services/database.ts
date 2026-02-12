@@ -272,6 +272,46 @@ export async function getNextTaskForFlow(db: D1Database, flow_id: string): Promi
 }
 
 /**
+ * Get all steps for a flow (for caching)
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Array of flow steps
+ */
+export async function getFlowSteps(db: D1Database, flow_id: string): Promise<StepData[]> {
+  try {
+    const query = `
+      SELECT 
+        fs.id as step_id,
+        fs.step_key,
+        fs.title,
+        fs.instructions as description,
+        fs.step_type,
+        fs.order_index,
+        fs.page_key,
+        fs.blocking,
+        fs.auto_fail_on_error,
+        fs.retryable
+      FROM flow_steps fs
+      WHERE fs.flow_id = ?
+      ORDER BY fs.order_index
+    `;
+    
+    const result = await db.prepare(query).bind(flow_id).all();
+    
+    if (!result.results || result.results.length === 0) {
+      console.log(`[DATABASE] No steps found for flow ${flow_id}`);
+      return [];
+    }
+    
+    console.log(`[DATABASE] Loaded ${result.results.length} steps for flow ${flow_id}`);
+    return result.results as StepData[];
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting flow steps for ${flow_id}: ${error.message}`);
+    return [];
+  }
+}
+
+/**
  * Get next step for a flow from flow_steps table
  * @param db D1Database instance
  * @param flow_id Flow ID
