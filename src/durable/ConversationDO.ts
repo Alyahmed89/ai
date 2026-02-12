@@ -478,7 +478,7 @@ export class ConversationOrchestratorDO_2026A {
           if (currentStep) {
             // For subsequent steps, build step prompt with step details
             // But keep the initial first_prompt for the first step
-            if (this.state.stepIndex > 0) {
+            if (this.conversation.current_step_index > 0) {
               taskPrompt = `Execute step: ${currentStep.title}`;
               if (currentStep.description) {
                 taskPrompt += `\n${currentStep.description}`;
