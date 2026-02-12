@@ -987,7 +987,12 @@ export class ConversationOrchestratorDO_2026A {
       
       if (!isDecisionStep) {
         // For non-decision steps, send directly to OpenHands
-        console.log(`[DO:${this.state.id}] INIT state: Flow step ${this.conversation.current_step.step_key} - bypassing DeepSeek, sending directly to OpenHands`);
+        console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
+        console.log(`[DO:${this.state.id}] Step: ${this.conversation.current_step_index || 0 + 1}`);
+        console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
+        console.log(`[DO:${this.state.id}] DeepSeek called: false (bypassing for execution step)`);
+        console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
+        console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
         
         // Build initial conversation messages
         const initialMessages = buildInitialMessages(
@@ -1017,6 +1022,12 @@ export class ConversationOrchestratorDO_2026A {
         this.conversation.state = 'WAITING_OPENHANDS';
         console.log(`[DO:${this.state.id}] Transitioned to WAITING_OPENHANDS for flow step execution`);
         return;
+      } else {
+        // This is a decision step (Step 7) - log that we're sending to DeepSeek
+        console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
+        console.log(`[DO:${this.state.id}] Step: 7 (gap_analysis)`);
+        console.log(`[DO:${this.state.id}] DeepSeek called: true (decision step)`);
+        console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
       }
     }
     
@@ -1543,7 +1554,12 @@ export class ConversationOrchestratorDO_2026A {
       
       if (!isDecisionStep) {
         // EXECUTION STEP: Send directly to OpenHands
-        console.log(`[DO:${this.state.id}] Execution step ${nextStep.step_key}: Sending command directly to OpenHands`);
+        console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
+        console.log(`[DO:${this.state.id}] Step: ${this.conversation.current_step_index || 0 + 1}`);
+        console.log(`[DO:${this.state.id}] Step Key: ${nextStep.step_key}`);
+        console.log(`[DO:${this.state.id}] DeepSeek called: false (bypassing for execution step)`);
+        console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${nextStep.description ? nextStep.description.substring(0, 500) : 'No description'}...`);
+        console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
         
         // Build step command
         let stepCommand = `Execute step: ${nextStep.title}`;
@@ -1598,7 +1614,11 @@ export class ConversationOrchestratorDO_2026A {
         return;
       } else {
         // DECISION STEP: Get OpenHands report and send to DeepSeek
-        console.log(`[DO:${this.state.id}] Decision step ${nextStep.step_key}: Getting OpenHands report to send to DeepSeek`);
+        console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
+        console.log(`[DO:${this.state.id}] Step: 7 (gap_analysis)`);
+        console.log(`[DO:${this.state.id}] DeepSeek called: true (decision step)`);
+        console.log(`[DO:${this.state.id}] Getting OpenHands report for decision analysis`);
+        console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
         
         // Get OpenHands conversation to find the last message (report)
         const openhandsStatus = await getOpenHandsConversation(
@@ -1632,6 +1652,7 @@ export class ConversationOrchestratorDO_2026A {
         
         if (reportContent) {
           console.log(`[DO:${this.state.id}] Found OpenHands report (${reportContent.length} chars), sending to DeepSeek for decision`);
+          console.log(`[DO:${this.state.id}] Report preview (first 300 chars): ${reportContent.substring(0, 300)}...`);
           
           // Store step in conversation for reference
           this.conversation.current_step = nextStep;
