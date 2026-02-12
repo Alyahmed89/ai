@@ -2,9 +2,9 @@
 export const MAX_ITERATIONS = 500;
 export const END_FLOW_TOKEN = '[END_FLOW]';
 export const END_FLOW_EARLY_TOKEN = '[END_FLOW_EARLY]';
-export const ALARM_DELAY_INIT = 5000; // 5 seconds for initial alarm (5x increase from 1s) - OK for initial delay
-export const ALARM_DELAY_WAITING = 15000; // 15 seconds between checks (1.5x increase from 10s) - Better balance
-export const ALARM_DELAY_ACTIVE = 7000; // 7 seconds when we expect immediate response (2.3x increase from 3s) - Faster response
+export const ALARM_DELAY_INIT = 2000; // 2 seconds for initial alarm (2x from 1s) - Fast start
+export const ALARM_DELAY_WAITING = 5000; // 5 seconds between checks (0.5x from 10s) - FASTER than original!
+export const ALARM_DELAY_ACTIVE = 3000; // 3 seconds when expecting response (same as original) - Maximum speed
 export const DEEPSEEK_TIMEOUT = 10000; // 10 seconds for DeepSeek API
 export const OPENHANDS_TIMEOUT = 180000; // 3 minutes for long operations
 export const NO_EVENT_TIMEOUT = 120000; // 2 minutes without new events (increased from 1 minute)
@@ -37,10 +37,10 @@ export const CHECKING_PROMPT = "Checking in: Are you still processing? Please pr
 
 // Adaptive polling optimization
 export const ADAPTIVE_POLLING_ENABLED = true;
-export const MIN_POLL_INTERVAL = 15000; // 15 seconds minimum (3x increase from 5s) - Faster polling
-export const MAX_POLL_INTERVAL = 180000; // 180 seconds = 3 minutes maximum (3x increase from 60s)
-export const POLL_INTERVAL_INCREMENT = 15000; // 15 seconds increase each time (3x increase from 5s)
-export const POLL_INTERVAL_RESET = 30000; // 30 seconds reset on activity (3x increase from 10s)
+export const MIN_POLL_INTERVAL = 5000; // 5 seconds minimum (same as original) - Maximum speed
+export const MAX_POLL_INTERVAL = 60000; // 60 seconds maximum (same as original)
+export const POLL_INTERVAL_INCREMENT = 5000; // 5 seconds increase each time (same as original)
+export const POLL_INTERVAL_RESET = 10000; // 10 seconds reset on activity (same as original)
 
 // Request optimization
 export const ENABLE_REQUEST_CACHING = true;
