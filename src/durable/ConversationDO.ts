@@ -988,7 +988,7 @@ export class ConversationOrchestratorDO_2026A {
       if (!isDecisionStep) {
         // For non-decision steps, send directly to OpenHands
         console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
-        console.log(`[DO:${this.state.id}] Step: ${this.conversation.current_step_index || 0 + 1}`);
+        console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
         console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
         console.log(`[DO:${this.state.id}] DeepSeek called: false (bypassing for execution step)`);
         console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
@@ -1555,7 +1555,7 @@ export class ConversationOrchestratorDO_2026A {
       if (!isDecisionStep) {
         // EXECUTION STEP: Send directly to OpenHands
         console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
-        console.log(`[DO:${this.state.id}] Step: ${this.conversation.current_step_index || 0 + 1}`);
+        console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
         console.log(`[DO:${this.state.id}] Step Key: ${nextStep.step_key}`);
         console.log(`[DO:${this.state.id}] DeepSeek called: false (bypassing for execution step)`);
         console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${nextStep.description ? nextStep.description.substring(0, 500) : 'No description'}...`);
