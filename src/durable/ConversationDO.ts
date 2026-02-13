@@ -153,6 +153,11 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleInitializeFlow(request);
     }
     
+    // Ultra-minimal flow execution (NEW)
+    if (path === '/start-flow' && request.method === 'POST') {
+      return this.handleStartFlow(request);
+    }
+    
     // Attach to existing OpenHands conversation
     if (path === '/attach' && request.method === 'POST') {
       return this.handleAttach(request);
@@ -596,6 +601,94 @@ export class ConversationOrchestratorDO_2026A {
     }
   }
 
+  // Ultra-minimal flow execution handler
+  private async handleStartFlow(request: Request): Promise<Response> {
+    try {
+      const body = await request.json() as { flow_id: string };
+      const { flow_id } = body;
+      
+      if (!flow_id) {
+        return new Response(JSON.stringify({ error: 'Need flow_id' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      console.log(`[DO:${this.state.id}] Starting ultra-minimal flow: ${flow_id}`);
+      
+      // Load steps from database
+      const steps = await this.loadFlowStepsFromDB(flow_id);
+      
+      if (!steps || steps.length === 0) {
+        return new Response(JSON.stringify({ error: `No steps found for flow: ${flow_id}` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Create ultra-minimal conversation
+      this.conversation = {
+        state: 'SENDING_STEP',
+        initial_user_prompt: `Execute flow: ${flow_id}`,
+        iteration: 0,
+        repository: '[FLOW]',
+        branch: '[FLOW]',
+        max_iterations: steps.length * 2, // Enough for all steps
+        status: 'active',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        deepseek_system: 'You are OpenHands. Execute exactly what is asked.',
+        project_facts: [],
+        flow_id: flow_id,
+        flow_steps: steps,
+        current_step_index: 0
+      };
+      
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Schedule alarm to send first step
+      await this.state.storage.setAlarm(Date.now() + 1000);
+      
+      console.log(`[DO:${this.state.id}] Ultra-minimal flow initialized with ${steps.length} steps`);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        flow_id: flow_id,
+        steps_count: steps.length,
+        message: 'Ultra-minimal flow execution started',
+        conversation_id: this.state.id.toString()
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Start flow error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  // Helper to load flow steps from database
+  private async loadFlowStepsFromDB(flowId: string): Promise<any[]> {
+    if (!this.env.PROJECT_FACTS_DB) {
+      console.log(`[DO:${this.state.id}] No database available`);
+      return [];
+    }
+    
+    try {
+      const result = await this.env.PROJECT_FACTS_DB.prepare(
+        'SELECT id, title, instructions, order_index FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
+      ).bind(flowId).all();
+      
+      return result.results || [];
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error loading steps: ${error.message}`);
+      return [];
+    }
+  }
+
   private async handleAttach(request: Request): Promise<Response> {
     try {
       const body = await request.json() as {
@@ -964,6 +1057,10 @@ export class ConversationOrchestratorDO_2026A {
         case 'DONE':
           console.log(`[DO:${this.state.id}] Conversation already DONE, no action needed`);
           return;
+          
+        case 'SENDING_STEP':
+          await this.handleSendingStepState();
+          break;
           
         default:
           await this.stopConversation(`invalid_state: ${this.conversation.state}`);
@@ -1503,18 +1600,31 @@ export class ConversationOrchestratorDO_2026A {
     
     console.log(`[DO:${this.state.id}] ITERATION_COMPLETE: Iteration ${this.conversation.iteration} completed`);
     
-    // Check if we should continue or stop
-    // For now, always continue to next iteration
-    // In the future, we could add logic to decide based on iteration summary
-    
-    // Move to AWAITING_NEXT_ITERATION state and process immediately
-    this.conversation.state = 'AWAITING_NEXT_ITERATION';
-    
-    // Save state
-    await this.state.storage.put('conversation', this.conversation);
-    
-    // Process immediately instead of scheduling alarm
-    await this.handleAwaitingNextIterationState();
+    // Check if this is ultra-minimal flow mode
+    if (this.conversation.flow_steps && this.conversation.current_step_index !== undefined) {
+      // Ultra-minimal flow mode: Go to next step
+      console.log(`[DO:${this.state.id}] Ultra-minimal flow mode: Moving to next step`);
+      
+      // Clear pending event content (not needed for ultra-minimal flow)
+      this.conversation.pending_event_content = undefined;
+      
+      this.conversation.state = 'SENDING_STEP';
+      
+      // Save state
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Process immediately
+      await this.handleSendingStepState();
+    } else {
+      // Regular mode: Go to DeepSeek for next instructions
+      this.conversation.state = 'AWAITING_NEXT_ITERATION';
+      
+      // Save state
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Process immediately
+      await this.handleAwaitingNextIterationState();
+    }
   }
   
   private async handleAwaitingNextIterationState(): Promise<void> {
@@ -2038,6 +2148,78 @@ ${messageContent}`;
   
   private checkForDone(response: string): DoneResponseData {
     return parseDoneResponse(response);
+  }
+
+  // Ultra-minimal flow execution: Send step directly to OpenHands
+  private async handleSendingStepState(): Promise<void> {
+    if (!this.conversation) return;
+    
+    console.log(`[DO:${this.state.id}] SENDING_STEP: Sending step to OpenHands`);
+    
+    // Check if we have flow steps
+    if (!this.conversation.flow_steps || this.conversation.flow_steps.length === 0) {
+      console.log(`[DO:${this.state.id}] No flow steps available`);
+      await this.stopConversation('no_flow_steps');
+      return;
+    }
+    
+    // Get current step index
+    const currentStepIndex = this.conversation.current_step_index || 0;
+    
+    if (currentStepIndex >= this.conversation.flow_steps.length) {
+      console.log(`[DO:${this.state.id}] All steps completed`);
+      await this.stopConversation('flow_completed');
+      return;
+    }
+    
+    // Get current step
+    const step = this.conversation.flow_steps[currentStepIndex];
+    console.log(`[DO:${this.state.id}] Sending step ${currentStepIndex + 1}/${this.conversation.flow_steps.length}: ${step.title}`);
+    
+    // Build the prompt with step instructions
+    const prompt = `Execute step: ${step.title}\n\n${step.instructions}`;
+    
+    // Create OpenHands conversation if needed
+    if (!this.conversation.openhands_conversation_id) {
+      console.log(`[DO:${this.state.id}] Creating new OpenHands conversation`);
+      const createResult = await createOpenHandsConversation(
+        this.env.OPENHANDS_API_URL,
+        prompt
+      );
+      
+      if (!createResult.success) {
+        console.error(`[DO:${this.state.id}] Failed to create OpenHands conversation: ${createResult.error}`);
+        await this.scheduleNextAlarm(10000); // Retry in 10 seconds
+        return;
+      }
+      
+      this.conversation.openhands_conversation_id = createResult.conversation_id;
+      console.log(`[DO:${this.state.id}] Created OpenHands conversation: ${this.conversation.openhands_conversation_id}`);
+    } else {
+      // Inject message to existing conversation
+      console.log(`[DO:${this.state.id}] Injecting message to existing OpenHands conversation: ${this.conversation.openhands_conversation_id}`);
+      const injectResult = await injectMessageToOpenHands(
+        this.env.OPENHANDS_API_URL,
+        this.conversation.openhands_conversation_id,
+        prompt
+      );
+      
+      if (!injectResult.success) {
+        console.error(`[DO:${this.state.id}] Failed to inject message: ${injectResult.error}`);
+        await this.scheduleNextAlarm(10000); // Retry in 10 seconds
+        return;
+      }
+    }
+    
+    // Update state to wait for OpenHands response
+    this.conversation.state = 'WAITING_OPENHANDS';
+    this.conversation.iteration = (this.conversation.iteration || 0) + 1;
+    this.conversation.current_step_index = currentStepIndex + 1; // Move to next step
+    
+    console.log(`[DO:${this.state.id}] Step sent, waiting for OpenHands response`);
+    
+    // Schedule next alarm to check for response
+    await this.scheduleNextAlarm(30000); // Check in 30 seconds
   }
 
   /**

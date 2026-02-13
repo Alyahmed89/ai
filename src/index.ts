@@ -345,6 +345,49 @@ app.post('/attach', async (c) => {
   }
 });
 
+// Ultra-minimal flow execution endpoint
+app.post('/start-flow', async (c) => {
+  try {
+    const body = await c.req.json() as { flow?: string; flow_id?: string };
+    const flowId = body.flow || body.flow_id;
+    
+    if (!flowId) {
+      return c.json({ error: 'Need flow or flow_id parameter' }, 400);
+    }
+    
+    console.log(`[HTTP:START-FLOW] Starting ultra-minimal flow: ${flowId}`);
+    
+    // Create Durable Object
+    const id = c.env.CONVERSATIONS.newUniqueId();
+    const doObj = c.env.CONVERSATIONS.get(id);
+    
+    // Initialize flow
+    const response = await doObj.fetch('http://placeholder/start-flow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flow_id: flowId })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[HTTP:START-FLOW] Durable Object init failed: ${response.status} - ${errorText}`);
+      return c.json({ error: `Failed to start flow: ${response.status}` }, 500);
+    }
+    
+    return c.json({
+      success: true,
+      flow_id: flowId,
+      conversation_id: id.toString(),
+      message: 'Ultra-minimal flow execution started',
+      check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}`
+    });
+    
+  } catch (error: any) {
+    console.error(`[HTTP:START-FLOW] Error: ${error.message}`);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 // Check conversation status
 app.get('/status/:id', async (c) => {
   try {
