@@ -616,6 +616,44 @@ export class ConversationOrchestratorDO_2026A {
       
       console.log(`[DO:${this.state.id}] Starting ultra-minimal flow: ${flow_id}`);
       
+      // Load flow definition from database
+      let flowDefinition = null;
+      let effectiveRepository = '[FLOW]';
+      let effectiveBranch = '[FLOW]';
+      let effectiveDeepseekSystem = 'You are OpenHands. Execute exactly what is asked.';
+      let effectiveMaxIterations = 20; // Default
+      
+      if (this.env.FLOW_RUNS_DB) {
+        try {
+          // Import database functions
+          const { getFlowDefinition } = await import('../services/database');
+          flowDefinition = await getFlowDefinition(this.env.FLOW_RUNS_DB, flow_id);
+          
+          if (flowDefinition) {
+            console.log(`[DO:${this.state.id}] Loaded flow definition for ${flow_id}: ${flowDefinition.name}`);
+            
+            // Use flow definition values
+            effectiveRepository = flowDefinition.repository || '[FLOW]';
+            effectiveBranch = flowDefinition.branch || '[FLOW]';
+            effectiveDeepseekSystem = flowDefinition.deepseek_system || 'You are OpenHands. Execute exactly what is asked.';
+            
+            // Use flow max iterations if available
+            if (flowDefinition.max_iterations && flowDefinition.max_iterations > 0) {
+              effectiveMaxIterations = flowDefinition.max_iterations;
+            }
+            
+            console.log(`[DO:${this.state.id}] Using repository: ${effectiveRepository}, branch: ${effectiveBranch}`);
+          } else {
+            console.log(`[DO:${this.state.id}] No flow definition found for ${flow_id}, using default values`);
+          }
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
+          // Continue with default values if database error occurs
+        }
+      } else {
+        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not available, using default values`);
+      }
+      
       // Load steps from database
       const steps = await this.loadFlowStepsFromDB(flow_id);
       
@@ -626,18 +664,23 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
-      // Create ultra-minimal conversation
+      // Adjust max iterations based on number of steps if not set by flow definition
+      if (effectiveMaxIterations === 20) {
+        effectiveMaxIterations = steps.length * 2; // Enough for all steps
+      }
+      
+      // Create ultra-minimal conversation with values from flow definition
       this.conversation = {
         state: 'SENDING_STEP',
         initial_user_prompt: `Execute flow: ${flow_id}`,
         iteration: 0,
-        repository: '[FLOW]',
-        branch: '[FLOW]',
-        max_iterations: steps.length * 2, // Enough for all steps
+        repository: effectiveRepository,
+        branch: effectiveBranch,
+        max_iterations: effectiveMaxIterations,
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        deepseek_system: 'You are OpenHands. Execute exactly what is asked.',
+        deepseek_system: effectiveDeepseekSystem,
         project_facts: [],
         flow_id: flow_id,
         flow_steps: steps,
@@ -649,13 +692,15 @@ export class ConversationOrchestratorDO_2026A {
       // Schedule alarm to send first step
       await this.state.storage.setAlarm(Date.now() + 1000);
       
-      console.log(`[DO:${this.state.id}] Ultra-minimal flow initialized with ${steps.length} steps`);
+      console.log(`[DO:${this.state.id}] Ultra-minimal flow initialized with ${steps.length} steps, repository: ${effectiveRepository}, branch: ${effectiveBranch}`);
       
       return new Response(JSON.stringify({
         success: true,
         flow_id: flow_id,
+        repository: effectiveRepository,
+        branch: effectiveBranch,
         steps_count: steps.length,
-        message: 'Ultra-minimal flow execution started',
+        message: 'Ultra-minimal flow execution started with repository and branch from database',
         conversation_id: this.state.id.toString()
       }), {
         headers: { 'Content-Type': 'application/json' }
