@@ -183,9 +183,14 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleTriggerNextIteration();
     }
     
+    // OpenHands response webhook (for flow execution)
+    if (path === '/openhands-response' && request.method === 'POST') {
+      return this.handleOpenHandsResponse(request);
+    }
+    
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration']
+      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration', 'POST /openhands-response']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
@@ -195,6 +200,100 @@ export class ConversationOrchestratorDO_2026A {
   // ==========================================================================
   // HTTP HANDLERS
   // ==========================================================================
+  
+  /**
+   * Handle OpenHands response webhook (for flow execution)
+   */
+  private async handleOpenHandsResponse(request: Request): Promise<Response> {
+    try {
+      await this.loadConversationState();
+      
+      if (!this.conversation) {
+        return new Response(JSON.stringify({ error: 'Conversation not initialized' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Check if this is a flow execution
+      if (!this.conversation.flow_steps || this.conversation.flow_steps.length === 0) {
+        return new Response(JSON.stringify({ error: 'Not a flow execution' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Check if we're waiting for OpenHands response
+      if (this.conversation.state !== 'WAITING_OPENHANDS') {
+        return new Response(JSON.stringify({ 
+          error: 'Not waiting for OpenHands response',
+          current_state: this.conversation.state,
+          note: 'Only accept responses when in WAITING_OPENHANDS state'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      const body = await request.json() as { response: string };
+      console.log(`[DO:${this.state.id}] Received OpenHands response for flow execution`);
+      
+      // For flow execution, we just need to move to next step
+      // Check if we have more steps
+      const currentStepIndex = this.conversation.current_step_index || 0;
+      
+      if (currentStepIndex >= this.conversation.flow_steps.length) {
+        // All steps completed
+        console.log(`[DO:${this.state.id}] All ${this.conversation.flow_steps.length} steps completed`);
+        this.conversation.state = 'DONE';
+        this.conversation.status = 'completed';
+        this.conversation.updated_at = Date.now();
+        
+        await this.state.storage.put('conversation', this.conversation);
+        
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'Flow execution completed',
+          steps_completed: this.conversation.flow_steps.length
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } else {
+        // More steps to execute
+        console.log(`[DO:${this.state.id}] Moving to next step (${currentStepIndex + 1}/${this.conversation.flow_steps.length})`);
+        
+        // Cancel any pending alarm
+        try {
+          await this.state.storage.deleteAlarm();
+        } catch (error) {
+          // Ignore if no alarm scheduled
+        }
+        
+        // Process next step immediately
+        this.conversation.state = 'SENDING_STEP';
+        this.conversation.updated_at = Date.now();
+        
+        await this.state.storage.put('conversation', this.conversation);
+        await this.handleSendingStepState();
+        
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'Moving to next step',
+          current_step: currentStepIndex,
+          total_steps: this.conversation.flow_steps.length
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] OpenHands response error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
   
   /**
    * Load and cache flow steps from D1 database
@@ -1501,9 +1600,12 @@ export class ConversationOrchestratorDO_2026A {
     // Check if iteration is complete (agent is awaiting input)
     // When agent is awaiting_user_input, we should respond immediately regardless of pending actions
     // The agent is DONE and waiting for our response
-    if (agentAwaitingInput && contentToSend) {
+    // For flow execution mode, we don't need contentToSend - just need to know agent is done
+    const isFlowExecution = this.conversation.flow_steps && this.conversation.flow_steps.length > 0;
+    
+    if (agentAwaitingInput && (contentToSend || isFlowExecution)) {
       iterationCompleted = true;
-      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} completed! Agent awaiting input with content (${contentToSend.length} chars)`);
+      console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} completed! Agent awaiting input${contentToSend ? ` with content (${contentToSend.length} chars)` : ' (flow execution mode)'}`);
       
       // Generate iteration summary
       const iterationDuration = Date.now() - (this.conversation.iteration_started_at || Date.now());
@@ -2282,7 +2384,9 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Step sent, waiting for OpenHands response`);
     
     // Schedule next alarm to check for response
-    await this.scheduleNextAlarm(30000); // Check in 30 seconds
+    // Use shorter interval for flow execution (5 seconds) vs regular (30 seconds)
+    const pollInterval = this.conversation.flow_steps ? 5000 : 30000;
+    await this.scheduleNextAlarm(pollInterval); // Check in 5 seconds for flow, 30 seconds for regular
   }
 
   /**

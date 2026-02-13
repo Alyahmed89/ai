@@ -479,6 +479,36 @@ app.post('/delete/:id', async (c) => {
   }
 });
 
+// OpenHands response webhook for flow execution
+app.post('/response/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json() as { response: string };
+    
+    // Get the Durable Object
+    const conversationDo = c.env.CONVERSATIONS.get(c.env.CONVERSATIONS.idFromString(id));
+    
+    // Forward to Durable Object
+    const response = await conversationDo.fetch('http://placeholder/openhands-response', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[HTTP:RESPONSE] Durable Object response failed: ${response.status} - ${errorText}`);
+      return c.json({ error: `Failed to process response: ${response.status}` }, 500);
+    }
+    
+    return c.json(await response.json());
+    
+  } catch (error: any) {
+    console.error(`[HTTP:RESPONSE] Endpoint error: ${error.message}`);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 // API namespace: Stop conversation
 app.post('/api/conversations/:conversation_id/stop', async (c) => {
   try {
