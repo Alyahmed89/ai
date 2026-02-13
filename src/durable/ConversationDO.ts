@@ -484,6 +484,10 @@ export class ConversationOrchestratorDO_2026A {
             if (currentStep.description) {
               taskPrompt += `\n${currentStep.description}`;
             }
+            // ADD STEP INSTRUCTIONS (contains the exact command to execute)
+            if (currentStep.instructions) {
+              taskPrompt += `\n\n${currentStep.instructions}`;
+            }
             
             // REMOVED: Step Type metadata - not needed for OpenHands
             // taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
@@ -1011,11 +1015,16 @@ export class ConversationOrchestratorDO_2026A {
         // Store initial messages in conversation
         this.conversation.conversation_messages = initialMessages;
         
-        // Add the step command as if DeepSeek sent it (but it's actually the exact command from DB)
-        this.conversation.conversation_messages!.push({
-          role: 'assistant',
-          content: this.conversation.initial_user_prompt // This contains the exact command
-        });
+        // For flow execution mode, we need to send the command as if DeepSeek said it
+        // Remove the user message (created by buildInitialMessages) and replace with assistant message
+        // OpenHands expects: Assistant (DeepSeek) gives command → User (OpenHands) executes
+        this.conversation.conversation_messages = [
+          ...initialMessages.filter(m => m.role !== 'user'), // Keep system message if any
+          {
+            role: 'assistant',
+            content: this.conversation.initial_user_prompt // This contains the exact command from DB
+          }
+        ];
         
         this.conversation.last_deepseek_response = this.conversation.initial_user_prompt;
         this.conversation.deepseek_response_pending = false;
