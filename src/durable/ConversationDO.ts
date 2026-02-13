@@ -586,26 +586,28 @@ export class ConversationOrchestratorDO_2026A {
             let taskData = null;
             if (currentStep.task_id) {
               try {
-                // Try to fetch task data from PROJECT_FACTS_DB (where tasks table might be)
-                taskData = await getTaskData(this.env.PROJECT_FACTS_DB, currentStep.task_id);
-                if (taskData) {
-                  console.log(`[DO:${this.state.id}] Loaded task data for task: ${currentStep.task_id}`);
-                } else {
-                  console.log(`[DO:${this.state.id}] Task not found in PROJECT_FACTS_DB: ${currentStep.task_id}`);
-                }
-              } catch (error) {
-                console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${error}`);
-              }
-              
-              // If not found in PROJECT_FACTS_DB, try FLOW_RUNS_DB
-              if (!taskData && this.env.FLOW_RUNS_DB) {
-                try {
+                // Try to fetch task data from FLOW_RUNS_DB (where tasks table exists)
+                if (this.env.FLOW_RUNS_DB) {
                   taskData = await getTaskData(this.env.FLOW_RUNS_DB, currentStep.task_id);
                   if (taskData) {
-                    console.log(`[DO:${this.state.id}] Loaded task data from FLOW_RUNS_DB fallback`);
+                    console.log(`[DO:${this.state.id}] Loaded task data for task: ${currentStep.task_id}`);
+                  } else {
+                    console.log(`[DO:${this.state.id}] Task not found in FLOW_RUNS_DB: ${currentStep.task_id}`);
+                  }
+                }
+              } catch (error) {
+                console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${error}`);
+              }
+              
+              // If not found in FLOW_RUNS_DB, try PROJECT_FACTS_DB (unlikely but for completeness)
+              if (!taskData) {
+                try {
+                  taskData = await getTaskData(this.env.PROJECT_FACTS_DB, currentStep.task_id);
+                  if (taskData) {
+                    console.log(`[DO:${this.state.id}] Loaded task data from PROJECT_FACTS_DB fallback`);
                   }
                 } catch (fallbackError) {
-                  console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${fallbackError}`);
+                  console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${fallbackError}`);
                 }
               }
             }
@@ -1089,26 +1091,28 @@ export class ConversationOrchestratorDO_2026A {
       let taskData = null;
       if (nextStep.task_id) {
         try {
-          // Try to fetch task data from PROJECT_FACTS_DB (where tasks table might be)
-          taskData = await getTaskData(this.env.PROJECT_FACTS_DB, nextStep.task_id);
-          if (taskData) {
-            console.log(`[DO:${this.state.id}] Loaded task data for task: ${nextStep.task_id}`);
-          } else {
-            console.log(`[DO:${this.state.id}] Task not found in PROJECT_FACTS_DB: ${nextStep.task_id}`);
-          }
-        } catch (error) {
-          console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${error}`);
-        }
-        
-        // If not found in PROJECT_FACTS_DB, try FLOW_RUNS_DB
-        if (!taskData && this.env.FLOW_RUNS_DB) {
-          try {
+          // Try to fetch task data from FLOW_RUNS_DB (where tasks table exists)
+          if (this.env.FLOW_RUNS_DB) {
             taskData = await getTaskData(this.env.FLOW_RUNS_DB, nextStep.task_id);
             if (taskData) {
-              console.log(`[DO:${this.state.id}] Loaded task data from FLOW_RUNS_DB fallback`);
+              console.log(`[DO:${this.state.id}] Loaded task data for task: ${nextStep.task_id}`);
+            } else {
+              console.log(`[DO:${this.state.id}] Task not found in FLOW_RUNS_DB: ${nextStep.task_id}`);
+            }
+          }
+        } catch (error) {
+          console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${error}`);
+        }
+        
+        // If not found in FLOW_RUNS_DB, try PROJECT_FACTS_DB (unlikely but for completeness)
+        if (!taskData) {
+          try {
+            taskData = await getTaskData(this.env.PROJECT_FACTS_DB, nextStep.task_id);
+            if (taskData) {
+              console.log(`[DO:${this.state.id}] Loaded task data from PROJECT_FACTS_DB fallback`);
             }
           } catch (fallbackError) {
-            console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${fallbackError}`);
+            console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${fallbackError}`);
           }
         }
       }
