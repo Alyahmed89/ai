@@ -354,6 +354,36 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
 }
 
 /**
+ * Get task data by task ID
+ * @param db D1Database instance
+ * @param task_id Task ID
+ * @returns Promise with task data or null if not found
+ */
+export async function getTaskData(
+  db: D1Database,
+  task_id: string
+): Promise<{ title: string; description: string | null } | null> {
+  try {
+    const query = `
+      SELECT title, description
+      FROM tasks
+      WHERE id = ?
+    `;
+    
+    const result = await db.prepare(query).bind(task_id).first();
+    
+    if (!result) {
+      return null;
+    }
+    
+    return result as unknown as { title: string; description: string | null };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting task data: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Get next step for a flow from flow_steps table
  * @param db D1Database instance
  * @param flow_id Flow ID

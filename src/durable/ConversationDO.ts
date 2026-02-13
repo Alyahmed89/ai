@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getProjectFacts } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getProjectFacts, getTaskData } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { 
@@ -576,20 +576,37 @@ export class ConversationOrchestratorDO_2026A {
           }
           
           // Load first step directly from database (bypass getNextStep which needs conversation)
-          const { getFlowSteps, getStepWithTaskData } = await import('../services/database');
+          const { getFlowSteps } = await import('../services/database');
           const steps = await getFlowSteps(this.env.PROJECT_FACTS_DB, flow_id);
           currentStep = steps && steps.length > 0 ? steps[0] : null;
           console.log(`[DO:${this.state.id}] First step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
           if (currentStep) {
-            // Fetch step with task data if task_id is present
-            let stepWithTaskData = null;
+            // Fetch task data if task_id is present
+            let taskData = null;
             if (currentStep.task_id) {
               try {
-                stepWithTaskData = await getStepWithTaskData(this.env.PROJECT_FACTS_DB, currentStep.step_id);
-                console.log(`[DO:${this.state.id}] Loaded task data for step: ${currentStep.task_id}`);
+                // Try to fetch task data from PROJECT_FACTS_DB (where tasks table might be)
+                taskData = await getTaskData(this.env.PROJECT_FACTS_DB, currentStep.task_id);
+                if (taskData) {
+                  console.log(`[DO:${this.state.id}] Loaded task data for task: ${currentStep.task_id}`);
+                } else {
+                  console.log(`[DO:${this.state.id}] Task not found in PROJECT_FACTS_DB: ${currentStep.task_id}`);
+                }
               } catch (error) {
-                console.error(`[DO:${this.state.id}] Error loading task data: ${error}`);
+                console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${error}`);
+              }
+              
+              // If not found in PROJECT_FACTS_DB, try FLOW_RUNS_DB
+              if (!taskData && this.env.FLOW_RUNS_DB) {
+                try {
+                  taskData = await getTaskData(this.env.FLOW_RUNS_DB, currentStep.task_id);
+                  if (taskData) {
+                    console.log(`[DO:${this.state.id}] Loaded task data from FLOW_RUNS_DB fallback`);
+                  }
+                } catch (fallbackError) {
+                  console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${fallbackError}`);
+                }
               }
             }
             
@@ -598,13 +615,13 @@ export class ConversationOrchestratorDO_2026A {
             taskPrompt = `Execute step: ${currentStep.title}`;
             
             // Inject task data if available
-            if (stepWithTaskData?.task_title || stepWithTaskData?.task_description) {
+            if (taskData) {
               taskPrompt += `\n\n=== TASK ===`;
-              if (stepWithTaskData.task_title) {
-                taskPrompt += `\nTitle: ${stepWithTaskData.task_title}`;
+              if (taskData.title) {
+                taskPrompt += `\nTitle: ${taskData.title}`;
               }
-              if (stepWithTaskData.task_description) {
-                taskPrompt += `\nDescription: ${stepWithTaskData.task_description}`;
+              if (taskData.description) {
+                taskPrompt += `\nDescription: ${taskData.description}`;
               }
               taskPrompt += `\n=== END TASK ===\n`;
             }
@@ -1025,7 +1042,7 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
-      const { startTaskExecution, getStepWithTaskData } = await import('../services/database');
+      const { startTaskExecution } = await import('../services/database');
       const nextStep = await this.getNextStep();
       
       if (!nextStep) {
@@ -1068,14 +1085,31 @@ export class ConversationOrchestratorDO_2026A {
       // NEXT STEP EXISTS - INJECT AND CONTINUE
       console.log(`[DO:${this.state.id}] Loaded next step for flow ${flowId}: ${nextStep.title} (${nextStep.step_type})`);
       
-      // Fetch step with task data if task_id is present
-      let stepWithTaskData = null;
+      // Fetch task data if task_id is present
+      let taskData = null;
       if (nextStep.task_id) {
         try {
-          stepWithTaskData = await getStepWithTaskData(this.env.PROJECT_FACTS_DB, nextStep.step_id);
-          console.log(`[DO:${this.state.id}] Loaded task data for step: ${nextStep.task_id}`);
+          // Try to fetch task data from PROJECT_FACTS_DB (where tasks table might be)
+          taskData = await getTaskData(this.env.PROJECT_FACTS_DB, nextStep.task_id);
+          if (taskData) {
+            console.log(`[DO:${this.state.id}] Loaded task data for task: ${nextStep.task_id}`);
+          } else {
+            console.log(`[DO:${this.state.id}] Task not found in PROJECT_FACTS_DB: ${nextStep.task_id}`);
+          }
         } catch (error) {
-          console.error(`[DO:${this.state.id}] Error loading task data: ${error}`);
+          console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${error}`);
+        }
+        
+        // If not found in PROJECT_FACTS_DB, try FLOW_RUNS_DB
+        if (!taskData && this.env.FLOW_RUNS_DB) {
+          try {
+            taskData = await getTaskData(this.env.FLOW_RUNS_DB, nextStep.task_id);
+            if (taskData) {
+              console.log(`[DO:${this.state.id}] Loaded task data from FLOW_RUNS_DB fallback`);
+            }
+          } catch (fallbackError) {
+            console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${fallbackError}`);
+          }
         }
       }
       
@@ -1103,13 +1137,13 @@ export class ConversationOrchestratorDO_2026A {
       let taskPrompt = `Execute step: ${nextStep.title}`;
       
       // Inject task data if available
-      if (stepWithTaskData?.task_title || stepWithTaskData?.task_description) {
+      if (taskData) {
         taskPrompt += `\n\n=== TASK ===`;
-        if (stepWithTaskData.task_title) {
-          taskPrompt += `\nTitle: ${stepWithTaskData.task_title}`;
+        if (taskData.title) {
+          taskPrompt += `\nTitle: ${taskData.title}`;
         }
-        if (stepWithTaskData.task_description) {
-          taskPrompt += `\nDescription: ${stepWithTaskData.task_description}`;
+        if (taskData.description) {
+          taskPrompt += `\nDescription: ${taskData.description}`;
         }
         taskPrompt += `\n=== END TASK ===\n`;
       }
