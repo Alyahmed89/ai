@@ -2484,7 +2484,49 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Sending step ${currentStepIndex + 1}/${this.conversation.flow_steps.length}: ${step.title}`);
     
     // Build the prompt with step instructions
-    const prompt = `Execute step: ${step.title}\n\n${step.instructions}`;
+    let prompt = `Execute step: ${step.title}`;
+    
+    // Check for task injection
+    if (step.requires_task && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
+      try {
+        const { getFirstPendingTask } = await import('../services/database');
+        const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
+        if (pendingTask) {
+          prompt += `\n\n=== TASK ===`;
+          prompt += `\nTitle: ${pendingTask.title}`;
+          if (pendingTask.description) {
+            prompt += `\nDescription: ${pendingTask.description}`;
+          }
+          prompt += `\n=== END TASK ===\n`;
+          console.log(`[DO:${this.state.id}] Injected task: ${pendingTask.title}`);
+        } else {
+          console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${this.conversation.flow_id}`);
+        }
+      } catch (error: any) {
+        console.error(`[DO:${this.state.id}] Error fetching pending task: ${error.message}`);
+      }
+    } else if (step.task_id && this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Step has static task_id: ${step.task_id}`);
+      try {
+        const { getTaskData } = await import('../services/database');
+        const taskData = await getTaskData(this.env.FLOW_RUNS_DB, step.task_id);
+        if (taskData) {
+          prompt += `\n\n=== TASK ===`;
+          prompt += `\nTitle: ${taskData.title}`;
+          if (taskData.description) {
+            prompt += `\nDescription: ${taskData.description}`;
+          }
+          prompt += `\n=== END TASK ===\n`;
+          console.log(`[DO:${this.state.id}] Injected task: ${taskData.title}`);
+        }
+      } catch (error: any) {
+        console.error(`[DO:${this.state.id}] Error fetching task data: ${error.message}`);
+      }
+    }
+    
+    // Add step instructions
+    prompt += `\n\n${step.instructions}`;
     
     // Create OpenHands conversation if needed
     if (!this.conversation.openhands_conversation_id) {
