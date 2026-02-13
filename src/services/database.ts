@@ -365,13 +365,25 @@ export async function getTaskData(
   task_id: string
 ): Promise<{ title: string; description: string | null } | null> {
   try {
-    const query = `
+    // Try flow_tasks table first (hono-db flow_tasks)
+    let query = `
       SELECT title, description
-      FROM tasks
+      FROM flow_tasks
       WHERE id = ?
     `;
     
-    const result = await db.prepare(query).bind(task_id).first();
+    let result = await db.prepare(query).bind(task_id).first();
+    
+    if (!result) {
+      // Fall back to tasks table if not found in flow_tasks
+      query = `
+        SELECT title, description
+        FROM tasks
+        WHERE id = ?
+      `;
+      
+      result = await db.prepare(query).bind(task_id).first();
+    }
     
     if (!result) {
       return null;
@@ -395,15 +407,29 @@ export async function getFirstPendingTask(
   flow_id: string
 ): Promise<{ id: string; title: string; description: string | null } | null> {
   try {
-    const query = `
+    // Try flow_tasks table first (hono-db flow_tasks)
+    let query = `
       SELECT id, title, description
-      FROM tasks
+      FROM flow_tasks
       WHERE flow_id = ? AND status != 'DONE'
       ORDER BY order_index ASC
       LIMIT 1
     `;
     
-    const result = await db.prepare(query).bind(flow_id).first();
+    let result = await db.prepare(query).bind(flow_id).first();
+    
+    if (!result) {
+      // Fall back to tasks table if flow_tasks is empty
+      query = `
+        SELECT id, title, description
+        FROM tasks
+        WHERE flow_id = ? AND status != 'DONE'
+        ORDER BY order_index ASC
+        LIMIT 1
+      `;
+      
+      result = await db.prepare(query).bind(flow_id).first();
+    }
     
     if (!result) {
       return null;
