@@ -622,6 +622,7 @@ export class ConversationOrchestratorDO_2026A {
       let effectiveBranch = '[FLOW]';
       let effectiveDeepseekSystem = 'You are OpenHands. Execute exactly what is asked.';
       let effectiveMaxIterations = 20; // Default
+      let databaseAvailable = false;
       
       if (this.env.FLOW_RUNS_DB) {
         try {
@@ -631,6 +632,7 @@ export class ConversationOrchestratorDO_2026A {
           
           if (flowDefinition) {
             console.log(`[DO:${this.state.id}] Loaded flow definition for ${flow_id}: ${flowDefinition.name}`);
+            databaseAvailable = true;
             
             // Use flow definition values
             effectiveRepository = flowDefinition.repository || '[FLOW]';
@@ -642,16 +644,23 @@ export class ConversationOrchestratorDO_2026A {
               effectiveMaxIterations = flowDefinition.max_iterations;
             }
             
-            console.log(`[DO:${this.state.id}] Using repository: ${effectiveRepository}, branch: ${effectiveBranch}`);
+            console.log(`[DO:${this.state.id}] Using repository from database: ${effectiveRepository}, branch: ${effectiveBranch}`);
+            
+            // Warn if repository is placeholder
+            if (effectiveRepository === '[FLOW]') {
+              console.warn(`[DO:${this.state.id}] WARNING: Repository is placeholder '[FLOW]'. OpenHands conversation will be created but may not work correctly.`);
+            }
           } else {
-            console.log(`[DO:${this.state.id}] No flow definition found for ${flow_id}, using default values`);
+            console.warn(`[DO:${this.state.id}] No flow definition found for ${flow_id} in database. Using placeholder values.`);
+            console.warn(`[DO:${this.state.id}] To fix: Ensure 'flows' or 'flow_definitions' table exists with repository and branch columns.`);
           }
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
-          // Continue with default values if database error occurs
+          console.error(`[DO:${this.state.id}] Database error details: ${error.message}`);
+          console.error(`[DO:${this.state.id}] Using placeholder values. Check if tables exist: 'flows' (with repo, branch columns) or 'flow_definitions'.`);
         }
       } else {
-        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not available, using default values`);
+        console.warn(`[DO:${this.state.id}] FLOW_RUNS_DB not configured. Using placeholder values for repository and branch.`);
       }
       
       // Load steps from database
@@ -700,7 +709,14 @@ export class ConversationOrchestratorDO_2026A {
         repository: effectiveRepository,
         branch: effectiveBranch,
         steps_count: steps.length,
-        message: 'Ultra-minimal flow execution started with repository and branch from database',
+        database_available: databaseAvailable,
+        repository_source: databaseAvailable && flowDefinition ? 'database' : 'placeholder',
+        message: databaseAvailable && flowDefinition 
+          ? 'Ultra-minimal flow execution started with repository and branch from database' 
+          : 'Ultra-minimal flow execution started with placeholder repository and branch (database not available or flow definition not found)',
+        warning: effectiveRepository === '[FLOW]' 
+          ? 'Repository is placeholder "[FLOW]". OpenHands conversation may not work correctly without a valid repository.' 
+          : undefined,
         conversation_id: this.state.id.toString()
       }), {
         headers: { 'Content-Type': 'application/json' }
@@ -2229,7 +2245,9 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Creating new OpenHands conversation`);
       const createResult = await createOpenHandsConversation(
         this.env.OPENHANDS_API_URL,
-        prompt
+        prompt,
+        this.conversation.repository,
+        this.conversation.branch
       );
       
       if (!createResult.success) {
@@ -2238,7 +2256,7 @@ ${messageContent}`;
         return;
       }
       
-      this.conversation.openhands_conversation_id = createResult.conversation_id;
+      this.conversation.openhands_conversation_id = createResult.conversationId;
       console.log(`[DO:${this.state.id}] Created OpenHands conversation: ${this.conversation.openhands_conversation_id}`);
     } else {
       // Inject message to existing conversation
