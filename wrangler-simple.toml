@@ -1,0 +1,16 @@
+name = "deepseek-agent-flow-simple"
+main = "src/index-simple.ts"
+compatibility_date = "2025-02-13"
+
+[[durable_objects.bindings]]
+name = "CONVERSATIONS"
+class_name = "FlowDO"
+
+[[durable_objects.classes]]
+name = "FlowDO"
+script_name = "deepseek-agent-flow-simple"
+
+[[d1_databases]]
+binding = "PROJECT_FACTS_DB"
+database_name = "hono-db"
+database_id = "35f4cc1c-5656-4c02-bda8-26b62b63e6ca"
