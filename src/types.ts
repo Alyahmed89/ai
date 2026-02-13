@@ -78,6 +78,7 @@ export interface ConversationData {
   current_flow_step?: number; // Current step in flow execution
   flow_steps_completed?: number[]; // Array of completed step numbers
   current_step?: StepData; // Current step data for flow execution
+  last_step_response?: string; // Response from the last completed step (for conditional branching)
 
   // Task-based execution (deterministic task system)
   current_task_id?: string; // Current task ID being executed

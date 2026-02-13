@@ -238,6 +238,10 @@ export class ConversationOrchestratorDO_2026A {
       const body = await request.json() as { response: string };
       console.log(`[DO:${this.state.id}] Received OpenHands response for flow execution`);
       
+      // Store the response for conditional branching
+      this.conversation.last_step_response = body.response;
+      console.log(`[DO:${this.state.id}] Stored response (${body.response.length} chars) for conditional branching`);
+      
       // For flow execution, we just need to move to next step
       // Check if we have more steps
       const currentStepIndex = this.conversation.current_step_index || 0;
@@ -343,6 +347,36 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     const flowId = this.conversation.flow_id;
+    
+    // Check if we have a response from the previous step for conditional branching
+    if (this.conversation.last_step_response && this.conversation.current_step) {
+      console.log(`[DO:${this.state.id}] Checking conditional branching for flow ${flowId}`);
+      console.log(`[DO:${this.state.id}] Current step: ${this.conversation.current_step.step_id}, Response length: ${this.conversation.last_step_response.length}`);
+      
+      // Use the new conditional branching logic
+      const { getNextStepBasedOnConditions } = await import('../services/database');
+      const nextStep = await getNextStepBasedOnConditions(
+        this.env.PROJECT_FACTS_DB,
+        flowId,
+        this.conversation.current_step.step_id,
+        this.conversation.last_step_response
+      );
+      
+      if (nextStep) {
+        console.log(`[DO:${this.state.id}] Conditional branching selected step: ${nextStep.title} (order_index: ${nextStep.order_index})`);
+        
+        // Update current_step_index to match the new step's order_index
+        // Note: order_index is 1-based in database, but we store as 0-based index
+        this.conversation.current_step_index = nextStep.order_index - 1;
+        console.log(`[DO:${this.state.id}] Updated current_step_index to ${this.conversation.current_step_index} based on conditional branching`);
+        
+        return nextStep;
+      } else {
+        console.log(`[DO:${this.state.id}] No conditional branching match, using sequential order`);
+      }
+    }
+    
+    // Fall back to sequential steps if no conditional branching
     const steps = await this.loadFlowSteps(flowId);
     
     if (!steps || steps.length === 0) {

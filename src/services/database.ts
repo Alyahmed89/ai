@@ -495,6 +495,197 @@ export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_r
 }
 
 /**
+ * Get next step for flow based on previous step response and conditions
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @param current_step_id Current step ID
+ * @param response_text Response text from current step
+ * @returns Next step data or null if no matching condition
+ */
+export async function getNextStepBasedOnConditions(
+  db: D1Database,
+  flow_id: string,
+  current_step_id: string,
+  response_text: string
+): Promise<StepData | null> {
+  try {
+    console.log(`[DATABASE] Getting next step based on conditions for flow ${flow_id}, step ${current_step_id}, response: ${response_text.substring(0, 100)}...`);
+    
+    // First, check if current step has conditions
+    const conditionsQuery = `
+      SELECT fsc.condition_type, fsc.condition_value, fsc.condition_operator, fsc.next_step
+      FROM flow_step_conditions fsc
+      WHERE fsc.flow_step_id = ?
+      ORDER BY fsc.created_at
+    `;
+    
+    const conditionsResult = await db.prepare(conditionsQuery).bind(current_step_id).all();
+    
+    if (conditionsResult.results && conditionsResult.results.length > 0) {
+      console.log(`[DATABASE] Found ${conditionsResult.results.length} conditions for step ${current_step_id}`);
+      
+      // Check each condition against the response
+      for (const condition of conditionsResult.results) {
+        const { condition_type, condition_value, condition_operator, next_step } = condition;
+        let conditionMet = false;
+        
+        switch (condition_type) {
+          case 'response_contains':
+            conditionMet = response_text.toLowerCase().includes(condition_value.toLowerCase());
+            break;
+          case 'response_matches':
+            // Simple exact match (case-insensitive)
+            conditionMet = response_text.toLowerCase() === condition_value.toLowerCase();
+            break;
+          case 'response_starts_with':
+            conditionMet = response_text.toLowerCase().startsWith(condition_value.toLowerCase());
+            break;
+          case 'response_ends_with':
+            conditionMet = response_text.toLowerCase().endsWith(condition_value.toLowerCase());
+            break;
+          default:
+            console.warn(`[DATABASE] Unknown condition type: ${condition_type}`);
+            continue;
+        }
+        
+        if (conditionMet) {
+          console.log(`[DATABASE] Condition met: ${condition_type} "${condition_value}" -> next_step: ${next_step}`);
+          
+          // Get the step details for the next step
+          const nextStepQuery = `
+            SELECT 
+              fs.id as step_id,
+              fs.step_key,
+              fs.title,
+              fs.instructions as description,
+              fs.step_type,
+              fs.order_index,
+              fs.page_key,
+              fs.blocking,
+              fs.auto_fail_on_error,
+              fs.retryable
+            FROM flow_steps fs
+            WHERE fs.flow_id = ? AND fs.order_index = ?
+            LIMIT 1
+          `;
+          
+          const nextStepResult = await db.prepare(nextStepQuery).bind(flow_id, next_step).first();
+          
+          if (nextStepResult) {
+            console.log(`[DATABASE] Found next step: ${nextStepResult.title} (order_index: ${next_step})`);
+            return nextStepResult as unknown as StepData;
+          } else {
+            console.warn(`[DATABASE] No step found at order_index ${next_step} for flow ${flow_id}`);
+          }
+        }
+      }
+      
+      console.log(`[DATABASE] No conditions met for step ${current_step_id}`);
+    } else {
+      console.log(`[DATABASE] No conditions found for step ${current_step_id}`);
+    }
+    
+    // If no conditions met or no conditions exist, check for default_next_step
+    const defaultStepQuery = `
+      SELECT 
+        fs.id as step_id,
+        fs.step_key,
+        fs.title,
+        fs.instructions as description,
+        fs.step_type,
+        fs.order_index,
+        fs.page_key,
+        fs.blocking,
+        fs.auto_fail_on_error,
+        fs.retryable,
+        fs.default_next_step
+      FROM flow_steps fs
+      WHERE fs.id = ?
+      LIMIT 1
+    `;
+    
+    const currentStepResult = await db.prepare(defaultStepQuery).bind(current_step_id).first();
+    
+    if (currentStepResult && currentStepResult.default_next_step) {
+      console.log(`[DATABASE] Using default_next_step: ${currentStepResult.default_next_step} for step ${current_step_id}`);
+      
+      // Get the step at default_next_step order_index
+      const defaultStepQuery = `
+        SELECT 
+          fs.id as step_id,
+          fs.step_key,
+          fs.title,
+          fs.instructions as description,
+          fs.step_type,
+          fs.order_index,
+          fs.page_key,
+          fs.blocking,
+          fs.auto_fail_on_error,
+          fs.retryable
+        FROM flow_steps fs
+        WHERE fs.flow_id = ? AND fs.order_index = ?
+        LIMIT 1
+      `;
+      
+      const defaultStepResult = await db.prepare(defaultStepQuery).bind(flow_id, currentStepResult.default_next_step).first();
+      
+      if (defaultStepResult) {
+        console.log(`[DATABASE] Found default next step: ${defaultStepResult.title} (order_index: ${currentStepResult.default_next_step})`);
+        return defaultStepResult as unknown as StepData;
+      }
+    }
+    
+    // If no default_next_step, get next sequential step
+    console.log(`[DATABASE] No conditions or default_next_step, getting next sequential step`);
+    
+    // Get current step's order_index
+    const currentStepOrderQuery = `
+      SELECT order_index FROM flow_steps WHERE id = ? LIMIT 1
+    `;
+    
+    const currentStepOrderResult = await db.prepare(currentStepOrderQuery).bind(current_step_id).first();
+    
+    if (currentStepOrderResult) {
+      const currentOrderIndex = currentStepOrderResult.order_index;
+      const nextOrderIndex = currentOrderIndex + 1;
+      
+      const nextSequentialQuery = `
+        SELECT 
+          fs.id as step_id,
+          fs.step_key,
+          fs.title,
+          fs.instructions as description,
+          fs.step_type,
+          fs.order_index,
+          fs.page_key,
+          fs.blocking,
+          fs.auto_fail_on_error,
+          fs.retryable
+        FROM flow_steps fs
+        WHERE fs.flow_id = ? AND fs.order_index = ?
+        LIMIT 1
+      `;
+      
+      const nextSequentialResult = await db.prepare(nextSequentialQuery).bind(flow_id, nextOrderIndex).first();
+      
+      if (nextSequentialResult) {
+        console.log(`[DATABASE] Found next sequential step: ${nextSequentialResult.title} (order_index: ${nextOrderIndex})`);
+        return nextSequentialResult as unknown as StepData;
+      } else {
+        console.log(`[DATABASE] No sequential step found at order_index ${nextOrderIndex}`);
+      }
+    }
+    
+    console.log(`[DATABASE] No next step found based on conditions, default, or sequential order`);
+    return null;
+    
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting next step based on conditions: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Update task status
  * @param db D1Database instance
  * @param task_id Task ID
