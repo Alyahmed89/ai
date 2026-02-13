@@ -260,4 +260,5 @@ export interface StepData {
   blocking: boolean;
   auto_fail_on_error: boolean;
   retryable: boolean;
+  task_id?: string;
 }

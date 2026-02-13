@@ -290,7 +290,8 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.page_key,
         fs.blocking,
         fs.auto_fail_on_error,
-        fs.retryable
+        fs.retryable,
+        fs.task_id
       FROM flow_steps fs
       WHERE fs.flow_id = ?
       ORDER BY fs.order_index
@@ -308,6 +309,47 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
   } catch (error: any) {
     console.error(`[DATABASE] Error getting flow steps for ${flow_id}: ${error.message}`);
     return [];
+  }
+}
+
+/**
+ * Get step with task data if task_id is present
+ * @param db D1Database instance
+ * @param step_id Step ID
+ * @returns Step data with optional task data
+ */
+export async function getStepWithTaskData(db: D1Database, step_id: string): Promise<StepData & { task_title?: string; task_description?: string }> {
+  try {
+    const query = `
+      SELECT 
+        fs.id as step_id,
+        fs.step_key,
+        fs.title,
+        fs.instructions as description,
+        fs.step_type,
+        fs.order_index,
+        fs.page_key,
+        fs.blocking,
+        fs.auto_fail_on_error,
+        fs.retryable,
+        fs.task_id,
+        t.title as task_title,
+        t.description as task_description
+      FROM flow_steps fs
+      LEFT JOIN tasks t ON fs.task_id = t.id
+      WHERE fs.id = ?
+    `;
+    
+    const result = await db.prepare(query).bind(step_id).first();
+    
+    if (!result) {
+      throw new Error(`Step not found: ${step_id}`);
+    }
+    
+    return result as unknown as StepData & { task_title?: string; task_description?: string };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting step with task data: ${error.message}`);
+    throw error;
   }
 }
 

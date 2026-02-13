@@ -576,15 +576,39 @@ export class ConversationOrchestratorDO_2026A {
           }
           
           // Load first step directly from database (bypass getNextStep which needs conversation)
-          const { getFlowSteps } = await import('../services/database');
+          const { getFlowSteps, getStepWithTaskData } = await import('../services/database');
           const steps = await getFlowSteps(this.env.PROJECT_FACTS_DB, flow_id);
           currentStep = steps && steps.length > 0 ? steps[0] : null;
           console.log(`[DO:${this.state.id}] First step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
           if (currentStep) {
+            // Fetch step with task data if task_id is present
+            let stepWithTaskData = null;
+            if (currentStep.task_id) {
+              try {
+                stepWithTaskData = await getStepWithTaskData(this.env.PROJECT_FACTS_DB, currentStep.step_id);
+                console.log(`[DO:${this.state.id}] Loaded task data for step: ${currentStep.task_id}`);
+              } catch (error) {
+                console.error(`[DO:${this.state.id}] Error loading task data: ${error}`);
+              }
+            }
+            
             // For ALL steps (including first step), use the step instructions
             // The step instructions contain the exact command to execute
             taskPrompt = `Execute step: ${currentStep.title}`;
+            
+            // Inject task data if available
+            if (stepWithTaskData?.task_title || stepWithTaskData?.task_description) {
+              taskPrompt += `\n\n=== TASK ===`;
+              if (stepWithTaskData.task_title) {
+                taskPrompt += `\nTitle: ${stepWithTaskData.task_title}`;
+              }
+              if (stepWithTaskData.task_description) {
+                taskPrompt += `\nDescription: ${stepWithTaskData.task_description}`;
+              }
+              taskPrompt += `\n=== END TASK ===\n`;
+            }
+            
             if (currentStep.description) {
               taskPrompt += `\n${currentStep.description}`;
             }
@@ -1001,7 +1025,7 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
-      const { startTaskExecution } = await import('../services/database');
+      const { startTaskExecution, getStepWithTaskData } = await import('../services/database');
       const nextStep = await this.getNextStep();
       
       if (!nextStep) {
@@ -1044,6 +1068,17 @@ export class ConversationOrchestratorDO_2026A {
       // NEXT STEP EXISTS - INJECT AND CONTINUE
       console.log(`[DO:${this.state.id}] Loaded next step for flow ${flowId}: ${nextStep.title} (${nextStep.step_type})`);
       
+      // Fetch step with task data if task_id is present
+      let stepWithTaskData = null;
+      if (nextStep.task_id) {
+        try {
+          stepWithTaskData = await getStepWithTaskData(this.env.PROJECT_FACTS_DB, nextStep.step_id);
+          console.log(`[DO:${this.state.id}] Loaded task data for step: ${nextStep.task_id}`);
+        } catch (error) {
+          console.error(`[DO:${this.state.id}] Error loading task data: ${error}`);
+        }
+      }
+      
       // Start tracking step execution (minimal observability)
       let executionStepId = null;
       try {
@@ -1066,6 +1101,19 @@ export class ConversationOrchestratorDO_2026A {
       
       // Build step prompt with step details
       let taskPrompt = `Execute step: ${nextStep.title}`;
+      
+      // Inject task data if available
+      if (stepWithTaskData?.task_title || stepWithTaskData?.task_description) {
+        taskPrompt += `\n\n=== TASK ===`;
+        if (stepWithTaskData.task_title) {
+          taskPrompt += `\nTitle: ${stepWithTaskData.task_title}`;
+        }
+        if (stepWithTaskData.task_description) {
+          taskPrompt += `\nDescription: ${stepWithTaskData.task_description}`;
+        }
+        taskPrompt += `\n=== END TASK ===\n`;
+      }
+      
       if (nextStep.description) {
         taskPrompt += `\n${nextStep.description}`;
       }
