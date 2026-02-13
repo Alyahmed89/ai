@@ -291,7 +291,8 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.blocking,
         fs.auto_fail_on_error,
         fs.retryable,
-        fs.task_id
+        fs.task_id,
+        fs.requires_task
       FROM flow_steps fs
       WHERE fs.flow_id = ?
       ORDER BY fs.order_index
@@ -379,6 +380,38 @@ export async function getTaskData(
     return result as unknown as { title: string; description: string | null };
   } catch (error: any) {
     console.error(`[DATABASE] Error getting task data: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Get first pending task for a flow
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with task data or null if no pending tasks
+ */
+export async function getFirstPendingTask(
+  db: D1Database,
+  flow_id: string
+): Promise<{ id: string; title: string; description: string | null } | null> {
+  try {
+    const query = `
+      SELECT id, title, description
+      FROM tasks
+      WHERE flow_id = ? AND status != 'DONE'
+      ORDER BY order_index ASC
+      LIMIT 1
+    `;
+    
+    const result = await db.prepare(query).bind(flow_id).first();
+    
+    if (!result) {
+      return null;
+    }
+    
+    return result as unknown as { id: string; title: string; description: string | null };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting first pending task for flow ${flow_id}: ${error.message}`);
     return null;
   }
 }

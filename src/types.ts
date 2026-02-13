@@ -261,4 +261,5 @@ export interface StepData {
   auto_fail_on_error: boolean;
   retryable: boolean;
   task_id?: string;
+  requires_task?: boolean;
 }
