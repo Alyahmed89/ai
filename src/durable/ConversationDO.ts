@@ -911,7 +911,7 @@ export class ConversationOrchestratorDO_2026A {
     
     try {
       const result = await this.env.PROJECT_FACTS_DB.prepare(
-        'SELECT id, title, instructions, order_index FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
+        'SELECT id, title, instructions, order_index, task_id, requires_task FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
       
       return result.results || [];
