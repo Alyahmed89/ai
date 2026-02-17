@@ -305,8 +305,8 @@ export class ConversationOrchestratorDO_2026A {
    * @returns Array of flow steps or null if not configured
    */
   private async loadFlowSteps(flowId: string): Promise<StepData[] | null> {
-    if (!this.env.PROJECT_FACTS_DB) {
-      console.log(`[DO:${this.state.id}] PROJECT_FACTS_DB not configured, cannot load flow steps`);
+    if (!this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not configured, cannot load flow steps`);
       return null;
     }
     
@@ -322,7 +322,7 @@ export class ConversationOrchestratorDO_2026A {
     try {
       console.log(`[DO:${this.state.id}] Loading flow steps for ${flowId} from database`);
       const { getFlowSteps } = await import('../services/database');
-      const steps = await getFlowSteps(this.env.PROJECT_FACTS_DB, flowId);
+      const steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flowId);
       
       // Update cache
       this.flowStepsCache = steps;
@@ -356,7 +356,7 @@ export class ConversationOrchestratorDO_2026A {
       // Use the new conditional branching logic
       const { getNextStepBasedOnConditions } = await import('../services/database');
       const nextStep = await getNextStepBasedOnConditions(
-        this.env.PROJECT_FACTS_DB,
+        this.env.FLOW_RUNS_DB,
         flowId,
         this.conversation.current_step.step_id,
         this.conversation.last_step_response
@@ -611,7 +611,7 @@ export class ConversationOrchestratorDO_2026A {
           
           // Load first step directly from database (bypass getNextStep which needs conversation)
           const { getFlowSteps } = await import('../services/database');
-          const steps = await getFlowSteps(this.env.PROJECT_FACTS_DB, flow_id);
+          const steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flow_id);
           currentStep = steps && steps.length > 0 ? steps[0] : null;
           console.log(`[DO:${this.state.id}] First step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
@@ -938,13 +938,13 @@ export class ConversationOrchestratorDO_2026A {
 
   // Helper to load flow steps from database
   private async loadFlowStepsFromDB(flowId: string): Promise<any[]> {
-    if (!this.env.PROJECT_FACTS_DB) {
-      console.log(`[DO:${this.state.id}] No database available`);
+    if (!this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not configured`);
       return [];
     }
     
     try {
-      const result = await this.env.PROJECT_FACTS_DB.prepare(
+      const result = await this.env.FLOW_RUNS_DB.prepare(
         'SELECT id, title, instructions, order_index, task_id, requires_task FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
       
