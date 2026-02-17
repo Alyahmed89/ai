@@ -660,6 +660,26 @@ export class ConversationOrchestratorDO_2026A {
               if (taskData.description) {
                 taskPrompt += `\nDescription: ${taskData.description}`;
               }
+              // Add payload if it's JSON and contains additional metadata
+              if (taskData.payload && taskData.payload.trim().startsWith('{') && taskData.payload.trim().endsWith('}')) {
+                try {
+                  const payloadObj = JSON.parse(taskData.payload);
+                  // Add non-instruction fields from payload
+                  const metadataFields = Object.entries(payloadObj)
+                    .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
+                    .map(([key, value]) => `${key}: ${value}`);
+                  
+                  if (metadataFields.length > 0) {
+                    taskPrompt += `\nAdditional Details:`;
+                    metadataFields.forEach(field => {
+                      taskPrompt += `\n- ${field}`;
+                    });
+                  }
+                } catch (e) {
+                  // Not valid JSON, skip
+                  console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+                }
+              }
               taskPrompt += `\n=== END TASK ===\n`;
               
               // Store dynamic task ID if we fetched one
@@ -1156,7 +1176,8 @@ export class ConversationOrchestratorDO_2026A {
             if (pendingTask) {
               taskData = {
                 title: pendingTask.title,
-                description: pendingTask.description
+                description: pendingTask.description,
+                payload: pendingTask.payload
               };
               dynamicTaskId = pendingTask.id;
               console.log(`[DO:${this.state.id}] Loaded first pending task: ${pendingTask.id} - ${pendingTask.title}`);
@@ -1200,6 +1221,26 @@ export class ConversationOrchestratorDO_2026A {
         }
         if (taskData.description) {
           taskPrompt += `\nDescription: ${taskData.description}`;
+        }
+        // Add payload if it's JSON and contains additional metadata
+        if (taskData.payload && taskData.payload.trim().startsWith('{') && taskData.payload.trim().endsWith('}')) {
+          try {
+            const payloadObj = JSON.parse(taskData.payload);
+            // Add non-instruction fields from payload
+            const metadataFields = Object.entries(payloadObj)
+              .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
+              .map(([key, value]) => `${key}: ${value}`);
+            
+            if (metadataFields.length > 0) {
+              taskPrompt += `\nAdditional Details:`;
+              metadataFields.forEach(field => {
+                taskPrompt += `\n- ${field}`;
+              });
+            }
+          } catch (e) {
+            // Not valid JSON, skip
+            console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+          }
         }
         taskPrompt += `\n=== END TASK ===\n`;
         
@@ -2527,6 +2568,26 @@ ${messageContent}`;
           if (pendingTask.description) {
             prompt += `\nDescription: ${pendingTask.description}`;
           }
+          // Add payload if it's JSON and contains additional metadata
+          if (pendingTask.payload && pendingTask.payload.trim().startsWith('{') && pendingTask.payload.trim().endsWith('}')) {
+            try {
+              const payloadObj = JSON.parse(pendingTask.payload);
+              // Add non-instruction fields from payload
+              const metadataFields = Object.entries(payloadObj)
+                .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
+                .map(([key, value]) => `${key}: ${value}`);
+              
+              if (metadataFields.length > 0) {
+                prompt += `\nAdditional Details:`;
+                metadataFields.forEach(field => {
+                  prompt += `\n- ${field}`;
+                });
+              }
+            } catch (e) {
+              // Not valid JSON, skip
+              console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+            }
+          }
           prompt += `\n=== END TASK ===\n`;
           console.log(`[DO:${this.state.id}] Injected task: ${pendingTask.title}`);
         } else {
@@ -2545,6 +2606,26 @@ ${messageContent}`;
           prompt += `\nTitle: ${taskData.title}`;
           if (taskData.description) {
             prompt += `\nDescription: ${taskData.description}`;
+          }
+          // Add payload if it's JSON and contains additional metadata
+          if (taskData.payload && taskData.payload.trim().startsWith('{') && taskData.payload.trim().endsWith('}')) {
+            try {
+              const payloadObj = JSON.parse(taskData.payload);
+              // Add non-instruction fields from payload
+              const metadataFields = Object.entries(payloadObj)
+                .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
+                .map(([key, value]) => `${key}: ${value}`);
+              
+              if (metadataFields.length > 0) {
+                prompt += `\nAdditional Details:`;
+                metadataFields.forEach(field => {
+                  prompt += `\n- ${field}`;
+                });
+              }
+            } catch (e) {
+              // Not valid JSON, skip
+              console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+            }
           }
           prompt += `\n=== END TASK ===\n`;
           console.log(`[DO:${this.state.id}] Injected task: ${taskData.title}`);

@@ -363,13 +363,14 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
 export async function getTaskData(
   db: D1Database,
   task_id: string
-): Promise<{ title: string; description: string | null } | null> {
+): Promise<{ title: string; description: string | null; payload: string | null } | null> {
   try {
     // Query tasks table (new schema)
-    // Try to get description column first, fall back to payload column
+    // Get title, description, and payload columns
     const query = `
       SELECT title, 
-             COALESCE(description, payload) as description_raw
+             description,
+             payload
       FROM tasks
       WHERE id = ?
     `;
@@ -380,8 +381,13 @@ export async function getTaskData(
       return null;
     }
     
-    const resultObj = result as unknown as { title: string; description_raw: string | null };
-    let description = resultObj.description_raw;
+    const resultObj = result as unknown as { title: string; description: string | null; payload: string | null };
+    let description = resultObj.description;
+    
+    // If description is null, use payload as fallback
+    if (!description && resultObj.payload) {
+      description = resultObj.payload;
+    }
     
     // Try to parse JSON if description looks like JSON
     if (description && description.trim().startsWith('{') && description.trim().endsWith('}')) {
@@ -403,7 +409,7 @@ export async function getTaskData(
       }
     }
     
-    return { title: resultObj.title, description };
+    return { title: resultObj.title, description, payload: resultObj.payload };
   } catch (error: any) {
     console.error(`[DATABASE] Error getting task data: ${error.message}`);
     return null;
@@ -419,11 +425,11 @@ export async function getTaskData(
 export async function getFirstPendingTask(
   db: D1Database,
   flow_id: string
-): Promise<{ id: string; title: string; description: string | null } | null> {
+): Promise<{ id: string; title: string; description: string | null; payload: string | null } | null> {
   try {
     // Query tasks table (new schema)
     const query = `
-      SELECT id, title, COALESCE(description, payload) as description_raw
+      SELECT id, title, description, payload
       FROM tasks
       WHERE flow_id = ? AND status != 'DONE'
       ORDER BY created_at ASC
@@ -436,8 +442,13 @@ export async function getFirstPendingTask(
       return null;
     }
     
-    const resultObj = result as unknown as { id: string; title: string; description_raw: string | null };
-    let description = resultObj.description_raw;
+    const resultObj = result as unknown as { id: string; title: string; description: string | null; payload: string | null };
+    let description = resultObj.description;
+    
+    // If description is null, use payload as fallback
+    if (!description && resultObj.payload) {
+      description = resultObj.payload;
+    }
     
     // Try to parse JSON if description looks like JSON
     if (description && description.trim().startsWith('{') && description.trim().endsWith('}')) {
@@ -459,7 +470,7 @@ export async function getFirstPendingTask(
       }
     }
     
-    return { id: resultObj.id, title: resultObj.title, description };
+    return { id: resultObj.id, title: resultObj.title, description, payload: resultObj.payload };
   } catch (error: any) {
     console.error(`[DATABASE] Error getting first pending task for flow ${flow_id}: ${error.message}`);
     return null;
