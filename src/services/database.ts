@@ -366,8 +366,10 @@ export async function getTaskData(
 ): Promise<{ title: string; description: string | null } | null> {
   try {
     // Query tasks table (new schema)
+    // Try to get description column first, fall back to payload column
     const query = `
-      SELECT title, payload as description
+      SELECT title, 
+             COALESCE(description, payload) as description_raw
       FROM tasks
       WHERE id = ?
     `;
@@ -378,7 +380,30 @@ export async function getTaskData(
       return null;
     }
     
-    return result as unknown as { title: string; description: string | null };
+    const resultObj = result as unknown as { title: string; description_raw: string | null };
+    let description = resultObj.description_raw;
+    
+    // Try to parse JSON if description looks like JSON
+    if (description && description.trim().startsWith('{') && description.trim().endsWith('}')) {
+      try {
+        const parsed = JSON.parse(description);
+        // Extract instructions field if present, otherwise use the whole object
+        if (parsed.instructions) {
+          description = parsed.instructions;
+        } else if (typeof parsed === 'object') {
+          // Try to find any string field that looks like instructions
+          const stringFields = Object.values(parsed).filter(v => typeof v === 'string');
+          if (stringFields.length > 0) {
+            description = stringFields[0];
+          }
+        }
+      } catch (e) {
+        // Not valid JSON, keep as-is
+        console.log(`[DATABASE] Task description is not valid JSON: ${e.message}`);
+      }
+    }
+    
+    return { title: resultObj.title, description };
   } catch (error: any) {
     console.error(`[DATABASE] Error getting task data: ${error.message}`);
     return null;
@@ -398,7 +423,7 @@ export async function getFirstPendingTask(
   try {
     // Query tasks table (new schema)
     const query = `
-      SELECT id, title, payload as description
+      SELECT id, title, COALESCE(description, payload) as description_raw
       FROM tasks
       WHERE flow_id = ? AND status != 'DONE'
       ORDER BY created_at ASC
@@ -411,7 +436,30 @@ export async function getFirstPendingTask(
       return null;
     }
     
-    return result as unknown as { id: string; title: string; description: string | null };
+    const resultObj = result as unknown as { id: string; title: string; description_raw: string | null };
+    let description = resultObj.description_raw;
+    
+    // Try to parse JSON if description looks like JSON
+    if (description && description.trim().startsWith('{') && description.trim().endsWith('}')) {
+      try {
+        const parsed = JSON.parse(description);
+        // Extract instructions field if present, otherwise use the whole object
+        if (parsed.instructions) {
+          description = parsed.instructions;
+        } else if (typeof parsed === 'object') {
+          // Try to find any string field that looks like instructions
+          const stringFields = Object.values(parsed).filter(v => typeof v === 'string');
+          if (stringFields.length > 0) {
+            description = stringFields[0];
+          }
+        }
+      } catch (e) {
+        // Not valid JSON, keep as-is
+        console.log(`[DATABASE] Task description is not valid JSON: ${e.message}`);
+      }
+    }
+    
+    return { id: resultObj.id, title: resultObj.title, description };
   } catch (error: any) {
     console.error(`[DATABASE] Error getting first pending task for flow ${flow_id}: ${error.message}`);
     return null;
