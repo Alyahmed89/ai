@@ -1946,6 +1946,34 @@ export class ConversationOrchestratorDO_2026A {
       // Ultra-minimal flow mode: Go to next step
       console.log(`[DO:${this.state.id}] Ultra-minimal flow mode: Moving to next step`);
       
+      // Extract response from pending_event_content for conditional branching
+      if (this.conversation.pending_event_content) {
+        try {
+          // Try to parse as JSON to extract status
+          const content = this.conversation.pending_event_content.trim();
+          if (content.startsWith('{') && content.endsWith('}')) {
+            const parsed = JSON.parse(content);
+            // Extract status field if present
+            if (parsed.status) {
+              this.conversation.last_step_response = `Status: ${parsed.status}`;
+              console.log(`[DO:${this.state.id}] Extracted status from response: ${parsed.status}`);
+            } else {
+              // Use the full content as response
+              this.conversation.last_step_response = content;
+              console.log(`[DO:${this.state.id}] Using full content as step response (${content.length} chars)`);
+            }
+          } else {
+            // Not JSON, use as-is
+            this.conversation.last_step_response = content;
+            console.log(`[DO:${this.state.id}] Using non-JSON content as step response (${content.length} chars)`);
+          }
+        } catch (error) {
+          // If JSON parsing fails, use as-is
+          console.log(`[DO:${this.state.id}] Failed to parse JSON, using content as-is: ${error}`);
+          this.conversation.last_step_response = this.conversation.pending_event_content;
+        }
+      }
+      
       // Clear pending event content (not needed for ultra-minimal flow)
       this.conversation.pending_event_content = undefined;
       
