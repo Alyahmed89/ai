@@ -2561,7 +2561,10 @@ ${messageContent}`;
     }
     
     // Add step instructions
-    prompt += `\n\n${step.instructions}`;
+    // Note: StepData interface has 'description' field, not 'instructions'
+    if (step.description) {
+      prompt += `\n\n${step.description}`;
+    }
     
     // Create OpenHands conversation if needed
     if (!this.conversation.openhands_conversation_id) {
