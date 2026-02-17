@@ -1,5 +1,4 @@
 // Test the new /start-flow endpoint
-const fetch = require('node-fetch');
 
 async function testStartFlow() {
   console.log('Testing /start-flow endpoint...');
