@@ -2504,18 +2504,19 @@ ${messageContent}`;
       return;
     }
     
-    // Get current step index
-    const currentStepIndex = this.conversation.current_step_index || 0;
+    // Get next step using conditional branching logic
+    const step = await this.getNextStep();
     
-    if (currentStepIndex >= this.conversation.flow_steps.length) {
-      console.log(`[DO:${this.state.id}] All steps completed`);
+    if (!step) {
+      console.log(`[DO:${this.state.id}] No more steps in flow`);
       await this.stopConversation('flow_completed');
       return;
     }
     
-    // Get current step
-    const step = this.conversation.flow_steps[currentStepIndex];
-    console.log(`[DO:${this.state.id}] Sending step ${currentStepIndex + 1}/${this.conversation.flow_steps.length}: ${step.title}`);
+    console.log(`[DO:${this.state.id}] Sending step: ${step.title} (order_index: ${step.order_index})`);
+    
+    // Update current_step to track which step is being executed
+    this.conversation.current_step = step;
     
     // Build the prompt with step instructions
     let prompt = `Execute step: ${step.title}`;
@@ -2599,9 +2600,8 @@ ${messageContent}`;
     // Update state to wait for OpenHands response
     this.conversation.state = 'WAITING_OPENHANDS';
     this.conversation.iteration = (this.conversation.iteration || 0) + 1;
-    this.conversation.current_step_index = currentStepIndex + 1; // Move to next step
-    
-    console.log(`[DO:${this.state.id}] Step sent, waiting for OpenHands response`);
+    // Note: current_step_index is already updated by getNextStep() based on conditional branching
+    console.log(`[DO:${this.state.id}] Step sent, waiting for OpenHands response. Current step index: ${this.conversation.current_step_index}`);
     
     // Schedule next alarm to check for response
     // Use shorter interval for flow execution (5 seconds) vs regular (30 seconds)
