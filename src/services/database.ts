@@ -836,14 +836,19 @@ export async function getFlowDefinition(
 } | null> {
   try {
     // First try the flows table with repo column
-    const result = await db.prepare(`
-      SELECT id, name, first_prompt as description, deepseek_system, max_iterations, repo as repository, branch
-      FROM flows
-      WHERE id = ?
-    `).bind(flow_id).first();
+    try {
+      const result = await db.prepare(`
+        SELECT id, name, first_prompt as description, deepseek_system, max_iterations, repo as repository, branch
+        FROM flows
+        WHERE id = ?
+      `).bind(flow_id).first();
 
-    if (result) {
-      return result as any;
+      if (result) {
+        return result as any;
+      }
+    } catch (firstError: any) {
+      // flows table might not exist, that's OK
+      console.log(`[DATABASE] flows table not available or query failed: ${firstError.message}`);
     }
 
     // If not found in flows table, try flow_definitions table (if it exists)
