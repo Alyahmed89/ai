@@ -634,7 +634,8 @@ export class ConversationOrchestratorDO_2026A {
                   if (pendingTask) {
                     taskData = {
                       title: pendingTask.title,
-                      description: pendingTask.description
+                      description: pendingTask.description,
+                      payload: pendingTask.payload
                     };
                     dynamicTaskId = pendingTask.id;
                     console.log(`[DO:${this.state.id}] Loaded first pending task: ${pendingTask.id} - ${pendingTask.title}`);
@@ -2557,7 +2558,45 @@ ${messageContent}`;
     let prompt = `Execute step: ${step.title}`;
     
     // Check for task injection
-    if (step.requires_task && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
+    // Priority: 1. Static task_id, 2. Dynamic requires_task
+    if (step.task_id && this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Step has static task_id: ${step.task_id}`);
+      try {
+        const { getTaskData } = await import('../services/database');
+        const taskData = await getTaskData(this.env.FLOW_RUNS_DB, step.task_id);
+        if (taskData) {
+          prompt += `\n\n=== TASK ===`;
+          prompt += `\nTitle: ${taskData.title}`;
+          if (taskData.description) {
+            prompt += `\nDescription: ${taskData.description}`;
+          }
+          // Add payload if it's JSON and contains additional metadata
+          if (taskData.payload && taskData.payload.trim().startsWith('{') && taskData.payload.trim().endsWith('}')) {
+            try {
+              const payloadObj = JSON.parse(taskData.payload);
+              // Add non-instruction fields from payload
+              const metadataFields = Object.entries(payloadObj)
+                .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
+                .map(([key, value]) => `${key}: ${value}`);
+              
+              if (metadataFields.length > 0) {
+                prompt += `\nAdditional Details:`;
+                metadataFields.forEach(field => {
+                  prompt += `\n- ${field}`;
+                });
+              }
+            } catch (e) {
+              // Not valid JSON, skip
+              console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+            }
+          }
+          prompt += `\n=== END TASK ===\n`;
+          console.log(`[DO:${this.state.id}] Injected task: ${taskData.title}`);
+        }
+      } catch (error: any) {
+        console.error(`[DO:${this.state.id}] Error fetching task data: ${error.message}`);
+      }
+    } else if (step.requires_task && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
       try {
         const { getFirstPendingTask } = await import('../services/database');
@@ -2595,43 +2634,6 @@ ${messageContent}`;
         }
       } catch (error: any) {
         console.error(`[DO:${this.state.id}] Error fetching pending task: ${error.message}`);
-      }
-    } else if (step.task_id && this.env.FLOW_RUNS_DB) {
-      console.log(`[DO:${this.state.id}] Step has static task_id: ${step.task_id}`);
-      try {
-        const { getTaskData } = await import('../services/database');
-        const taskData = await getTaskData(this.env.FLOW_RUNS_DB, step.task_id);
-        if (taskData) {
-          prompt += `\n\n=== TASK ===`;
-          prompt += `\nTitle: ${taskData.title}`;
-          if (taskData.description) {
-            prompt += `\nDescription: ${taskData.description}`;
-          }
-          // Add payload if it's JSON and contains additional metadata
-          if (taskData.payload && taskData.payload.trim().startsWith('{') && taskData.payload.trim().endsWith('}')) {
-            try {
-              const payloadObj = JSON.parse(taskData.payload);
-              // Add non-instruction fields from payload
-              const metadataFields = Object.entries(payloadObj)
-                .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
-                .map(([key, value]) => `${key}: ${value}`);
-              
-              if (metadataFields.length > 0) {
-                prompt += `\nAdditional Details:`;
-                metadataFields.forEach(field => {
-                  prompt += `\n- ${field}`;
-                });
-              }
-            } catch (e) {
-              // Not valid JSON, skip
-              console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
-            }
-          }
-          prompt += `\n=== END TASK ===\n`;
-          console.log(`[DO:${this.state.id}] Injected task: ${taskData.title}`);
-        }
-      } catch (error: any) {
-        console.error(`[DO:${this.state.id}] Error fetching task data: ${error.message}`);
       }
     }
     
