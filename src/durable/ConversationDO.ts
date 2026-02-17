@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getProjectFacts, getTaskData, getFirstPendingTask } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getTaskData, getFirstPendingTask } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { 
@@ -417,19 +417,9 @@ export class ConversationOrchestratorDO_2026A {
    * @returns Array of project facts or empty array if not configured
    */
   private async loadProjectFacts(): Promise<ProjectFact[]> {
-    if (!this.env.PROJECT_FACTS_DB) {
-      console.log(`[DO:${this.state.id}] PROJECT_FACTS_DB not configured, using empty facts`);
-      return [];
-    }
-    
-    try {
-      const facts = await getProjectFacts(this.env.PROJECT_FACTS_DB);
-      console.log(`[DO:${this.state.id}] Loaded ${facts.length} project facts`);
-      return facts;
-    } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Error loading project facts: ${error.message}`);
-      return [];
-    }
+    // project_facts table doesn't exist in our database setup
+    // Return empty array for compatibility
+    return [];
   }
   
   /**
@@ -634,18 +624,6 @@ export class ConversationOrchestratorDO_2026A {
                 }
               } catch (error) {
                 console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${error}`);
-              }
-              
-              // If not found in FLOW_RUNS_DB, try PROJECT_FACTS_DB (unlikely but for completeness)
-              if (!taskData) {
-                try {
-                  taskData = await getTaskData(this.env.PROJECT_FACTS_DB, currentStep.task_id);
-                  if (taskData) {
-                    console.log(`[DO:${this.state.id}] Loaded task data from PROJECT_FACTS_DB fallback`);
-                  }
-                } catch (fallbackError) {
-                  console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${fallbackError}`);
-                }
               }
             } else if (currentStep.requires_task) {
               // Dynamic task assignment - get first pending task for this flow
@@ -1168,18 +1146,6 @@ export class ConversationOrchestratorDO_2026A {
           }
         } catch (error) {
           console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${error}`);
-        }
-        
-        // If not found in FLOW_RUNS_DB, try PROJECT_FACTS_DB (unlikely but for completeness)
-        if (!taskData) {
-          try {
-            taskData = await getTaskData(this.env.PROJECT_FACTS_DB, nextStep.task_id);
-            if (taskData) {
-              console.log(`[DO:${this.state.id}] Loaded task data from PROJECT_FACTS_DB fallback`);
-            }
-          } catch (fallbackError) {
-            console.error(`[DO:${this.state.id}] Error loading task data from PROJECT_FACTS_DB: ${fallbackError}`);
-          }
         }
       } else if (nextStep.requires_task) {
         // Dynamic task assignment - get first pending task for this flow
