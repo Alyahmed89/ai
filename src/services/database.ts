@@ -956,7 +956,7 @@ export async function getFlowDefinition(
     // Note: This is a fallback in case the table name is different
     try {
       const result2 = await db.prepare(`
-        SELECT id, name, description, deepseek_system, max_iterations, repository, branch
+        SELECT id, name, description, max_iterations, repository, branch
         FROM flow_definitions
         WHERE id = ?
       `).bind(flow_id).first();
