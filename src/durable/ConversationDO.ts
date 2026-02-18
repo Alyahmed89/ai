@@ -610,38 +610,38 @@ export class ConversationOrchestratorDO_2026A {
             let taskData = null;
             let dynamicTaskId = null;
             
-            if (currentStep.task_id) {
-              // Static task assignment - fetch by task_id
+            // First try static task_id
+            if (currentStep.task_id && this.env.FLOW_RUNS_DB) {
               try {
-                // Try to fetch task data from FLOW_RUNS_DB (where tasks table exists)
-                if (this.env.FLOW_RUNS_DB) {
-                  taskData = await getTaskData(this.env.FLOW_RUNS_DB, currentStep.task_id);
-                  if (taskData) {
-                    console.log(`[DO:${this.state.id}] Loaded task data for task: ${currentStep.task_id}`);
-                  } else {
-                    console.log(`[DO:${this.state.id}] Task not found in FLOW_RUNS_DB: ${currentStep.task_id}`);
-                  }
+                taskData = await getTaskData(this.env.FLOW_RUNS_DB, currentStep.task_id);
+                if (taskData) {
+                  console.log(`[DO:${this.state.id}] Loaded task data for task: ${currentStep.task_id}`);
+                } else {
+                  console.log(`[DO:${this.state.id}] Task not found in FLOW_RUNS_DB: ${currentStep.task_id}`);
+                  // Clear taskData so we can try requires_task if set
+                  taskData = null;
                 }
               } catch (error) {
                 console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${error}`);
               }
-            } else if (currentStep.requires_task) {
+            }
+            
+            // If no task data from task_id, try requires_task
+            if (!taskData && currentStep.requires_task && this.env.FLOW_RUNS_DB) {
               // Dynamic task assignment - get first pending task for this flow
               console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${flow_id}`);
               try {
-                if (this.env.FLOW_RUNS_DB) {
-                  const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, flow_id);
-                  if (pendingTask) {
-                    taskData = {
-                      title: pendingTask.title,
-                      description: pendingTask.description,
-                      payload: pendingTask.payload
-                    };
-                    dynamicTaskId = pendingTask.id;
-                    console.log(`[DO:${this.state.id}] Loaded first pending task: ${pendingTask.id} - ${pendingTask.title}`);
-                  } else {
-                    console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${flow_id}`);
-                  }
+                const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, flow_id);
+                if (pendingTask) {
+                  taskData = {
+                    title: pendingTask.title,
+                    description: pendingTask.description,
+                    payload: pendingTask.payload
+                  };
+                  dynamicTaskId = pendingTask.id;
+                  console.log(`[DO:${this.state.id}] Loaded first pending task: ${pendingTask.id} - ${pendingTask.title}`);
+                } else {
+                  console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${flow_id}`);
                 }
               } catch (error) {
                 console.error(`[DO:${this.state.id}] Error loading first pending task: ${error}`);
@@ -1153,38 +1153,38 @@ export class ConversationOrchestratorDO_2026A {
       let taskData = null;
       let dynamicTaskId = null;
       
-      if (nextStep.task_id) {
-        // Static task assignment - fetch by task_id
+      // First try static task_id
+      if (nextStep.task_id && this.env.FLOW_RUNS_DB) {
         try {
-          // Try to fetch task data from FLOW_RUNS_DB (where tasks table exists)
-          if (this.env.FLOW_RUNS_DB) {
-            taskData = await getTaskData(this.env.FLOW_RUNS_DB, nextStep.task_id);
-            if (taskData) {
-              console.log(`[DO:${this.state.id}] Loaded task data for task: ${nextStep.task_id}`);
-            } else {
-              console.log(`[DO:${this.state.id}] Task not found in FLOW_RUNS_DB: ${nextStep.task_id}`);
-            }
+          taskData = await getTaskData(this.env.FLOW_RUNS_DB, nextStep.task_id);
+          if (taskData) {
+            console.log(`[DO:${this.state.id}] Loaded task data for task: ${nextStep.task_id}`);
+          } else {
+            console.log(`[DO:${this.state.id}] Task not found in FLOW_RUNS_DB: ${nextStep.task_id}`);
+            // Clear taskData so we can try requires_task if set
+            taskData = null;
           }
         } catch (error) {
           console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${error}`);
         }
-      } else if (nextStep.requires_task) {
+      }
+      
+      // If no task data from task_id, try requires_task
+      if (!taskData && nextStep.requires_task && this.env.FLOW_RUNS_DB) {
         // Dynamic task assignment - get first pending task for this flow
         console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${flowId}`);
         try {
-          if (this.env.FLOW_RUNS_DB) {
-            const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, flowId);
-            if (pendingTask) {
-              taskData = {
-                title: pendingTask.title,
-                description: pendingTask.description,
-                payload: pendingTask.payload
-              };
-              dynamicTaskId = pendingTask.id;
-              console.log(`[DO:${this.state.id}] Loaded first pending task: ${pendingTask.id} - ${pendingTask.title}`);
-            } else {
-              console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${flowId}`);
-            }
+          const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, flowId);
+          if (pendingTask) {
+            taskData = {
+              title: pendingTask.title,
+              description: pendingTask.description,
+              payload: pendingTask.payload
+            };
+            dynamicTaskId = pendingTask.id;
+            console.log(`[DO:${this.state.id}] Loaded first pending task: ${pendingTask.id} - ${pendingTask.title}`);
+          } else {
+            console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${flowId}`);
           }
         } catch (error) {
           console.error(`[DO:${this.state.id}] Error loading first pending task: ${error}`);
@@ -2559,6 +2559,8 @@ ${messageContent}`;
     
     // Check for task injection
     // Priority: 1. Static task_id, 2. Dynamic requires_task
+    let taskInjected = false;
+    
     if (step.task_id && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step has static task_id: ${step.task_id}`);
       try {
@@ -2592,11 +2594,17 @@ ${messageContent}`;
           }
           prompt += `\n=== END TASK ===\n`;
           console.log(`[DO:${this.state.id}] Injected task: ${taskData.title}`);
+          taskInjected = true;
+        } else {
+          console.log(`[DO:${this.state.id}] Task not found with ID: ${step.task_id}, will try requires_task if set`);
         }
       } catch (error: any) {
         console.error(`[DO:${this.state.id}] Error fetching task data: ${error.message}`);
       }
-    } else if (step.requires_task && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
+    }
+    
+    // If task_id didn't work or wasn't set, try requires_task
+    if (!taskInjected && step.requires_task && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
       try {
         const { getFirstPendingTask } = await import('../services/database');

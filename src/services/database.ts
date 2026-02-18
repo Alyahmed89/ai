@@ -422,21 +422,63 @@ export async function getTaskData(
  * @param flow_id Flow ID
  * @returns Promise with task data or null if no pending tasks
  */
+// Helper function to parse mixed date/time formats
+function parseTime(time: any): number {
+  if (time === null || time === undefined) {
+    return 0;
+  }
+  
+  // If it's already a number (Unix timestamp)
+  if (typeof time === 'number') {
+    return time;
+  }
+  
+  // If it's a string that's all digits (Unix timestamp as string)
+  if (typeof time === 'string' && /^\d+$/.test(time)) {
+    return parseInt(time, 10);
+  }
+  
+  // Try to parse as ISO date string
+  if (typeof time === 'string') {
+    const date = new Date(time);
+    if (!isNaN(date.getTime())) {
+      return Math.floor(date.getTime() / 1000); // Convert to Unix timestamp
+    }
+  }
+  
+  // Fallback: return 0 (will sort to beginning) or large number (will sort to end)
+  // Using 0 so undefined/bad dates come first (conservative approach)
+  return 0;
+}
+
 export async function getFirstPendingTask(
   db: D1Database,
   flow_id: string
 ): Promise<{ id: string; title: string; description: string | null; payload: string | null } | null> {
   try {
     // Query tasks table (new schema)
+    // For consistent ordering with mixed data types, use a simpler approach:
+    // Get all pending tasks and sort in JavaScript where we have better date parsing
     const query = `
-      SELECT id, title, description, payload
+      SELECT id, title, description, payload, created_at
       FROM tasks
       WHERE flow_id = ? AND status != 'DONE'
-      ORDER BY created_at ASC
-      LIMIT 1
     `;
     
-    const result = await db.prepare(query).bind(flow_id).first();
+    const results = await db.prepare(query).bind(flow_id).all();
+    
+    if (!results || !results.results || results.results.length === 0) {
+      return null;
+    }
+    
+    // Sort by created_at, handling mixed data types
+    const sortedTasks = results.results.sort((a, b) => {
+      const timeA = parseTime(a.created_at);
+      const timeB = parseTime(b.created_at);
+      return timeA - timeB;
+    });
+    
+    const result = sortedTasks[0];
     
     if (!result) {
       return null;
