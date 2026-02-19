@@ -2742,7 +2742,9 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
       try {
         const { getFirstPendingTask } = await import('../services/database');
+        console.log(`[DO:${this.state.id}] Calling getFirstPendingTask with flow_id: "${this.conversation.flow_id}"`);
         const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
+        console.log(`[DO:${this.state.id}] getFirstPendingTask returned:`, pendingTask ? `Task found: ${pendingTask.id} - ${pendingTask.title}` : 'No pending task found');
         if (pendingTask) {
           prompt += `\n\n=== TASK ===`;
           prompt += `\nTask ID: ${pendingTask.id}`;

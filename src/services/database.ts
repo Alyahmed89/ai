@@ -460,14 +460,26 @@ export async function getFirstPendingTask(
     // For consistent ordering with mixed data types, use a simpler approach:
     // Get all pending tasks and sort in JavaScript where we have better date parsing
     const query = `
-      SELECT id, title, description, payload, created_at
+      SELECT id, title, description, payload, created_at, status
       FROM tasks
       WHERE flow_id = ? AND status != 'DONE'
     `;
     
+    console.log(`[getFirstPendingTask] Querying tasks for flow_id: "${flow_id}"`);
     const results = await db.prepare(query).bind(flow_id).all();
     
+    console.log(`[getFirstPendingTask] Query returned ${results?.results?.length || 0} tasks`);
+    if (results?.results?.length > 0) {
+      console.log(`[getFirstPendingTask] First task sample:`, {
+        id: results.results[0].id,
+        flow_id: flow_id,
+        status: results.results[0].status,
+        title: results.results[0].title
+      });
+    }
+    
     if (!results || !results.results || results.results.length === 0) {
+      console.log(`[getFirstPendingTask] No tasks found for flow_id: "${flow_id}"`);
       return null;
     }
     
