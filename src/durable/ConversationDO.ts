@@ -2736,6 +2736,7 @@ ${messageContent}`;
     // If task_id didn't work or wasn't set, try requires_task
     // Convert requires_task to boolean explicitly (database returns 0/1 as number or string)
     console.log(`[DO:${this.state.id}] Step requires_task value: ${step.requires_task} (type: ${typeof step.requires_task})`);
+    console.log(`[DO:${this.state.id}] Step object keys: ${Object.keys(step).join(', ')}`);
     const requiresTask = this.convertRequiresTaskToBoolean(step.requires_task);
     console.log(`[DO:${this.state.id}] Task injection debug: taskInjected=${taskInjected}, requiresTask=${requiresTask}, flow_id=${this.conversation.flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
     
