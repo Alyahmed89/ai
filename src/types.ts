@@ -94,6 +94,21 @@ export interface ConversationData {
     has_testing_priorities: boolean;
     has_api_commands: boolean;
   };
+
+  // Debug information for observability
+  last_step_debug?: {
+    step_id: string;
+    step_title: string;
+    requires_task: any;
+    requires_task_converted: boolean;
+    task_injected: boolean;
+    task_found: boolean;
+    task_id?: string;
+    task_title?: string;
+    prompt_preview: string;
+    prompt_length: number;
+    timestamp: number;
+  };
 }
 
 // OpenHands event types

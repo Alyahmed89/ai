@@ -2738,12 +2738,16 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Step requires_task value: ${step.requires_task} (type: ${typeof step.requires_task})`);
     const requiresTask = this.convertRequiresTaskToBoolean(step.requires_task);
     console.log(`[DO:${this.state.id}] Task injection debug: taskInjected=${taskInjected}, requiresTask=${requiresTask}, flow_id=${this.conversation.flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
+    
+    // Declare pendingTask variable outside the if block for debug storage
+    let pendingTask: any = null;
+    
     if (!taskInjected && requiresTask && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: "${this.conversation.flow_id}"`);
       try {
         const { getFirstPendingTask } = await import('../services/database');
         console.log(`[DO:${this.state.id}] Calling getFirstPendingTask with flow_id: "${this.conversation.flow_id}"`);
-        const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
+        pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
         console.log(`[DO:${this.state.id}] getFirstPendingTask returned:`, pendingTask);
         console.log(`[DO:${this.state.id}] Task object details:`, pendingTask ? {
           id: pendingTask.id,
@@ -2799,6 +2803,21 @@ ${messageContent}`;
     
     console.log(`[DO:${this.state.id}] Final prompt length: ${prompt.length} chars`);
     console.log(`[DO:${this.state.id}] Final prompt preview: ${prompt.substring(0, 200)}...`);
+    
+    // Store debug information for observability
+    this.conversation.last_step_debug = {
+      step_id: step.step_id,
+      step_title: step.title,
+      requires_task: step.requires_task,
+      requires_task_converted: requiresTask,
+      task_injected: taskInjected,
+      task_found: !!pendingTask,
+      task_id: pendingTask?.id,
+      task_title: pendingTask?.title,
+      prompt_preview: prompt.substring(0, 500),
+      prompt_length: prompt.length,
+      timestamp: Date.now()
+    };
     
     // Create OpenHands conversation if needed
     if (!this.conversation.openhands_conversation_id) {
