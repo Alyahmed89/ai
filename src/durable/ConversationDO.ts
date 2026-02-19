@@ -2108,14 +2108,15 @@ export class ConversationOrchestratorDO_2026A {
         // Priority: 1. Static task_id, 2. Dynamic requires_task
         let taskInjected = false;
         
-        if (nextStep.task_id && this.env.FLOW_RUNS_DB) {
+        // Only check task_id if it's a non-empty string (truthy)
+        if (nextStep.task_id && nextStep.task_id.trim() && this.env.FLOW_RUNS_DB) {
           console.log(`[DO:${this.state.id}] Step has static task_id: ${nextStep.task_id}`);
           try {
             const { getTaskData } = await import('../services/database');
             const taskData = await getTaskData(this.env.FLOW_RUNS_DB, nextStep.task_id);
             if (taskData) {
               stepCommand += `\n\n=== TASK ===`;
-              stepCommand += `\nTask ID: ${taskData.id}`;
+              stepCommand += `\nTask ID: ${nextStep.task_id}`;
               stepCommand += `\nTitle: ${taskData.title}`;
               if (taskData.description) {
                 stepCommand += `\nDescription: ${taskData.description}`;
@@ -2141,8 +2142,8 @@ export class ConversationOrchestratorDO_2026A {
                 }
               }
               stepCommand += `\n=== END TASK ===\n`;
-              stepCommand += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskData.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
-              console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${taskData.id})`);
+              stepCommand += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${nextStep.task_id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+              console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${nextStep.task_id})`);
               taskInjected = true;
             }
           } catch (error: any) {
@@ -2687,14 +2688,15 @@ ${messageContent}`;
     // Priority: 1. Static task_id, 2. Dynamic requires_task
     let taskInjected = false;
     
-    if (step.task_id && this.env.FLOW_RUNS_DB) {
+    // Only check task_id if it's a non-empty string (truthy)
+    if (step.task_id && step.task_id.trim() && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step has static task_id: ${step.task_id}`);
       try {
         const { getTaskData } = await import('../services/database');
         const taskData = await getTaskData(this.env.FLOW_RUNS_DB, step.task_id);
         if (taskData) {
           prompt += `\n\n=== TASK ===`;
-          prompt += `\nTask ID: ${taskData.id}`;
+          prompt += `\nTask ID: ${step.task_id}`;
           prompt += `\nTitle: ${taskData.title}`;
           if (taskData.description) {
             prompt += `\nDescription: ${taskData.description}`;
@@ -2720,8 +2722,8 @@ ${messageContent}`;
             }
           }
           prompt += `\n=== END TASK ===\n`;
-          prompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskData.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
-          console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${taskData.id})`);
+          prompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${step.task_id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+          console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${step.task_id})`);
           taskInjected = true;
         } else {
           console.log(`[DO:${this.state.id}] Task not found with ID: ${step.task_id}, will try requires_task if set`);
