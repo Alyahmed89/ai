@@ -690,10 +690,8 @@ export class ConversationOrchestratorDO_2026A {
                 }
               }
               taskPrompt += `\n=== END TASK ===\n`;
-              // Add instructions to mark task as complete
-              if (taskId) {
-                taskPrompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskId}/complete with body: {"conversation_id": "${this.state.id}"}`;
-              }
+              // REMOVED: Instructions to mark task as complete
+              // Task completion is handled automatically by the system
               
               // Store dynamic task ID if we fetched one
               if (dynamicTaskId) {
@@ -1272,10 +1270,8 @@ export class ConversationOrchestratorDO_2026A {
           }
         }
         taskPrompt += `\n=== END TASK ===\n`;
-        // Add instructions to mark task as complete
-        if (taskId) {
-          taskPrompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskId}/complete with body: {"conversation_id": "${this.state.id}"}`;
-        }
+        // REMOVED: Instructions to mark task as complete
+        // Task completion is handled automatically by the system
         
         // Store dynamic task ID if we fetched one
         if (dynamicTaskId) {
@@ -2142,7 +2138,8 @@ export class ConversationOrchestratorDO_2026A {
                 }
               }
               stepCommand += `\n=== END TASK ===\n`;
-              stepCommand += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${nextStep.task_id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+              // REMOVED: Instructions to mark task as complete
+              // Task completion is handled automatically by the system
               console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${nextStep.task_id})`);
               taskInjected = true;
             }
@@ -2188,7 +2185,8 @@ export class ConversationOrchestratorDO_2026A {
                 }
               }
               stepCommand += `\n=== END TASK ===\n`;
-              stepCommand += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${pendingTask.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+              // REMOVED: Instructions to mark task as complete
+              // Task completion is handled automatically by the system
               console.log(`[DO:${this.state.id}] Injected task: ${pendingTask.title} (ID: ${pendingTask.id})`);
               taskInjected = true;
             } else {
@@ -2722,7 +2720,8 @@ ${messageContent}`;
             }
           }
           prompt += `\n=== END TASK ===\n`;
-          prompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${step.task_id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+          // REMOVED: Instructions to mark task as complete
+          // Task completion is handled automatically by the system
           console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${step.task_id})`);
           taskInjected = true;
         } else {
@@ -2795,7 +2794,8 @@ ${messageContent}`;
             }
           }
           prompt += `\n=== END TASK ===\n`;
-          prompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${pendingTask.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+          // REMOVED: Instructions to mark task as complete
+          // Task completion is handled automatically by the system
           console.log(`[DO:${this.state.id}] Injected task: ${pendingTask.title} (ID: ${pendingTask.id})`);
           taskInjected = true;
         } else {
