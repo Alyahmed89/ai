@@ -1165,8 +1165,8 @@ export class ConversationOrchestratorDO_2026A {
       let taskData = null;
       let dynamicTaskId = null;
       
-      // First try static task_id
-      if (nextStep.task_id && this.env.FLOW_RUNS_DB) {
+      // First try static task_id (check if truthy and not empty string)
+      if (nextStep.task_id && nextStep.task_id.trim() && this.env.FLOW_RUNS_DB) {
         try {
           taskData = await getTaskData(this.env.FLOW_RUNS_DB, nextStep.task_id);
           if (taskData) {
@@ -2100,7 +2100,8 @@ export class ConversationOrchestratorDO_2026A {
         // Priority: 1. Static task_id, 2. Dynamic requires_task
         let taskInjected = false;
         
-        if (nextStep.task_id && this.env.FLOW_RUNS_DB) {
+        // Check if task_id is truthy and not empty string
+        if (nextStep.task_id && nextStep.task_id.trim() && this.env.FLOW_RUNS_DB) {
           console.log(`[DO:${this.state.id}] Step has static task_id: ${nextStep.task_id}`);
           try {
             const { getTaskData } = await import('../services/database');
@@ -2679,7 +2680,8 @@ ${messageContent}`;
     // Priority: 1. Static task_id, 2. Dynamic requires_task
     let taskInjected = false;
     
-    if (step.task_id && this.env.FLOW_RUNS_DB) {
+    // Check if task_id is truthy and not empty string
+    if (step.task_id && step.task_id.trim() && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step has static task_id: ${step.task_id}`);
       try {
         const { getTaskData } = await import('../services/database');
