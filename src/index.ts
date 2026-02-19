@@ -3,6 +3,21 @@ import { Hono } from 'hono';
 import { CloudflareBindings } from './types';
 import { ConversationOrchestratorDO_2026A } from './durable/ConversationDO';
 
+// Dummy FlowControllerDO to satisfy existing binding
+export class FlowControllerDO {
+  constructor(state: any, env: any) {
+    this.state = state;
+    this.env = env;
+  }
+  
+  async fetch(request: Request) {
+    return new Response('FlowControllerDO: Not implemented', { status: 501 });
+  }
+  
+  state: any;
+  env: any;
+}
+
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
 // Rate limiting middleware with token bucket algorithm
