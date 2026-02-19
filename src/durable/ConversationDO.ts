@@ -2737,7 +2737,18 @@ ${messageContent}`;
     // Convert requires_task to boolean explicitly (database returns 0/1 as number or string)
     console.log(`[DO:${this.state.id}] Step requires_task value: ${step.requires_task} (type: ${typeof step.requires_task})`);
     console.log(`[DO:${this.state.id}] Step object keys: ${Object.keys(step).join(', ')}`);
-    const requiresTask = this.convertRequiresTaskToBoolean(step.requires_task);
+    
+    // FALLBACK: If step doesn't have requires_task, check flow_steps array
+    let effectiveRequiresTask = step.requires_task;
+    if (effectiveRequiresTask === undefined && this.conversation.flow_steps && this.conversation.current_step_index !== undefined) {
+      const flowStep = this.conversation.flow_steps[this.conversation.current_step_index];
+      if (flowStep && flowStep.requires_task !== undefined) {
+        console.log(`[DO:${this.state.id}] Using requires_task from flow_steps array: ${flowStep.requires_task}`);
+        effectiveRequiresTask = flowStep.requires_task;
+      }
+    }
+    
+    const requiresTask = this.convertRequiresTaskToBoolean(effectiveRequiresTask);
     console.log(`[DO:${this.state.id}] Task injection debug: taskInjected=${taskInjected}, requiresTask=${requiresTask}, flow_id=${this.conversation.flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
     
     // Declare pendingTask variable outside the if block for debug storage
@@ -2809,7 +2820,7 @@ ${messageContent}`;
     this.conversation.last_step_debug = {
       step_id: step.step_id,
       step_title: step.title,
-      requires_task: step.requires_task,
+      requires_task: effectiveRequiresTask,
       requires_task_converted: requiresTask,
       task_injected: taskInjected,
       task_found: !!pendingTask,
