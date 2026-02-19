@@ -627,8 +627,8 @@ export class ConversationOrchestratorDO_2026A {
             }
             
             // If no task data from task_id, try requires_task
-            // Convert requires_task to boolean explicitly (database returns 0/1 as number)
-            const requiresTask = Boolean(currentStep.requires_task);
+            // Convert requires_task to boolean explicitly (database returns 0/1 as number or string)
+            const requiresTask = this.convertRequiresTaskToBoolean(currentStep.requires_task);
             console.log(`[DO:${this.state.id}] Task injection debug (other): taskData=${!!taskData}, requiresTask=${requiresTask}, flow_id=${flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
             if (!taskData && requiresTask && this.env.FLOW_RUNS_DB) {
               // Dynamic task assignment - get first pending task for this flow
@@ -947,6 +947,14 @@ export class ConversationOrchestratorDO_2026A {
     }
   }
 
+  // Helper to convert requires_task value to boolean (handles 0, 1, "0", "1", true, false)
+  private convertRequiresTaskToBoolean(requiresTaskValue: any): boolean {
+    if (requiresTaskValue === true || requiresTaskValue === 1 || requiresTaskValue === "1" || requiresTaskValue === "true") {
+      return true;
+    }
+    return false; // Handles false, 0, "0", "false", null, undefined, etc.
+  }
+
   // Helper to load flow steps from database
   private async loadFlowStepsFromDB(flowId: string): Promise<any[]> {
     if (!this.env.FLOW_RUNS_DB) {
@@ -956,7 +964,7 @@ export class ConversationOrchestratorDO_2026A {
     
     try {
       const result = await this.env.FLOW_RUNS_DB.prepare(
-        'SELECT id, title, instructions, order_index, task_id, requires_task FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
+        'SELECT id, title, instructions as description, order_index, task_id, requires_task FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
       
       return result.results || [];
@@ -1182,8 +1190,8 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // If no task data from task_id, try requires_task
-      // Convert requires_task to boolean explicitly (database returns 0/1 as number)
-      const requiresTask = Boolean(nextStep.requires_task);
+      // Convert requires_task to boolean explicitly (database returns 0/1 as number or string)
+      const requiresTask = this.convertRequiresTaskToBoolean(nextStep.requires_task);
       console.log(`[DO:${this.state.id}] Task injection debug (handleInitState): taskData=${!!taskData}, requiresTask=${requiresTask}, flowId=${flowId}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
       if (!taskData && requiresTask && this.env.FLOW_RUNS_DB) {
         // Dynamic task assignment - get first pending task for this flow
@@ -2143,8 +2151,8 @@ export class ConversationOrchestratorDO_2026A {
         }
         
         // If task_id didn't work or wasn't set, try requires_task
-        // Convert requires_task to boolean explicitly (database returns 0/1 as number)
-        const requiresTask = Boolean(nextStep.requires_task);
+        // Convert requires_task to boolean explicitly (database returns 0/1 as number or string)
+        const requiresTask = this.convertRequiresTaskToBoolean(nextStep.requires_task);
         console.log(`[DO:${this.state.id}] Task injection debug (handleAwaitingNextIterationState): taskInjected=${taskInjected}, requiresTask=${requiresTask}, flow_id=${this.conversation.flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
         if (!taskInjected && requiresTask && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
           console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
@@ -2724,9 +2732,9 @@ ${messageContent}`;
     }
     
     // If task_id didn't work or wasn't set, try requires_task
-    // Convert requires_task to boolean explicitly (database returns 0/1 as number)
+    // Convert requires_task to boolean explicitly (database returns 0/1 as number or string)
     console.log(`[DO:${this.state.id}] Step requires_task value: ${step.requires_task} (type: ${typeof step.requires_task})`);
-    const requiresTask = Boolean(step.requires_task);
+    const requiresTask = this.convertRequiresTaskToBoolean(step.requires_task);
     console.log(`[DO:${this.state.id}] Task injection debug: taskInjected=${taskInjected}, requiresTask=${requiresTask}, flow_id=${this.conversation.flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
     if (!taskInjected && requiresTask && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
