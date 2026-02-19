@@ -627,7 +627,9 @@ export class ConversationOrchestratorDO_2026A {
             }
             
             // If no task data from task_id, try requires_task
-            if (!taskData && currentStep.requires_task && this.env.FLOW_RUNS_DB) {
+            // Convert requires_task to boolean explicitly (database returns 0/1 as number)
+            const requiresTask = Boolean(currentStep.requires_task);
+            if (!taskData && requiresTask && this.env.FLOW_RUNS_DB) {
               // Dynamic task assignment - get first pending task for this flow
               console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${flow_id}`);
               try {
@@ -1179,7 +1181,9 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // If no task data from task_id, try requires_task
-      if (!taskData && nextStep.requires_task && this.env.FLOW_RUNS_DB) {
+      // Convert requires_task to boolean explicitly (database returns 0/1 as number)
+      const requiresTask = Boolean(nextStep.requires_task);
+      if (!taskData && requiresTask && this.env.FLOW_RUNS_DB) {
         // Dynamic task assignment - get first pending task for this flow
         console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${flowId}`);
         try {
@@ -2090,6 +2094,99 @@ export class ConversationOrchestratorDO_2026A {
           stepCommand += `\nNote: This step is non-blocking - flow can continue even if this step fails`;
         }
         
+        // Check for task injection (similar to handleSendingStepState logic)
+        // Priority: 1. Static task_id, 2. Dynamic requires_task
+        let taskInjected = false;
+        
+        if (nextStep.task_id && this.env.FLOW_RUNS_DB) {
+          console.log(`[DO:${this.state.id}] Step has static task_id: ${nextStep.task_id}`);
+          try {
+            const { getTaskData } = await import('../services/database');
+            const taskData = await getTaskData(this.env.FLOW_RUNS_DB, nextStep.task_id);
+            if (taskData) {
+              stepCommand += `\n\n=== TASK ===`;
+              stepCommand += `\nTask ID: ${taskData.id}`;
+              stepCommand += `\nTitle: ${taskData.title}`;
+              if (taskData.description) {
+                stepCommand += `\nDescription: ${taskData.description}`;
+              }
+              // Add payload if it's JSON and contains additional metadata
+              if (taskData.payload && taskData.payload.trim().startsWith('{') && taskData.payload.trim().endsWith('}')) {
+                try {
+                  const payloadObj = JSON.parse(taskData.payload);
+                  // Add non-instruction fields from payload
+                  const metadataFields = Object.entries(payloadObj)
+                    .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
+                    .map(([key, value]) => `${key}: ${value}`);
+                  
+                  if (metadataFields.length > 0) {
+                    stepCommand += `\nAdditional Details:`;
+                    metadataFields.forEach(field => {
+                      stepCommand += `\n- ${field}`;
+                    });
+                  }
+                } catch (e) {
+                  // Not valid JSON, skip
+                  console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+                }
+              }
+              stepCommand += `\n=== END TASK ===\n`;
+              stepCommand += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskData.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+              console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${taskData.id})`);
+              taskInjected = true;
+            }
+          } catch (error: any) {
+            console.error(`[DO:${this.state.id}] Error fetching task data: ${error.message}`);
+          }
+        }
+        
+        // If task_id didn't work or wasn't set, try requires_task
+        // Convert requires_task to boolean explicitly (database returns 0/1 as number)
+        const requiresTask = Boolean(nextStep.requires_task);
+        if (!taskInjected && requiresTask && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
+          console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
+          try {
+            const { getFirstPendingTask } = await import('../services/database');
+            const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
+            if (pendingTask) {
+              stepCommand += `\n\n=== TASK ===`;
+              stepCommand += `\nTask ID: ${pendingTask.id}`;
+              stepCommand += `\nTitle: ${pendingTask.title}`;
+              if (pendingTask.description) {
+                stepCommand += `\nDescription: ${pendingTask.description}`;
+              }
+              // Add payload if it's JSON and contains additional metadata
+              if (pendingTask.payload && pendingTask.payload.trim().startsWith('{') && pendingTask.payload.trim().endsWith('}')) {
+                try {
+                  const payloadObj = JSON.parse(pendingTask.payload);
+                  // Add non-instruction fields from payload
+                  const metadataFields = Object.entries(payloadObj)
+                    .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
+                    .map(([key, value]) => `${key}: ${value}`);
+                  
+                  if (metadataFields.length > 0) {
+                    stepCommand += `\nAdditional Details:`;
+                    metadataFields.forEach(field => {
+                      stepCommand += `\n- ${field}`;
+                    });
+                  }
+                } catch (e) {
+                  // Not valid JSON, skip
+                  console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+                }
+              }
+              stepCommand += `\n=== END TASK ===\n`;
+              stepCommand += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${pendingTask.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+              console.log(`[DO:${this.state.id}] Injected task: ${pendingTask.title} (ID: ${pendingTask.id})`);
+              taskInjected = true;
+            } else {
+              console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${this.conversation.flow_id}`);
+            }
+          } catch (error: any) {
+            console.error(`[DO:${this.state.id}] Error fetching pending task: ${error.message}`);
+          }
+        }
+        
         // Store step in conversation for reference
         this.conversation.current_step = nextStep;
         
@@ -2624,7 +2721,9 @@ ${messageContent}`;
     }
     
     // If task_id didn't work or wasn't set, try requires_task
-    if (!taskInjected && step.requires_task && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
+    // Convert requires_task to boolean explicitly (database returns 0/1 as number)
+    const requiresTask = Boolean(step.requires_task);
+    if (!taskInjected && requiresTask && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
       try {
         const { getFirstPendingTask } = await import('../services/database');
