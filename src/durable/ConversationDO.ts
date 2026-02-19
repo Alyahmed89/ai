@@ -2739,12 +2739,18 @@ ${messageContent}`;
     const requiresTask = this.convertRequiresTaskToBoolean(step.requires_task);
     console.log(`[DO:${this.state.id}] Task injection debug: taskInjected=${taskInjected}, requiresTask=${requiresTask}, flow_id=${this.conversation.flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
     if (!taskInjected && requiresTask && this.conversation.flow_id && this.env.FLOW_RUNS_DB) {
-      console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${this.conversation.flow_id}`);
+      console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: "${this.conversation.flow_id}"`);
       try {
         const { getFirstPendingTask } = await import('../services/database');
         console.log(`[DO:${this.state.id}] Calling getFirstPendingTask with flow_id: "${this.conversation.flow_id}"`);
         const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
-        console.log(`[DO:${this.state.id}] getFirstPendingTask returned:`, pendingTask ? `Task found: ${pendingTask.id} - ${pendingTask.title}` : 'No pending task found');
+        console.log(`[DO:${this.state.id}] getFirstPendingTask returned:`, pendingTask);
+        console.log(`[DO:${this.state.id}] Task object details:`, pendingTask ? {
+          id: pendingTask.id,
+          title: pendingTask.title,
+          descriptionLength: pendingTask.description?.length || 0,
+          payloadLength: pendingTask.payload?.length || 0
+        } : 'No task');
         if (pendingTask) {
           prompt += `\n\n=== TASK ===`;
           prompt += `\nTask ID: ${pendingTask.id}`;
