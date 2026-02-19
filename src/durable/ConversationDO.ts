@@ -2786,9 +2786,13 @@ ${messageContent}`;
     
     // Add step instructions
     // Note: StepData interface has 'description' field, not 'instructions'
+    console.log(`[DO:${this.state.id}] Step description length: ${step.description?.length || 0} chars`);
     if (step.description) {
       prompt += `\n\n${step.description}`;
     }
+    
+    console.log(`[DO:${this.state.id}] Final prompt length: ${prompt.length} chars`);
+    console.log(`[DO:${this.state.id}] Final prompt preview: ${prompt.substring(0, 200)}...`);
     
     // Create OpenHands conversation if needed
     if (!this.conversation.openhands_conversation_id) {
