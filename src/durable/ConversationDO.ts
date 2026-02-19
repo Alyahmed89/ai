@@ -655,6 +655,11 @@ export class ConversationOrchestratorDO_2026A {
             // Inject task data if available
             if (taskData) {
               taskPrompt += `\n\n=== TASK ===`;
+              // Include task ID if available (from dynamicTaskId or currentStep.task_id)
+              const taskId = dynamicTaskId || currentStep.task_id;
+              if (taskId) {
+                taskPrompt += `\nTask ID: ${taskId}`;
+              }
               if (taskData.title) {
                 taskPrompt += `\nTitle: ${taskData.title}`;
               }
@@ -682,6 +687,10 @@ export class ConversationOrchestratorDO_2026A {
                 }
               }
               taskPrompt += `\n=== END TASK ===\n`;
+              // Add instructions to mark task as complete
+              if (taskId) {
+                taskPrompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskId}/complete with body: {"conversation_id": "${this.state.id}"}`;
+              }
               
               // Store dynamic task ID if we fetched one
               if (dynamicTaskId) {
@@ -1217,6 +1226,11 @@ export class ConversationOrchestratorDO_2026A {
       // Inject task data if available
       if (taskData) {
         taskPrompt += `\n\n=== TASK ===`;
+        // Include task ID if available (from dynamicTaskId or nextStep.task_id)
+        const taskId = dynamicTaskId || nextStep.task_id;
+        if (taskId) {
+          taskPrompt += `\nTask ID: ${taskId}`;
+        }
         if (taskData.title) {
           taskPrompt += `\nTitle: ${taskData.title}`;
         }
@@ -1244,6 +1258,10 @@ export class ConversationOrchestratorDO_2026A {
           }
         }
         taskPrompt += `\n=== END TASK ===\n`;
+        // Add instructions to mark task as complete
+        if (taskId) {
+          taskPrompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskId}/complete with body: {"conversation_id": "${this.state.id}"}`;
+        }
         
         // Store dynamic task ID if we fetched one
         if (dynamicTaskId) {
@@ -2568,6 +2586,7 @@ ${messageContent}`;
         const taskData = await getTaskData(this.env.FLOW_RUNS_DB, step.task_id);
         if (taskData) {
           prompt += `\n\n=== TASK ===`;
+          prompt += `\nTask ID: ${taskData.id}`;
           prompt += `\nTitle: ${taskData.title}`;
           if (taskData.description) {
             prompt += `\nDescription: ${taskData.description}`;
@@ -2593,7 +2612,8 @@ ${messageContent}`;
             }
           }
           prompt += `\n=== END TASK ===\n`;
-          console.log(`[DO:${this.state.id}] Injected task: ${taskData.title}`);
+          prompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${taskData.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+          console.log(`[DO:${this.state.id}] Injected task: ${taskData.title} (ID: ${taskData.id})`);
           taskInjected = true;
         } else {
           console.log(`[DO:${this.state.id}] Task not found with ID: ${step.task_id}, will try requires_task if set`);
@@ -2611,6 +2631,7 @@ ${messageContent}`;
         const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
         if (pendingTask) {
           prompt += `\n\n=== TASK ===`;
+          prompt += `\nTask ID: ${pendingTask.id}`;
           prompt += `\nTitle: ${pendingTask.title}`;
           if (pendingTask.description) {
             prompt += `\nDescription: ${pendingTask.description}`;
@@ -2636,7 +2657,9 @@ ${messageContent}`;
             }
           }
           prompt += `\n=== END TASK ===\n`;
-          console.log(`[DO:${this.state.id}] Injected task: ${pendingTask.title}`);
+          prompt += `\nAfter completing this task, mark it as DONE by calling: POST /tasks/${pendingTask.id}/complete with body: {"conversation_id": "${this.state.id}"}`;
+          console.log(`[DO:${this.state.id}] Injected task: ${pendingTask.title} (ID: ${pendingTask.id})`);
+          taskInjected = true;
         } else {
           console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${this.conversation.flow_id}`);
         }
