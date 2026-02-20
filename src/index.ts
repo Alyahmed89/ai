@@ -584,20 +584,20 @@ app.post('/tasks/:id/complete', async (c) => {
     // Try to update in tasks table first
     let result = await db.prepare(
       'UPDATE tasks SET status = ? WHERE id = ? AND status = ?'
-    ).bind('DONE', taskId, 'PENDING').run();
+    ).bind('done', taskId, 'pending').run();
     
     // If no rows affected in tasks table, try task_followups
     if (result.meta.changes === 0) {
       result = await db.prepare(
         'UPDATE task_followups SET status = ? WHERE id = ? AND status = ?'
-      ).bind('DONE', taskId, 'PENDING').run();
+      ).bind('done', taskId, 'pending').run();
     }
     
     if (result.meta.changes === 0) {
       return c.json({ 
         error: 'Task not found or already completed',
         task_id: taskId,
-        note: 'Task must exist and be in PENDING status'
+        note: 'Task must exist and be in pending status'
       }, 404);
     }
     
@@ -608,7 +608,7 @@ app.post('/tasks/:id/complete', async (c) => {
       // Find the most recent PENDING execution step for this task
       const executionStepResult = await db.prepare(`
         SELECT id FROM task_execution_steps 
-        WHERE task_id = ? AND status = 'PENDING'
+        WHERE task_id = ? AND status = 'pending'
         ORDER BY started_at DESC
         LIMIT 1
       `).bind(taskId).first();
@@ -617,7 +617,7 @@ app.post('/tasks/:id/complete', async (c) => {
         const executionStepId = (executionStepResult as any).id;
         await db.prepare(`
           UPDATE task_execution_steps 
-          SET finished_at = ?, status = 'DONE', updated_at = ?
+          SET finished_at = ?, status = 'done', updated_at = ?
           WHERE id = ?
         `).bind(Date.now(), Date.now(), executionStepId).run();
         
@@ -652,7 +652,7 @@ app.post('/tasks/:id/complete', async (c) => {
     const response: any = {
       success: true,
       task_id: taskId,
-      status: 'DONE',
+      status: 'done',
       updated_at: new Date().toISOString(),
       note: 'Task marked as DONE. This is the ONLY way tasks move to DONE.'
     };

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS task_execution_steps (
   task_id TEXT NOT NULL, -- References tasks.id or task_followups.id
   started_at INTEGER NOT NULL,
   finished_at INTEGER,
-  status TEXT NOT NULL CHECK (status IN ('PENDING', 'DONE')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'done')),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions(execution_id) ON DELETE CASCADE
@@ -32,7 +32,7 @@ INSERT OR IGNORE INTO task_execution_steps (
     'task_eta_1',
     strftime('%s', 'now') - 3600,
     strftime('%s', 'now') - 3500,
-    'DONE',
+    'done',
     strftime('%s', 'now'),
     strftime('%s', 'now')
   ),
@@ -42,7 +42,7 @@ INSERT OR IGNORE INTO task_execution_steps (
     'task_eta_2',
     strftime('%s', 'now') - 3500,
     NULL,
-    'PENDING',
+    'pending',
     strftime('%s', 'now'),
     strftime('%s', 'now')
   );

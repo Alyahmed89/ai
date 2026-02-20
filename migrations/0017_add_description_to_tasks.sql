@@ -33,7 +33,7 @@ INSERT OR IGNORE INTO tasks (
   'response_contains',
   '{"expected": "success"}',
   'API integration working with proper error handling',
-  'PENDING',
+  'pending',
   0,
   strftime('%s', 'now'),
   strftime('%s', 'now')

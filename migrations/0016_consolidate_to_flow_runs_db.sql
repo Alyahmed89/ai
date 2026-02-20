@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   flow_id TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  status TEXT NOT NULL CHECK (status IN ('PENDING','DONE')),
+  status TEXT NOT NULL CHECK (status IN ('pending','done')),
   order_index INTEGER NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS flow_tasks (
   flow_id TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  status TEXT NOT NULL CHECK (status IN ('PENDING','DONE')),
+  status TEXT NOT NULL CHECK (status IN ('pending','done')),
   order_index INTEGER NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS task_followups (
   parent_task_id TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  status TEXT NOT NULL CHECK (status IN ('PENDING','DONE')),
+  status TEXT NOT NULL CHECK (status IN ('pending','done')),
   order_index INTEGER NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS task_execution_steps (
   id TEXT PRIMARY KEY,
   execution_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('PENDING','DONE')),
+  status TEXT NOT NULL CHECK (status IN ('pending','done')),
   order_index INTEGER NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

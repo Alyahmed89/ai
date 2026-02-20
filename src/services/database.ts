@@ -238,8 +238,8 @@ export async function getNextTaskForFlow(db: D1Database, flow_id: string): Promi
       FROM task_followups tf
       INNER JOIN tasks t ON tf.parent_task_id = t.id
       WHERE t.flow_id = ? 
-        AND t.status = 'DONE'
-        AND tf.status = 'PENDING'
+        AND t.status = 'done'
+        AND tf.status = 'pending'
       ORDER BY tf.order_index
       LIMIT 1
     `).bind(flow_id).first();
@@ -258,7 +258,7 @@ export async function getNextTaskForFlow(db: D1Database, flow_id: string): Promi
         NULL as parent_task_id
       FROM tasks t
       WHERE t.flow_id = ? 
-        AND t.status = 'PENDING'
+        AND t.status = 'pending'
       ORDER BY t.order_index
       LIMIT 1
     `).bind(flow_id).first();
@@ -462,7 +462,7 @@ export async function getFirstPendingTask(
     const query = `
       SELECT id, title, description, payload, created_at, status
       FROM tasks
-      WHERE flow_id = ? AND status != 'DONE'
+      WHERE flow_id = ? AND status != 'done'
     `;
     
     console.log(`[getFirstPendingTask] Querying tasks for flow_id: "${flow_id}"`);
@@ -565,7 +565,7 @@ export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_r
           SELECT tes.task_id 
           FROM task_execution_steps tes 
           WHERE tes.execution_id = ? 
-            AND tes.status = 'DONE'
+            AND tes.status = 'done'
         )
       `;
     }
@@ -778,13 +778,13 @@ export async function getNextStepBasedOnConditions(
  * Update task status
  * @param db D1Database instance
  * @param task_id Task ID
- * @param status New status ('PENDING' or 'DONE')
+ * @param status New status ('pending' or 'done')
  * @returns Promise with success status
  */
 export async function updateTaskStatus(
   db: D1Database,
   task_id: string,
-  status: 'PENDING' | 'DONE'
+  status: 'pending' | 'done'
 ): Promise<{success: boolean; error?: string}> {
   try {
     // Check if this is a task or follow-up
@@ -853,7 +853,7 @@ export async function startTaskExecution(
       execution_id,
       task_id,
       now,
-      'PENDING',
+      'pending',
       now,
       now
     ).run();
@@ -881,8 +881,8 @@ export async function completeTaskExecution(
     
     const result = await db.prepare(`
       UPDATE task_execution_steps 
-      SET finished_at = ?, status = 'DONE', updated_at = ?
-      WHERE id = ? AND status = 'PENDING'
+      SET finished_at = ?, status = 'done', updated_at = ?
+      WHERE id = ? AND status = 'pending'
     `).bind(now, now, execution_step_id).run();
 
     if (result.meta.changes === 0) {
