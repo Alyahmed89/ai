@@ -1007,59 +1007,69 @@ export class ConversationOrchestratorDO_2026A {
       
       let requestBody: string;
       
-      if (isCloudflareD1Endpoint) {
-        // For Cloudflare D1 API, try to handle response appropriately
-        let parsedResponse: any;
-        let responseString: string;
-        
-        // Convert response to string for logging and fallback
-        if (typeof response === 'string') {
-          responseString = response;
-          try {
-            parsedResponse = JSON.parse(response);
-            console.log(`[DO:${this.state.id}] Successfully parsed string response as JSON for D1 endpoint`);
-          } catch (parseError) {
-            parsedResponse = null;
-            console.log(`[DO:${this.state.id}] String response is not valid JSON for D1 endpoint: ${parseError.message}`);
-          }
-        } else if (typeof response === 'object' && response !== null) {
-          // Response is already an object
-          parsedResponse = response;
-          responseString = JSON.stringify(response);
-          console.log(`[DO:${this.state.id}] Response is already an object for D1 endpoint`);
-        } else {
-          // Response is some other type (number, boolean, etc.)
-          responseString = String(response);
+      // Try to parse response as JSON to determine if we should send it directly
+      let parsedResponse: any = null;
+      let responseString: string;
+      let isJsonObject = false;
+      
+      // Convert response to string for logging and fallback
+      if (typeof response === 'string') {
+        responseString = response;
+        try {
+          parsedResponse = JSON.parse(response);
+          console.log(`[DO:${this.state.id}] Successfully parsed string response as JSON`);
+          // Check if it's a JSON object (not array, not primitive)
+          isJsonObject = parsedResponse && typeof parsedResponse === 'object' && !Array.isArray(parsedResponse);
+        } catch (parseError) {
           parsedResponse = null;
-          console.log(`[DO:${this.state.id}] Response is not string or object, converting to string: ${typeof response}`);
+          console.log(`[DO:${this.state.id}] String response is not valid JSON: ${parseError.message}`);
         }
-        
+      } else if (typeof response === 'object' && response !== null) {
+        // Response is already an object
+        parsedResponse = response;
+        responseString = JSON.stringify(response);
+        console.log(`[DO:${this.state.id}] Response is already an object`);
+        // Check if it's a JSON object (not array)
+        isJsonObject = !Array.isArray(parsedResponse);
+      } else {
+        // Response is some other type (number, boolean, etc.)
+        responseString = String(response);
+        parsedResponse = null;
+        console.log(`[DO:${this.state.id}] Response is not string or object, converting to string: ${typeof response}`);
+      }
+      
+      // Determine if we should send the response directly or wrap it
+      let sendDirectly = false;
+      
+      if (isCloudflareD1Endpoint) {
+        // For Cloudflare D1 API, send directly only if it has a sql field
         if (parsedResponse && typeof parsedResponse === 'object' && parsedResponse.sql) {
-          // Response is already in the correct format for D1 API
-          requestBody = JSON.stringify(parsedResponse);
+          sendDirectly = true;
           console.log(`[DO:${this.state.id}] Sending direct SQL to Cloudflare D1 API: ${parsedResponse.sql.substring(0, 100)}...`);
         } else {
-          // Response doesn't have sql field or isn't parseable, wrap it
-          console.log(`[DO:${this.state.id}] Response doesn't contain 'sql' field or isn't valid JSON, using wrapped format`);
+          console.log(`[DO:${this.state.id}] D1 endpoint but response doesn't contain 'sql' field or isn't valid JSON object`);
           if (parsedResponse) {
-            console.log(`[DO:${this.state.id}] Parsed response type: ${typeof parsedResponse}, keys: ${Object.keys(parsedResponse).join(', ')}`);
+            console.log(`[DO:${this.state.id}] Parsed response type: ${typeof parsedResponse}, is object: ${typeof parsedResponse === 'object'}, keys: ${parsedResponse ? Object.keys(parsedResponse).join(', ') : 'none'}`);
           }
-          requestBody = JSON.stringify({
-            step_id: step.step_id,
-            step_title: step.title,
-            step_key: step.step_key,
-            response: responseString,
-            timestamp: Date.now(),
-            flow_id: this.conversation?.flow_id,
-            conversation_id: this.state.id.toString()
-          });
         }
       } else {
-        // For non-D1 endpoints, use the wrapped format
-        // Convert response to string for the payload
-        const responseString = typeof response === 'string' ? response : 
-                              (typeof response === 'object' && response !== null ? JSON.stringify(response) : String(response));
-        
+        // For non-D1 endpoints, send directly if it's a JSON object
+        if (isJsonObject) {
+          sendDirectly = true;
+          console.log(`[DO:${this.state.id}] Sending JSON object directly to endpoint`);
+          if (parsedResponse) {
+            console.log(`[DO:${this.state.id}] JSON object keys: ${Object.keys(parsedResponse).join(', ')}`);
+          }
+        } else {
+          console.log(`[DO:${this.state.id}] Response is not a JSON object (or is array/primitive), using wrapped format`);
+        }
+      }
+      
+      if (sendDirectly && parsedResponse) {
+        // Send the parsed JSON object directly
+        requestBody = JSON.stringify(parsedResponse);
+      } else {
+        // Wrap the response in metadata format
         requestBody = JSON.stringify({
           step_id: step.step_id,
           step_title: step.title,
