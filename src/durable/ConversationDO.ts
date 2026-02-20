@@ -967,7 +967,7 @@ export class ConversationOrchestratorDO_2026A {
   }
 
   // Helper to send step response to output_url if output is enabled
-  private async sendStepOutputIfEnabled(step: any, response: string): Promise<void> {
+  private async sendStepOutputIfEnabled(step: any, response: any): Promise<void> {
     if (!step) {
       console.log(`[DO:${this.state.id}] No step provided for output sending`);
       return;
@@ -989,17 +989,6 @@ export class ConversationOrchestratorDO_2026A {
     console.log(`[DO:${this.state.id}] Sending output for step "${step.title}" to: ${step.output_url}`);
 
     try {
-      // Prepare the JSON payload
-      const payload = {
-        step_id: step.step_id,
-        step_title: step.title,
-        step_key: step.step_key,
-        response: response,
-        timestamp: Date.now(),
-        flow_id: this.conversation?.flow_id,
-        conversation_id: this.state.id.toString()
-      };
-
       // Prepare headers
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -1011,17 +1000,90 @@ export class ConversationOrchestratorDO_2026A {
         console.log(`[DO:${this.state.id}] Added Authorization header for step "${step.title}"`);
       }
 
+      // Check if this is a Cloudflare D1 API endpoint
+      const isCloudflareD1Endpoint = step.output_url.includes('cloudflare.com/client/v4/accounts') && 
+                                     step.output_url.includes('/d1/database/') && 
+                                     step.output_url.includes('/query');
+      
+      let requestBody: string;
+      
+      if (isCloudflareD1Endpoint) {
+        // For Cloudflare D1 API, try to handle response appropriately
+        let parsedResponse: any;
+        let responseString: string;
+        
+        // Convert response to string for logging and fallback
+        if (typeof response === 'string') {
+          responseString = response;
+          try {
+            parsedResponse = JSON.parse(response);
+            console.log(`[DO:${this.state.id}] Successfully parsed string response as JSON for D1 endpoint`);
+          } catch (parseError) {
+            parsedResponse = null;
+            console.log(`[DO:${this.state.id}] String response is not valid JSON for D1 endpoint: ${parseError.message}`);
+          }
+        } else if (typeof response === 'object' && response !== null) {
+          // Response is already an object
+          parsedResponse = response;
+          responseString = JSON.stringify(response);
+          console.log(`[DO:${this.state.id}] Response is already an object for D1 endpoint`);
+        } else {
+          // Response is some other type (number, boolean, etc.)
+          responseString = String(response);
+          parsedResponse = null;
+          console.log(`[DO:${this.state.id}] Response is not string or object, converting to string: ${typeof response}`);
+        }
+        
+        if (parsedResponse && typeof parsedResponse === 'object' && parsedResponse.sql) {
+          // Response is already in the correct format for D1 API
+          requestBody = JSON.stringify(parsedResponse);
+          console.log(`[DO:${this.state.id}] Sending direct SQL to Cloudflare D1 API: ${parsedResponse.sql.substring(0, 100)}...`);
+        } else {
+          // Response doesn't have sql field or isn't parseable, wrap it
+          console.log(`[DO:${this.state.id}] Response doesn't contain 'sql' field or isn't valid JSON, using wrapped format`);
+          if (parsedResponse) {
+            console.log(`[DO:${this.state.id}] Parsed response type: ${typeof parsedResponse}, keys: ${Object.keys(parsedResponse).join(', ')}`);
+          }
+          requestBody = JSON.stringify({
+            step_id: step.step_id,
+            step_title: step.title,
+            step_key: step.step_key,
+            response: responseString,
+            timestamp: Date.now(),
+            flow_id: this.conversation?.flow_id,
+            conversation_id: this.state.id.toString()
+          });
+        }
+      } else {
+        // For non-D1 endpoints, use the wrapped format
+        // Convert response to string for the payload
+        const responseString = typeof response === 'string' ? response : 
+                              (typeof response === 'object' && response !== null ? JSON.stringify(response) : String(response));
+        
+        requestBody = JSON.stringify({
+          step_id: step.step_id,
+          step_title: step.title,
+          step_key: step.step_key,
+          response: responseString,
+          timestamp: Date.now(),
+          flow_id: this.conversation?.flow_id,
+          conversation_id: this.state.id.toString()
+        });
+      }
+
       // Send the POST request to output_url
       const fetchResponse = await fetch(step.output_url, {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify(payload)
+        body: requestBody
       });
 
       if (fetchResponse.ok) {
         console.log(`[DO:${this.state.id}] Successfully sent output for step "${step.title}"`);
       } else {
         console.error(`[DO:${this.state.id}] Failed to send output for step "${step.title}": ${fetchResponse.status} ${fetchResponse.statusText}`);
+        const errorText = await fetchResponse.text();
+        console.error(`[DO:${this.state.id}] Error response: ${errorText.substring(0, 500)}`);
       }
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Error sending output for step "${step.title}": ${error.message}`);
