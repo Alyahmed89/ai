@@ -456,52 +456,51 @@ export async function getFirstPendingTask(
   flow_id: string
 ): Promise<{ id: string; title: string; description: string | null; payload: string | null } | null> {
   try {
-    // Query tasks table (new schema)
-    // For consistent ordering with mixed data types, use a simpler approach:
-    // Get all pending tasks and sort in JavaScript where we have better date parsing
+    // Query tasks table (actual schema)
+    // The tasks table doesn't have flow_id column, so we fetch all pending tasks
+    // Sort by priority (higher number = higher priority) then by created_at
     const query = `
-      SELECT id, title, description, payload, created_at, status
+      SELECT id, title, success_criteria, test_payload, created_at, status, priority
       FROM tasks
-      WHERE flow_id = ? AND status != 'done'
+      WHERE status = 'pending'
+      ORDER BY priority DESC, created_at
+      LIMIT 1
     `;
     
-    console.log(`[getFirstPendingTask] Querying tasks for flow_id: "${flow_id}"`);
-    const results = await db.prepare(query).bind(flow_id).all();
+    console.log(`[getFirstPendingTask] Querying pending tasks (no flow_id filter)`);
+    const results = await db.prepare(query).all();
     
     console.log(`[getFirstPendingTask] Query returned ${results?.results?.length || 0} tasks`);
     if (results?.results?.length > 0) {
       console.log(`[getFirstPendingTask] First task sample:`, {
         id: results.results[0].id,
-        flow_id: flow_id,
+        title: results.results[0].title,
         status: results.results[0].status,
-        title: results.results[0].title
+        priority: results.results[0].priority
       });
     }
     
     if (!results || !results.results || results.results.length === 0) {
-      console.log(`[getFirstPendingTask] No tasks found for flow_id: "${flow_id}"`);
+      console.log(`[getFirstPendingTask] No pending tasks found`);
       return null;
     }
     
-    // Sort by created_at, handling mixed data types
-    const sortedTasks = results.results.sort((a, b) => {
-      const timeA = parseTime(a.created_at);
-      const timeB = parseTime(b.created_at);
-      return timeA - timeB;
-    });
+    const result = results.results[0];
     
-    const result = sortedTasks[0];
+    const resultObj = result as unknown as { 
+      id: string; 
+      title: string; 
+      success_criteria: string | null; 
+      test_payload: string | null;
+    };
     
-    if (!result) {
-      return null;
-    }
-    
-    const resultObj = result as unknown as { id: string; title: string; description: string | null; payload: string | null };
-    let description = resultObj.description;
+    // Use success_criteria as description, test_payload as payload
+    let description = resultObj.success_criteria;
+    const payload = resultObj.test_payload;
     
     // If description is null, use payload as fallback
-    if (!description && resultObj.payload) {
-      description = resultObj.payload;
+    if (!description && payload) {
+      description = payload;
     }
     
     // Try to parse JSON if description looks like JSON
@@ -524,9 +523,9 @@ export async function getFirstPendingTask(
       }
     }
     
-    return { id: resultObj.id, title: resultObj.title, description, payload: resultObj.payload };
+    return { id: resultObj.id, title: resultObj.title, description, payload };
   } catch (error: any) {
-    console.error(`[DATABASE] Error getting first pending task for flow ${flow_id}: ${error.message}`);
+    console.error(`[DATABASE] Error getting first pending task: ${error.message}`);
     return null;
   }
 }
