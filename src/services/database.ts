@@ -292,7 +292,9 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.auto_fail_on_error,
         fs.retryable,
         fs.task_id,
-        fs.requires_task
+        fs.requires_task,
+        fs.output,
+        fs.output_url
       FROM flow_steps fs
       WHERE fs.flow_id = ?
       ORDER BY fs.order_index
@@ -334,6 +336,9 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
         fs.auto_fail_on_error,
         fs.retryable,
         fs.task_id,
+        fs.requires_task,
+        fs.output,
+        fs.output_url,
         t.title as task_title,
         t.description as task_description
       FROM flow_steps fs
@@ -552,7 +557,11 @@ export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_r
         fs.page_key,
         fs.blocking,
         fs.auto_fail_on_error,
-        fs.retryable
+        fs.retryable,
+        fs.task_id,
+        fs.requires_task,
+        fs.output,
+        fs.output_url
       FROM flow_steps fs
       WHERE fs.flow_id = ? 
     `;
@@ -651,7 +660,11 @@ export async function getNextStepBasedOnConditions(
               fs.page_key,
               fs.blocking,
               fs.auto_fail_on_error,
-              fs.retryable
+              fs.retryable,
+              fs.task_id,
+              fs.requires_task,
+              fs.output,
+              fs.output_url
             FROM flow_steps fs
             WHERE fs.flow_id = ? AND fs.order_index = ?
             LIMIT 1
@@ -686,6 +699,10 @@ export async function getNextStepBasedOnConditions(
         fs.blocking,
         fs.auto_fail_on_error,
         fs.retryable,
+        fs.task_id,
+        fs.requires_task,
+        fs.output,
+        fs.output_url,
         fs.default_next_step
       FROM flow_steps fs
       WHERE fs.id = ?
@@ -709,7 +726,11 @@ export async function getNextStepBasedOnConditions(
           fs.page_key,
           fs.blocking,
           fs.auto_fail_on_error,
-          fs.retryable
+          fs.retryable,
+          fs.task_id,
+          fs.requires_task,
+          fs.output,
+          fs.output_url
         FROM flow_steps fs
         WHERE fs.flow_id = ? AND fs.order_index = ?
         LIMIT 1

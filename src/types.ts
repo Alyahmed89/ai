@@ -278,4 +278,6 @@ export interface StepData {
   retryable: boolean;
   task_id?: string;
   requires_task?: boolean;
+  output?: boolean;
+  output_url?: string;
 }

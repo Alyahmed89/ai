@@ -242,6 +242,11 @@ export class ConversationOrchestratorDO_2026A {
       this.conversation.last_step_response = body.response;
       console.log(`[DO:${this.state.id}] Stored response (${body.response.length} chars) for conditional branching`);
       
+      // Send output if enabled for current step
+      if (this.conversation.current_step) {
+        await this.sendStepOutputIfEnabled(this.conversation.current_step, body.response);
+      }
+      
       // For flow execution, we just need to move to next step
       // Check if we have more steps
       const currentStepIndex = this.conversation.current_step_index || 0;
@@ -953,6 +958,67 @@ export class ConversationOrchestratorDO_2026A {
     return false; // Handles false, 0, "0", "false", null, undefined, etc.
   }
 
+  // Helper to convert output value to boolean (handles 0, 1, "0", "1", true, false)
+  private convertOutputToBoolean(outputValue: any): boolean {
+    if (outputValue === true || outputValue === 1 || outputValue === "1" || outputValue === "true") {
+      return true;
+    }
+    return false; // Handles false, 0, "0", "false", null, undefined, etc.
+  }
+
+  // Helper to send step response to output_url if output is enabled
+  private async sendStepOutputIfEnabled(step: any, response: string): Promise<void> {
+    if (!step) {
+      console.log(`[DO:${this.state.id}] No step provided for output sending`);
+      return;
+    }
+
+    // Check if output is enabled for this step
+    const outputEnabled = this.convertOutputToBoolean(step.output);
+    if (!outputEnabled) {
+      console.log(`[DO:${this.state.id}] Output not enabled for step: ${step.title}`);
+      return;
+    }
+
+    // Check if output_url is provided
+    if (!step.output_url || !step.output_url.trim()) {
+      console.log(`[DO:${this.state.id}] Output enabled but no output_url provided for step: ${step.title}`);
+      return;
+    }
+
+    console.log(`[DO:${this.state.id}] Sending output for step "${step.title}" to: ${step.output_url}`);
+
+    try {
+      // Prepare the JSON payload
+      const payload = {
+        step_id: step.step_id,
+        step_title: step.title,
+        step_key: step.step_key,
+        response: response,
+        timestamp: Date.now(),
+        flow_id: this.conversation?.flow_id,
+        conversation_id: this.state.id.toString()
+      };
+
+      // Send the POST request to output_url
+      const fetchResponse = await fetch(step.output_url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (fetchResponse.ok) {
+        console.log(`[DO:${this.state.id}] Successfully sent output for step "${step.title}"`);
+      } else {
+        console.error(`[DO:${this.state.id}] Failed to send output for step "${step.title}": ${fetchResponse.status} ${fetchResponse.statusText}`);
+      }
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error sending output for step "${step.title}": ${error.message}`);
+    }
+  }
+
   // Helper to load flow steps from database
   private async loadFlowStepsFromDB(flowId: string): Promise<any[]> {
     if (!this.env.FLOW_RUNS_DB) {
@@ -962,7 +1028,7 @@ export class ConversationOrchestratorDO_2026A {
     
     try {
       const result = await this.env.FLOW_RUNS_DB.prepare(
-        'SELECT id, title, instructions as description, order_index, task_id, requires_task FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
+        'SELECT id, title, instructions as description, order_index, task_id, requires_task, output, output_url FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
       
       return result.results || [];
@@ -1993,20 +2059,36 @@ export class ConversationOrchestratorDO_2026A {
             if (parsed.status) {
               this.conversation.last_step_response = `Status: ${parsed.status}`;
               console.log(`[DO:${this.state.id}] Extracted status from response: ${parsed.status}`);
+              // Send output if enabled for current step
+              if (this.conversation.current_step) {
+                await this.sendStepOutputIfEnabled(this.conversation.current_step, `Status: ${parsed.status}`);
+              }
             } else {
               // Use the full content as response
               this.conversation.last_step_response = content;
               console.log(`[DO:${this.state.id}] Using full content as step response (${content.length} chars)`);
+              // Send output if enabled for current step
+              if (this.conversation.current_step) {
+                await this.sendStepOutputIfEnabled(this.conversation.current_step, content);
+              }
             }
           } else {
             // Not JSON, use as-is
             this.conversation.last_step_response = content;
             console.log(`[DO:${this.state.id}] Using non-JSON content as step response (${content.length} chars)`);
+            // Send output if enabled for current step
+            if (this.conversation.current_step) {
+              await this.sendStepOutputIfEnabled(this.conversation.current_step, content);
+            }
           }
         } catch (error) {
           // If JSON parsing fails, use as-is
           console.log(`[DO:${this.state.id}] Failed to parse JSON, using content as-is: ${error}`);
           this.conversation.last_step_response = this.conversation.pending_event_content;
+          // Send output if enabled for current step
+          if (this.conversation.current_step && this.conversation.pending_event_content) {
+            await this.sendStepOutputIfEnabled(this.conversation.current_step, this.conversation.pending_event_content);
+          }
         }
       }
       
