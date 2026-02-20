@@ -293,7 +293,7 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.retryable,
         fs.task_id,
         fs.requires_task,
-        fs.output,
+        CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url
       FROM flow_steps fs
       WHERE fs.flow_id = ?
@@ -337,7 +337,7 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
         fs.retryable,
         fs.task_id,
         fs.requires_task,
-        fs.output,
+        CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         t.title as task_title,
         t.description as task_description
@@ -560,7 +560,7 @@ export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_r
         fs.retryable,
         fs.task_id,
         fs.requires_task,
-        fs.output,
+        CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url
       FROM flow_steps fs
       WHERE fs.flow_id = ? 
@@ -663,7 +663,7 @@ export async function getNextStepBasedOnConditions(
               fs.retryable,
               fs.task_id,
               fs.requires_task,
-              fs.output,
+              CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
               fs.output_url
             FROM flow_steps fs
             WHERE fs.flow_id = ? AND fs.order_index = ?
@@ -701,7 +701,7 @@ export async function getNextStepBasedOnConditions(
         fs.retryable,
         fs.task_id,
         fs.requires_task,
-        fs.output,
+        CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.default_next_step
       FROM flow_steps fs
@@ -729,7 +729,7 @@ export async function getNextStepBasedOnConditions(
           fs.retryable,
           fs.task_id,
           fs.requires_task,
-          fs.output,
+          CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
           fs.output_url
         FROM flow_steps fs
         WHERE fs.flow_id = ? AND fs.order_index = ?
