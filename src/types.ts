@@ -280,4 +280,5 @@ export interface StepData {
   requires_task?: boolean;
   output?: boolean;
   output_url?: string;
+  output_auth_token?: string;
 }

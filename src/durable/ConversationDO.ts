@@ -1000,12 +1000,21 @@ export class ConversationOrchestratorDO_2026A {
         conversation_id: this.state.id.toString()
       };
 
+      // Prepare headers
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add Authorization header if output_auth_token is provided
+      if (step.output_auth_token && step.output_auth_token.trim()) {
+        headers['Authorization'] = `Bearer ${step.output_auth_token.trim()}`;
+        console.log(`[DO:${this.state.id}] Added Authorization header for step "${step.title}"`);
+      }
+
       // Send the POST request to output_url
       const fetchResponse = await fetch(step.output_url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify(payload)
       });
 
@@ -1028,7 +1037,7 @@ export class ConversationOrchestratorDO_2026A {
     
     try {
       const result = await this.env.FLOW_RUNS_DB.prepare(
-        'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, requires_task, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
+        'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, requires_task, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url, output_auth_token FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
       
       return result.results || [];
