@@ -463,18 +463,31 @@ export async function getFirstPendingTask(
   flow_id: string
 ): Promise<{ id: string; title: string; description: string | null; payload: string | null } | null> {
   try {
-    // Query tasks table (actual schema)
-    // The tasks table doesn't have flow_id column, so we fetch all pending tasks
-    // Sort by priority (higher number = higher priority) then by created_at
+    // Query tasks table with new unified schema
+    // Sort by numeric_priority (lower number = higher priority) then by created_at
     const query = `
-      SELECT id, title, success_criteria, test_payload, created_at, status, priority
+      SELECT 
+        id,
+        title,
+        task_type,
+        action,
+        file,
+        line,
+        dependencies,
+        numeric_priority,
+        description,
+        endpoint_path,
+        http_method,
+        sample_payload,
+        expected_response,
+        auth_required
       FROM tasks
-      WHERE status = 'pending'
-      ORDER BY priority DESC, created_at
+      WHERE status = 'pending' AND task_type = 'implementation'
+      ORDER BY numeric_priority ASC, created_at ASC
       LIMIT 1
     `;
     
-    console.log(`[getFirstPendingTask] Querying pending tasks (no flow_id filter)`);
+    console.log(`[getFirstPendingTask] Querying pending implementation tasks`);
     const results = await db.prepare(query).all();
     
     console.log(`[getFirstPendingTask] Query returned ${results?.results?.length || 0} tasks`);
@@ -482,13 +495,13 @@ export async function getFirstPendingTask(
       console.log(`[getFirstPendingTask] First task sample:`, {
         id: results.results[0].id,
         title: results.results[0].title,
-        status: results.results[0].status,
-        priority: results.results[0].priority
+        task_type: results.results[0].task_type,
+        numeric_priority: results.results[0].numeric_priority
       });
     }
     
     if (!results || !results.results || results.results.length === 0) {
-      console.log(`[getFirstPendingTask] No pending tasks found`);
+      console.log(`[getFirstPendingTask] No pending implementation tasks found`);
       return null;
     }
     
@@ -497,38 +510,39 @@ export async function getFirstPendingTask(
     const resultObj = result as unknown as { 
       id: string; 
       title: string; 
-      success_criteria: string | null; 
-      test_payload: string | null;
+      description: string | null;
+      action: string | null;
+      file: string | null;
+      line: number | null;
+      dependencies: string | null;
+      numeric_priority: number;
+      endpoint_path: string | null;
+      http_method: string | null;
+      sample_payload: string | null;
+      expected_response: string | null;
+      auth_required: boolean;
     };
     
-    // Use success_criteria as description, test_payload as payload
-    let description = resultObj.success_criteria;
-    const payload = resultObj.test_payload;
-    
-    // If description is null, use payload as fallback
-    if (!description && payload) {
-      description = payload;
+    // Use action as description if description is null
+    let description = resultObj.description;
+    if (!description && resultObj.action) {
+      description = resultObj.action;
     }
     
-    // Try to parse JSON if description looks like JSON
-    if (description && description.trim().startsWith('{') && description.trim().endsWith('}')) {
-      try {
-        const parsed = JSON.parse(description);
-        // Extract instructions field if present, otherwise use the whole object
-        if (parsed.instructions) {
-          description = parsed.instructions;
-        } else if (typeof parsed === 'object') {
-          // Try to find any string field that looks like instructions
-          const stringFields = Object.values(parsed).filter(v => typeof v === 'string');
-          if (stringFields.length > 0) {
-            description = stringFields[0];
-          }
-        }
-      } catch (e) {
-        // Not valid JSON, keep as-is
-        console.log(`[DATABASE] Task description is not valid JSON: ${e.message}`);
-      }
-    }
+    // Build a comprehensive payload with all task details
+    const payload = JSON.stringify({
+      task_type: resultObj.task_type,
+      action: resultObj.action,
+      file: resultObj.file,
+      line: resultObj.line,
+      dependencies: resultObj.dependencies ? JSON.parse(resultObj.dependencies) : [],
+      numeric_priority: resultObj.numeric_priority,
+      endpoint_path: resultObj.endpoint_path,
+      http_method: resultObj.http_method,
+      sample_payload: resultObj.sample_payload ? JSON.parse(resultObj.sample_payload) : null,
+      expected_response: resultObj.expected_response ? JSON.parse(resultObj.expected_response) : null,
+      auth_required: resultObj.auth_required
+    }, null, 2);
     
     return { id: resultObj.id, title: resultObj.title, description, payload };
   } catch (error: any) {
