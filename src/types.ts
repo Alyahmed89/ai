@@ -278,6 +278,7 @@ export interface StepData {
   retryable: boolean;
   task_id?: string;
   requires_task?: boolean;
+  input_keys?: string;  // NEW: JSON string of SecureApiConfig[] for dynamic API data fetching
   output?: boolean;
   output_url?: string;
   output_auth_token?: string;

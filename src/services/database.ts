@@ -293,6 +293,7 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.retryable,
         fs.task_id,
         fs.requires_task,
+        fs.input_keys,  -- NEW: For dynamic API data fetching
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.output_auth_token
@@ -338,6 +339,7 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
         fs.retryable,
         fs.task_id,
         fs.requires_task,
+        fs.input_keys,  -- NEW: For dynamic API data fetching
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.output_auth_token,

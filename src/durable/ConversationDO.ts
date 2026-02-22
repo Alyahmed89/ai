@@ -6,6 +6,7 @@ import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing'
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getTaskData, getFirstPendingTask } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
+import { resolveStepInstructions } from '../services/stepResolver';
 import { 
   MAX_ITERATIONS, 
   END_FLOW_TOKEN, 
@@ -656,66 +657,81 @@ export class ConversationOrchestratorDO_2026A {
               }
             }
             
-            // For ALL steps (including first step), use the step instructions
-            // The step instructions contain the exact command to execute
-            taskPrompt = `Execute step: ${currentStep.title}`;
-            
-            // Inject task data if available
-            if (taskData) {
-              taskPrompt += `\n\n=== TASK ===`;
-              // Include task ID if available (from dynamicTaskId or currentStep.task_id)
-              const taskId = dynamicTaskId || currentStep.task_id;
-              if (taskId) {
-                taskPrompt += `\nTask ID: ${taskId}`;
-              }
-              if (taskData.title) {
-                taskPrompt += `\nTitle: ${taskData.title}`;
-              }
-              if (taskData.description) {
-                taskPrompt += `\nDescription: ${taskData.description}`;
-              }
-              // Add payload if it's JSON and contains additional metadata
-              if (taskData.payload && taskData.payload.trim().startsWith('{') && taskData.payload.trim().endsWith('}')) {
-                try {
-                  const payloadObj = JSON.parse(taskData.payload);
-                  // Add non-instruction fields from payload
-                  const metadataFields = Object.entries(payloadObj)
-                    .filter(([key, value]) => key !== 'instructions' && typeof value === 'string')
-                    .map(([key, value]) => `${key}: ${value}`);
-                  
-                  if (metadataFields.length > 0) {
-                    taskPrompt += `\nAdditional Details:`;
-                    metadataFields.forEach(field => {
-                      taskPrompt += `\n- ${field}`;
-                    });
-                  }
-                } catch (e) {
-                  // Not valid JSON, skip
-                  console.log(`[DO:${this.state.id}] Task payload is not valid JSON: ${e.message}`);
+            // Use the new step resolver for dynamic API data fetching
+            // This handles both new input_keys system and backward compatibility
+            try {
+              const resolvedStep = await resolveStepInstructions(
+                currentStep,
+                this.env.FLOW_RUNS_DB,
+                this.env as Record<string, string>,
+                {
+                  flow_id: flow_id,
+                  execution_id: this.flowRunId,
+                  step_id: currentStep.step_id
+                }
+              );
+              
+              // Build the task prompt with resolved instructions
+              taskPrompt = `Execute step: ${currentStep.title}`;
+              
+              // Add task data if available (backward compatibility)
+              if (resolvedStep.task_data) {
+                taskPrompt += `\n\n=== TASK ===`;
+                const taskId = dynamicTaskId || currentStep.task_id;
+                if (taskId) {
+                  taskPrompt += `\nTask ID: ${taskId}`;
+                }
+                if (resolvedStep.task_data.title) {
+                  taskPrompt += `\nTitle: ${resolvedStep.task_data.title}`;
+                }
+                if (resolvedStep.task_data.description) {
+                  taskPrompt += `\nDescription: ${resolvedStep.task_data.description}`;
+                }
+                taskPrompt += `\n=== END TASK ===\n`;
+                
+                // Store dynamic task ID if we fetched one
+                if (dynamicTaskId) {
+                  console.log(`[DO:${this.state.id}] Using dynamic task ID: ${dynamicTaskId}`);
                 }
               }
-              taskPrompt += `\n=== END TASK ===\n`;
-              // REMOVED: Instructions to mark task as complete
-              // Task completion is handled automatically by the system
               
-              // Store dynamic task ID if we fetched one
-              if (dynamicTaskId) {
-                // We could store this for tracking, but for now just log it
-                console.log(`[DO:${this.state.id}] Using dynamic task ID: ${dynamicTaskId}`);
+              // Add the resolved instructions
+              taskPrompt += `\n${resolvedStep.instructions}`;
+              
+              // Log API responses if any (for debugging)
+              if (resolvedStep.api_responses && Object.keys(resolvedStep.api_responses).length > 0) {
+                console.log(`[DO:${this.state.id}] Step ${currentStep.step_id} API responses:`, 
+                  Object.keys(resolvedStep.api_responses).map(key => `${key}: ${resolvedStep.api_responses![key].success ? 'success' : 'failed'}`)
+                );
+              }
+              
+            } catch (error) {
+              console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
+              
+              // Fall back to old logic if step resolver fails
+              taskPrompt = `Execute step: ${currentStep.title}`;
+              
+              if (taskData) {
+                taskPrompt += `\n\n=== TASK ===`;
+                const taskId = dynamicTaskId || currentStep.task_id;
+                if (taskId) {
+                  taskPrompt += `\nTask ID: ${taskId}`;
+                }
+                if (taskData.title) {
+                  taskPrompt += `\nTitle: ${taskData.title}`;
+                }
+                if (taskData.description) {
+                  taskPrompt += `\nDescription: ${taskData.description}`;
+                }
+                taskPrompt += `\n=== END TASK ===\n`;
+              }
+              
+              if (currentStep.description) {
+                taskPrompt += `\n${currentStep.description}`;
               }
             }
             
-            if (currentStep.description) {
-              taskPrompt += `\n${currentStep.description}`;
-            }
-            // ADD STEP INSTRUCTIONS (contains the exact command to execute)
-            if (currentStep.instructions) {
-              taskPrompt += `\n\n${currentStep.instructions}`;
-            }
-            
-            // REMOVED: Step Type metadata - not needed for OpenHands
-            // taskPrompt += `\n\nStep Type: ${currentStep.step_type}`;
-            
+            // Add step metadata
             if (currentStep.page_key) {
               taskPrompt += `\nPage: ${currentStep.page_key}`;
             }
