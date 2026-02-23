@@ -36,8 +36,8 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   },
   variables: {
     delimiters: {
-      start: '{*',
-      end: '*}'
+      start: '{',
+      end: '}'
     },
     environment_prefix: 'env:'
   }

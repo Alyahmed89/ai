@@ -141,7 +141,7 @@ describe('SecureVariableResolver', () => {
   
   describe('Safe template substitution', () => {
     it('should substitute variables with custom delimiters', () => {
-      const template = 'Hello {* user.name *}, welcome to {* project.name *}';
+      const template = 'Hello {user.name}, welcome to {project.name}';
       const variables = {
         user: { name: 'John' },
         project: { name: 'Test Project' }
@@ -152,7 +152,7 @@ describe('SecureVariableResolver', () => {
     });
     
     it('should sanitize HTML in string variables', () => {
-      const template = 'Message: {* message *}';
+      const template = 'Message: {message}';
       const variables = {
         message: '<script>alert("xss")</script>'
       };
@@ -162,11 +162,11 @@ describe('SecureVariableResolver', () => {
     });
     
     it('should keep original template for missing variables', () => {
-      const template = 'Hello {* user.name *}';
+      const template = 'Hello {user.name}';
       const variables = {};
       
       const result = resolver['resolveTemplate'](template, variables);
-      expect(result).toBe('Hello {* user.name *}');
+      expect(result).toBe('Hello {user.name}');
     });
   });
   
