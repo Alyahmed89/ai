@@ -292,8 +292,7 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.auto_fail_on_error,
         fs.retryable,
         fs.task_id,
-        fs.requires_task,
-        fs.input_keys,  -- NEW: For dynamic API data fetching
+        fs.input_keys,  -- For dynamic API data fetching
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.output_auth_token
@@ -338,8 +337,7 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
         fs.auto_fail_on_error,
         fs.retryable,
         fs.task_id,
-        fs.requires_task,
-        fs.input_keys,  -- NEW: For dynamic API data fetching
+        fs.input_keys,  -- For dynamic API data fetching
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.output_auth_token,
@@ -577,7 +575,7 @@ export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_r
         fs.auto_fail_on_error,
         fs.retryable,
         fs.task_id,
-        fs.requires_task,
+        fs.input_keys,
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.output_auth_token
@@ -681,7 +679,7 @@ export async function getNextStepBasedOnConditions(
               fs.auto_fail_on_error,
               fs.retryable,
               fs.task_id,
-              fs.requires_task,
+              fs.input_keys,
               CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
               fs.output_url,
               fs.output_auth_token
@@ -749,7 +747,7 @@ export async function getNextStepBasedOnConditions(
           fs.auto_fail_on_error,
           fs.retryable,
           fs.task_id,
-          fs.requires_task,
+          fs.input_keys,
           CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
           fs.output_url,
           fs.output_auth_token

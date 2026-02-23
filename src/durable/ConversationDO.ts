@@ -1125,7 +1125,7 @@ export class ConversationOrchestratorDO_2026A {
     
     try {
       const result = await this.env.FLOW_RUNS_DB.prepare(
-        'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, requires_task, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url, output_auth_token FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
+        'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, input_keys, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url, output_auth_token FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
       
       return result.results || [];
