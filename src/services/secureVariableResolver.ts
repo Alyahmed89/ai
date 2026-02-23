@@ -909,7 +909,66 @@ export class SecureVariableResolver {
         return match; // Keep original template if variable not found
       }
       
-      return String(value);
+      // Clean the value: decode HTML entities and extract text from JSON strings
+      let cleanedValue = String(value);
+      
+      // 1. Decode HTML entities (e.g., &#x2F; → /, &quot; → ")
+      cleanedValue = cleanedValue
+        .replace(/&#x2F;/g, '/')
+        .replace(/&quot;/g, '"')
+        .replace(/&#x27;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+      
+      // 2. If it looks like a JSON string, try to parse it as JSON
+      // But only if it's a simple string value, not a complex object
+      const trimmed = cleanedValue.trim();
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          // If it's a simple object with text fields, extract the most relevant text
+          if (typeof parsed === 'object' && parsed !== null) {
+            // For AI context, convert to text key-value pairs
+            if (varPath.includes('ai_context')) {
+              // Convert JSON object to readable text format
+              const lines: string[] = [];
+              for (const [key, val] of Object.entries(parsed)) {
+                if (val === null || val === undefined) continue;
+                
+                if (typeof val === 'string') {
+                  // Clean string value
+                  const cleanVal = val.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+                  lines.push(`${key}: ${cleanVal}`);
+                } else if (typeof val === 'object') {
+                  // For nested objects, show as JSON (simplified)
+                  lines.push(`${key}: ${JSON.stringify(val).substring(0, 100)}...`);
+                } else {
+                  lines.push(`${key}: ${val}`);
+                }
+              }
+              cleanedValue = lines.join('\n');
+            } else {
+              // For other JSON objects, convert to text key-value pairs
+              const lines: string[] = [];
+              for (const [key, val] of Object.entries(parsed)) {
+                if (val === null || val === undefined) continue;
+                lines.push(`${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`);
+              }
+              cleanedValue = lines.join('\n');
+            }
+          }
+        } catch (e) {
+          // Not valid JSON, keep as-is
+          console.log("🔍 [DIAG] Not valid JSON, keeping as text:", trimmed.substring(0, 100));
+        }
+      }
+      
+      // 3. Clean up any remaining escape sequences
+      cleanedValue = cleanedValue.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+      
+      console.log("🔍 [DIAG] Cleaned value (first 200 chars):", cleanedValue.substring(0, 200));
+      return cleanedValue;
     });
     
     console.log("🔍 [DIAG] safeSubstitute result (first 500 chars):", result.substring(0, 500));
