@@ -889,12 +889,8 @@ export class SecureVariableResolver {
     const startEscaped = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const endEscaped = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
-    // Handle both {variable} and {*variable*} syntax for backward compatibility
-    // Original pattern: {variable}
-    // Malformed pattern in some DB entries: {*variable*}
-    // Note: \\*? means optional asterisk (0 or 1 asterisk)
     const pattern = new RegExp(
-      `${startEscaped}\\*?\\s*([\\w.]+)\\s*\\*?${endEscaped}`,
+      `${startEscaped}\\s*([\\w.]+)\\s*${endEscaped}`,
       'g'
     );
     
