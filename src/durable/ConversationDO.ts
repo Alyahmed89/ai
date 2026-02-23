@@ -2985,11 +2985,41 @@ ${messageContent}`;
       }
     }
     
-    // Add step instructions
-    // Note: StepData interface has 'description' field, not 'instructions'
-    console.log(`[DO:${this.state.id}] Step description length: ${step.description?.length || 0} chars`);
-    if (step.description) {
-      prompt += `\n\n${step.description}`;
+    // Add step instructions - USE RESOLVED INSTRUCTIONS
+    try {
+      const resolvedStep = await resolveStepInstructions(
+        step,
+        this.env.FLOW_RUNS_DB,
+        this.env as Record<string, string>,
+        {
+          flow_id: this.conversation.flow_id,
+          execution_id: this.flowRunId,
+          step_id: step.step_id
+        }
+      );
+      
+      console.log(`[DO:${this.state.id}] Resolved instructions length: ${resolvedStep.instructions?.length || 0} chars`);
+      console.log(`[DO:${this.state.id}] Original description length: ${step.description?.length || 0} chars`);
+      
+      if (resolvedStep.instructions) {
+        prompt += `\n\n${resolvedStep.instructions}`;
+      } else if (step.description) {
+        prompt += `\n\n${step.description}`;
+      }
+      
+      // Log if variables were resolved
+      if (resolvedStep.api_responses && Object.keys(resolvedStep.api_responses).length > 0) {
+        console.log(`[DO:${this.state.id}] Step ${step.step_id} API responses:`, 
+          Object.keys(resolvedStep.api_responses).map(key => `${key}: ${resolvedStep.api_responses![key].success ? 'success' : 'failed'}`)
+        );
+      }
+      
+    } catch (error) {
+      console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
+      // Fall back to original description
+      if (step.description) {
+        prompt += `\n\n${step.description}`;
+      }
     }
     
     console.log(`[DO:${this.state.id}] Final prompt length: ${prompt.length} chars`);
@@ -3031,6 +3061,14 @@ ${messageContent}`;
     } else {
       // Inject message to existing conversation
       console.log(`[DO:${this.state.id}] Injecting message to existing OpenHands conversation: ${this.conversation.openhands_conversation_id}`);
+      
+      // CRITICAL LOG: What is actually being sent to OpenHands?
+      console.log(`[DO:${this.state.id}] SENT TO OPENHANDS (first 500 chars):`, prompt.substring(0, 500));
+      if (prompt.includes('{task_data')) {
+        console.log(`[DO:${this.state.id}] WARNING: Template variables still present in prompt!`);
+        console.log(`[DO:${this.state.id}] Contains {task_data:`, prompt.includes('{task_data'));
+      }
+      
       const injectResult = await injectMessageToOpenHands(
         this.env.OPENHANDS_API_URL,
         this.conversation.openhands_conversation_id,
