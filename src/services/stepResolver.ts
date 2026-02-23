@@ -33,7 +33,7 @@ export async function resolveStepInstructions(
       const resolved = await resolver.resolveStepVariables(
         {
           step_id: step.step_id,
-          instructions: step.description || step.title || '',
+          instructions: step.instructions || step.description || step.title || '',
           input_keys: step.input_keys,
           auto_fail_on_error: step.auto_fail_on_error || false
         },
@@ -41,7 +41,7 @@ export async function resolveStepInstructions(
           env,
           step: {
             step_id: step.step_id,
-            instructions: step.description || step.title || '',
+            instructions: step.instructions || step.description || step.title || '',
             input_keys: step.input_keys,
             auto_fail_on_error: step.auto_fail_on_error || false
           },
@@ -85,10 +85,10 @@ export async function resolveStepInstructions(
   }
   
   // Build instructions with task data if available
-  let instructions = step.description || step.title || '';
+  let instructions = step.instructions || step.description || step.title || '';
   
   if (taskData) {
-    instructions = this.injectTaskData(instructions, taskData, step.task_id);
+    instructions = injectTaskData(instructions, taskData, step.task_id);
   }
   
   return {
