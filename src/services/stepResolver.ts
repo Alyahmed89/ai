@@ -106,11 +106,13 @@ function injectTaskData(
   let result = instructions;
   
   if (taskData.title) {
-    result = result.replace(/\{task_title\}/g, taskData.title);
+    // Handle both {task_title} and { task_title } (with optional spaces)
+    result = result.replace(/\{\s*task_title\s*\}/g, taskData.title);
   }
   
   if (taskData.description) {
-    result = result.replace(/\{task_description\}/g, taskData.description);
+    // Handle both {task_description} and { task_description } (with optional spaces)
+    result = result.replace(/\{\s*task_description\s*\}/g, taskData.description);
   }
   
   // Add task metadata section if not already present

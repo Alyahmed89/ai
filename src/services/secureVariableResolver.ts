@@ -552,7 +552,18 @@ export class SecureVariableResolver {
    */
   private resolveTemplate(template: any, variables: Record<string, any>): any {
     if (typeof template === 'string') {
-      return template.replace(/\{(\w+(?:\.\w+)*)\}/g, (match, varPath) => {
+      const { start, end } = this.securityConfig.variables.delimiters;
+      
+      // Escape regex special characters in delimiters
+      const startEscaped = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const endEscaped = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      const pattern = new RegExp(
+        `${startEscaped}\\s*([\\w.]+)\\s*${endEscaped}`,
+        'g'
+      );
+      
+      return template.replace(pattern, (match, varPath) => {
         const value = this.getNestedValue(variables, varPath);
         return value !== undefined ? String(value) : match;
       });
