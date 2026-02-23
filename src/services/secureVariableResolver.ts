@@ -119,11 +119,18 @@ export class SecureVariableResolver {
       const sanitizedVars = this.sanitizeVariables(variables);
       
       // 6. Perform safe template substitution
+      // DIAGNOSTIC LOGS - Debug variable rendering
+      console.log("🔍 [DIAG] RAW INSTRUCTIONS:", step.instructions);
+      console.log("🔍 [DIAG] VARIABLES BEFORE RENDER:", sanitizedVars);
+      console.log("🔍 [DIAG] EXTRACTED task_data:", sanitizedVars.task_data);
+      
       const instructions = this.safeSubstitute(
         step.instructions,
         sanitizedVars
       );
       
+      console.log("🔍 [DIAG] RENDERED INSTRUCTIONS:", instructions);
+
       const duration = Date.now() - startTime;
       this.log('info', `Variable resolution completed for step ${step.step_id} in ${duration}ms`);
       
@@ -715,6 +722,9 @@ export class SecureVariableResolver {
     // Supports: result[0].results[0] → result.0.results.0
     const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
     
+    // DIAGNOSTIC LOG
+    console.log("🔍 [DIAG] extractByPath called:", { path, normalizedPath, dataKeys: data ? Object.keys(data) : [] });
+    
     // Simple dot notation extraction
     const result = this.getNestedValue(data, normalizedPath);
     
@@ -725,6 +735,8 @@ export class SecureVariableResolver {
         normalizedPath,
         dataKeys: data ? Object.keys(data) : []
       });
+    } else {
+      console.log("🔍 [DIAG] extractByPath SUCCESS:", { path, result: JSON.stringify(result).substring(0, 200) });
     }
     
     return result;
@@ -866,6 +878,13 @@ export class SecureVariableResolver {
   ): string {
     const { start, end } = this.securityConfig.variables.delimiters;
     
+    // DIAGNOSTIC LOG
+    console.log("🔍 [DIAG] safeSubstitute called:", { 
+      templateLength: template.length,
+      variableCount: Object.keys(variables).length,
+      delimiters: { start, end }
+    });
+    
     // Escape regex special characters in delimiters
     const startEscaped = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const endEscaped = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -875,16 +894,26 @@ export class SecureVariableResolver {
       'g'
     );
     
-    return template.replace(pattern, (match, varPath) => {
+    // Find all matches for debugging
+    const matches = [...template.matchAll(pattern)];
+    console.log("🔍 [DIAG] Template matches found:", matches.map(m => m[1]));
+    
+    const result = template.replace(pattern, (match, varPath) => {
       const value = this.getNestedValue(variables, varPath);
+      
+      console.log("🔍 [DIAG] Replacing:", { match, varPath, value });
       
       // Convert to string safely
       if (value === undefined || value === null) {
+        console.log("🔍 [DIAG] Variable not found, keeping original:", varPath);
         return match; // Keep original template if variable not found
       }
       
       return String(value);
     });
+    
+    console.log("🔍 [DIAG] safeSubstitute result (first 500 chars):", result.substring(0, 500));
+    return result;
   }
   
   /**
