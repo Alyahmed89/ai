@@ -711,8 +711,23 @@ export class SecureVariableResolver {
   private extractByPath(data: any, path: string): any {
     if (!path || path === '.') return data;
     
+    // Normalize bracket notation to dot notation
+    // Supports: result[0].results[0] → result.0.results.0
+    const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+    
     // Simple dot notation extraction
-    return this.getNestedValue(data, path);
+    const result = this.getNestedValue(data, normalizedPath);
+    
+    // Log extraction failures for debugging
+    if (result === undefined) {
+      this.log('warn', `Path extraction failed: "${path}" → "${normalizedPath}"`, {
+        path,
+        normalizedPath,
+        dataKeys: data ? Object.keys(data) : []
+      });
+    }
+    
+    return result;
   }
   
   /**
