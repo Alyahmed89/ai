@@ -371,11 +371,13 @@ export class ConversationOrchestratorDO_2026A {
       if (nextStep) {
         console.log(`[DO:${this.state.id}] Conditional branching selected step: ${nextStep.title} (order_index: ${nextStep.order_index})`);
         
-        // Update current_step_index to match the new step's order_index
-        // Note: order_index is 1-based in database, but we store as 0-based index
-        this.conversation.current_step_index = nextStep.order_index - 1;
-        console.log(`[DO:${this.state.id}] Updated current_step_index to ${this.conversation.current_step_index} based on conditional branching`);
+        // Check for termination condition
+        if (nextStep.order_index === -1) {
+          console.log(`[DO:${this.state.id}] Termination step detected, returning null to end flow`);
+          return null;
+        }
         
+        // Return the matched step - index update will happen in completion handler
         return nextStep;
       } else {
         console.log(`[DO:${this.state.id}] No conditional branching match, using sequential order`);
@@ -2191,6 +2193,37 @@ export class ConversationOrchestratorDO_2026A {
       
       // Clear pending event content (not needed for ultra-minimal flow)
       this.conversation.pending_event_content = undefined;
+      
+      // Update step index based on conditional branching or sequential order
+      if (this.conversation.last_step_response && this.conversation.current_step) {
+        // Check for conditional branching
+        const { getNextStepBasedOnConditions } = await import('../services/database');
+        const matchedStep = await getNextStepBasedOnConditions(
+          this.env.FLOW_RUNS_DB,
+          this.conversation.flow_id!,
+          this.conversation.current_step.step_id,
+          this.conversation.last_step_response
+        );
+        
+        if (matchedStep) {
+          // Check for termination condition (order_index = -1)
+          if (matchedStep.order_index === -1) {
+            console.log(`[DO:${this.state.id}] Termination condition met, ending flow`);
+            await this.stopConversation('terminated_by_condition');
+            return;
+          }
+          
+          // Conditional branching matched: set index to matched step's order_index
+          this.conversation.current_step_index = matchedStep.order_index - 1;
+          console.log(`[DO:${this.state.id}] Conditional branching matched: updating current_step_index to ${this.conversation.current_step_index} (order_index: ${matchedStep.order_index})`);
+        } else {
+          // No conditional branching: increment sequentially
+          await this.incrementStepIndex();
+        }
+      } else {
+        // No response for conditional branching: increment sequentially
+        await this.incrementStepIndex();
+      }
       
       this.conversation.state = 'SENDING_STEP';
       

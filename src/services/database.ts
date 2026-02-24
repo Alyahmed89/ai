@@ -665,6 +665,29 @@ export async function getNextStepBasedOnConditions(
         if (conditionMet) {
           console.log(`[DATABASE] Condition met: ${condition_type} "${condition_value}" -> next_step: ${next_step}`);
           
+          // Special case: next_step = -1 means terminate flow
+          if (next_step === -1) {
+            console.log(`[DATABASE] Termination condition met (next_step = -1), flow should end`);
+            // Return a special marker to indicate termination
+            return {
+              step_id: 'TERMINATE_FLOW',
+              step_key: 'terminate',
+              title: 'Flow Termination',
+              description: 'Flow terminated by condition',
+              step_type: 'termination',
+              order_index: -1,
+              page_key: null,
+              blocking: false,
+              auto_fail_on_error: false,
+              retryable: false,
+              task_id: null,
+              input_keys: null,
+              output: false,
+              output_url: null,
+              output_auth_token: null
+            } as unknown as StepData;
+          }
+          
           // Get the step details for the next step
           const nextStepQuery = `
             SELECT 
