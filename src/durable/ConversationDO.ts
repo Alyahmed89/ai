@@ -255,16 +255,21 @@ export class ConversationOrchestratorDO_2026A {
       if (currentStepIndex >= this.conversation.flow_steps.length) {
         // All steps completed
         console.log(`[DO:${this.state.id}] All ${this.conversation.flow_steps.length} steps completed`);
-        this.conversation.state = 'DONE';
-        this.conversation.status = 'completed';
-        this.conversation.updated_at = Date.now();
         
-        await this.state.storage.put('conversation', this.conversation);
+        // Save steps completed count before stopping
+        const stepsCompleted = this.conversation.flow_steps.length;
+        
+        // Restart the flow with same payload before stopping
+        await this.restartFlow();
+        
+        // Stop current conversation
+        await this.stopConversation('flow_completed');
         
         return new Response(JSON.stringify({
           success: true,
-          message: 'Flow execution completed',
-          steps_completed: this.conversation.flow_steps.length
+          message: 'Flow execution completed, restarting flow',
+          steps_completed: stepsCompleted,
+          note: 'Flow is being restarted with same payload, current conversation stopped'
         }), {
           headers: { 'Content-Type': 'application/json' }
         });
@@ -1296,6 +1301,9 @@ export class ConversationOrchestratorDO_2026A {
         // NO MORE STEPS - FLOW TERMINATION
         console.log(`[DO:${this.state.id}] No more steps for flow ${flowId}, terminating flow`);
         
+        // Restart the flow with same payload before stopping
+        await this.restartFlow();
+        
         // Mark flow as completed in database
         try {
           const { updateFlowRunStatus } = await import('../services/database');
@@ -1319,11 +1327,11 @@ export class ConversationOrchestratorDO_2026A {
         
         return new Response(JSON.stringify({
           success: true,
-          message: 'Flow terminated - no more steps',
+          message: 'Flow terminated - no more steps, restarting flow',
           flow_id: flowId,
           flow_run_id: this.flowRunId,
           state: 'DONE',
-          note: 'All steps completed. Alarms cancelled. No further prompts.'
+          note: 'All steps completed. Flow is being restarted with same payload.'
         }), {
           headers: { 'Content-Type': 'application/json' }
         });
@@ -2283,6 +2291,8 @@ export class ConversationOrchestratorDO_2026A {
       
       if (!nextStep) {
         console.log(`[DO:${this.state.id}] No more steps in flow, completing flow execution`);
+        // Restart the flow with same payload before stopping
+        await this.restartFlow();
         await this.stopConversation('flow_completed');
         return;
       }
@@ -2882,6 +2892,8 @@ ${messageContent}`;
     
     if (!step) {
       console.log(`[DO:${this.state.id}] No more steps in flow`);
+      // Restart the flow with same payload before stopping
+      await this.restartFlow();
       await this.stopConversation('flow_completed');
       return;
     }
@@ -3181,9 +3193,6 @@ ${messageContent}`;
 
     console.log(`[DO:${this.state.id}] Starting next flow with prompt: ${doneData.new_prompt ? doneData.new_prompt.substring(0, 50) + "..." : "EMPTY"}`);
 
-    // Generate a new conversation ID
-    const newConversationId = crypto.randomUUID();
-    
     // Prepare the request body for the new flow
     const requestBody = {
       repository: this.conversation!.repository, // Use same repository
@@ -3197,7 +3206,7 @@ ${messageContent}`;
       // We need to make an HTTP request to the worker's /start endpoint
       // But we don't have the worker URL in the Durable Object
       // For now, we'll create a new Durable Object directly
-      const newConversationIdObj = this.env.CONVERSATIONS.idFromName(newConversationId);
+      const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
       const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
 
       // Initialize the new Durable Object
@@ -3213,16 +3222,68 @@ ${messageContent}`;
         return;
       }
 
-      console.log(`[DO:${this.state.id}] Next flow started with ID: ${newConversationId}`);
+      console.log(`[DO:${this.state.id}] Next flow started with ID: ${newConversationIdObj.toString()}`);
       
       // Update current flow run with next_flow_id if database is available
       if (this.env.FLOW_RUNS_DB && this.flowRunId) {
         await this.env.FLOW_RUNS_DB.prepare(
           'UPDATE flow_runs SET next_flow_id = ? WHERE id = ?'
-        ).bind(newConversationId, this.flowRunId).run();
+        ).bind(newConversationIdObj.toString(), this.flowRunId).run();
       }
     } catch (error) {
       console.error(`[DO:${this.state.id}] Failed to start next flow:`, error);
+    }
+  }
+
+  /**
+   * Restart the same flow when it completes all steps
+   */
+  private async restartFlow(): Promise<void> {
+    if (!this.conversation?.flow_id) {
+      console.log(`[DO:${this.state.id}] Cannot restart flow: no flow_id in conversation`);
+      return;
+    }
+
+    console.log(`[DO:${this.state.id}] Restarting flow: ${this.conversation.flow_id}`);
+    
+    // Prepare the request body for the new flow (same as original)
+    const requestBody = {
+      flow_id: this.conversation.flow_id,
+      repository: this.conversation.repository,
+      branch: this.conversation.branch || 'main',
+      initial_user_prompt: this.conversation.initial_user_prompt,
+      max_iterations: this.conversation.max_iterations,
+      deepseek_system: this.conversation.deepseek_system
+    };
+
+    try {
+      // Create a new Durable Object for the restarted flow
+      const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
+      const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
+
+      // Initialize the new Durable Object for flow execution
+      const initResponse = await newConversationStub.fetch('http://placeholder/initialize-flow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
+        console.error(`[DO:${this.state.id}] Failed to restart flow: ${initResponse.status} - ${errorText}`);
+        return;
+      }
+
+      console.log(`[DO:${this.state.id}] Flow restarted with ID: ${newConversationIdObj.toString()}`);
+      
+      // Update current flow run with next_flow_id if database is available
+      if (this.env.FLOW_RUNS_DB && this.flowRunId) {
+        await this.env.FLOW_RUNS_DB.prepare(
+          'UPDATE flow_runs SET next_flow_id = ? WHERE id = ?'
+        ).bind(newConversationIdObj.toString(), this.flowRunId).run();
+      }
+    } catch (error) {
+      console.error(`[DO:${this.state.id}] Failed to restart flow:`, error);
     }
   }
 
