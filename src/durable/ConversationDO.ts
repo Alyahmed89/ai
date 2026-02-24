@@ -1,7 +1,7 @@
 // Durable Object for conversation orchestration
 // ALL state management and alarm-driven logic lives here
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
-import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands } from '../services/openhands';
+import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getTaskData, getFirstPendingTask } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
@@ -2596,6 +2596,26 @@ export class ConversationOrchestratorDO_2026A {
   
   private async stopConversation(reason: string): Promise<void> {
     console.log(`[DO:${this.state.id}] Stopping conversation: ${reason}`);
+    
+    // First, try to stop the OpenHands conversation via API if we have an ID
+    if (this.conversation?.openhands_conversation_id) {
+      console.log(`[DO:${this.state.id}] Stopping OpenHands conversation: ${this.conversation.openhands_conversation_id}`);
+      try {
+        const stopResult = await stopOpenHandsConversation(
+          this.env.OPENHANDS_API_URL,
+          this.conversation.openhands_conversation_id
+        );
+        
+        if (!stopResult.success) {
+          console.warn(`[DO:${this.state.id}] Failed to stop OpenHands conversation: ${stopResult.error}`);
+        } else {
+          console.log(`[DO:${this.state.id}] OpenHands conversation stopped successfully`);
+        }
+      } catch (error: any) {
+        console.error(`[DO:${this.state.id}] Error stopping OpenHands conversation: ${error.message}`);
+        // Continue with local cleanup even if OpenHands stop fails
+      }
+    }
     
     if (this.conversation) {
       this.conversation.state = 'DONE';

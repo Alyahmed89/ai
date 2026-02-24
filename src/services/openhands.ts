@@ -346,3 +346,80 @@ export async function injectMessageToOpenHands(
     };
   }
 }
+
+/**
+ * Stop an OpenHands conversation
+ * @param apiUrl OpenHands API base URL
+ * @param conversationId Conversation ID to stop
+ * @returns Result with success or error
+ */
+export async function stopOpenHandsConversation(
+  apiUrl: string,
+  conversationId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const stopUrl = apiUrl.endsWith('/') 
+      ? `${apiUrl}conversations/${conversationId}/stop`
+      : `${apiUrl}/conversations/${conversationId}/stop`;
+
+    // Add retry logic for stop endpoint
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OPENHANDS_TIMEOUT);
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        const response = await fetch(stopUrl, {
+          method: 'POST',
+          headers,
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          // If 500/502 error and we have retries left, retry
+          if ((response.status === 500 || response.status === 502) && retryCount < maxRetries) {
+            retryCount++;
+            const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s
+            console.log(`OpenHands stop ${response.status} error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            continue;
+          }
+          
+          const errorText = await response.text();
+          throw new Error(`OpenHands stop error: ${response.status} - ${errorText}`);
+        }
+        
+        // Success, break out of retry loop
+        break;
+      } catch (error) {
+        if (retryCount >= maxRetries) {
+          throw error;
+        }
+        retryCount++;
+        const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1s, 2s
+        console.log(`OpenHands stop fetch error, retry ${retryCount}/${maxRetries}, waiting ${backoffMs}ms: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+
+    console.log(`OpenHands conversation ${conversationId} stopped successfully`);
+    return {
+      success: true
+    };
+
+  } catch (error: any) {
+    console.error(`Failed to stop OpenHands conversation ${conversationId}: ${error.message}`);
+    return {
+      success: false,
+      error: error.message || 'Unknown OpenHands stop error'
+    };
+  }
+}
