@@ -482,13 +482,13 @@ export async function getFirstPendingTask(
         expected_response,
         auth_required
       FROM tasks
-      WHERE status = 'pending' AND task_type = 'implementation'
+      WHERE status = 'pending' AND task_type = 'implementation' AND flow_id = ?
       ORDER BY numeric_priority ASC, created_at ASC
       LIMIT 1
     `;
     
-    console.log(`[getFirstPendingTask] Querying pending implementation tasks`);
-    const results = await db.prepare(query).all();
+    console.log(`[getFirstPendingTask] Querying pending implementation tasks for flow: ${flow_id}`);
+    const results = await db.prepare(query).bind(flow_id).all();
     
     console.log(`[getFirstPendingTask] Query returned ${results?.results?.length || 0} tasks`);
     if (results?.results?.length > 0) {

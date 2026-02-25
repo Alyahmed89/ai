@@ -1,6 +1,12 @@
 // Parsing utilities for DeepSeek Agent
 import { END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN } from '../constants';
-import { DoneResponseData } from '../types';
+import { DoneResponseData, CreateTaskData, SkipTaskData } from '../types';
+
+// Hardened regex patterns for AI tokens
+const CREATE_TASK_REGEX = /\[CREATE_TASK\]\s+flow_id:\s*(\w+)\s+title:\s*([^]+?)\s+description:\s*([^]+?)\s+order_index:\s*(\d+)\s+priority:\s*(\d+)/;
+const SKIP_TASK_REGEX = /\[SKIP_TASK\]\s+task_id:\s*([\w_-]+)\s+reason:\s*([^]+)/;
+const END_FLOW_REGEX = /\[END_FLOW\](?:\s+prompt:\s*([^]+?))?(?:\s+deepseek_system:\s*([^]+?))?(?:\s+branch:\s*([^]+?))?/;
+const END_FLOW_EARLY_REGEX = /\[END_FLOW_EARLY\](?:\s+reason:\s*([^]+))?/;
 
 /**
  * Parse a DeepSeek response to check for [END_FLOW] or [END_FLOW_EARLY]
@@ -8,61 +14,114 @@ import { DoneResponseData } from '../types';
  * @returns DoneResponseData with parsed information
  */
 export function parseDoneResponse(response: string): DoneResponseData {
-  // Check which token is present
-  const hasEndFlow = response.includes(END_FLOW_TOKEN);
-  const hasEndFlowEarly = response.includes(END_FLOW_EARLY_TOKEN);
+  // Check which token is present using regex
+  const endFlowMatch = response.match(END_FLOW_REGEX);
+  const endFlowEarlyMatch = response.match(END_FLOW_EARLY_REGEX);
   
-  if (!hasEndFlow && !hasEndFlowEarly) {
+  if (!endFlowMatch && !endFlowEarlyMatch) {
     return { done: false };
   }
 
   // Determine which token was found
-  const isEndFlowEarly = hasEndFlowEarly;
+  const isEndFlowEarly = !!endFlowEarlyMatch;
   
-  // Try to parse the new flow information from the response
-  // Expected format: [END_FLOW] prompt: xxx deepseek_system: xxx branch: xxx
-  // For [END_FLOW_EARLY]: [END_FLOW_EARLY] reason: xxx
-  const lines = response.split('\n');
-  let nextPrompt = '';
-  let nextDeepseekSystem = '';
-  let nextBranch = '';
-  let stopReason = '';
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
-    
-    if (trimmed.startsWith('prompt:')) {
-      nextPrompt = trimmed.substring('prompt:'.length).trim();
-    } else if (trimmed.startsWith('deepseek_system:')) {
-      nextDeepseekSystem = trimmed.substring('deepseek_system:'.length).trim();
-    } else if (trimmed.startsWith('branch:')) {
-      nextBranch = trimmed.substring('branch:'.length).trim();
-    } else if (trimmed.startsWith('reason:')) {
-      stopReason = trimmed.substring('reason:'.length).trim();
-    }
-  }
-
-  // For END_FLOW_EARLY, always stop without starting new flow
   if (isEndFlowEarly) {
+    const [, stopReason] = endFlowEarlyMatch || [];
     return {
       done: true,
       is_end_flow_early: true,
-      stop_reason: stopReason || 'end_flow_early_no_reason'
+      stop_reason: stopReason?.trim() || 'end_flow_early_no_reason'
     };
   }
 
   // For END_FLOW with next prompt, start new flow
-  if (nextPrompt) {
-    return {
-      done: true,
-      new_prompt: nextPrompt,
-      new_deepseek_system: nextDeepseekSystem || undefined,
-      new_branch: nextBranch || undefined
-    };
+  if (endFlowMatch) {
+    const [, nextPrompt, nextDeepseekSystem, nextBranch] = endFlowMatch;
+    if (nextPrompt) {
+      return {
+        done: true,
+        new_prompt: nextPrompt.trim(),
+        new_deepseek_system: nextDeepseekSystem?.trim() || undefined,
+        new_branch: nextBranch?.trim() || undefined
+      };
+    }
   }
 
   // When [END_FLOW] is found without next flow info, just end the flow
   return { done: true };
+}
+
+/**
+ * Parse [CREATE_TASK] token from AI response
+ */
+export function parseCreateTask(response: string): CreateTaskData | null {
+  const match = response.match(CREATE_TASK_REGEX);
+  if (!match) return null;
+  
+  const [, flowId, title, description, orderIndex, priority] = match;
+  
+  // Validate inputs
+  const validFlows = ['etaflow', 'honoflow', 'honorch'];
+  if (!validFlows.includes(flowId)) {
+    console.warn(`[PARSING] Invalid flow_id in CREATE_TASK: ${flowId}`);
+    return null;
+  }
+  
+  const priorityNum = parseInt(priority);
+  if (priorityNum < 0 || priorityNum > 2) {
+    console.warn(`[PARSING] Invalid priority in CREATE_TASK: ${priority}`);
+    return null;
+  }
+  
+  const orderIndexNum = parseInt(orderIndex);
+  if (orderIndexNum < 0 || orderIndexNum > 1000) {
+    console.warn(`[PARSING] Invalid order_index in CREATE_TASK: ${orderIndex}`);
+    return null;
+  }
+  
+  return {
+    flow_id: flowId,
+    title: title.trim(),
+    description: description.trim(),
+    order_index: orderIndexNum,
+    priority: priorityNum
+  };
+}
+
+/**
+ * Parse [SKIP_TASK] token from AI response
+ */
+export function parseSkipTask(response: string): SkipTaskData | null {
+  const match = response.match(SKIP_TASK_REGEX);
+  if (!match) return null;
+  
+  const [, taskId, reason] = match;
+  
+  // Validate task ID format (alphanumeric, underscores, hyphens)
+  if (!/^[\w_-]+$/.test(taskId)) {
+    console.warn(`[PARSING] Invalid task_id in SKIP_TASK: ${taskId}`);
+    return null;
+  }
+  
+  return {
+    task_id: taskId,
+    reason: reason.trim()
+  };
+}
+
+/**
+ * Extract all AI tokens from response
+ */
+export function extractAllTokens(response: string): {
+  createTask: CreateTaskData | null;
+  skipTask: SkipTaskData | null;
+  done: DoneResponseData;
+} {
+  return {
+    createTask: parseCreateTask(response),
+    skipTask: parseSkipTask(response),
+    done: parseDoneResponse(response)
+  };
 }
 
 /**

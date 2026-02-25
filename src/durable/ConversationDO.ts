@@ -2,11 +2,12 @@
 // ALL state management and alarm-driven logic lives here
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
-import { parseDoneResponse, extractPromptsAndResponses } from '../utils/parsing';
+import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens } from '../utils/parsing';
 import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getTaskData, getFirstPendingTask } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
+import { evaluateCondition, loadExecutionData, saveExecutionData } from '../services/conditionEngine';
 import { 
   MAX_ITERATIONS, 
   END_FLOW_TOKEN, 
@@ -39,7 +40,7 @@ import {
   IDLE_TIMEOUT,
   COMPLETED_CLEANUP_DELAY
 } from '../constants';
-import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData } from '../types';
+import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData, Condition, CreateTaskData, SkipTaskData } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
   private state: DurableObjectState;
@@ -49,6 +50,10 @@ export class ConversationOrchestratorDO_2026A {
   private flowStepsCache: StepData[] | null = null; // Cache for flow steps
   private flowStepsCacheTime: number = 0; // When cache was last updated
   private readonly FLOW_STEPS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
+  
+  // Flow switching loop prevention
+  private flowSwitchHistory: string[] = [];
+  private readonly maxFlowSwitches = 5;
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
@@ -58,6 +63,7 @@ export class ConversationOrchestratorDO_2026A {
     this.conversation = null;
     this.flowStepsCache = null;
     this.flowStepsCacheTime = 0;
+    this.flowSwitchHistory = [];
   }
   
   /**
@@ -3305,6 +3311,422 @@ ${messageContent}`;
     } catch (error) {
       console.error(`[DO:${this.state.id}] Failed to restart flow:`, error);
     }
+  }
+
+  /**
+   * Enhanced flow transition with condition engine and loop prevention
+   */
+  private async handleStepCompletion(step: StepData, response: string): Promise<void> {
+    if (!this.conversation) return;
+    
+    console.log(`[DO:${this.state.id}] Handling step completion for step: ${step.step_id}`);
+    
+    // 0. Update execution data based on step results
+    await this.updateExecutionData(step, response);
+    
+    // 1. Check for next_flow condition (static, safe)
+    const stepEvaluation = await this.shouldExecuteStep(step);
+    
+    if (stepEvaluation.nextFlowId) {
+      console.log(`[DO:${this.state.id}] Next flow condition triggered: ${stepEvaluation.nextFlowId}`);
+      await this.startSpecificFlow(stepEvaluation.nextFlowId);
+      await this.stopConversation('next_flow_triggered');
+      return;
+    }
+    
+    // 2. Check for AI decision tokens (hardened regex)
+    const tokens = extractAllTokens(response);
+    
+    if (tokens.createTask) {
+      await this.createTaskInFlow(
+        tokens.createTask.flow_id,
+        tokens.createTask.title,
+        tokens.createTask.description,
+        tokens.createTask.order_index,
+        tokens.createTask.priority
+      );
+    }
+    
+    if (tokens.skipTask) {
+      await this.markTaskAsDone(tokens.skipTask.task_id, `Skipped: ${tokens.skipTask.reason}`);
+    }
+    
+    // 3. Check for [END_FLOW] tokens
+    if (tokens.done.done) {
+      await this.handleDoneResponse(response, 'ai_end_flow');
+      return;
+    }
+    
+    // 4. System arbitration (with loop prevention)
+    const nextFlowId = await this.determineNextFlow();
+    if (nextFlowId) {
+      await this.startSpecificFlow(nextFlowId);
+      await this.stopConversation('system_arbitration');
+    } else {
+      // Continue with next step in current flow
+      await this.moveToNextStep();
+    }
+  }
+
+  /**
+   * Check if a step should execute based on conditions
+   */
+  private async shouldExecuteStep(step: StepData): Promise<{
+    execute: boolean;
+    skipReason?: string;
+    nextFlowId?: string;
+  }> {
+    if (!this.env.FLOW_RUNS_DB || !this.conversation?.flow_id) {
+      return { execute: true }; // No conditions, execute
+    }
+    
+    // Load conditions for this step
+    const conditions = await this.env.FLOW_RUNS_DB.prepare(`
+      SELECT * FROM flow_conditions 
+      WHERE flow_id = ? AND step_id = ?
+      ORDER BY condition_type
+    `).bind(this.conversation.flow_id, step.step_id).all();
+    
+    const executionData = await this.loadExecutionData();
+    
+    for (const condition of conditions.results as Condition[]) {
+      const result = await evaluateCondition(
+        condition, 
+        this.env.FLOW_RUNS_DB, 
+        executionData
+      );
+      
+      if (result.error) {
+        console.error(`[DO:${this.state.id}] Condition evaluation error: ${result.error}`);
+        continue;
+      }
+      
+      switch (condition.condition_type) {
+        case 'prerequisite':
+          if (!result.passes) {
+            return { 
+              execute: false, 
+              skipReason: `Prerequisite not met: ${condition.condition_key || condition.condition_query}` 
+            };
+          }
+          break;
+          
+        case 'skip_if':
+          if (result.passes) {
+            return { 
+              execute: false, 
+              skipReason: `Skip condition met: ${condition.condition_key || condition.condition_query}` 
+            };
+          }
+          break;
+          
+        case 'execute_if':
+          if (!result.passes) {
+            return { 
+              execute: false, 
+              skipReason: `Execute condition not met: ${condition.condition_key || condition.condition_query}` 
+            };
+          }
+          break;
+          
+        case 'next_flow':
+          if (result.passes && condition.next_flow_id) {
+            return { 
+              execute: true, 
+              nextFlowId: condition.next_flow_id 
+            };
+          }
+          break;
+      }
+    }
+    
+    return { execute: true };
+  }
+
+  /**
+   * Start a specific flow (with loop prevention)
+   */
+  private async startSpecificFlow(flowId: string): Promise<void> {
+    // Check for loops
+    this.flowSwitchHistory.push(flowId);
+    
+    if (this.flowSwitchHistory.length > this.maxFlowSwitches) {
+      console.error(`[DO:${this.state.id}] Flow switching loop detected: ${this.flowSwitchHistory.join(' → ')}`);
+      await this.stopConversation('flow_switching_loop');
+      return;
+    }
+    
+    // Check for immediate back-and-forth
+    if (this.flowSwitchHistory.length >= 2) {
+      const lastTwo = this.flowSwitchHistory.slice(-2);
+      if (lastTwo[0] === lastTwo[1]) {
+        console.error(`[DO:${this.state.id}] Immediate flow repeat detected: ${lastTwo[0]}`);
+        await this.stopConversation('immediate_flow_repeat');
+        return;
+      }
+    }
+    
+    console.log(`[DO:${this.state.id}] Starting specific flow: ${flowId}`);
+    
+    // Load flow definition from database
+    if (!this.env.FLOW_RUNS_DB) {
+      console.error(`[DO:${this.state.id}] Database not configured, cannot start specific flow`);
+      return;
+    }
+    
+    const flow = await this.env.FLOW_RUNS_DB.prepare(`
+      SELECT * FROM flows WHERE id = ?
+    `).bind(flowId).first();
+    
+    if (!flow) {
+      console.error(`[DO:${this.state.id}] Flow not found: ${flowId}`);
+      return;
+    }
+    
+    // Prepare the request body for the new flow
+    const requestBody = {
+      flow_id: flowId,
+      repository: flow.repo,
+      branch: flow.branch || 'main',
+      initial_user_prompt: flow.first_prompt,
+      max_iterations: flow.max_iterations,
+      deepseek_system: flow.deepseek_system
+    };
+    
+    try {
+      const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
+      const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
+      
+      const initResponse = await newConversationStub.fetch('http://placeholder/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
+        console.error(`[DO:${this.state.id}] Failed to start specific flow: ${initResponse.status} - ${errorText}`);
+        return;
+      }
+      
+      console.log(`[DO:${this.state.id}] Specific flow started with ID: ${newConversationIdObj.toString()}`);
+      
+      // Update current flow run with next_flow_id
+      if (this.flowRunId) {
+        await this.env.FLOW_RUNS_DB.prepare(
+          'UPDATE flow_runs SET next_flow_id = ? WHERE id = ?'
+        ).bind(newConversationIdObj.toString(), this.flowRunId).run();
+      }
+    } catch (error) {
+      console.error(`[DO:${this.state.id}] Failed to start specific flow:`, error);
+    }
+  }
+
+  /**
+   * Determine next flow based on priority system
+   */
+  private async determineNextFlow(): Promise<string | null> {
+    // System-level arbitration (priority-based)
+    if (!this.env.FLOW_RUNS_DB || !this.conversation?.flow_id) {
+      return null;
+    }
+    
+    const result = await this.env.FLOW_RUNS_DB.prepare(`
+      SELECT f.id 
+      FROM flows f
+      LEFT JOIN tasks t ON f.id = t.flow_id AND t.status = 'pending'
+      WHERE f.id IN ('etaflow', 'honoflow', 'honorch')
+        AND f.id != ? -- Don't select current flow
+      GROUP BY f.id
+      ORDER BY 
+        -- Critical tasks first
+        MAX(CASE WHEN t.priority = 2 THEN 100 
+                 WHEN t.priority = 1 THEN 50 
+                 ELSE COALESCE(t.priority, 0) END) DESC,
+        -- Most pending tasks
+        COUNT(t.id) DESC,
+        -- Flow priority
+        f.priority DESC,
+        -- Oldest flow first
+        MIN(t.created_at) ASC
+      LIMIT 1
+    `).bind(this.conversation.flow_id).first();
+    
+    return result?.id || null;
+  }
+
+  /**
+   * Load execution data for condition evaluation
+   */
+  private async loadExecutionData(): Promise<Map<string, string>> {
+    const data = new Map<string, string>();
+    
+    if (!this.env.FLOW_RUNS_DB || !this.conversation?.flow_id || !this.state.id) {
+      return data;
+    }
+    
+    try {
+      const result = await this.env.FLOW_RUNS_DB.prepare(`
+        SELECT key, value FROM flow_execution_data 
+        WHERE flow_id = ? AND conversation_id = ?
+        ORDER BY created_at DESC
+      `).bind(this.conversation.flow_id, this.state.id.toString()).all();
+      
+      for (const row of result.results) {
+        data.set(row.key, row.value);
+      }
+      
+      console.log(`[DO:${this.state.id}] Loaded ${data.size} execution data entries`);
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Failed to load execution data: ${error.message}`);
+    }
+    
+    // Add filesystem checks
+    await this.addFilesystemChecks(data);
+    
+    return data;
+  }
+
+  /**
+   * Add filesystem checks to execution data
+   */
+  private async addFilesystemChecks(data: Map<string, string>): Promise<void> {
+    try {
+      // Check if hono repo exists (for honoflow)
+      const fs = require('fs');
+      const honoExists = fs.existsSync('/workspace/hono');
+      const honoHasFiles = honoExists && fs.readdirSync('/workspace/hono').length > 0;
+      data.set('hono_repo_exists', honoHasFiles ? 'true' : 'false');
+      
+      console.log(`[DO:${this.state.id}] Filesystem check: hono_repo_exists = ${honoHasFiles}`);
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Filesystem check failed: ${error.message}`);
+      data.set('hono_repo_exists', 'false');
+    }
+  }
+
+  /**
+   * Update execution data based on step results
+   */
+  private async updateExecutionData(step: StepData, response: string): Promise<void> {
+    if (!this.env.FLOW_RUNS_DB || !this.conversation?.flow_id || !this.state.id) {
+      return;
+    }
+    
+    // Track step completion
+    await saveExecutionData(
+      this.env.FLOW_RUNS_DB,
+      this.conversation.flow_id,
+      this.state.id.toString(),
+      `step_${step.step_id}_completed`,
+      'true'
+    );
+    
+    // Parse and store key metrics from response
+    if (response.includes('200 OK')) {
+      await saveExecutionData(
+        this.env.FLOW_RUNS_DB,
+        this.conversation.flow_id,
+        this.state.id.toString(),
+        'last_endpoint_status',
+        'success'
+      );
+    }
+    
+    if (response.includes('failed') || response.includes('error')) {
+      await saveExecutionData(
+        this.env.FLOW_RUNS_DB,
+        this.conversation.flow_id,
+        this.state.id.toString(),
+        'issues_found',
+        'true'
+      );
+    }
+    
+    // Track generator issues
+    if (response.includes('auto-generated') || response.includes('lacks context')) {
+      await saveExecutionData(
+        this.env.FLOW_RUNS_DB,
+        this.conversation.flow_id,
+        this.state.id.toString(),
+        'generator_issues',
+        'true'
+      );
+    }
+  }
+
+  /**
+   * Create a task in another flow via output system
+   */
+  private async createTaskInFlow(
+    flowId: string, 
+    title: string, 
+    description: string, 
+    orderIndex: number, 
+    priority: number
+  ): Promise<void> {
+    if (!this.env.FLOW_RUNS_DB) {
+      console.warn(`[DO:${this.state.id}] Database not configured, cannot create task`);
+      return;
+    }
+    
+    try {
+      // Generate a unique task ID
+      const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      await this.env.FLOW_RUNS_DB.prepare(`
+        INSERT INTO tasks (id, flow_id, title, description, order_index, priority, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).bind(
+        taskId,
+        flowId,
+        title,
+        description,
+        orderIndex,
+        priority,
+        Date.now(),
+        Date.now()
+      ).run();
+      
+      console.log(`[DO:${this.state.id}] Created task in flow ${flowId}: ${title} (priority: ${priority})`);
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Failed to create task: ${error.message}`);
+    }
+  }
+
+  /**
+   * Mark task as done via output system
+   */
+  private async markTaskAsDone(taskId: string, reason: string): Promise<void> {
+    if (!this.env.FLOW_RUNS_DB) {
+      console.warn(`[DO:${this.state.id}] Database not configured, cannot mark task as done`);
+      return;
+    }
+    
+    try {
+      await this.env.FLOW_RUNS_DB.prepare(`
+        UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?
+      `).bind(Date.now(), taskId).run();
+      
+      console.log(`[DO:${this.state.id}] Marked task as done: ${taskId} (reason: ${reason})`);
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Failed to mark task as done: ${error.message}`);
+    }
+  }
+
+  /**
+   * Move to next step in current flow
+   */
+  private async moveToNextStep(): Promise<void> {
+    if (!this.conversation) return;
+    
+    // Increment step number
+    this.conversation.current_flow_step = (this.conversation.current_flow_step || 0) + 1;
+    
+    // Save updated conversation state
+    await this.state.storage.put('conversation', this.conversation);
+    
+    console.log(`[DO:${this.state.id}] Moved to step ${this.conversation.current_flow_step}`);
   }
 
   /**

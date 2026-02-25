@@ -283,3 +283,36 @@ export interface StepData {
   output_url?: string;
   output_auth_token?: string;
 }
+
+// AI token parsing types
+export interface CreateTaskData {
+  flow_id: string;
+  title: string;
+  description: string;
+  order_index: number;
+  priority: number;
+}
+
+export interface SkipTaskData {
+  task_id: string;
+  reason: string;
+}
+
+// Condition engine types
+export interface Condition {
+  id: string;
+  flow_id: string;
+  step_id: string;
+  condition_type: 'prerequisite' | 'skip_if' | 'execute_if' | 'next_flow';
+  condition_engine: 'sql' | 'state' | 'static';
+  condition_key?: string;
+  condition_value?: string;
+  condition_query?: string;
+  next_flow_id?: string;
+}
+
+export interface ConditionEvaluationResult {
+  passes: boolean;
+  error?: string;
+  nextFlowId?: string;
+}
