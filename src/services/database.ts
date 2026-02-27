@@ -11,32 +11,20 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
   try {
     await db.prepare(`
       INSERT INTO flow_runs (
-        id, conversation_id, initial_prompt, deepseek_system, repository, branch,
-        max_iterations, actual_iterations, status, stop_reason, prompts_and_responses,
-        created_at, updated_at, ended_at, next_flow_id,
-        task_type, success_score, quality_metrics, deployment_id, improvement_suggestions
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, flow_id, conversation_id, step_id, input_prompt, output_response,
+        status, duration_ms, created_at, next_flow_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       flowRun.id,
+      flowRun.flow_id || null,
       flowRun.conversation_id,
-      flowRun.initial_prompt,
-      flowRun.deepseek_system || null,
-      flowRun.repository,
-      flowRun.branch || 'main',
-      flowRun.max_iterations,
-      flowRun.actual_iterations,
-      flowRun.status,
-      flowRun.stop_reason || null,
-      flowRun.prompts_and_responses,
-      flowRun.created_at,
-      flowRun.updated_at,
-      flowRun.ended_at || null,
-      flowRun.next_flow_id || null,
-      flowRun.task_type || null,
-      flowRun.success_score || null,
-      flowRun.quality_metrics || null,
-      flowRun.deployment_id || null,
-      flowRun.improvement_suggestions || null
+      flowRun.step_id || null,
+      flowRun.input_prompt || null,
+      flowRun.output_response || null,
+      flowRun.status || 'active',
+      flowRun.duration_ms || 0,
+      flowRun.created_at || Date.now(),
+      flowRun.next_flow_id || null
     ).run();
 
     return { success: true };
@@ -63,17 +51,13 @@ export async function updateFlowRunStatus(
   nextFlowId?: string
 ): Promise<{success: boolean; error?: string}> {
   try {
-    const now = Date.now();
     await db.prepare(`
       UPDATE flow_runs 
-      SET status = ?, stop_reason = ?, next_flow_id = ?, updated_at = ?, ended_at = ?
+      SET status = ?, next_flow_id = ?
       WHERE id = ?
     `).bind(
       status,
-      stopReason || null,
       nextFlowId || null,
-      now,
-      status !== 'active' ? now : null,
       flowRunId
     ).run();
 
@@ -1031,7 +1015,7 @@ export async function getFlowDefinition(
     // Note: This is a fallback in case the table name is different
     try {
       const result2 = await db.prepare(`
-        SELECT id, name, description, max_iterations, repository, branch
+        SELECT id, name, description, max_iterations, repository, branch, NULL as deepseek_system
         FROM flow_definitions
         WHERE id = ?
       `).bind(flow_id).first();

@@ -207,26 +207,15 @@ export interface OpenHandsInjectResult {
 // Flow run types for D1 database
 export interface FlowRunData {
   id: string;
+  flow_id?: string;
   conversation_id: string;
-  initial_prompt: string;
-  deepseek_system?: string;
-  repository: string;
-  branch?: string;
-  max_iterations: number;
-  actual_iterations: number;
+  step_id?: string;
+  input_prompt?: string;
+  output_response?: string;
   status: 'active' | 'completed' | 'failed' | 'stopped' | 'new_flow_started';
-  stop_reason?: string;
-  prompts_and_responses: string; // JSON string
+  duration_ms?: number;
   created_at: number;
-  updated_at: number;
-  ended_at?: number;
   next_flow_id?: string;
-  // Future AI-determined fields
-  task_type?: string;
-  success_score?: number;
-  quality_metrics?: string; // JSON string
-  deployment_id?: string;
-  improvement_suggestions?: string;
 }
 
 export interface IterationData {
