@@ -76,6 +76,39 @@ export class ConversationOrchestratorDO_2026A {
   }
   
   /**
+   * Safely update conversation state with invariant checks
+   */
+  private async updateConversationState(updates: Partial<ConversationState>): Promise<void> {
+    if (!this.conversation) {
+      throw new Error('Cannot update conversation: conversation is null');
+    }
+    
+    // INVARIANT 1: Flow ID must be immutable
+    if (updates.flow_id !== undefined && updates.flow_id !== this.conversation.flow_id) {
+      console.error(`[DO:${this.state.id}] SECURITY VIOLATION: Flow ID mutation detected`);
+      console.error(`[DO:${this.state.id}] Original flow_id: ${this.conversation.flow_id}`);
+      console.error(`[DO:${this.state.id}] Attempted flow_id: ${updates.flow_id}`);
+      throw new Error('ILLEGAL_FLOW_ID_MUTATION: flow_id is immutable during execution');
+    }
+    
+    // Apply updates
+    const originalFlowId = this.conversation.flow_id;
+    this.conversation = {
+      ...this.conversation,
+      ...updates,
+      updated_at: Date.now()
+    };
+    
+    // Double-check invariant after update
+    if (this.conversation.flow_id !== originalFlowId) {
+      console.error(`[DO:${this.state.id}] CRITICAL BUG: Flow ID changed during update`);
+      throw new Error('CRITICAL_FLOW_ID_MUTATION: flow_id changed unexpectedly');
+    }
+    
+    await this.state.storage.put('conversation', this.conversation);
+  }
+  
+  /**
    * Get next poll interval using adaptive polling logic
    */
   private getNextPollInterval(): number {
@@ -2603,8 +2636,63 @@ export class ConversationOrchestratorDO_2026A {
   // HELPER METHODS
   // ==========================================================================
   
+  /**
+   * Handle flow completion by checking flow_definitions.next_flow_id
+   * This is the SINGLE AUTHORITY for flow transitions
+   */
+  private async handleFlowCompletion(): Promise<void> {
+    if (!this.conversation?.flow_id || !this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Cannot handle flow completion: missing flow_id or database`);
+      return;
+    }
+    
+    // IDEMPOTENCY GUARD: Track flow completion to prevent double execution
+    if (this.conversation.flow_completed) {
+      console.warn(`[DO:${this.state.id}] Flow already marked as completed, ignoring duplicate completion`);
+      return;
+    }
+    
+    console.log(`[DO:${this.state.id}] Handling flow completion for: ${this.conversation.flow_id}`);
+    
+    try {
+      // Get next_flow_id from flow_definitions table
+      const nextFlow = await this.env.FLOW_RUNS_DB.prepare(`
+        SELECT next_flow_id FROM flow_definitions WHERE id = ?
+      `).bind(this.conversation.flow_id).first();
+      
+      if (nextFlow?.next_flow_id) {
+        console.log(`[DO:${this.state.id}] Starting next flow from flow_definitions: ${nextFlow.next_flow_id}`);
+        await this.startSpecificFlow(nextFlow.next_flow_id);
+      } else {
+        console.log(`[DO:${this.state.id}] No next_flow_id defined in flow_definitions for: ${this.conversation.flow_id}`);
+        console.log(`[DO:${this.state.id}] Flow chain ends here`);
+      }
+      
+      // Mark flow as completed to prevent double execution
+      await this.updateConversationState({ flow_completed: true });
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error handling flow completion: ${error.message}`);
+    }
+  }
+  
   private async stopConversation(reason: string): Promise<void> {
     console.log(`[DO:${this.state.id}] Stopping conversation: ${reason}`);
+    
+    // IDEMPOTENCY GUARD: Prevent double completion
+    if (this.conversation?.state === 'DONE') {
+      console.warn(`[DO:${this.state.id}] Conversation already in DONE state, ignoring stop request`);
+      return;
+    }
+    
+    // Check if this is a flow completion (not error or manual stop)
+    const isFlowCompletion = reason === 'flow_completed' || 
+                            reason === 'terminated_by_condition' ||
+                            reason.includes('end_flow');
+    
+    // If flow completed, check for next flow in flow_definitions
+    if (isFlowCompletion && this.conversation?.flow_id) {
+      await this.handleFlowCompletion();
+    }
     
     // First, try to stop the OpenHands conversation via API if we have an ID
     if (this.conversation?.openhands_conversation_id) {
@@ -3214,10 +3302,12 @@ ${messageContent}`;
     // Save the current flow run to database with appropriate status
     await this.saveFlowRunToDatabase(finalStopReason, flowStatus);
 
-    // If there's a new prompt and it's not END_FLOW_EARLY, start a new flow
-    if (doneData.new_prompt && !doneData.is_end_flow_early) {
-      await this.startNextFlow(doneData);
-    }
+    // DISABLED: [END_FLOW] tokens should not trigger new flows
+    // Flow transitions only happen via flow_definitions.next_flow_id
+    // when flow completes (next_step == -1)
+    // if (doneData.new_prompt && !doneData.is_end_flow_early) {
+    //   await this.startNextFlow(doneData);
+    // }
   }
 
   /**
@@ -3331,18 +3421,21 @@ ${messageContent}`;
     
     console.log(`[DO:${this.state.id}] Handling step completion for step: ${step.step_id}`);
     
+    // ENFORCEMENT INVARIANT: No flow switching in step completion
+    // This method should only handle step-to-step transitions within the same flow
+    console.log(`[DO:${this.state.id}] Flow transitions disabled in step completion`);
+    console.log(`[DO:${this.state.id}] Next flow will be determined by flow_definitions.next_flow_id only`);
+    
     // 0. Update execution data based on step results
     await this.updateExecutionData(step, response);
     
-    // 1. Check for next_flow condition (static, safe)
+    // 1. Check step conditions (flow transitions removed)
     const stepEvaluation = await this.shouldExecuteStep(step);
     
-    if (stepEvaluation.nextFlowId) {
-      console.log(`[DO:${this.state.id}] Next flow condition triggered: ${stepEvaluation.nextFlowId}`);
-      await this.startSpecificFlow(stepEvaluation.nextFlowId);
-      await this.stopConversation('next_flow_triggered');
-      return;
-    }
+    // FLOW TRANSITIONS ARE NOT ALLOWED AT STEP LEVEL
+    // Steps can only control step execution, not flow transitions
+    // Flow transitions only happen via flow_definitions.next_flow_id
+    // when flow completes (next_step == -1)
     
     // 2. Check for AI decision tokens (hardened regex)
     const tokens = extractAllTokens(response);
@@ -3367,15 +3460,11 @@ ${messageContent}`;
       return;
     }
     
-    // 4. System arbitration (with loop prevention)
-    const nextFlowId = await this.determineNextFlow();
-    if (nextFlowId) {
-      await this.startSpecificFlow(nextFlowId);
-      await this.stopConversation('system_arbitration');
-    } else {
-      // Continue with next step in current flow
-      await this.moveToNextStep();
-    }
+    // 4. Continue with next step in current flow
+    // System arbitration for flow switching is DISABLED
+    // Flow transitions only happen via flow_definitions.next_flow_id
+    // when flow completes (next_step == -1)
+    await this.moveToNextStep();
   }
 
   /**
@@ -3384,8 +3473,17 @@ ${messageContent}`;
   private async shouldExecuteStep(step: StepData): Promise<{
     execute: boolean;
     skipReason?: string;
-    nextFlowId?: string;
+    // nextFlowId removed: Flow transitions not allowed at step level
+    // Only flow_definitions.next_flow_id controls flow transitions
   }> {
+    // ENFORCEMENT INVARIANT: No flow transitions at step level
+    // This is a critical safety check to prevent regression
+    if (step.conditions?.some(c => c.condition_type === 'next_flow')) {
+      console.error(`[DO:${this.state.id}] SECURITY VIOLATION: Step ${step.id} has next_flow condition`);
+      console.error(`[DO:${this.state.id}] Flow transitions are ONLY allowed via flow_definitions.next_flow_id`);
+      throw new Error('ILLEGAL_FLOW_TRANSITION: next_flow conditions are not allowed at step level');
+    }
+    
     if (!this.env.FLOW_RUNS_DB || !this.conversation?.flow_id) {
       return { execute: true }; // No conditions, execute
     }
@@ -3481,14 +3579,10 @@ ${messageContent}`;
           }
           break;
           
-        case 'next_flow':
-          if (result.passes && condition.next_flow_id) {
-            return { 
-              execute: true, 
-              nextFlowId: condition.next_flow_id 
-            };
-          }
-          break;
+        // FLOW TRANSITIONS ARE NOT ALLOWED AT STEP LEVEL
+        // Removed: 'next_flow' condition type
+        // Flow transitions only happen via flow_definitions.next_flow_id
+        // when flow completes (next_step == -1)
       }
     }
     
@@ -3519,6 +3613,24 @@ ${messageContent}`;
     }
     
     console.log(`[DO:${this.state.id}] Starting specific flow: ${flowId}`);
+    
+    // CONCURRENCY CHECK: Verify flow is not already running
+    if (this.env.FLOW_RUNS_DB) {
+      try {
+        const activeFlow = await this.env.FLOW_RUNS_DB.prepare(`
+          SELECT COUNT(*) as active_count FROM flow_runs 
+          WHERE flow_id = ? AND status = 'active'
+        `).bind(flowId).first();
+        
+        if (activeFlow && (activeFlow.active_count as number) > 0) {
+          console.warn(`[DO:${this.state.id}] Flow ${flowId} is already active (${activeFlow.active_count} instances), skipping duplicate start`);
+          return;
+        }
+      } catch (error: any) {
+        console.error(`[DO:${this.state.id}] Error checking flow concurrency: ${error.message}`);
+        // Continue anyway - better to have duplicate than to fail
+      }
+    }
     
     // Load flow definition from database
     if (!this.env.FLOW_RUNS_DB) {
@@ -3589,7 +3701,12 @@ ${messageContent}`;
    * Determine next flow based on priority system
    */
   private async determineNextFlow(): Promise<string | null> {
-    // System-level arbitration (priority-based)
+    // WARNING: This method is for monitoring/logging only
+    // It MUST NOT be used for flow switching decisions
+    // Flow transitions only happen via flow_definitions.next_flow_id
+    // when flow completes (next_step == -1)
+    
+    // System-level arbitration (priority-based) - FOR MONITORING ONLY
     if (!this.env.FLOW_RUNS_DB || !this.conversation?.flow_id) {
       return null;
     }
