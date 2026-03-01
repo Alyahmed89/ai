@@ -263,6 +263,149 @@ crudApi.delete('/tasks/:id', async (c) => {
   }
 });
 
+// Get all flow steps
+crudApi.get('/flow-steps', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const result = await db.prepare('SELECT * FROM flow_steps ORDER BY flow_id, order_index').all();
+    return c.json(result.results || []);
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Get flow step by ID
+crudApi.get('/flow-steps/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('SELECT * FROM flow_steps WHERE id = ?').bind(id).first();
+
+    if (!result) {
+      return c.json({ error: 'Flow step not found' }, 404);
+    }
+
+    return c.json(result);
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Create new flow step
+crudApi.post('/flow-steps', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const body = await c.req.json();
+    const { 
+      id, flow_id, step_key, title, type, order_index, instructions,
+      expected_output, success_criteria, failure_criteria, timeout_seconds,
+      retry_count, retry_delay, depends_on, parallelizable, required_inputs,
+      output_schema, metadata, created_at, updated_at 
+    } = body;
+    
+    const created = created_at || Math.floor(Date.now() / 1000);
+    const updated = updated_at || created;
+
+    const sql = `
+      INSERT INTO flow_steps (
+        id, flow_id, step_key, title, type, order_index, instructions,
+        expected_output, success_criteria, failure_criteria, timeout_seconds,
+        retry_count, retry_delay, depends_on, parallelizable, required_inputs,
+        output_schema, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await db.prepare(sql).bind(
+      id, flow_id, step_key, title, type, order_index, instructions,
+      expected_output || null, success_criteria || null, failure_criteria || null, timeout_seconds || null,
+      retry_count || null, retry_delay || null, depends_on || null, parallelizable || null, required_inputs || null,
+      output_schema || null, metadata || null, created, updated
+    ).run();
+    
+    return c.json({ message: 'Flow step created successfully', id }, 201);
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Update flow step
+crudApi.put('/flow-steps/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { 
+      flow_id, step_key, title, type, order_index, instructions,
+      expected_output, success_criteria, failure_criteria, timeout_seconds,
+      retry_count, retry_delay, depends_on, parallelizable, required_inputs,
+      output_schema, metadata, updated_at 
+    } = body;
+    
+    const updated = updated_at || Math.floor(Date.now() / 1000);
+
+    const sql = `
+      UPDATE flow_steps SET 
+        flow_id = ?, step_key = ?, title = ?, type = ?, order_index = ?, instructions = ?,
+        expected_output = ?, success_criteria = ?, failure_criteria = ?, timeout_seconds = ?,
+        retry_count = ?, retry_delay = ?, depends_on = ?, parallelizable = ?, required_inputs = ?,
+        output_schema = ?, metadata = ?, updated_at = ?
+      WHERE id = ?
+    `;
+
+    const result = await db.prepare(sql).bind(
+      flow_id, step_key, title, type, order_index, instructions,
+      expected_output || null, success_criteria || null, failure_criteria || null, timeout_seconds || null,
+      retry_count || null, retry_delay || null, depends_on || null, parallelizable || null, required_inputs || null,
+      output_schema || null, metadata || null, updated, id
+    ).run();
+
+    if (result.meta.changes === 0) {
+      return c.json({ error: 'Flow step not found' }, 404);
+    }
+
+    return c.json({ message: 'Flow step updated successfully' });
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Delete flow step
+crudApi.delete('/flow-steps/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('DELETE FROM flow_steps WHERE id = ?').bind(id).run();
+
+    if (result.meta.changes === 0) {
+      return c.json({ error: 'Flow step not found' }, 404);
+    }
+
+    return c.json({ message: 'Flow step deleted successfully' });
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
 // Get all flow conditions
 crudApi.get('/flow-conditions', async (c) => {
   try {

@@ -872,6 +872,109 @@ app.post('/start', async (c) => {
   }
 });
 
+// ============================================================================
+// STEPS TABLE PAGE
+// ============================================================================
+app.get('/steps', (c) => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow Steps Table</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 20px; }
+    .back-link { color: #0066cc; text-decoration: none; margin-bottom: 10px; display: inline-block; }
+    h1 { margin: 0 0 5px 0; }
+    .table-container { background: white; border-radius: 8px; overflow: hidden; }
+    .table-header { padding: 15px; border-bottom: 1px solid #e5e5e5; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f9f9f9; padding: 12px 15px; text-align: left; font-weight: 600; border-bottom: 2px solid #e5e5e5; }
+    td { padding: 12px 15px; border-bottom: 1px solid #e5e5e5; }
+    .loading, .error, .empty { padding: 40px; text-align: center; color: #666; }
+    .error { color: #d00; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="back-link">← Back</a>
+      <h1>Flow Steps Table</h1>
+    </div>
+    
+    <div class="table-container">
+      <div class="table-header">
+        <div>Flow Steps</div>
+      </div>
+      <div id="table-content" class="loading">Loading...</div>
+    </div>
+  </div>
+  
+  <script>
+    async function loadData() {
+      try {
+        const response = await fetch('/api/flow-steps');
+        const data = await response.json();
+        
+        if (data.error) {
+          document.getElementById('table-content').className = 'error';
+          document.getElementById('table-content').textContent = 'Error: ' + data.error;
+          return;
+        }
+        
+        const items = data.data || data.results || data;
+        
+        if (!items || items.length === 0) {
+          document.getElementById('table-content').className = 'empty';
+          document.getElementById('table-content').textContent = 'No data found';
+          return;
+        }
+        
+        // Create table
+        let html = '<table>';
+        
+        // Table header
+        html += '<thead><tr>';
+        const firstItem = items[0];
+        for (const key in firstItem) {
+          html += '<th>' + key + '</th>';
+        }
+        html += '</tr></thead>';
+        
+        // Table body
+        html += '<tbody>';
+        items.forEach(item => {
+          html += '<tr>';
+          for (const key in firstItem) {
+            let value = item[key];
+            if (value === null || value === undefined) value = '';
+            if (typeof value === 'object') value = JSON.stringify(value);
+            html += '<td>' + value + '</td>';
+          }
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        
+        document.getElementById('table-content').innerHTML = html;
+        
+      } catch (error) {
+        document.getElementById('table-content').className = 'error';
+        document.getElementById('table-content').textContent = 'Error loading data: ' + error.message;
+      }
+    }
+    
+    // Load data when page loads
+    document.addEventListener('DOMContentLoaded', loadData);
+  </script>
+</body>
+</html>`;
+  
+  return c.html(html);
+});
+
 export default app;
 export { ConversationOrchestratorDO_2026A };
 // Export old class names for reference (not used)
