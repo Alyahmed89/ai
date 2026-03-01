@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { tasksApi, flowsApi, flowConditionsApi, flowStepsApi } from '@/lib/api';
 import EditModal from './EditModal';
 
@@ -22,6 +22,7 @@ export default function DataTable({ tableType }: DataTableProps) {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingData, setEditingData] = useState<any>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   
   // Define columns for each table type
   const getColumns = (): TableColumn[] => {
@@ -61,14 +62,7 @@ export default function DataTable({ tableType }: DataTableProps) {
         return [
           { key: 'id', label: 'ID' },
           { key: 'flow_id', label: 'Flow ID' },
-          { key: 'step_key', label: 'Step Key' },
           { key: 'title', label: 'Title' },
-          { key: 'step_type', label: 'Type' },
-          { key: 'order_index', label: 'Order' },
-          { key: 'instructions', label: 'Instructions', render: (value) => (
-            <div className="max-w-xs truncate">{value}</div>
-          )},
-          { key: 'created_at', label: 'Created', render: (value) => new Date(value).toLocaleDateString() }
         ];
         
       case 'conditions':
@@ -220,6 +214,16 @@ export default function DataTable({ tableType }: DataTableProps) {
     }
   };
 
+  const toggleRowExpansion = (rowId: string) => {
+    const newExpandedRows = new Set(expandedRows);
+    if (newExpandedRows.has(rowId)) {
+      newExpandedRows.delete(rowId);
+    } else {
+      newExpandedRows.add(rowId);
+    }
+    setExpandedRows(newExpandedRows);
+  };
+
   useEffect(() => {
     fetchData();
   }, [tableType]);
@@ -259,12 +263,31 @@ export default function DataTable({ tableType }: DataTableProps) {
             {data.length} items
           </p>
         </div>
-        <button
-          onClick={handleCreate}
-          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-        >
-          + Add
-        </button>
+        <div className="flex space-x-2">
+          {tableType === 'steps' && data.length > 0 && (
+            <>
+              <button
+                onClick={() => {
+                  if (expandedRows.size === data.length) {
+                    setExpandedRows(new Set());
+                  } else {
+                    const allIds = data.map(row => row.id).filter(id => id);
+                    setExpandedRows(new Set(allIds));
+                  }
+                }}
+                className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+              >
+                {expandedRows.size === data.length ? 'Collapse All' : 'Expand All'}
+              </button>
+            </>
+          )}
+          <button
+            onClick={handleCreate}
+            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+          >
+            + Add
+          </button>
+        </div>
       </div>
       
       {data.length === 0 ? (
@@ -276,6 +299,11 @@ export default function DataTable({ tableType }: DataTableProps) {
           <table className="min-w-full">
             <thead className="bg-gray-100">
               <tr>
+                {tableType === 'steps' && (
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 w-10">
+                    {/* Expand/collapse column */}
+                  </th>
+                )}
                 {columns.map((column) => (
                   <th key={column.key} className="px-3 py-2 text-left text-xs font-medium text-gray-700">
                     {column.label}
@@ -287,34 +315,113 @@ export default function DataTable({ tableType }: DataTableProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {data.map((row, rowIndex) => (
-                <tr key={row.id || rowIndex} className="hover:bg-gray-50">
-                  {columns.map((column) => (
-                    <td key={column.key} className="px-3 py-2 text-sm">
-                      {column.render 
-                        ? column.render(row[column.key], row)
-                        : row[column.key] || '-'
-                      }
-                    </td>
-                  ))}
-                  <td className="px-3 py-2 text-sm">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleEdit(row)}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(row.id)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {data.map((row, rowIndex) => {
+                const isExpanded = expandedRows.has(row.id);
+                return (
+                  <Fragment key={row.id || rowIndex}>
+                    <tr className="hover:bg-gray-50">
+                      {tableType === 'steps' && (
+                        <td className="px-3 py-2 text-sm">
+                          <button
+                            onClick={() => toggleRowExpansion(row.id)}
+                            className="text-gray-500 hover:text-gray-700"
+                          >
+                            {isExpanded ? '▼' : '▶'}
+                          </button>
+                        </td>
+                      )}
+                      {columns.map((column) => (
+                        <td key={column.key} className="px-3 py-2 text-sm">
+                          {column.render 
+                            ? column.render(row[column.key], row)
+                            : row[column.key] || '-'
+                          }
+                        </td>
+                      ))}
+                      <td className="px-3 py-2 text-sm">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEdit(row)}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(row.id)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {tableType === 'steps' && isExpanded && (
+                      <tr className="bg-gray-50">
+                        <td colSpan={columns.length + (tableType === 'steps' ? 2 : 1)} className="px-3 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                              <h4 className="font-medium text-sm text-gray-700 mb-2">Step Details</h4>
+                              <div className="space-y-1 text-sm">
+                                <div><span className="font-medium">Step Key:</span> {row.step_key || '-'}</div>
+                                <div><span className="font-medium">Step Type:</span> {row.step_type || '-'}</div>
+                                <div><span className="font-medium">Order Index:</span> {row.order_index || '-'}</div>
+                                <div><span className="font-medium">Page Key:</span> {row.page_key || '-'}</div>
+                                <div><span className="font-medium">Blocking:</span> {row.blocking ? 'Yes' : 'No'}</div>
+                                <div><span className="font-medium">Auto Fail on Error:</span> {row.auto_fail_on_error ? 'Yes' : 'No'}</div>
+                                <div><span className="font-medium">Retryable:</span> {row.retryable ? 'Yes' : 'No'}</div>
+                              </div>
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-sm text-gray-700 mb-2">Timestamps</h4>
+                              <div className="space-y-1 text-sm">
+                                <div><span className="font-medium">Created:</span> {row.created_at ? new Date(row.created_at).toLocaleString() : '-'}</div>
+                                <div><span className="font-medium">Updated:</span> {row.updated_at ? new Date(row.updated_at).toLocaleString() : '-'}</div>
+                                <div><span className="font-medium">Task ID:</span> {row.task_id || '-'}</div>
+                              </div>
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-sm text-gray-700 mb-2">Input/Output</h4>
+                              <div className="space-y-1 text-sm">
+                                <div><span className="font-medium">Input Keys:</span> {row.input_keys || '-'}</div>
+                                <div><span className="font-medium">Output Keys:</span> {row.output_keys || '-'}</div>
+                                <div><span className="font-medium">Output URL:</span> {row.output_url ? (
+                                  <a href={row.output_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                    Link
+                                  </a>
+                                ) : '-'}</div>
+                                <div><span className="font-medium">Default Next Step:</span> {row.default_next_step || '-'}</div>
+                                <div><span className="font-medium">Output Auth Token:</span> {row.output_auth_token ? '***' : '-'}</div>
+                              </div>
+                            </div>
+                            <div className="md:col-span-2 lg:col-span-3">
+                              <h4 className="font-medium text-sm text-gray-700 mb-2">Instructions</h4>
+                              <div className="bg-white p-3 rounded border text-sm whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                {row.instructions || 'No instructions provided'}
+                              </div>
+                            </div>
+                            {row.output_payload_template && (
+                              <div className="md:col-span-2 lg:col-span-3">
+                                <h4 className="font-medium text-sm text-gray-700 mb-2">Output Payload Template</h4>
+                                <div className="bg-white p-3 rounded border text-sm whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                  {row.output_payload_template}
+                                </div>
+                              </div>
+                            )}
+                            {row.output && (
+                              <div className="md:col-span-2 lg:col-span-3">
+                                <h4 className="font-medium text-sm text-gray-700 mb-2">Output</h4>
+                                <div className="bg-white p-3 rounded border text-sm whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                  {typeof row.output === 'object' ? JSON.stringify(row.output, null, 2) : row.output}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
