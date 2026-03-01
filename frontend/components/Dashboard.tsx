@@ -161,17 +161,22 @@ export default function Dashboard() {
           <div className="space-y-2">
             <a href="/data" className="flex items-center p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
               <span className="mr-2">📋</span>
-              <span>View All Tables</span>
+              <span>View All Data Tables</span>
               <span className="ml-auto text-gray-400">→</span>
             </a>
-            <a href="/flows" className="flex items-center p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
+            <a href="/data?table=flows" className="flex items-center p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
               <span className="mr-2">📊</span>
-              <span>View Flows Table</span>
+              <span>View Flows</span>
               <span className="ml-auto text-gray-400">→</span>
             </a>
-            <a href="/tasks" className="flex items-center p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
+            <a href="/data?table=tasks" className="flex items-center p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
               <span className="mr-2">✅</span>
-              <span>View Tasks Table</span>
+              <span>View Tasks</span>
+              <span className="ml-auto text-gray-400">→</span>
+            </a>
+            <a href="/data?table=steps" className="flex items-center p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
+              <span className="mr-2">📝</span>
+              <span>View Steps</span>
               <span className="ml-auto text-gray-400">→</span>
             </a>
             <button onClick={fetchDashboardData} className="w-full flex items-center p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import DataTable from '@/components/DataTable';
 
 type TableType = 'tasks' | 'flows' | 'steps' | 'conditions' | 'flow-definitions';
@@ -14,7 +15,15 @@ const tableOptions: { value: TableType; label: string }[] = [
 ];
 
 export default function DataPage() {
+  const searchParams = useSearchParams();
   const [selectedTable, setSelectedTable] = useState<TableType>('tasks');
+
+  useEffect(() => {
+    const tableParam = searchParams.get('table') as TableType;
+    if (tableParam && tableOptions.some(option => option.value === tableParam)) {
+      setSelectedTable(tableParam);
+    }
+  }, [searchParams]);
 
   return (
     <div className="p-4">
