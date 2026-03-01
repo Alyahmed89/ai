@@ -890,12 +890,27 @@ app.get('/steps', (c) => {
     .back-link { color: #0066cc; text-decoration: none; margin-bottom: 10px; display: inline-block; }
     h1 { margin: 0 0 5px 0; }
     .table-container { background: white; border-radius: 8px; overflow: hidden; }
-    .table-header { padding: 15px; border-bottom: 1px solid #e5e5e5; }
+    .table-header { padding: 15px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center; }
     table { width: 100%; border-collapse: collapse; }
     th { background: #f9f9f9; padding: 12px 15px; text-align: left; font-weight: 600; border-bottom: 2px solid #e5e5e5; }
     td { padding: 12px 15px; border-bottom: 1px solid #e5e5e5; }
     .loading, .error, .empty { padding: 40px; text-align: center; color: #666; }
     .error { color: #d00; }
+    .expand-btn { background: none; border: none; cursor: pointer; color: #666; font-size: 12px; padding: 2px 6px; }
+    .expand-btn:hover { color: #333; }
+    .details-row { background: #f9f9f9; }
+    .details-cell { padding: 20px; }
+    .details-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+    .details-section { margin-bottom: 15px; }
+    .details-section h4 { margin: 0 0 8px 0; font-size: 14px; color: #333; }
+    .details-section div { font-size: 13px; margin-bottom: 4px; }
+    .details-section span { font-weight: 500; color: #555; }
+    .instructions-box { background: white; padding: 15px; border-radius: 4px; border: 1px solid #e5e5e5; max-height: 200px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; }
+    .action-buttons { display: flex; gap: 10px; }
+    .action-btn { padding: 4px 12px; border-radius: 4px; border: 1px solid #ddd; background: white; cursor: pointer; font-size: 13px; }
+    .action-btn:hover { background: #f5f5f5; }
+    .expand-all-btn { background: #e5e5e5; border: 1px solid #ccc; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .expand-all-btn:hover { background: #ddd; }
   </style>
 </head>
 <body>
@@ -908,12 +923,17 @@ app.get('/steps', (c) => {
     <div class="table-container">
       <div class="table-header">
         <div>Flow Steps</div>
+        <div>
+          <button id="expand-all-btn" class="expand-all-btn" style="display: none;">Expand All</button>
+        </div>
       </div>
       <div id="table-content" class="loading">Loading...</div>
     </div>
   </div>
   
   <script>
+    let expandedRows = new Set();
+    
     async function loadData() {
       try {
         const response = await fetch('/api/flow-steps');
@@ -933,44 +953,145 @@ app.get('/steps', (c) => {
           return;
         }
         
-        // Create table
-        let html = '<table>';
-        
-        // Table header
-        html += '<thead><tr>';
-        const firstItem = items[0];
-        for (const key in firstItem) {
-          html += '<th>' + key + '</th>';
-        }
-        html += '</tr></thead>';
-        
-        // Table body
-        html += '<tbody>';
-        items.forEach(item => {
-          html += '<tr>';
-          for (const key in firstItem) {
-            let value = item[key];
-            if (value === null || value === undefined) value = '';
-            if (typeof value === 'object') value = JSON.stringify(value);
-            html += '<td>' + value + '</td>';
+        // Show expand all button
+        const expandAllBtn = document.getElementById('expand-all-btn');
+        expandAllBtn.style.display = 'inline-block';
+        expandAllBtn.onclick = () => {
+          if (expandedRows.size === items.length) {
+            expandedRows.clear();
+            expandAllBtn.textContent = 'Expand All';
+          } else {
+            items.forEach(item => {
+              if (item.id) expandedRows.add(item.id);
+            });
+            expandAllBtn.textContent = 'Collapse All';
           }
-          html += '</tr>';
-        });
-        html += '</tbody></table>';
+          renderTable(items);
+        };
         
-        document.getElementById('table-content').innerHTML = html;
-        
+        renderTable(items);
       } catch (error) {
         document.getElementById('table-content').className = 'error';
         document.getElementById('table-content').textContent = 'Error loading data: ' + error.message;
       }
     }
     
-    // Load data when page loads
+    function renderTable(items) {
+      // Update expand all button text
+      const expandAllBtn = document.getElementById('expand-all-btn');
+      expandAllBtn.textContent = expandedRows.size === items.length ? 'Collapse All' : 'Expand All';
+      
+      // Create table
+      let html = '<table>';
+      
+      // Table header - simplified columns
+      html += '<thead><tr>';
+      html += '<th style="width: 40px;"></th>'; // Expand/collapse column
+      html += '<th>ID</th>';
+      html += '<th>Flow ID</th>';
+      html += '<th>Title</th>';
+      html += '<th>Actions</th>';
+      html += '</tr></thead>';
+      
+      // Table body
+      html += '<tbody>';
+      items.forEach(item => {
+        const isExpanded = expandedRows.has(item.id);
+        
+        // Main row
+        html += '<tr>';
+        html += '<td><button class="expand-btn" onclick="toggleRow(\\\'' + item.id + '\\\')">' + (isExpanded ? '▼' : '▶') + '</button></td>';
+        html += '<td>' + (item.id || '-') + '</td>';
+        html += '<td>' + (item.flow_id || '-') + '</td>';
+        html += '<td>' + (item.title || '-') + '</td>';
+        html += '<td><div class="action-buttons"><button class="action-btn">Edit</button><button class="action-btn" style="color: #d00;">Delete</button></div></td>';
+        html += '</tr>';
+        
+        // Details row
+        if (isExpanded) {
+          html += '<tr class="details-row">';
+          html += '<td colspan="5" class="details-cell">';
+          html += '<div class="details-grid">';
+          
+          // Step Details
+          html += '<div class="details-section">';
+          html += '<h4>Step Details</h4>';
+          html += '<div><span>Step Key:</span> ' + (item.step_key || '-') + '</div>';
+          html += '<div><span>Step Type:</span> ' + (item.step_type || '-') + '</div>';
+          html += '<div><span>Order Index:</span> ' + (item.order_index || '-') + '</div>';
+          html += '<div><span>Page Key:</span> ' + (item.page_key || '-') + '</div>';
+          html += '<div><span>Blocking:</span> ' + (item.blocking ? 'Yes' : 'No') + '</div>';
+          html += '<div><span>Auto Fail on Error:</span> ' + (item.auto_fail_on_error ? 'Yes' : 'No') + '</div>';
+          html += '<div><span>Retryable:</span> ' + (item.retryable ? 'Yes' : 'No') + '</div>';
+          html += '</div>';
+          
+          // Timestamps
+          html += '<div class="details-section">';
+          html += '<h4>Timestamps</h4>';
+          html += '<div><span>Created:</span> ' + (item.created_at ? new Date(item.created_at).toLocaleString() : '-') + '</div>';
+          html += '<div><span>Updated:</span> ' + (item.updated_at ? new Date(item.updated_at).toLocaleString() : '-') + '</div>';
+          html += '<div><span>Task ID:</span> ' + (item.task_id || '-') + '</div>';
+          html += '</div>';
+          
+          // Input/Output
+          html += '<div class="details-section">';
+          html += '<h4>Input/Output</h4>';
+          html += '<div><span>Input Keys:</span> ' + (item.input_keys || '-') + '</div>';
+          html += '<div><span>Output Keys:</span> ' + (item.output_keys || '-') + '</div>';
+          html += '<div><span>Default Next Step:</span> ' + (item.default_next_step || '-') + '</div>';
+          if (item.output_url) {
+            html += '<div><span>Output URL:</span> <a href="' + item.output_url + '" target="_blank">Link</a></div>';
+          }
+          html += '</div>';
+          
+          // Instructions (full width)
+          html += '<div class="details-section" style="grid-column: 1 / -1;">';
+          html += '<h4>Instructions</h4>';
+          html += '<div class="instructions-box">' + (item.instructions || 'No instructions provided') + '</div>';
+          html += '</div>';
+          
+          // Output Payload Template (if exists)
+          if (item.output_payload_template) {
+            html += '<div class="details-section" style="grid-column: 1 / -1;">';
+            html += '<h4>Output Payload Template</h4>';
+            html += '<div class="instructions-box">' + item.output_payload_template + '</div>';
+            html += '</div>';
+          }
+          
+          // Output (if exists)
+          if (item.output) {
+            html += '<div class="details-section" style="grid-column: 1 / -1;">';
+            html += '<h4>Output</h4>';
+            html += '<div class="instructions-box">' + (typeof item.output === 'object' ? JSON.stringify(item.output, null, 2) : item.output) + '</div>';
+            html += '</div>';
+          }
+          
+          html += '</div>'; // Close details-grid
+          html += '</td></tr>';
+        }
+      });
+      html += '</tbody></table>';
+      
+      document.getElementById('table-content').innerHTML = html;
+    }
+    
+    function toggleRow(rowId) {
+      if (expandedRows.has(rowId)) {
+        expandedRows.delete(rowId);
+      } else {
+        expandedRows.add(rowId);
+      }
+      
+      // Re-fetch and render to update the table
+      loadData();
+    }
+    
+    // Load data on page load
     document.addEventListener('DOMContentLoaded', loadData);
   </script>
 </body>
-</html>`;
+</html>
+  `;
   
   return c.html(html);
 });
