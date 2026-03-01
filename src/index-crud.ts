@@ -348,12 +348,184 @@ app.get('/', (c) => {
 // MINIMAL TABLE PAGES
 // ============================================================================
 
-// Data tables page - Redirect to React frontend
-// Note: The React frontend handles the /data route with unified UI
-// This route is kept for backward compatibility but redirects to home
+// Data tables page - Unified UI for all entities
 app.get('/data', (c) => {
-  // Redirect to home page where React app will handle routing
-  return c.redirect('/');
+  const searchParams = c.req.query();
+  const initialTable = searchParams.table || 'tasks';
+  
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Tables - Unified UI</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { margin-bottom: 20px; }
+    .back-link { color: #0066cc; text-decoration: none; margin-bottom: 10px; display: inline-block; }
+    h1 { margin: 0 0 5px 0; }
+    .tabs { display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab { padding: 8px 16px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; }
+    .tab.active { background: #0066cc; color: white; border-color: #0066cc; }
+    .table-container { background: white; border-radius: 8px; overflow: hidden; }
+    .table-header { padding: 15px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f9f9f9; padding: 12px 15px; text-align: left; font-weight: 600; border-bottom: 2px solid #e5e5e5; }
+    td { padding: 12px 15px; border-bottom: 1px solid #e5e5e5; }
+    .loading, .error, .empty { padding: 40px; text-align: center; color: #666; }
+    .error { color: #d00; }
+    .action-buttons { display: flex; gap: 8px; }
+    .action-btn { padding: 4px 12px; border-radius: 4px; border: 1px solid #ddd; background: white; cursor: pointer; font-size: 13px; }
+    .action-btn:hover { background: #f5f5f5; }
+    .action-btn.edit { color: #0066cc; border-color: #0066cc; }
+    .action-btn.delete { color: #d00; border-color: #d00; }
+    .action-btn.add { background: #0066cc; color: white; border-color: #0066cc; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="back-link">← Back to Dashboard</a>
+      <h1>Data Tables - Unified UI</h1>
+      <p>Manage all entities in one place with edit/add functionality</p>
+    </div>
+    
+    <div class="tabs">
+      <div class="tab ${initialTable === 'tasks' ? 'active' : ''}" onclick="loadTable('tasks')">Tasks</div>
+      <div class="tab ${initialTable === 'flows' ? 'active' : ''}" onclick="loadTable('flows')">Flows</div>
+      <div class="tab ${initialTable === 'flow-steps' ? 'active' : ''}" onclick="loadTable('flow-steps')">Steps</div>
+      <div class="tab ${initialTable === 'flow-conditions' ? 'active' : ''}" onclick="loadTable('flow-conditions')">Conditions</div>
+      <div class="tab ${initialTable === 'flow-runs' ? 'active' : ''}" onclick="loadTable('flow-runs')">Flow Runs</div>
+    </div>
+    
+    <div class="table-container">
+      <div class="table-header">
+        <div id="table-title">${initialTable.replace('-', ' ')}</div>
+        <div>
+          <button id="add-btn" class="action-btn add" onclick="showAddModal()">+ Add New</button>
+        </div>
+      </div>
+      <div id="table-content" class="loading">Loading...</div>
+    </div>
+  </div>
+  
+  <script>
+    let currentTable = '${initialTable}';
+    
+    async function loadTable(table) {
+      currentTable = table;
+      
+      // Update tabs
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      // Update URL without page reload
+      const url = new URL(window.location);
+      url.searchParams.set('table', table);
+      window.history.pushState({}, '', url);
+      
+      // Update title
+      document.getElementById('table-title').textContent = table.replace('-', ' ');
+      
+      // Show loading
+      document.getElementById('table-content').className = 'loading';
+      document.getElementById('table-content').textContent = 'Loading...';
+      
+      try {
+        const response = await fetch('/api/' + table);
+        const data = await response.json();
+        
+        if (data.error) {
+          document.getElementById('table-content').className = 'error';
+          document.getElementById('table-content').textContent = 'Error: ' + data.error;
+          return;
+        }
+        
+        const items = data.data || data.results || data;
+        
+        if (!items || items.length === 0) {
+          document.getElementById('table-content').className = 'empty';
+          document.getElementById('table-content').textContent = 'No data found';
+          return;
+        }
+        
+        // Create table
+        let html = '<table>';
+        
+        // Table header
+        html += '<thead><tr>';
+        const firstItem = items[0];
+        for (const key in firstItem) {
+          html += '<th>' + key + '</th>';
+        }
+        html += '<th>Actions</th>';
+        html += '</tr></thead>';
+        
+        // Table body
+        html += '<tbody>';
+        items.forEach(item => {
+          html += '<tr>';
+          for (const key in firstItem) {
+            let value = item[key];
+            if (value === null || value === undefined) value = '';
+            if (typeof value === 'object') value = JSON.stringify(value);
+            html += '<td>' + value + '</td>';
+          }
+          html += '<td><div class="action-buttons">';
+          html += '<button class="action-btn edit" onclick="editItem(\\'' + item.id + '\\')">Edit</button>';
+          html += '<button class="action-btn delete" onclick="deleteItem(\\'' + item.id + '\\')">Delete</button>';
+          html += '</div></td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        
+        document.getElementById('table-content').className = '';
+        document.getElementById('table-content').innerHTML = html;
+        
+      } catch (error) {
+        document.getElementById('table-content').className = 'error';
+        document.getElementById('table-content').textContent = 'Error: ' + error.message;
+      }
+    }
+    
+    function editItem(id) {
+      alert('Edit functionality for ' + currentTable + ' ID: ' + id + '\\n\\nNote: Full edit functionality requires additional implementation.\\nFor now, use API endpoints directly.');
+    }
+    
+    function deleteItem(id) {
+      if (confirm('Are you sure you want to delete this item?')) {
+        fetch('/api/' + currentTable + '/' + id, {
+          method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert('Error: ' + data.error);
+          } else {
+            alert('Item deleted successfully');
+            loadTable(currentTable);
+          }
+        })
+        .catch(error => {
+          alert('Error: ' + error.message);
+        });
+      }
+    }
+    
+    function showAddModal() {
+      alert('Add new ' + currentTable + '\\n\\nNote: Full add functionality requires additional implementation.\\nFor now, use API endpoints directly.');
+    }
+    
+    // Load initial table
+    document.addEventListener('DOMContentLoaded', () => loadTable('${initialTable}'));
+  </script>
+</body>
+</html>
+  `;
+  
+  return c.html(html);
 });
 
 // Flows page - Redirect to unified data page in React frontend
