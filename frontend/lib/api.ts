@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:48647/api';
+// Use the worker URL for production
+const API_BASE_URL = typeof window !== 'undefined' 
+  ? `${window.location.origin}/api`
+  : 'https://deepseek-agent.alghamdimo89.workers.dev/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

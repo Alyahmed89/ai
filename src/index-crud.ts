@@ -21,6 +21,22 @@ export class FlowControllerDO {
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
+// CORS middleware
+app.use('*', async (c, next) => {
+  // Set CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  c.header('Access-Control-Max-Age', '86400');
+  
+  // Handle preflight requests
+  if (c.req.method === 'OPTIONS') {
+    return new Response(null, { status: 204 });
+  }
+  
+  await next();
+});
+
 // Mount CRUD API at /api
 app.route('/api', crudApi);
 
@@ -135,44 +151,192 @@ const rateLimitMiddleware = async (c: any, next: any) => {
 app.use('*', rateLimitMiddleware);
 
 // ============================================================================
-// ROOT ENDPOINT - Show available endpoints
+// ROOT ENDPOINT - Serve HTML dashboard
 // ============================================================================
 app.get('/', (c) => {
-  return c.json({
-    message: 'DeepSeek Agent for OpenHands - Durable Object Controller with CRUD API',
-    endpoints: [
-      'POST /start - Start new conversation (creates new OpenHands conversation)',
-      'POST /attach - Attach to existing OpenHands conversation',
-      'GET /status/:id - Check conversation status',
-      'POST /stop/:id - Force stop a conversation',
-      'POST /api/conversations/:conversation_id/stop - API: Stop conversation',
-      'GET /health - Health check with database connection test',
-      'CRUD API at /api/* - Cloudflare D1 database operations'
-    ],
-    crud_endpoints: [
-      'GET /api/health - CRUD API health check',
-      'GET /api/flows - List all flows',
-      'GET /api/flows/:id - Get flow by ID',
-      'POST /api/flows - Create new flow',
-      'PUT /api/flows/:id - Update flow',
-      'DELETE /api/flows/:id - Delete flow',
-      'GET /api/tasks - List all tasks',
-      'GET /api/tasks/:id - Get task by ID',
-      'POST /api/tasks - Create new task',
-      'PUT /api/tasks/:id - Update task',
-      'DELETE /api/tasks/:id - Delete task',
-      'GET /api/flow-runs - List all flow runs',
-      'GET /api/flow-conditions - List all flow conditions'
-    ],
-    flow: 'User → /start → DO alarm: DeepSeek → OpenHands → DO alarm: DeepSeek → ...',
-    rules: [
-      'NO simulated OpenHands responses',
-      'NO resending same messages',
-      'STRICT alternation',
-      'HARD STOP on ANY error or [END_FLOW]',
-      'MAX 500 iterations by default (configurable via max_iterations parameter)'
-    ]
-  });
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek Agent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      async function fetchDashboardData() {
+        try {
+          // Fetch API health
+          const healthResponse = await fetch('/api/health');
+          const healthData = await healthResponse.json();
+          
+          // Fetch counts
+          const [flowsResponse, tasksResponse, flowRunsResponse] = await Promise.all([
+            fetch('/api/flows').then(r => r.ok ? r.json() : { data: [] }),
+            fetch('/api/tasks').then(r => r.ok ? r.json() : { data: [] }),
+            fetch('/api/flow-runs').then(r => r.ok ? r.json() : { data: [] })
+          ]);
+          
+          // Update UI
+          document.getElementById('flows-count').textContent = flowsResponse.data?.length || 0;
+          document.getElementById('tasks-count').textContent = tasksResponse.data?.length || 0;
+          document.getElementById('flow-runs-count').textContent = flowRunsResponse.data?.length || 0;
+          document.getElementById('api-status').textContent = healthData.status === 'healthy' ? 'Healthy' : 'Unhealthy';
+          document.getElementById('api-status').className = healthData.status === 'healthy' 
+            ? 'text-lg font-semibold text-green-600' 
+            : 'text-lg font-semibold text-red-600';
+          
+          // Update database info
+          document.getElementById('account-id').textContent = 'e39371fc55a5c9ef7ed83e16660bd7bb';
+          document.getElementById('database-id').textContent = 'ce8f2a2c-6e4b-4398-b73e-ba8f204f609a';
+          document.getElementById('api-endpoint').textContent = window.location.origin + '/api';
+          
+        } catch (error) {
+          console.error('Error fetching dashboard data:', error);
+        }
+      }
+      
+      // Load data on page load
+      document.addEventListener('DOMContentLoaded', fetchDashboardData);
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">DeepSeek Agent Dashboard</h1>
+            <p class="text-gray-600">Cloudflare Worker with D1 Database Management</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-lg bg-blue-100 text-blue-600 mr-4">
+                        <span class="text-2xl">📊</span>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Total Flows</p>
+                        <p id="flows-count" class="text-2xl font-semibold">0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-lg bg-green-100 text-green-600 mr-4">
+                        <span class="text-2xl">✅</span>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Total Tasks</p>
+                        <p id="tasks-count" class="text-2xl font-semibold">0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-lg bg-purple-100 text-purple-600 mr-4">
+                        <span class="text-2xl">🚀</span>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Flow Runs</p>
+                        <p id="flow-runs-count" class="text-2xl font-semibold">0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div id="api-status-icon" class="p-3 rounded-lg bg-green-100 text-green-600 mr-4">
+                        <span class="text-2xl">🔌</span>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">API Status</p>
+                        <p id="api-status" class="text-lg font-semibold text-green-600">Checking...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h2>
+                <div class="space-y-3">
+                    <a href="/api/flows" class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                        <span class="mr-3">📝</span>
+                        <span>View Flows API</span>
+                        <span class="ml-auto text-gray-400">→</span>
+                    </a>
+                    <a href="/api/tasks" class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                        <span class="mr-3">✅</span>
+                        <span>View Tasks API</span>
+                        <span class="ml-auto text-gray-400">→</span>
+                    </a>
+                    <button onclick="fetchDashboardData()" class="w-full flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                        <span class="mr-3">🔄</span>
+                        <span>Refresh Data</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Database Information</h2>
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm text-gray-500">Cloudflare Account ID</p>
+                        <p id="account-id" class="font-mono text-sm bg-gray-50 p-2 rounded mt-1">e39371fc55a5c9ef7ed83e16660bd7bb</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Database ID</p>
+                        <p id="database-id" class="font-mono text-sm bg-gray-50 p-2 rounded mt-1">ce8f2a2c-6e4b-4398-b73e-ba8f204f609a</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">API Endpoint</p>
+                        <p id="api-endpoint" class="font-mono text-sm bg-gray-50 p-2 rounded mt-1">${c.req.url}api</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-8 bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">API Endpoints</h2>
+            <div class="space-y-2">
+                <div class="flex items-center">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <code class="text-sm bg-gray-50 px-2 py-1 rounded">POST /start</code>
+                    <span class="ml-2 text-gray-600">- Start new conversation</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <code class="text-sm bg-gray-50 px-2 py-1 rounded">POST /attach</code>
+                    <span class="ml-2 text-gray-600">- Attach to existing conversation</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <code class="text-sm bg-gray-50 px-2 py-1 rounded">GET /status/:id</code>
+                    <span class="ml-2 text-gray-600">- Check conversation status</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <code class="text-sm bg-gray-50 px-2 py-1 rounded">GET /health</code>
+                    <span class="ml-2 text-gray-600">- Health check</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-blue-600 mr-2">📊</span>
+                    <code class="text-sm bg-gray-50 px-2 py-1 rounded">GET /api/flows</code>
+                    <span class="ml-2 text-gray-600">- List all flows</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-blue-600 mr-2">📊</span>
+                    <code class="text-sm bg-gray-50 px-2 py-1 rounded">GET /api/tasks</code>
+                    <span class="ml-2 text-gray-600">- List all tasks</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+  `;
+  
+  return c.html(html);
 });
 
 // ============================================================================
