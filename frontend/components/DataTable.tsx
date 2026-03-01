@@ -39,6 +39,7 @@ export default function DataTable({ tableType }: DataTableProps) {
               {value}
             </span>
           )},
+          { key: 'priority', label: 'Priority' },
           { key: 'flow_id', label: 'Flow ID' },
           { key: 'order_index', label: 'Order' },
           { key: 'created_at', label: 'Created', render: (value) => new Date(value).toLocaleDateString() }
@@ -62,7 +63,11 @@ export default function DataTable({ tableType }: DataTableProps) {
         return [
           { key: 'id', label: 'ID' },
           { key: 'flow_id', label: 'Flow ID' },
+          { key: 'step_key', label: 'Step Key' },
           { key: 'title', label: 'Title' },
+          { key: 'step_type', label: 'Type' },
+          { key: 'order_index', label: 'Order' },
+          { key: 'created_at', label: 'Created', render: (value) => new Date(value).toLocaleDateString() }
         ];
         
       case 'conditions':
