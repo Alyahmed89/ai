@@ -61,8 +61,11 @@ export default function DataTable({ tableType }: DataTableProps) {
         return [
           { key: 'id', label: 'ID' },
           { key: 'flow_id', label: 'Flow ID' },
-          { key: 'step_number', label: 'Step Number' },
-          { key: 'prompt', label: 'Prompt', render: (value) => (
+          { key: 'step_key', label: 'Step Key' },
+          { key: 'title', label: 'Title' },
+          { key: 'step_type', label: 'Type' },
+          { key: 'order_index', label: 'Order' },
+          { key: 'instructions', label: 'Instructions', render: (value) => (
             <div className="max-w-xs truncate">{value}</div>
           )},
           { key: 'created_at', label: 'Created', render: (value) => new Date(value).toLocaleDateString() }

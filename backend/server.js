@@ -12,7 +12,10 @@ const DATABASE_ID = process.env.DATABASE_ID || 'ce8f2a2c-6e4b-4398-b73e-ba8f204f
 
 const CLOUDFLARE_API_BASE = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DATABASE_ID}`;
 
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:44479', 'http://localhost:3000'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Helper function to make Cloudflare D1 API calls
@@ -126,7 +129,7 @@ app.delete('/api/flows/:id', async (req, res) => {
 app.get('/api/flows/:flowId/steps', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const result = await queryD1('SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_number', [flowId]);
+    const result = await queryD1('SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY order_index', [flowId]);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -136,8 +139,9 @@ app.get('/api/flows/:flowId/steps', async (req, res) => {
 // Get all flow steps (all steps across all flows)
 app.get('/api/flow-steps', async (req, res) => {
   try {
-    const result = await queryD1('SELECT * FROM flow_steps ORDER BY flow_id, step_number');
-    res.json(result);
+    const result = await queryD1('SELECT * FROM flow_steps ORDER BY flow_id, order_index');
+    // Extract just the results array from Cloudflare response
+    res.json(result[0]?.results || []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -149,11 +153,11 @@ app.get('/api/flow-steps/:id', async (req, res) => {
     const { id } = req.params;
     const result = await queryD1('SELECT * FROM flow_steps WHERE id = ?', [id]);
     
-    if (result.length === 0) {
+    if (result.length === 0 || !result[0]?.results?.length) {
       return res.status(404).json({ error: 'Flow step not found' });
     }
     
-    res.json(result[0]);
+    res.json(result[0].results[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -162,14 +166,29 @@ app.get('/api/flow-steps/:id', async (req, res) => {
 // Create new flow step
 app.post('/api/flow-steps', async (req, res) => {
   try {
-    const { id, flow_id, step_number, prompt } = req.body;
+    const { 
+      id, flow_id, step_key, title, instructions, step_type, order_index,
+      page_key, blocking, auto_fail_on_error, retryable, task_id, output_keys,
+      output_url, output_payload_template, default_next_step, output_auth_token,
+      input_keys, output
+    } = req.body;
     
     const sql = `
-      INSERT INTO flow_steps (id, flow_id, step_number, prompt)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO flow_steps (
+        id, flow_id, step_key, title, instructions, step_type, order_index,
+        page_key, blocking, auto_fail_on_error, retryable, task_id, output_keys,
+        output_url, output_payload_template, default_next_step, output_auth_token,
+        input_keys, output, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
     
-    await queryD1(sql, [id, flow_id, step_number, prompt]);
+    await queryD1(sql, [
+      id, flow_id, step_key, title, instructions, step_type, order_index || 0,
+      page_key, blocking !== undefined ? blocking : 1, auto_fail_on_error !== undefined ? auto_fail_on_error : 1,
+      retryable !== undefined ? retryable : 0, task_id, output_keys,
+      output_url, output_payload_template, default_next_step, output_auth_token,
+      input_keys, output !== undefined ? output : 0
+    ]);
     res.status(201).json({ message: 'Flow step created successfully', id });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -180,15 +199,28 @@ app.post('/api/flow-steps', async (req, res) => {
 app.put('/api/flow-steps/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { flow_id, step_number, prompt } = req.body;
+    const { 
+      flow_id, step_key, title, instructions, step_type, order_index,
+      page_key, blocking, auto_fail_on_error, retryable, task_id, output_keys,
+      output_url, output_payload_template, default_next_step, output_auth_token,
+      input_keys, output
+    } = req.body;
     
     const sql = `
       UPDATE flow_steps 
-      SET flow_id = ?, step_number = ?, prompt = ?
+      SET flow_id = ?, step_key = ?, title = ?, instructions = ?, step_type = ?, order_index = ?,
+          page_key = ?, blocking = ?, auto_fail_on_error = ?, retryable = ?, task_id = ?, output_keys = ?,
+          output_url = ?, output_payload_template = ?, default_next_step = ?, output_auth_token = ?,
+          input_keys = ?, output = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
     
-    await queryD1(sql, [flow_id, step_number, prompt, id]);
+    await queryD1(sql, [
+      flow_id, step_key, title, instructions, step_type, order_index,
+      page_key, blocking, auto_fail_on_error, retryable, task_id, output_keys,
+      output_url, output_payload_template, default_next_step, output_auth_token,
+      input_keys, output, id
+    ]);
     res.json({ message: 'Flow step updated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });

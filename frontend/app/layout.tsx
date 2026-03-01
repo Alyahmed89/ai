@@ -36,6 +36,9 @@ export default function RootLayout({
                   <a href="/tasks" className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm">
                     Tasks
                   </a>
+                  <a href="/steps" className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm">
+                    Steps
+                  </a>
                   <a href="/data" className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm">
                     All Tables
                   </a>

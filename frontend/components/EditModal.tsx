@@ -48,8 +48,23 @@ export default function EditModal({ isOpen, onClose, tableType, data, onSave }: 
         return [
           { key: 'id', label: 'ID', type: 'text', required: true },
           { key: 'flow_id', label: 'Flow ID', type: 'text', required: true },
-          { key: 'step_number', label: 'Step Number', type: 'number', required: true },
-          { key: 'prompt', label: 'Prompt', type: 'textarea', required: true },
+          { key: 'step_key', label: 'Step Key', type: 'text', required: true },
+          { key: 'title', label: 'Title', type: 'text', required: true },
+          { key: 'instructions', label: 'Instructions', type: 'textarea', required: true },
+          { key: 'step_type', label: 'Step Type', type: 'select', options: ['api_call', 'database', 'execution', 'analysis', 'validation', 'other'] },
+          { key: 'order_index', label: 'Order Index', type: 'number' },
+          { key: 'page_key', label: 'Page Key', type: 'text' },
+          { key: 'blocking', label: 'Blocking', type: 'checkbox' },
+          { key: 'auto_fail_on_error', label: 'Auto Fail on Error', type: 'checkbox' },
+          { key: 'retryable', label: 'Retryable', type: 'checkbox' },
+          { key: 'task_id', label: 'Task ID', type: 'text' },
+          { key: 'output_keys', label: 'Output Keys', type: 'text' },
+          { key: 'output_url', label: 'Output URL', type: 'text' },
+          { key: 'output_payload_template', label: 'Output Payload Template', type: 'textarea' },
+          { key: 'default_next_step', label: 'Default Next Step', type: 'number' },
+          { key: 'output_auth_token', label: 'Output Auth Token', type: 'text' },
+          { key: 'input_keys', label: 'Input Keys', type: 'text' },
+          { key: 'output', label: 'Output', type: 'checkbox' },
         ];
       case 'conditions':
         return [
@@ -140,6 +155,16 @@ export default function EditModal({ isOpen, onClose, tableType, data, onSave }: 
                         </option>
                       ))}
                     </select>
+                  ) : field.type === 'checkbox' ? (
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={!!formData[field.key]}
+                        onChange={(e) => handleChange(field.key, e.target.checked ? 1 : 0)}
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Enabled</span>
+                    </div>
                   ) : (
                     <input
                       type={field.type}
