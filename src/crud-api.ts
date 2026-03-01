@@ -11,6 +11,45 @@ function handleDbError(error: any) {
   };
 }
 
+// Helper function to create tables if they don't exist
+async function ensureTablesExist(db: any) {
+  try {
+    // Create flows table if it doesn't exist
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS flows (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        first_prompt TEXT,
+        deepseek_system TEXT,
+        repo TEXT,
+        branch TEXT,
+        max_iterations INTEGER DEFAULT 5,
+        steps TEXT, -- JSON string of steps
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // Create flow_conditions table if it doesn't exist
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS flow_conditions (
+        id TEXT PRIMARY KEY,
+        flow_id TEXT NOT NULL,
+        step_id TEXT NOT NULL,
+        condition_type TEXT NOT NULL,
+        condition_value TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+        FOREIGN KEY (step_id) REFERENCES flow_steps(id) ON DELETE CASCADE
+      )
+    `).run();
+
+    console.log('Tables ensured to exist');
+  } catch (error) {
+    console.error('Error ensuring tables exist:', error);
+    // Don't throw - we'll try to continue anyway
+  }
+}
+
 // Create CRUD API router
 export const crudApi = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -30,6 +69,9 @@ crudApi.get('/flows', async (c) => {
     if (!db) {
       return c.json({ error: 'Database not configured' }, 500);
     }
+
+    // Ensure tables exist before querying
+    await ensureTablesExist(db);
 
     const result = await db.prepare('SELECT * FROM flows ORDER BY created_at DESC').all();
     return c.json(result.results || []);
@@ -67,6 +109,9 @@ crudApi.post('/flows', async (c) => {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
+    // Ensure tables exist before inserting
+    await ensureTablesExist(db);
+
     const body = await c.req.json();
     const { id, name, first_prompt, deepseek_system, repo, branch, max_iterations, steps } = body;
     const created_at = Math.floor(Date.now() / 1000);
@@ -91,6 +136,9 @@ crudApi.put('/flows/:id', async (c) => {
     if (!db) {
       return c.json({ error: 'Database not configured' }, 500);
     }
+
+    // Ensure tables exist before updating
+    await ensureTablesExist(db);
 
     const id = c.req.param('id');
     const body = await c.req.json();
@@ -121,6 +169,9 @@ crudApi.delete('/flows/:id', async (c) => {
     if (!db) {
       return c.json({ error: 'Database not configured' }, 500);
     }
+
+    // Ensure tables exist before deleting
+    await ensureTablesExist(db);
 
     const id = c.req.param('id');
     const result = await db.prepare('DELETE FROM flows WHERE id = ?').bind(id).run();
@@ -414,6 +465,9 @@ crudApi.get('/flow-conditions', async (c) => {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
+    // Ensure tables exist before querying
+    await ensureTablesExist(db);
+
     const result = await db.prepare('SELECT * FROM flow_conditions ORDER BY flow_id, step_id').all();
     return c.json(result.results || []);
   } catch (error) {
@@ -428,6 +482,9 @@ crudApi.get('/flows/:flowId/steps/:stepId/conditions', async (c) => {
     if (!db) {
       return c.json({ error: 'Database not configured' }, 500);
     }
+
+    // Ensure tables exist before querying
+    await ensureTablesExist(db);
 
     const flowId = c.req.param('flowId');
     const stepId = c.req.param('stepId');
