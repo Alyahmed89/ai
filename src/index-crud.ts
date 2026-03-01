@@ -393,11 +393,11 @@ app.get('/data', (c) => {
     </div>
     
     <div class="tabs">
-      <div class="tab ${initialTable === 'tasks' ? 'active' : ''}" onclick="loadTable('tasks')">Tasks</div>
-      <div class="tab ${initialTable === 'flows' ? 'active' : ''}" onclick="loadTable('flows')">Flows</div>
-      <div class="tab ${initialTable === 'flow-steps' ? 'active' : ''}" onclick="loadTable('flow-steps')">Steps</div>
-      <div class="tab ${initialTable === 'flow-conditions' ? 'active' : ''}" onclick="loadTable('flow-conditions')">Conditions</div>
-      <div class="tab ${initialTable === 'flow-runs' ? 'active' : ''}" onclick="loadTable('flow-runs')">Flow Runs</div>
+      <div class="tab ${initialTable === 'tasks' ? 'active' : ''}" onclick="loadTable('tasks', event)">Tasks</div>
+      <div class="tab ${initialTable === 'flows' ? 'active' : ''}" onclick="loadTable('flows', event)">Flows</div>
+      <div class="tab ${initialTable === 'flow-steps' ? 'active' : ''}" onclick="loadTable('flow-steps', event)">Steps</div>
+      <div class="tab ${initialTable === 'flow-conditions' ? 'active' : ''}" onclick="loadTable('flow-conditions', event)">Conditions</div>
+      <div class="tab ${initialTable === 'flow-runs' ? 'active' : ''}" onclick="loadTable('flow-runs', event)">Flow Runs</div>
     </div>
     
     <div class="table-container">
@@ -414,12 +414,14 @@ app.get('/data', (c) => {
   <script>
     let currentTable = '${initialTable}';
     
-    async function loadTable(table) {
+    async function loadTable(table, event) {
       currentTable = table;
       
       // Update tabs
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
+      if (event && event.target) {
+        event.target.classList.add('active');
+      }
       
       // Update URL without page reload
       const url = new URL(window.location);
