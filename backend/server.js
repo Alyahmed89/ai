@@ -133,6 +133,79 @@ app.get('/api/flows/:flowId/steps', async (req, res) => {
   }
 });
 
+// Get all flow steps (all steps across all flows)
+app.get('/api/flow-steps', async (req, res) => {
+  try {
+    const result = await queryD1('SELECT * FROM flow_steps ORDER BY flow_id, step_number');
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get flow step by ID
+app.get('/api/flow-steps/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await queryD1('SELECT * FROM flow_steps WHERE id = ?', [id]);
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Flow step not found' });
+    }
+    
+    res.json(result[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new flow step
+app.post('/api/flow-steps', async (req, res) => {
+  try {
+    const { id, flow_id, step_number, prompt } = req.body;
+    
+    const sql = `
+      INSERT INTO flow_steps (id, flow_id, step_number, prompt)
+      VALUES (?, ?, ?, ?)
+    `;
+    
+    await queryD1(sql, [id, flow_id, step_number, prompt]);
+    res.status(201).json({ message: 'Flow step created successfully', id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update flow step
+app.put('/api/flow-steps/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { flow_id, step_number, prompt } = req.body;
+    
+    const sql = `
+      UPDATE flow_steps 
+      SET flow_id = ?, step_number = ?, prompt = ?
+      WHERE id = ?
+    `;
+    
+    await queryD1(sql, [flow_id, step_number, prompt, id]);
+    res.json({ message: 'Flow step updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete flow step
+app.delete('/api/flow-steps/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await queryD1('DELETE FROM flow_steps WHERE id = ?', [id]);
+    res.json({ message: 'Flow step deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get all tasks
 app.get('/api/tasks', async (req, res) => {
   try {
@@ -225,6 +298,69 @@ app.get('/api/flows/:flowId/steps/:stepId/conditions', async (req, res) => {
       [flowId, stepId]
     );
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get flow condition by ID
+app.get('/api/flow-conditions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await queryD1('SELECT * FROM flow_conditions WHERE id = ?', [id]);
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Flow condition not found' });
+    }
+    
+    res.json(result[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new flow condition
+app.post('/api/flow-conditions', async (req, res) => {
+  try {
+    const { id, flow_id, step_id, condition_type, condition_value } = req.body;
+    
+    const sql = `
+      INSERT INTO flow_conditions (id, flow_id, step_id, condition_type, condition_value)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    
+    await queryD1(sql, [id, flow_id, step_id, condition_type, condition_value]);
+    res.status(201).json({ message: 'Flow condition created successfully', id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update flow condition
+app.put('/api/flow-conditions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { flow_id, step_id, condition_type, condition_value } = req.body;
+    
+    const sql = `
+      UPDATE flow_conditions 
+      SET flow_id = ?, step_id = ?, condition_type = ?, condition_value = ?
+      WHERE id = ?
+    `;
+    
+    await queryD1(sql, [flow_id, step_id, condition_type, condition_value, id]);
+    res.json({ message: 'Flow condition updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete flow condition
+app.delete('/api/flow-conditions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await queryD1('DELETE FROM flow_conditions WHERE id = ?', [id]);
+    res.json({ message: 'Flow condition deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

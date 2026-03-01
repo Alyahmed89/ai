@@ -31,9 +31,22 @@ export const tasksApi = {
   delete: (id: string) => api.delete(`/tasks/${id}`),
 };
 
+// Flow Steps API
+export const flowStepsApi = {
+  getAll: () => api.get('/flow-steps'),
+  getById: (id: string) => api.get(`/flow-steps/${id}`),
+  create: (data: any) => api.post('/flow-steps', data),
+  update: (id: string, data: any) => api.put(`/flow-steps/${id}`, data),
+  delete: (id: string) => api.delete(`/flow-steps/${id}`),
+};
+
 // Flow Conditions API
 export const flowConditionsApi = {
   getAll: () => api.get('/flow-conditions'),
+  getById: (id: string) => api.get(`/flow-conditions/${id}`),
+  create: (data: any) => api.post('/flow-conditions', data),
+  update: (id: string, data: any) => api.put(`/flow-conditions/${id}`, data),
+  delete: (id: string) => api.delete(`/flow-conditions/${id}`),
   getByFlowAndStep: (flowId: string, stepId: string) => 
     api.get(`/flows/${flowId}/steps/${stepId}/conditions`),
 };
