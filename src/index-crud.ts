@@ -260,14 +260,19 @@ app.get('/', (c) => {
             <div class="bg-white rounded-lg shadow p-6">
                 <h2 class="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h2>
                 <div class="space-y-3">
-                    <a href="/api/flows" class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                        <span class="mr-3">📝</span>
-                        <span>View Flows API</span>
+                    <a href="/data" class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                        <span class="mr-3">📋</span>
+                        <span>View Data Tables</span>
                         <span class="ml-auto text-gray-400">→</span>
                     </a>
-                    <a href="/api/tasks" class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                    <a href="/flows" class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                        <span class="mr-3">📊</span>
+                        <span>View Flows Table</span>
+                        <span class="ml-auto text-gray-400">→</span>
+                    </a>
+                    <a href="/tasks" class="flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
                         <span class="mr-3">✅</span>
-                        <span>View Tasks API</span>
+                        <span>View Tasks Table</span>
                         <span class="ml-auto text-gray-400">→</span>
                     </a>
                     <button onclick="fetchDashboardData()" class="w-full flex items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
@@ -336,6 +341,334 @@ app.get('/', (c) => {
 </html>
   `;
   
+  return c.html(html);
+});
+
+// ============================================================================
+// MINIMAL TABLE PAGES
+// ============================================================================
+
+// Data tables page
+app.get('/data', (c) => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Tables</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 20px; }
+    .back-link { color: #0066cc; text-decoration: none; margin-bottom: 10px; display: inline-block; }
+    h1 { margin: 0 0 5px 0; }
+    .tabs { display: flex; gap: 5px; margin-bottom: 20px; }
+    .tab { padding: 8px 16px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; }
+    .tab.active { background: #0066cc; color: white; border-color: #0066cc; }
+    .table-container { background: white; border-radius: 8px; overflow: hidden; }
+    .table-header { padding: 15px; border-bottom: 1px solid #e5e5e5; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f9f9f9; padding: 12px 15px; text-align: left; font-weight: 600; border-bottom: 2px solid #e5e5e5; }
+    td { padding: 12px 15px; border-bottom: 1px solid #e5e5e5; }
+    .loading, .error, .empty { padding: 40px; text-align: center; color: #666; }
+    .error { color: #d00; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="back-link">← Back</a>
+      <h1>Data Tables</h1>
+    </div>
+    
+    <div class="tabs">
+      <div class="tab active" onclick="loadTable('tasks')">Tasks</div>
+      <div class="tab" onclick="loadTable('flows')">Flows</div>
+      <div class="tab" onclick="loadTable('flow-steps')">Steps</div>
+      <div class="tab" onclick="loadTable('flow-conditions')">Conditions</div>
+      <div class="tab" onclick="loadTable('flow-runs')">Flow Runs</div>
+    </div>
+    
+    <div class="table-container">
+      <div class="table-header">
+        <div id="table-title">Tasks</div>
+      </div>
+      <div id="table-content" class="loading">Loading...</div>
+    </div>
+  </div>
+  
+  <script>
+    async function loadTable(table) {
+      // Update tabs
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('table-title').textContent = table.replace('-', ' ');
+      
+      // Show loading
+      document.getElementById('table-content').className = 'loading';
+      document.getElementById('table-content').textContent = 'Loading...';
+      
+      try {
+        const response = await fetch('/api/' + table);
+        const data = await response.json();
+        
+        if (data.error) {
+          document.getElementById('table-content').className = 'error';
+          document.getElementById('table-content').textContent = 'Error: ' + data.error;
+          return;
+        }
+        
+        const items = data.data || data.results || data;
+        
+        if (!items || items.length === 0) {
+          document.getElementById('table-content').className = 'empty';
+          document.getElementById('table-content').textContent = 'No data found';
+          return;
+        }
+        
+        // Create table
+        let html = '<table>';
+        
+        // Table header
+        html += '<thead><tr>';
+        const firstItem = items[0];
+        for (const key in firstItem) {
+          html += '<th>' + key + '</th>';
+        }
+        html += '</tr></thead>';
+        
+        // Table body
+        html += '<tbody>';
+        items.forEach(item => {
+          html += '<tr>';
+          for (const key in firstItem) {
+            let value = item[key];
+            if (value === null || value === undefined) value = '';
+            if (typeof value === 'object') value = JSON.stringify(value);
+            html += '<td>' + value + '</td>';
+          }
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        
+        document.getElementById('table-content').className = '';
+        document.getElementById('table-content').innerHTML = html;
+        
+      } catch (error) {
+        document.getElementById('table-content').className = 'error';
+        document.getElementById('table-content').textContent = 'Error: ' + error.message;
+      }
+    }
+    
+    // Load tasks by default
+    document.addEventListener('DOMContentLoaded', () => loadTable('tasks'));
+  </script>
+</body>
+</html>
+  `;
+  return c.html(html);
+});
+
+// Flows table page
+app.get('/flows', (c) => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flows Table</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 20px; }
+    .back-link { color: #0066cc; text-decoration: none; margin-bottom: 10px; display: inline-block; }
+    h1 { margin: 0 0 5px 0; }
+    .table-container { background: white; border-radius: 8px; overflow: hidden; }
+    .table-header { padding: 15px; border-bottom: 1px solid #e5e5e5; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f9f9f9; padding: 12px 15px; text-align: left; font-weight: 600; border-bottom: 2px solid #e5e5e5; }
+    td { padding: 12px 15px; border-bottom: 1px solid #e5e5e5; }
+    .loading, .error, .empty { padding: 40px; text-align: center; color: #666; }
+    .error { color: #d00; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="back-link">← Back</a>
+      <h1>Flows Table</h1>
+    </div>
+    
+    <div class="table-container">
+      <div class="table-header">
+        <div>Flows</div>
+      </div>
+      <div id="table-content" class="loading">Loading...</div>
+    </div>
+  </div>
+  
+  <script>
+    async function loadData() {
+      try {
+        const response = await fetch('/api/flows');
+        const data = await response.json();
+        
+        if (data.error) {
+          document.getElementById('table-content').className = 'error';
+          document.getElementById('table-content').textContent = 'Error: ' + data.error;
+          return;
+        }
+        
+        const items = data.data || data.results || data;
+        
+        if (!items || items.length === 0) {
+          document.getElementById('table-content').className = 'empty';
+          document.getElementById('table-content').textContent = 'No data found';
+          return;
+        }
+        
+        // Create table
+        let html = '<table>';
+        
+        // Table header
+        html += '<thead><tr>';
+        const firstItem = items[0];
+        for (const key in firstItem) {
+          html += '<th>' + key + '</th>';
+        }
+        html += '</tr></thead>';
+        
+        // Table body
+        html += '<tbody>';
+        items.forEach(item => {
+          html += '<tr>';
+          for (const key in firstItem) {
+            let value = item[key];
+            if (value === null || value === undefined) value = '';
+            if (typeof value === 'object') value = JSON.stringify(value);
+            html += '<td>' + value + '</td>';
+          }
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        
+        document.getElementById('table-content').className = '';
+        document.getElementById('table-content').innerHTML = html;
+        
+      } catch (error) {
+        document.getElementById('table-content').className = 'error';
+        document.getElementById('table-content').textContent = 'Error: ' + error.message;
+      }
+    }
+    
+    document.addEventListener('DOMContentLoaded', loadData);
+  </script>
+</body>
+</html>
+  `;
+  return c.html(html);
+});
+
+// Tasks table page
+app.get('/tasks', (c) => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tasks Table</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 20px; }
+    .back-link { color: #0066cc; text-decoration: none; margin-bottom: 10px; display: inline-block; }
+    h1 { margin: 0 0 5px 0; }
+    .table-container { background: white; border-radius: 8px; overflow: hidden; }
+    .table-header { padding: 15px; border-bottom: 1px solid #e5e5e5; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f9f9f9; padding: 12px 15px; text-align: left; font-weight: 600; border-bottom: 2px solid #e5e5e5; }
+    td { padding: 12px 15px; border-bottom: 1px solid #e5e5e5; }
+    .loading, .error, .empty { padding: 40px; text-align: center; color: #666; }
+    .error { color: #d00; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="/" class="back-link">← Back</a>
+      <h1>Tasks Table</h1>
+    </div>
+    
+    <div class="table-container">
+      <div class="table-header">
+        <div>Tasks</div>
+      </div>
+      <div id="table-content" class="loading">Loading...</div>
+    </div>
+  </div>
+  
+  <script>
+    async function loadData() {
+      try {
+        const response = await fetch('/api/tasks');
+        const data = await response.json();
+        
+        if (data.error) {
+          document.getElementById('table-content').className = 'error';
+          document.getElementById('table-content').textContent = 'Error: ' + data.error;
+          return;
+        }
+        
+        const items = data.data || data.results || data;
+        
+        if (!items || items.length === 0) {
+          document.getElementById('table-content').className = 'empty';
+          document.getElementById('table-content').textContent = 'No data found';
+          return;
+        }
+        
+        // Create table
+        let html = '<table>';
+        
+        // Table header
+        html += '<thead><tr>';
+        const firstItem = items[0];
+        for (const key in firstItem) {
+          html += '<th>' + key + '</th>';
+        }
+        html += '</tr></thead>';
+        
+        // Table body
+        html += '<tbody>';
+        items.forEach(item => {
+          html += '<tr>';
+          for (const key in firstItem) {
+            let value = item[key];
+            if (value === null || value === undefined) value = '';
+            if (typeof value === 'object') value = JSON.stringify(value);
+            html += '<td>' + value + '</td>';
+          }
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        
+        document.getElementById('table-content').className = '';
+        document.getElementById('table-content').innerHTML = html;
+        
+      } catch (error) {
+        document.getElementById('table-content').className = 'error';
+        document.getElementById('table-content').textContent = 'Error: ' + error.message;
+      }
+    }
+    
+    document.addEventListener('DOMContentLoaded', loadData);
+  </script>
+</body>
+</html>
+  `;
   return c.html(html);
 });
 

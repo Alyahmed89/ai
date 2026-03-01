@@ -225,16 +225,16 @@ export default function DataTable({ tableType }: DataTableProps) {
   
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+      <div className="flex justify-center items-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
   
   if (error) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p className="text-red-700">{error}</p>
+      <div className="p-4 bg-red-50 border border-red-200 rounded">
+        <p className="text-red-700 text-sm">{error}</p>
         <button 
           onClick={fetchData}
           className="mt-2 text-sm text-red-600 hover:text-red-800"
@@ -246,39 +246,39 @@ export default function DataTable({ tableType }: DataTableProps) {
   }
   
   return (
-    <div className="card overflow-hidden">
-      <div className="p-4 border-b flex justify-between items-center">
+    <div className="border rounded-lg overflow-hidden">
+      <div className="p-3 border-b bg-gray-50 flex justify-between items-center">
         <div>
-          <h2 className="text-lg font-semibold text-gray-800 capitalize">
+          <h2 className="font-medium capitalize">
             {tableType.replace('-', ' ')}
           </h2>
           <p className="text-sm text-gray-600">
-            {data.length} {tableType.replace('-', ' ')} found
+            {data.length} items
           </p>
         </div>
         <button
           onClick={handleCreate}
-          className="btn btn-primary"
+          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
         >
-          + Create New
+          + Add
         </button>
       </div>
       
       {data.length === 0 ? (
-        <div className="p-8 text-center">
-          <p className="text-gray-500">No {tableType.replace('-', ' ')} found</p>
+        <div className="p-6 text-center">
+          <p className="text-gray-500">No data found</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="table min-w-full">
-            <thead>
+          <table className="min-w-full">
+            <thead className="bg-gray-100">
               <tr>
                 {columns.map((column) => (
-                  <th key={column.key} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th key={column.key} className="px-3 py-2 text-left text-xs font-medium text-gray-700">
                     {column.label}
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">
                   Actions
                 </th>
               </tr>
@@ -287,18 +287,18 @@ export default function DataTable({ tableType }: DataTableProps) {
               {data.map((row, rowIndex) => (
                 <tr key={row.id || rowIndex} className="hover:bg-gray-50">
                   {columns.map((column) => (
-                    <td key={column.key} className="px-4 py-3 text-sm">
+                    <td key={column.key} className="px-3 py-2 text-sm">
                       {column.render 
                         ? column.render(row[column.key], row)
                         : row[column.key] || '-'
                       }
                     </td>
                   ))}
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-3 py-2 text-sm">
                     <div className="flex space-x-2">
                       <button
                         onClick={() => handleEdit(row)}
-                        className="text-primary-600 hover:text-primary-800 text-sm"
+                        className="text-blue-600 hover:text-blue-800 text-sm"
                       >
                         Edit
                       </button>

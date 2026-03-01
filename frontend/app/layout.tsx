@@ -18,32 +18,32 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} bg-gray-50`}>
         <div className="min-h-screen">
-          <nav className="bg-white shadow-sm border-b border-gray-200">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16">
+          <nav className="bg-white border-b border-gray-200">
+            <div className="px-4">
+              <div className="flex justify-between h-12">
                 <div className="flex items-center">
-                  <h1 className="text-xl font-semibold text-gray-800">
-                    Cloudflare D1 CRUD
+                  <h1 className="text-lg font-medium text-gray-800">
+                    Data Tables
                   </h1>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <a href="/" className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                <div className="flex items-center space-x-2">
+                  <a href="/" className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm">
                     Dashboard
                   </a>
-                  <a href="/flows" className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                  <a href="/flows" className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm">
                     Flows
                   </a>
-                  <a href="/tasks" className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                  <a href="/tasks" className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm">
                     Tasks
                   </a>
-                  <a href="/data" className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                    Data Tables
+                  <a href="/data" className="text-gray-600 hover:text-gray-900 px-2 py-1 text-sm">
+                    All Tables
                   </a>
                 </div>
               </div>
             </div>
           </nav>
-          <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          <main className="p-4">
             {children}
           </main>
         </div>
