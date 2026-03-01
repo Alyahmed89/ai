@@ -538,3 +538,9 @@ app.post('/start', async (c) => {
     return c.json({ error: error.message }, 500);
   }
 });
+
+export default app;
+export { ConversationOrchestratorDO_2026A };
+// Export old class names for reference (not used)
+export { ConversationOrchestratorDO_2026A as ConversationDO_v2 };
+export { ConversationOrchestratorDO_2026A as ConversationDO };
