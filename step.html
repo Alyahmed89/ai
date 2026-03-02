@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step - Fetch Task</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+        .variable-badge {
+            font-size: 0.65rem;
+            padding: 0.1rem 0.4rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Step: Fetch Task</h1>
+            <p class="text-gray-600 mt-2">Database Step • Order: 4</p>
+        </header>
+
+        <!-- Input Section -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Input</h2>
+            
+            <!-- URL Input -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Cloudflare D1 API URL</label>
+                <input type="text" 
+                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                       value="https://api.cloudflare.com/client/v4/accounts/e39371fc55a5c9ef7ed83e16660bd7bb/d1/database/ce8f2a2c-6e4b-4398-b73e-ba8f204f609a/query"
+                       readonly>
+                <p class="text-sm text-gray-500 mt-1">Cloudflare D1 API endpoint for querying database</p>
+            </div>
+
+            <!-- Variables -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Input Variables</label>
+                <div class="flex flex-wrap gap-2">
+                    <span class="bg-green-100 text-green-800 variable-badge rounded px-3 py-1">account_id</span>
+                    <span class="bg-green-100 text-green-800 variable-badge rounded px-3 py-1">api_token</span>
+                    <span class="bg-green-100 text-green-800 variable-badge rounded px-3 py-1">database_id</span>
+                    <span class="bg-green-100 text-green-800 variable-badge rounded px-3 py-1">sql_query</span>
+                </div>
+                <p class="text-sm text-gray-500 mt-2">Variables required for this step</p>
+            </div>
+        </div>
+
+        <!-- Step Text Box -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Step Instructions</h2>
+            <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <p class="text-gray-700 whitespace-pre-line">- Start Browser, Go to URL and test current state</p>
+                <p class="text-gray-700 mt-2">Fetch task data from Cloudflare D1 database using the API.</p>
+            </div>
+        </div>
+
+        <!-- Output Section -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Output</h2>
+            <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Output Variables</label>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="bg-purple-100 text-purple-800 variable-badge rounded px-3 py-1">task_data</span>
+                        <span class="bg-purple-100 text-purple-800 variable-badge rounded px-3 py-1">response_status</span>
+                        <span class="bg-purple-100 text-purple-800 variable-badge rounded px-3 py-1">execution_time</span>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Expected Output</label>
+                    <pre class="text-sm bg-gray-800 text-gray-100 p-3 rounded overflow-x-auto">
+{
+  "success": true,
+  "result": [
+    {
+      "id": "step4",
+      "flow_id": "etaflow",
+      "step_key": "fetch_task",
+      "title": "New Task",
+      "instructions": "- Start Browser, Go to URL and test current state",
+      "step_type": "database",
+      "order_index": 4
+    }
+  ]
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Condition Section -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Conditions</h2>
+            <div class="space-y-4">
+                <div class="flex items-center">
+                    <input type="checkbox" id="cond1" checked class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+                    <label for="cond1" class="ml-2 text-gray-700">api_response.status == 200</label>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="cond2" checked class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+                    <label for="cond2" class="ml-2 text-gray-700">task_data != null</label>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="cond3" class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+                    <label for="cond3" class="ml-2 text-gray-700">flow_id == "etaflow"</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex justify-between items-center pt-6 border-t border-gray-200">
+            <div>
+                <button class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                    ← Previous Step
+                </button>
+            </div>
+            <div class="text-sm text-gray-500">
+                Current Step
+            </div>
+            <div>
+                <button class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    Next Step →
+                </button>
+            </div>
+        </div>
+
+        <!-- CURL Command Section -->
+        <div class="mt-8 p-6 bg-gray-800 text-gray-100 rounded-lg">
+            <h3 class="text-lg font-medium mb-3">CURL Cloudflare API Command:</h3>
+            <pre class="text-sm overflow-x-auto">
+curl -X POST \
+  -H "Authorization: Bearer H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL" \
+  -H "Content-Type: application/json" \
+  -d '{"sql":"SELECT * FROM flow_steps WHERE step_key = \"fetch_task\""}' \
+  https://api.cloudflare.com/client/v4/accounts/e39371fc55a5c9ef7ed83e16660bd7bb/d1/database/ce8f2a2c-6e4b-4398-b73e-ba8f204f609a/query</pre>
+            
+            <div class="mt-4 p-4 bg-gray-700 rounded">
+                <h4 class="font-medium mb-2">Command Breakdown:</h4>
+                <ul class="text-sm space-y-1">
+                    <li><span class="text-blue-300">-X POST</span> - HTTP POST method</li>
+                    <li><span class="text-blue-300">-H "Authorization: Bearer ..."</span> - API authentication token</li>
+                    <li><span class="text-blue-300">-H "Content-Type: application/json"</span> - JSON content type</li>
+                    <li><span class="text-blue-300">-d '{"sql":"SELECT ..."}'</span> - SQL query to execute</li>
+                    <li><span class="text-blue-300">https://api.cloudflare.com/...</span> - Cloudflare D1 API endpoint</li>
+                </ul>
+            </div>
+        </div>
+
+        <footer class="mt-12 pt-6 border-t border-gray-200 text-center text-gray-500 text-sm">
+            <p>Cloudflare D1 Step Management • Using table: flow_steps • <a href="http://localhost:44093/step.html" class="text-blue-600 hover:text-blue-800">Refresh</a></p>
+        </footer>
+    </div>
+</body>
+</html>
