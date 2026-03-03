@@ -13,7 +13,7 @@ const DATABASE_ID = process.env.DATABASE_ID || 'ce8f2a2c-6e4b-4398-b73e-ba8f204f
 const CLOUDFLARE_API_BASE = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DATABASE_ID}`;
 
 app.use(cors({
-  origin: ['http://localhost:44479', 'http://localhost:3000'],
+  origin: '*',
   credentials: true
 }));
 app.use(express.json());
