@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllItems, createItem, updateItem, deleteItem, getItemById } from '@/lib/cloudflare-d1';
 
+export const runtime = 'edge';
+
 // GET all items
 export async function GET(request: NextRequest) {
   try {
