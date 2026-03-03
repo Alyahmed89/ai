@@ -1,0 +1,148 @@
+// Cloudflare D1 Database Utility Functions
+
+const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID || 'e39371fc55a5c9ef7ed83e16660bd7bb';
+const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || 'H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL';
+const DATABASE_ID = process.env.CLOUDFLARE_D1_DATABASE_ID || 'ce8f2a2c-6e4b-4398-b73e-ba8f204f609a';
+
+const BASE_URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DATABASE_ID}`;
+
+const headers = {
+  'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+  'Content-Type': 'application/json',
+};
+
+export interface D1QueryResult {
+  success: boolean;
+  result: any[];
+  meta: any;
+  errors: any[];
+}
+
+export interface D1ExecuteResult {
+  success: boolean;
+  result: {
+    meta: any;
+    results: any[];
+  };
+  errors: any[];
+}
+
+export async function executeQuery(sql: string, params: any[] = []): Promise<D1QueryResult> {
+  try {
+    const response = await fetch(`${BASE_URL}/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        sql,
+        params,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error executing D1 query:', error);
+    throw error;
+  }
+}
+
+export async function executeStatement(sql: string, params: any[] = []): Promise<D1ExecuteResult> {
+  try {
+    // For D1 API, we use the same /query endpoint for both queries and statements
+    const response = await fetch(`${BASE_URL}/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        sql,
+        params,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    // Transform the response to match the expected D1ExecuteResult format
+    return {
+      success: result.success,
+      result: {
+        meta: result.result?.[0]?.meta || {},
+        results: result.result?.[0]?.results || []
+      },
+      errors: result.errors || []
+    };
+  } catch (error) {
+    console.error('Error executing D1 statement:', error);
+    throw error;
+  }
+}
+
+// Helper functions for common operations
+export async function createTableIfNotExists() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS test_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  
+  const result = await executeStatement(sql);
+  
+  // Check if the table was created successfully
+  if (result.success) {
+    console.log('Table created or already exists');
+  } else {
+    console.error('Failed to create table:', result.errors);
+  }
+  
+  return result;
+}
+
+export async function getAllItems() {
+  const sql = `SELECT * FROM test_items ORDER BY created_at DESC`;
+  const result = await executeQuery(sql);
+  // The result structure is different - we need to extract the results from the first element
+  return result.result?.[0]?.results || [];
+}
+
+export async function getItemById(id: number) {
+  const sql = `SELECT * FROM test_items WHERE id = ?`;
+  const result = await executeQuery(sql, [id]);
+  return result.result?.[0]?.results?.[0] || null;
+}
+
+export async function createItem(name: string, description: string = '') {
+  const sql = `INSERT INTO test_items (name, description) VALUES (?, ?)`;
+  const result = await executeStatement(sql, [name, description]);
+  
+  if (result.success && result.result.meta.last_row_id) {
+    return await getItemById(result.result.meta.last_row_id);
+  }
+  
+  return null;
+}
+
+export async function updateItem(id: number, name: string, description: string = '') {
+  const sql = `UPDATE test_items SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+  const result = await executeStatement(sql, [name, description, id]);
+  
+  if (result.success) {
+    return await getItemById(id);
+  }
+  
+  return null;
+}
+
+export async function deleteItem(id: number) {
+  const sql = `DELETE FROM test_items WHERE id = ?`;
+  const result = await executeStatement(sql, [id]);
+  return result.success;
+}
