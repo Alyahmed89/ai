@@ -1,5 +1,6 @@
 // Rate limiting middleware with token bucket algorithm
 import { Context, Next } from 'hono';
+import { errorResponse } from '../response';
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 60000; // 1 minute window
@@ -35,11 +36,7 @@ export const rateLimitMiddleware = async (c: Context, next: Next) => {
       
       if (currentCount >= MAX_CONCURRENT_CONVERSATIONS) {
         console.log(`[RATE_LIMIT] Global conversation limit reached: ${currentCount}/${MAX_CONCURRENT_CONVERSATIONS}`);
-        return c.json({
-          error: 'Too many active conversations. Please try again later.',
-          limit: MAX_CONCURRENT_CONVERSATIONS,
-          current: currentCount
-        }, 429);
+        return c.json(errorResponse('Too many active conversations. Please try again later.', 429));
       }
     } catch (error) {
       console.error(`[RATE_LIMIT] Error checking global limit: ${error}`);
@@ -80,12 +77,7 @@ export const rateLimitMiddleware = async (c: Context, next: Next) => {
       const timeUntilNextToken = RATE_LIMIT_WINDOW - (now - lastRefill);
       const retryAfterSeconds = Math.ceil(timeUntilNextToken / 1000);
       
-      return c.json({
-        error: 'Rate limit exceeded',
-        retry_after: retryAfterSeconds,
-        limit: MAX_REQUESTS_PER_MINUTE,
-        window_ms: RATE_LIMIT_WINDOW
-      }, 429);
+      return c.json(errorResponse('Rate limit exceeded', 429));
     }
     
     // Consume one token

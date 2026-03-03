@@ -1,10 +1,13 @@
 import axios from 'axios';
 
-// Use the worker URL for production
-const API_BASE_URL = 'https://deepseek-agent.alghamdimo89.workers.dev/api';
+// Use environment variable for API URL, fallback to production URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://deepseek-agent.alghamdimo89.workers.dev';
+
+// Ensure the URL ends with /api for consistency
+const BASE_URL = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },

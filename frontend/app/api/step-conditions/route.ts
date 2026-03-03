@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     
     if (!stepId) {
       return NextResponse.json(
-        { error: 'stepId query parameter is required' },
+        { success: false, data: null, error: 'stepId query parameter is required', statusCode: 400 },
         { status: 400 }
       );
     }
@@ -54,12 +54,12 @@ export async function GET(request: NextRequest) {
     
     const conditions = await executeQuery(sql, [stepId]);
     
-    return NextResponse.json({ data: conditions });
+    return NextResponse.json({ success: true, data: conditions, error: null, statusCode: 200 });
     
   } catch (error) {
     console.error('Error fetching step conditions:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch step conditions' },
+      { success: false, data: null, error: 'Failed to fetch step conditions', statusCode: 500 },
       { status: 500 }
     );
   }

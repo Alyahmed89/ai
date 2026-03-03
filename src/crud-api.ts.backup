@@ -10,12 +10,7 @@ import {
   taskUpdateSchema,
   validateSchema 
 } from './schemas';
-import {
-  successResponse,
-  errorResponse,
-  notFoundResponse,
-  validationErrorResponse
-} from './response';
+import { apiResponse, successResponse, errorResponse, notFoundResponse, validationErrorResponse } from './response';
 
 // Helper function to handle database errors
 function handleDbError(error: any) {
@@ -42,26 +37,18 @@ function normalizeForDb(value: unknown): any {
   return value === undefined ? null : value;
 }
 
-// Helper function for consistent API responses
-function apiResponse(success: boolean, data?: any, error?: string, statusCode: number = 200) {
-  return {
-    success,
-    data,
-    error,
-    statusCode
-  };
-}
+
 
 // Create CRUD API router
 export const crudApi = new Hono<{ Bindings: CloudflareBindings }>();
 
 // Health check endpoint
 crudApi.get('/health', (c) => {
-  return c.json({ 
+  return c.json(successResponse({ 
     status: 'ok', 
     message: 'Cloudflare D1 CRUD API is running',
     timestamp: new Date().toISOString()
-  });
+  }));
 });
 
 // Get all flows
@@ -239,7 +226,6 @@ crudApi.get('/flows/:flowId/steps', async (c) => {
 
 // Get all tasks
 crudApi.get('/tasks', async (c) => {
-  console.log("Tasks route hit");
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
@@ -289,7 +275,7 @@ crudApi.post('/tasks', async (c) => {
     if (!validation.success) {
       return c.json({ error: validation.error }, 400);
     }
-    const validatedData = validation.data!;
+    const validatedData = validation.data;
 
     const sql = `
       INSERT INTO tasks (id, flow_id, title, description, status, order_index)
@@ -330,7 +316,7 @@ crudApi.put('/tasks/:id', async (c) => {
     if (!validation.success) {
       return c.json({ error: validation.error }, 400);
     }
-    const validatedData = validation.data!;
+    const validatedData = validation.data;
 
     const sql = `
       UPDATE tasks 
@@ -382,13 +368,16 @@ crudApi.get('/flow-steps', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ success: false, error: 'Database not configured' }, 500);
     }
 
     const result = await db.prepare('SELECT * FROM flow_steps ORDER BY flow_id, order_index').all();
-    return c.json(successResponse(result.results || []));
+    return c.json({ 
+      success: true, 
+      data: result.results || [] 
+    });
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 
@@ -397,19 +386,22 @@ crudApi.get('/flow-steps/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ success: false, error: 'Database not configured' }, 500);
     }
 
     const id = c.req.param('id');
     const result = await db.prepare('SELECT * FROM flow_steps WHERE id = ?').bind(id).first();
 
     if (!result) {
-      return c.json(notFoundResponse('Flow step not found'));
+      return c.json({ success: false, error: 'Flow step not found' }, 404);
     }
 
-    return c.json(successResponse(result));
+    return c.json({ 
+      success: true, 
+      data: result 
+    });
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 
@@ -418,7 +410,7 @@ crudApi.post('/flow-steps', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ success: false, error: 'Database not configured' }, 500);
     }
 
     const body = await c.req.json();
@@ -426,7 +418,7 @@ crudApi.post('/flow-steps', async (c) => {
     // Validate with Zod
     const validation = validateSchema(flowStepCreateSchema, body);
     if (!validation.success) {
-      return c.json(validationErrorResponse(validation.error));
+      return c.json({ success: false, error: validation.error }, 400);
     }
     
     const validatedData = validation.data!;
@@ -477,12 +469,15 @@ crudApi.post('/flow-steps', async (c) => {
     
     await db.prepare(sql).bind(...safeBindings).run();
     
-    return c.json(successResponse({ 
-      message: 'Flow step created successfully', 
-      id: stepId 
-    }, 201));
+    return c.json({ 
+      success: true, 
+      data: { 
+        message: 'Flow step created successfully', 
+        id: stepId 
+      } 
+    }, 201);
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 
@@ -491,7 +486,7 @@ crudApi.put('/flow-steps/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ success: false, error: 'Database not configured' }, 500);
     }
 
     const id = c.req.param('id');
@@ -500,7 +495,7 @@ crudApi.put('/flow-steps/:id', async (c) => {
     // Validate with Zod
     const validation = validateSchema(flowStepUpdateSchema, { ...body, id });
     if (!validation.success) {
-      return c.json(validationErrorResponse(validation.error));
+      return c.json({ success: false, error: validation.error }, 400);
     }
     
     const validatedData = validation.data!;
@@ -543,12 +538,15 @@ crudApi.put('/flow-steps/:id', async (c) => {
     ).run();
 
     if (result.meta.changes === 0) {
-      return c.json(notFoundResponse('Flow step not found'));
+      return c.json({ success: false, error: 'Flow step not found' }, 404);
     }
 
-    return c.json(successResponse({ message: 'Flow step updated successfully' }));
+    return c.json({ 
+      success: true, 
+      data: { message: 'Flow step updated successfully' } 
+    });
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 
@@ -557,46 +555,23 @@ crudApi.delete('/flow-steps/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ success: false, error: 'Database not configured' }, 500);
     }
 
     const id = c.req.param('id');
     const result = await db.prepare('DELETE FROM flow_steps WHERE id = ?').bind(id).run();
 
     if (result.meta.changes === 0) {
-      return c.json(notFoundResponse('Flow step not found'));
+      return c.json({ success: false, error: 'Flow step not found' }, 404);
     }
 
-    return c.json(successResponse({ message: 'Flow step deleted successfully' }));
+    return c.json({ 
+      success: true, 
+      data: { message: 'Flow step deleted successfully' } 
+    });
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    return c.json({ success: false, error: error.message }, 500);
   }
-});
-
-// Alias endpoints for backward compatibility: /api/steps -> /api/flow-steps
-crudApi.get('/steps', async (c) => {
-  // Forward to /api/flow-steps handler
-  return crudApi.fetch(new Request(c.req.url.replace('/steps', '/flow-steps'), c.req));
-});
-
-crudApi.get('/steps/:id', async (c) => {
-  // Forward to /api/flow-steps/:id handler
-  return crudApi.fetch(new Request(c.req.url.replace('/steps', '/flow-steps'), c.req));
-});
-
-crudApi.post('/steps', async (c) => {
-  // Forward to /api/flow-steps handler
-  return crudApi.fetch(new Request(c.req.url.replace('/steps', '/flow-steps'), c.req));
-});
-
-crudApi.put('/steps/:id', async (c) => {
-  // Forward to /api/flow-steps/:id handler
-  return crudApi.fetch(new Request(c.req.url.replace('/steps', '/flow-steps'), c.req));
-});
-
-crudApi.delete('/steps/:id', async (c) => {
-  // Forward to /api/flow-steps/:id handler
-  return crudApi.fetch(new Request(c.req.url.replace('/steps', '/flow-steps'), c.req));
 });
 
 // Get all flow conditions

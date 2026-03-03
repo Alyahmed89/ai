@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { CloudflareBindings } from './types';
 import { ConversationOrchestratorDO_2026A } from './durable/ConversationDO';
 import { crudApi } from './crud-api';
+import { successResponse, errorResponse, notFoundResponse } from './response';
 
 // Dummy FlowControllerDO to satisfy existing binding
 export class FlowControllerDO {
@@ -20,6 +21,12 @@ export class FlowControllerDO {
 }
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
+
+// Add top-level request logging
+app.use('*', async (c, next) => {
+  console.log("Request:", c.req.method, new URL(c.req.url).pathname);
+  await next();
+});
 
 // CORS middleware
 app.use('*', async (c, next) => {
@@ -75,11 +82,7 @@ const rateLimitMiddleware = async (c: any, next: any) => {
       
       if (currentCount >= MAX_CONCURRENT_CONVERSATIONS) {
         console.log(`[RATE_LIMIT] Global conversation limit reached: ${currentCount}/${MAX_CONCURRENT_CONVERSATIONS}`);
-        return c.json({
-          error: 'Too many active conversations. Please try again later.',
-          limit: MAX_CONCURRENT_CONVERSATIONS,
-          current: currentCount
-        }, 429);
+        return c.json(errorResponse('Too many active conversations. Please try again later.', 429));
       }
     } catch (error) {
       console.error(`[RATE_LIMIT] Error checking global limit: ${error}`);
@@ -120,12 +123,7 @@ const rateLimitMiddleware = async (c: any, next: any) => {
       const timeUntilNextToken = RATE_LIMIT_WINDOW - (now - lastRefill);
       const retryAfterSeconds = Math.ceil(timeUntilNextToken / 1000);
       
-      return c.json({
-        error: 'Rate limit exceeded',
-        retry_after: retryAfterSeconds,
-        limit: MAX_REQUESTS_PER_MINUTE,
-        window_ms: RATE_LIMIT_WINDOW
-      }, 429);
+      return c.json(errorResponse('Rate limit exceeded', 429));
     }
     
     // Consume one token
@@ -148,7 +146,8 @@ const rateLimitMiddleware = async (c: any, next: any) => {
 };
 
 // Apply rate limiting middleware to all routes except CRUD API
-app.use('*', rateLimitMiddleware);
+// TODO: Re-enable after debugging
+// app.use('*', rateLimitMiddleware);
 
 // ============================================================================
 // ROOT ENDPOINT - Serve HTML dashboard
@@ -594,7 +593,7 @@ app.get('/health', async (c) => {
   healthChecks.services.deepseek_api_key = c.env.DEEPSEEK_API_KEY ? 'configured' : 'missing';
   healthChecks.services.openhands_api_url = c.env.OPENHANDS_API_URL ? 'configured' : 'missing';
   
-  return c.json(healthChecks);
+  return c.json(successResponse(healthChecks));
 });
 
 // ============================================================================
@@ -616,7 +615,7 @@ app.post('/start', async (c) => {
         try {
           const flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows WHERE id = ?').bind(flow_id).first();
           if (!flowResult) {
-            return c.json({ error: `Flow not found: ${flow_id}` }, 404);
+            return c.json(notFoundResponse(`Flow not found: ${flow_id}`));
           }
           
           // Use flow definition values if not provided in request
@@ -649,7 +648,7 @@ app.post('/start', async (c) => {
           if (!initResponse.ok) {
             const errorText = await initResponse.text();
             console.error(`[HTTP:START:FLOW] Durable Object init failed: ${initResponse.status} - ${errorText}`);
-            return c.json({ error: `Failed to start flow execution: ${initResponse.status}` }, 500);
+            return c.json(errorResponse(`Failed to start flow execution: ${initResponse.status}`, 500));
           }
           
           // Track active conversation count
@@ -666,28 +665,21 @@ app.post('/start', async (c) => {
           }
           
           // Return IMMEDIATELY - work happens in alarms
-          return c.json({
-            success: true,
-            message: 'Flow execution started. Work will happen in background via alarms.',
-            conversation_id: id.toString(),
-            flow_id: targetFlowId,
-            note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step',
-            check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}`
-          });
+          return c.json(successResponse({ message: 'Flow execution started. Work will happen in background via alarms.', conversation_id: id.toString(), flow_id: targetFlowId, note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step', check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}` }));
           
         } catch (dbError: any) {
           console.error(`[HTTP:START:FLOW] Database error checking flow: ${dbError.message}`);
-          return c.json({ error: `Database error checking flow: ${dbError.message}` }, 500);
+          return c.json(errorResponse(`Database error checking flow: ${dbError.message}`, 500));
         }
       } else {
-        return c.json({ error: 'Database not configured for flow execution' }, 500);
+        return c.json(errorResponse('Database not configured for flow execution', 500));
       }
       
     } else {
       // ORIGINAL REPOSITORY-BASED CONVERSATION
       // Validate required fields
       if (!repository || !initial_user_prompt) {
-        return c.json({ error: 'Need repository and initial_user_prompt (branch is optional), or provide flow ID' }, 400);
+        return c.json(errorResponse('Need repository and initial_user_prompt (branch is optional), or provide flow ID', 400));
       }
 
       console.log(`[HTTP:START] Creating conversation for repository: ${repository}`);
@@ -712,7 +704,7 @@ app.post('/start', async (c) => {
       if (!initResponse.ok) {
         const errorText = await initResponse.text();
         console.error(`[HTTP:START] Durable Object init failed: ${initResponse.status} - ${errorText}`);
-        return c.json({ error: `Failed to start conversation: ${initResponse.status}` }, 500);
+        return c.json(errorResponse(`Failed to start conversation: ${initResponse.status}`, 500));
       }
       
       // Track active conversation count
@@ -729,18 +721,12 @@ app.post('/start', async (c) => {
       }
       
       // Return IMMEDIATELY - work happens in alarms
-      return c.json({
-        success: true,
-        message: 'Conversation started. Work will happen in background via alarms.',
-        conversation_id: id.toString(),
-        note: 'Flow: DeepSeek → OpenHands → DeepSeek → OpenHands → ...',
-        check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}`
-      });
+      return c.json(successResponse({ message: 'Conversation started. Work will happen in background via alarms.', conversation_id: id.toString(), note: 'Flow: DeepSeek → OpenHands → DeepSeek → OpenHands → ...', check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}` }));
     }
     
   } catch (error: any) {
     console.error(`[HTTP:START] Endpoint error: ${error.message}`);
-    return c.json({ error: error.message }, 500);
+    return c.json(errorResponse(error.message, 500));
   }
 });
 
