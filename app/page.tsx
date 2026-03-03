@@ -239,11 +239,24 @@ export default function Home() {
         }}>
           <p><strong>Cloudflare Account ID:</strong> e39371fc55a5c9ef7ed83e16660bd7bb</p>
           <p><strong>Database ID:</strong> ce8f2a2c-6e4b-4398-b73e-ba8f204f609a</p>
+          
+          <div style={{ marginTop: '1rem' }}>
+            <p><strong>Flow Steps:</strong></p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <a href="/step/1" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 1: Requirements Gathering</a>
+              <a href="/step/2" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 2: Design Phase</a>
+              <a href="/step/3" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 3: Development</a>
+              <a href="/step/4" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 4: Testing</a>
+              <a href="/step/5" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 5: Deployment</a>
+            </div>
+          </div>
+          
           <p style={{ marginTop: '0.5rem' }}>
             <strong>Instructions:</strong> 
             <ol style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
               <li>Click "Initialize Database" to create the table</li>
               <li>Fill in the form and click "Create Item"</li>
+              <li>Click on any flow step above to view step details</li>
             </ol>
           </p>
         </div>
