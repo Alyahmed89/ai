@@ -3,54 +3,8 @@
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 
-// Mock data for flow steps - this would come from your database
-const mockFlowSteps = [
-  {
-    id: 1,
-    title: 'Step 1: Requirements Gathering',
-    description: 'Gather and document all requirements from stakeholders',
-    status: 'completed',
-    order: 1,
-    created_at: '2024-01-15T10:30:00Z',
-    updated_at: '2024-01-20T14:45:00Z'
-  },
-  {
-    id: 2,
-    title: 'Step 2: Design Phase',
-    description: 'Create wireframes and design mockups for approval',
-    status: 'in_progress',
-    order: 2,
-    created_at: '2024-01-16T09:15:00Z',
-    updated_at: '2024-01-25T11:20:00Z'
-  },
-  {
-    id: 3,
-    title: 'Step 3: Development',
-    description: 'Implement the designed features and functionality',
-    status: 'pending',
-    order: 3,
-    created_at: '2024-01-18T13:00:00Z',
-    updated_at: '2024-01-18T13:00:00Z'
-  },
-  {
-    id: 4,
-    title: 'Step 4: Testing',
-    description: 'Perform unit, integration, and user acceptance testing',
-    status: 'pending',
-    order: 4,
-    created_at: '2024-01-19T08:45:00Z',
-    updated_at: '2024-01-19T08:45:00Z'
-  },
-  {
-    id: 5,
-    title: 'Step 5: Deployment',
-    description: 'Deploy the application to production environment',
-    status: 'pending',
-    order: 5,
-    created_at: '2024-01-20T16:30:00Z',
-    updated_at: '2024-01-20T16:30:00Z'
-  }
-];
+// Local API route
+const API_URL = '/api/flow-steps';
 
 export default function StepPage() {
   const params = useParams();
@@ -61,25 +15,32 @@ export default function StepPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Simulate API call to fetch step data
+    // Fetch real step data from Cloudflare D1 database
     const fetchStep = async () => {
       try {
         setLoading(true);
-        // In real implementation, this would be: await fetch(`/api/flow-steps/${stepId}`)
         
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Make API call to local API route
+        console.log('Fetching step:', stepId);
+        const response = await fetch(`${API_URL}/${stepId}`);
         
-        const foundStep = mockFlowSteps.find(s => s.id === parseInt(stepId));
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API error: ${response.status} - ${errorText}`);
+        }
         
-        if (foundStep) {
-          setStep(foundStep);
+        const data = await response.json();
+        console.log('Response data:', data);
+        
+        if (data.error) {
+          setError(data.error);
         } else {
-          setError(`Step with ID ${stepId} not found`);
+          setStep(data);
         }
       } catch (err) {
-        setError('Failed to load step data');
-        console.error(err);
+        console.error('Error fetching step:', err);
+        setError(`Failed to load step data: ${err.message}`);
       } finally {
         setLoading(false);
       }
@@ -90,32 +51,6 @@ export default function StepPage() {
     }
   }, [stepId]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return { bg: '#d1fae5', text: '#065f46', border: '#a7f3d0' }; // Tailwind: bg-green-100 text-green-800 border-green-200
-      case 'in_progress':
-        return { bg: '#fef3c7', text: '#92400e', border: '#fde68a' }; // Tailwind: bg-yellow-100 text-yellow-800 border-yellow-200
-      case 'pending':
-        return { bg: '#e5e7eb', text: '#374151', border: '#d1d5db' }; // Tailwind: bg-gray-100 text-gray-800 border-gray-200
-      default:
-        return { bg: '#e5e7eb', text: '#374151', border: '#d1d5db' };
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'Completed';
-      case 'in_progress':
-        return 'In Progress';
-      case 'pending':
-        return 'Pending';
-      default:
-        return status;
-    }
-  };
-
   if (loading) {
     return (
       <div style={{
@@ -123,24 +58,24 @@ export default function StepPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#f9fafb' // Tailwind: bg-gray-50
+        backgroundColor: '#f9fafb'
       }}>
         <div style={{
           textAlign: 'center',
-          padding: '2rem' // Tailwind: p-8
+          padding: '2rem'
         }}>
           <div style={{
-            width: '3rem', // Tailwind: w-12
-            height: '3rem', // Tailwind: h-12
-            border: '4px solid #e5e7eb', // Tailwind: border-gray-200
-            borderTop: '4px solid #3b82f6', // Tailwind: border-blue-500
+            width: '3rem',
+            height: '3rem',
+            border: '4px solid #e5e7eb',
+            borderTop: '4px solid #3b82f6',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite',
-            margin: '0 auto 1rem' // Tailwind: mx-auto mb-4
+            margin: '0 auto 1rem'
           }}></div>
           <p style={{
-            fontSize: '1.125rem', // Tailwind: text-lg
-            color: '#6b7280' // Tailwind: text-gray-500
+            fontSize: '1.125rem',
+            color: '#6b7280'
           }}>
             Loading step details...
           </p>
@@ -156,45 +91,45 @@ export default function StepPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#f9fafb' // Tailwind: bg-gray-50
+        backgroundColor: '#f9fafb'
       }}>
         <div style={{
           textAlign: 'center',
-          padding: '2rem', // Tailwind: p-8
+          padding: '2rem',
           backgroundColor: 'white',
-          borderRadius: '0.75rem', // Tailwind: rounded-xl
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', // Tailwind: shadow
+          borderRadius: '0.75rem',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
           maxWidth: '500px',
           width: '100%'
         }}>
           <div style={{
-            width: '3rem', // Tailwind: w-12
-            height: '3rem', // Tailwind: h-12
-            backgroundColor: '#fee2e2', // Tailwind: bg-red-100
+            width: '3rem',
+            height: '3rem',
+            backgroundColor: '#fee2e2',
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto 1rem' // Tailwind: mx-auto mb-4
+            margin: '0 auto 1rem'
           }}>
             <span style={{
-              fontSize: '1.5rem', // Tailwind: text-2xl
-              color: '#dc2626' // Tailwind: text-red-600
+              fontSize: '1.5rem',
+              color: '#dc2626'
             }}>
               !
             </span>
           </div>
           <h2 style={{
-            fontSize: '1.5rem', // Tailwind: text-2xl
+            fontSize: '1.5rem',
             fontWeight: 'bold',
-            color: '#111827', // Tailwind: text-gray-900
-            marginBottom: '0.5rem' // Tailwind: mb-2
+            color: '#111827',
+            marginBottom: '0.5rem'
           }}>
             {error || 'Step not found'}
           </h2>
           <p style={{
-            color: '#6b7280', // Tailwind: text-gray-500
-            marginBottom: '1.5rem' // Tailwind: mb-6
+            color: '#6b7280',
+            marginBottom: '1.5rem'
           }}>
             The step you're looking for doesn't exist or couldn't be loaded.
           </p>
@@ -202,15 +137,15 @@ export default function StepPage() {
             href="/"
             style={{
               display: 'inline-block',
-              padding: '0.75rem 1.5rem', // Tailwind: px-6 py-3
-              backgroundColor: '#3b82f6', // Tailwind: bg-blue-500
+              padding: '0.75rem 1.5rem',
+              backgroundColor: '#3b82f6',
               color: 'white',
-              borderRadius: '0.5rem', // Tailwind: rounded-lg
+              borderRadius: '0.5rem',
               textDecoration: 'none',
               fontWeight: '500',
               transition: 'background-color 0.2s'
             }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'} // Tailwind: hover:bg-blue-600
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
           >
             Go back home
@@ -220,40 +155,31 @@ export default function StepPage() {
     );
   }
 
-  const statusColors = getStatusColor(step.status);
-
   return (
-    <>
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#f9fafb',
+      padding: '2rem'
+    }}>
       <div style={{
-        minHeight: '100vh',
-        backgroundColor: '#f9fafb', // Tailwind: bg-gray-50
-        padding: '2rem' // Tailwind: p-8
+        maxWidth: '800px',
+        margin: '0 auto'
       }}>
+        {/* Title Component */}
         <div style={{
-          maxWidth: '800px',
-          margin: '0 auto'
-        }}>
-        {/* Header */}
-        <div style={{
-          marginBottom: '2rem' // Tailwind: mb-8
+          marginBottom: '2rem'
         }}>
           <a
             href="/"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              color: '#6b7280', // Tailwind: text-gray-500
+              color: '#6b7280',
               textDecoration: 'none',
-              marginBottom: '1rem', // Tailwind: mb-4
+              marginBottom: '1rem',
               transition: 'color 0.2s'
             }}
-            onMouseOver={(e) => e.currentTarget.style.color = '#374151'} // Tailwind: hover:text-gray-700
+            onMouseOver={(e) => e.currentTarget.style.color = '#374151'}
             onMouseOut={(e) => e.currentTarget.style.color = '#6b7280'}
           >
             <span style={{ marginRight: '0.5rem' }}>←</span>
@@ -265,245 +191,68 @@ export default function StepPage() {
             justifyContent: 'space-between',
             alignItems: 'flex-start',
             flexWrap: 'wrap',
-            gap: '1rem' // Tailwind: gap-4
+            gap: '1rem'
           }}>
             <div>
               <h1 style={{
-                fontSize: '2.25rem', // Tailwind: text-4xl
+                fontSize: '2.25rem',
                 fontWeight: 'bold',
-                color: '#111827', // Tailwind: text-gray-900
-                marginBottom: '0.5rem' // Tailwind: mb-2
+                color: '#111827',
+                marginBottom: '0.5rem'
               }}>
                 {step.title}
               </h1>
               <p style={{
-                fontSize: '1.125rem', // Tailwind: text-lg
-                color: '#6b7280' // Tailwind: text-gray-500
+                fontSize: '1.125rem',
+                color: '#6b7280'
               }}>
-                Step {step.order} of {mockFlowSteps.length}
+                Step {step.order} • {step.step_type}
               </p>
             </div>
-            
-            <div style={{
-              padding: '0.5rem 1rem', // Tailwind: px-4 py-2
-              backgroundColor: statusColors.bg,
-              color: statusColors.text,
-              border: `1px solid ${statusColors.border}`,
-              borderRadius: '9999px', // Tailwind: rounded-full
-              fontWeight: '500',
-              fontSize: '0.875rem' // Tailwind: text-sm
-            }}>
-              {getStatusText(step.status)}
-            </div>
           </div>
+        </div>
 
-        {/* Main Content */}
+        {/* Instructions Text Box Component */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr',
-          gap: '2rem', // Tailwind: gap-8
-          '@media (min-width: 768px)': {
-            gridTemplateColumns: '2fr 1fr'
-          }
+          backgroundColor: 'white',
+          borderRadius: '0.75rem',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+          padding: '2rem'
         }}>
-          {/* Left Column - Step Details */}
-          <div>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '0.75rem', // Tailwind: rounded-xl
-              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', // Tailwind: shadow
-              padding: '2rem', // Tailwind: p-8
-              marginBottom: '2rem' // Tailwind: mb-8
-            }}>
-              <h2 style={{
-                fontSize: '1.5rem', // Tailwind: text-2xl
-                fontWeight: '600',
-                color: '#111827', // Tailwind: text-gray-900
-                marginBottom: '1rem' // Tailwind: mb-4
-              }}>
-                Description
-              </h2>
-              <p style={{
-                fontSize: '1.125rem', // Tailwind: text-lg
-                color: '#4b5563', // Tailwind: text-gray-700
-                lineHeight: '1.75'
-              }}>
-                {step.description}
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{
-              display: 'flex',
-              gap: '1rem', // Tailwind: gap-4
-              flexWrap: 'wrap'
-            }}>
-              <button
-                style={{
-                  padding: '0.75rem 1.5rem', // Tailwind: px-6 py-3
-                  backgroundColor: '#3b82f6', // Tailwind: bg-blue-500
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem', // Tailwind: rounded-lg
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'} // Tailwind: hover:bg-blue-600
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
-              >
-                Mark as Complete
-              </button>
-              
-              <button
-                style={{
-                  padding: '0.75rem 1.5rem', // Tailwind: px-6 py-3
-                  backgroundColor: 'white',
-                  color: '#374151', // Tailwind: text-gray-700
-                  border: '1px solid #d1d5db', // Tailwind: border-gray-300
-                  borderRadius: '0.5rem', // Tailwind: rounded-lg
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f9fafb'; // Tailwind: hover:bg-gray-50
-                  e.currentTarget.style.borderColor = '#9ca3af'; // Tailwind: hover:border-gray-400
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.backgroundColor = 'white';
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                }}
-              >
-                Edit Step
-              </button>
-              
-              <button
-                style={{
-                  padding: '0.75rem 1.5rem', // Tailwind: px-6 py-3
-                  backgroundColor: '#fee2e2', // Tailwind: bg-red-100
-                  color: '#dc2626', // Tailwind: text-red-600
-                  border: 'none',
-                  borderRadius: '0.5rem', // Tailwind: rounded-lg
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fecaca'} // Tailwind: hover:bg-red-200
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#fee2e2'}
-              >
-                Delete Step
-              </button>
-            </div>
-          </div>
-
-          {/* Right Column - Metadata */}
-          <div>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '0.75rem', // Tailwind: rounded-xl
-              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', // Tailwind: shadow
-              padding: '2rem' // Tailwind: p-8
-            }}>
-              <h3 style={{
-                fontSize: '1.25rem', // Tailwind: text-xl
-                fontWeight: '600',
-                color: '#111827', // Tailwind: text-gray-900
-                marginBottom: '1.5rem' // Tailwind: mb-6
-              }}>
-                Step Details
-              </h3>
-              
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1.5rem' // Tailwind: gap-6
-              }}>
-                <div>
-                  <p style={{
-                    fontSize: '0.875rem', // Tailwind: text-sm
-                    color: '#6b7280', // Tailwind: text-gray-500
-                    marginBottom: '0.25rem' // Tailwind: mb-1
-                  }}>
-                    Step ID
-                  </p>
-                  <p style={{
-                    fontSize: '1rem', // Tailwind: text-base
-                    color: '#111827', // Tailwind: text-gray-900
-                    fontWeight: '500'
-                  }}>
-                    {step.id}
-                  </p>
-                </div>
-                
-                <div>
-                  <p style={{
-                    fontSize: '0.875rem', // Tailwind: text-sm
-                    color: '#6b7280', // Tailwind: text-gray-500
-                    marginBottom: '0.25rem' // Tailwind: mb-1
-                  }}>
-                    Created
-                  </p>
-                  <p style={{
-                    fontSize: '1rem', // Tailwind: text-base
-                    color: '#111827', // Tailwind: text-gray-900
-                    fontWeight: '500'
-                  }}>
-                    {new Date(step.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
-                </div>
-                
-                <div>
-                  <p style={{
-                    fontSize: '0.875rem', // Tailwind: text-sm
-                    color: '#6b7280', // Tailwind: text-gray-500
-                    marginBottom: '0.25rem' // Tailwind: mb-1
-                  }}>
-                    Last Updated
-                  </p>
-                  <p style={{
-                    fontSize: '1rem', // Tailwind: text-base
-                    color: '#111827', // Tailwind: text-gray-900
-                    fontWeight: '500'
-                  }}>
-                    {new Date(step.updated_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
-                </div>
-                
-                <div>
-                  <p style={{
-                    fontSize: '0.875rem', // Tailwind: text-sm
-                    color: '#6b7280', // Tailwind: text-gray-500
-                    marginBottom: '0.25rem' // Tailwind: mb-1
-                  }}>
-                    Status
-                  </p>
-                  <p style={{
-                    fontSize: '1rem', // Tailwind: text-base
-                    color: '#111827', // Tailwind: text-gray-900
-                    fontWeight: '500'
-                  }}>
-                    {getStatusText(step.status)}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <h2 style={{
+            fontSize: '1.5rem',
+            fontWeight: '600',
+            color: '#111827',
+            marginBottom: '1rem'
+          }}>
+            Instructions
+          </h2>
+          <textarea
+            style={{
+              width: '100%',
+              minHeight: '300px',
+              padding: '1rem',
+              fontSize: '1rem',
+              color: '#4b5563',
+              lineHeight: '1.5',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              backgroundColor: '#f9fafb',
+              fontFamily: 'monospace',
+              resize: 'vertical'
+            }}
+            value={step.description}
+            readOnly
+          />
+          <div style={{
+            marginTop: '1rem',
+            fontSize: '0.875rem',
+            color: '#6b7280'
+          }}>
+            Step ID: {step.id} • Created: {new Date(step.created_at).toLocaleDateString()} • Updated: {new Date(step.updated_at).toLocaleDateString()}
           </div>
         </div>
       </div>
     </div>
-    </>
   );
 }
