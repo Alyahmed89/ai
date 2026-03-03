@@ -123,9 +123,11 @@ export function validateSchema<T>(schema: z.ZodSchema<T>, data: any): { success:
   try {
     const validated = schema.parse(data);
     return { success: true, data: validated };
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
-      const errors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      // Type-safe access to issues property (Zod v4 uses 'issues' instead of 'errors')
+      const zodError = error as z.ZodError;
+      const errors = zodError.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
       return { success: false, error: `Validation failed: ${errors}` };
     }
     return { success: false, error: 'Unknown validation error' };
