@@ -353,6 +353,15 @@ export default function StepPage() {
           </div>
         </div>
 
+        {/* Input Section - For fetching data */}
+        <URLRequestResponseTest
+          title="Input"
+          defaultUrl={getDefaultUrl()}
+          defaultRequestBody={getDefaultRequestBody()}
+          defaultApiKey="H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"
+          onTest={handleTest}
+        />
+
         {/* Instructions Text Box Component */}
         <div style={{
           backgroundColor: 'white',
@@ -395,13 +404,16 @@ export default function StepPage() {
           </div>
         </div>
 
-        {/* URL + Request + Output + Test Button Component */}
-        <URLRequestResponseTest
-          defaultUrl={getDefaultUrl()}
-          defaultRequestBody={getDefaultRequestBody()}
-          defaultApiKey="H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"
-          onTest={handleTest}
-        />
+        {/* Output Section - For sending data (only if step has output = 1) */}
+        {step.output && (
+          <URLRequestResponseTest
+            title="Output"
+            defaultUrl={inputData?.output_url || getDefaultUrl()}
+            defaultRequestBody={inputData?.output_payload_template || getDefaultRequestBody()}
+            defaultApiKey={inputData?.output_auth_token || "H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"}
+            onTest={handleTest}
+          />
+        )}
       </div>
     </div>
   );

@@ -23,7 +23,7 @@ export async function GET(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        sql: `SELECT id, title, instructions, step_type, order_index, created_at, updated_at FROM flow_steps WHERE id = "${stepId}"`
+        sql: `SELECT id, title, instructions, step_type, order_index, output, created_at, updated_at FROM flow_steps WHERE id = "${stepId}"`
       })
     });
 
@@ -37,6 +37,7 @@ export async function GET(
         description: stepData.instructions || 'No description available',
         step_type: stepData.step_type,
         order: stepData.order_index,
+        output: stepData.output || false,
         created_at: stepData.created_at,
         updated_at: stepData.updated_at
       });

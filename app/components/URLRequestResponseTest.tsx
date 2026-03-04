@@ -3,6 +3,8 @@
 import { useState } from 'react';
 
 interface URLRequestResponseTestProps {
+  // Component title
+  title?: string;
   // Default values for the component
   defaultUrl?: string;
   defaultRequestBody?: string;
@@ -18,6 +20,7 @@ interface URLRequestResponseTestProps {
 }
 
 export default function URLRequestResponseTest({
+  title = 'Input',
   defaultUrl = 'https://api.example.com/endpoint',
   defaultRequestBody = '{\n  "method": "POST",\n  "headers": {\n    "Content-Type": "application/json"\n  },\n  "body": {\n    "key": "value"\n  }\n}',
   defaultResponse = '{\n  "status": "success",\n  "data": {\n    "id": 123,\n    "message": "Request processed successfully"\n  }\n}',
@@ -94,7 +97,7 @@ export default function URLRequestResponseTest({
         color: '#111827',
         marginBottom: '1.5rem'
       }}>
-        Input
+        {title}
       </h2>
 
       {/* URL Input */}
