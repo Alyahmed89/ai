@@ -253,6 +253,17 @@ export default function Home() {
             </div>
           </div>
           
+          <div style={{ marginTop: '1rem' }}>
+            <p><strong>Tasks:</strong></p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <a href="/task/09949b2d-8c3a-4de8-8834-f403c85577e6" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Implement GET / handler</a>
+              <a href="/task/872aac6d-1e93-4b43-b1f7-e366cf3c7423" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Add validation for GET /health</a>
+              <a href="/task/a6e1e4ee-970a-4c81-bf0d-9aee1515be6e" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Add validation for GET /auth/me</a>
+              <a href="/task/7aa5e7b3-f72f-462f-8a1f-b75329dddfc7" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Add validation for GET /users/me/templates</a>
+              <a href="/task/0fe1648f-81e9-4bd3-997c-7dd3a5954f3b" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Add validation for PUT /users/me</a>
+            </div>
+          </div>
+          
           <p style={{ marginTop: '0.5rem' }}>
             <strong>Instructions:</strong> 
             <ol style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
