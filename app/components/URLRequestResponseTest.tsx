@@ -59,7 +59,7 @@ export default function URLRequestResponseTest({
       const result = await onTest(url, requestBody, apiKey);
       
       // Format the response for display
-      const formattedResponse = `Test completed at ${new Date().toLocaleTimeString()}\n\nStatus: ${result.status} ${result.statusText}\n\nHeaders:\n${JSON.stringify(result.headers, null, 2)}\n\nResponse Body:\n${result.body}`;
+      const formattedResponse = `Test completed at ${new Date().toLocaleTimeString()}\n\nStatus: ${result.status} ${result.statusText}\n\nHeaders:\n${JSON.stringify(result.headers, null, 2)}\n\nOutput Body:\n${result.body}`;
       setTestResult(formattedResponse);
       setResponse(result.body);
     } catch (err: any) {
@@ -236,7 +236,7 @@ export default function URLRequestResponseTest({
         </button>
       </div>
 
-      {/* Response Section - Always visible after test */}
+      {/* Output Section - Always visible after test */}
       {showResponse && (
         <div style={{
           marginTop: '2rem',
@@ -249,7 +249,7 @@ export default function URLRequestResponseTest({
             color: '#111827',
             marginBottom: '1rem'
           }}>
-            Response
+            Output
           </h3>
           
           {testResult && (
@@ -292,7 +292,7 @@ export default function URLRequestResponseTest({
               color: '#374151',
               marginBottom: '0.5rem'
             }}>
-              Response Body
+              Output Body
             </label>
             <textarea
               value={response}
@@ -310,7 +310,7 @@ export default function URLRequestResponseTest({
                 backgroundColor: '#f9fafb',
                 resize: 'vertical'
               }}
-              placeholder="Response will appear here after test"
+              placeholder="Output will appear here after test"
               readOnly={!onTest}
             />
           </div>

@@ -353,20 +353,13 @@ export default function StepPage() {
           </div>
         </div>
 
-        {/* URL + Request + Response + Test Button Component */}
-        <URLRequestResponseTest
-          defaultUrl={getDefaultUrl()}
-          defaultRequestBody={getDefaultRequestBody()}
-          defaultApiKey="H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"
-          onTest={handleTest}
-        />
-
         {/* Instructions Text Box Component */}
         <div style={{
           backgroundColor: 'white',
           borderRadius: '0.75rem',
           boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-          padding: '2rem'
+          padding: '2rem',
+          marginBottom: '2rem'
         }}>
           <h2 style={{
             fontSize: '1.5rem',
@@ -401,6 +394,14 @@ export default function StepPage() {
             Step ID: {step.id} • Created: {new Date(step.created_at).toLocaleDateString()} • Updated: {new Date(step.updated_at).toLocaleDateString()}
           </div>
         </div>
+
+        {/* URL + Request + Output + Test Button Component */}
+        <URLRequestResponseTest
+          defaultUrl={getDefaultUrl()}
+          defaultRequestBody={getDefaultRequestBody()}
+          defaultApiKey="H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"
+          onTest={handleTest}
+        />
       </div>
     </div>
   );
