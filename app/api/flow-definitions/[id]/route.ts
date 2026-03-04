@@ -13,9 +13,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: stepId } = await params;
+    const { id: flowId } = await params;
     
-    // Make API call to Cloudflare D1
+    // Make API call to Cloudflare D1 to get flow definition
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
@@ -23,35 +23,36 @@ export async function GET(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        sql: `SELECT id, flow_id, title, instructions, step_type, order_index, output, created_at, updated_at FROM flow_steps WHERE id = "${stepId}"`
+        sql: `SELECT id, name, description, repository, branch, max_iterations, created_at, updated_at, next_flow_id, priority FROM flow_definitions WHERE id = "${flowId}"`
       })
     });
 
     const data = await response.json();
     
     if (data.success && data.result[0].results.length > 0) {
-      const stepData = data.result[0].results[0];
+      const flowData = data.result[0].results[0];
       return NextResponse.json({
-        id: stepData.id,
-        flow_id: stepData.flow_id,
-        title: stepData.title,
-        description: stepData.instructions || 'No description available',
-        step_type: stepData.step_type,
-        order: stepData.order_index,
-        output: stepData.output || false,
-        created_at: stepData.created_at,
-        updated_at: stepData.updated_at
+        id: flowData.id,
+        name: flowData.name,
+        description: flowData.description,
+        repository: flowData.repository,
+        branch: flowData.branch,
+        max_iterations: flowData.max_iterations,
+        created_at: flowData.created_at,
+        updated_at: flowData.updated_at,
+        next_flow_id: flowData.next_flow_id,
+        priority: flowData.priority
       });
     } else {
       return NextResponse.json(
-        { error: `Step with ID "${stepId}" not found` },
+        { error: `Flow definition with ID "${flowId}" not found` },
         { status: 404 }
       );
     }
   } catch (err) {
-    console.error('Error fetching step:', err);
+    console.error('Error fetching flow definition:', err);
     return NextResponse.json(
-      { error: 'Failed to load step data from Cloudflare D1 database' },
+      { error: 'Failed to load flow definition from Cloudflare D1 database' },
       { status: 500 }
     );
   }

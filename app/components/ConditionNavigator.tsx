@@ -10,6 +10,7 @@ interface Condition {
   condition_operator: string;
   next_step: number;
   next_step_title: string;
+  next_step_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -73,14 +74,15 @@ export default function ConditionNavigator({ stepId, currentStepOrder }: Conditi
   };
 
   const handleNavigate = () => {
-    if (selectedCondition && selectedCondition.next_step !== -1) {
-      // Find the step with the matching order_index
-      // In a real app, we would fetch the step ID from the order_index
-      // For now, we'll navigate to /step/{next_step_order}
-      window.location.href = `/step/${selectedCondition.next_step}`;
+    if (selectedCondition && selectedCondition.next_step_id) {
+      // Navigate to the actual step ID (found by order_index within same flow)
+      window.location.href = `/step/${selectedCondition.next_step_id}`;
     } else if (selectedCondition && selectedCondition.next_step === -1) {
       // End flow - go back to home
       window.location.href = '/';
+    } else if (selectedCondition) {
+      // No next_step_id found (step not found in flow)
+      alert(`Cannot navigate: Step ${selectedCondition.next_step} not found in this flow`);
     }
   };
 
@@ -303,20 +305,29 @@ export default function ConditionNavigator({ stepId, currentStepOrder }: Conditi
             style={{
               width: '100%',
               padding: '0.75rem 1.5rem',
-              backgroundColor: '#3b82f6',
+              backgroundColor: selectedCondition.next_step_id || selectedCondition.next_step === -1 ? '#3b82f6' : '#9ca3af',
               color: 'white',
               border: 'none',
               borderRadius: '0.5rem',
               fontSize: '1rem',
               fontWeight: '500',
-              cursor: 'pointer',
+              cursor: selectedCondition.next_step_id || selectedCondition.next_step === -1 ? 'pointer' : 'not-allowed',
               transition: 'background-color 0.2s',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+            onMouseOver={(e) => {
+              if (selectedCondition.next_step_id || selectedCondition.next_step === -1) {
+                e.currentTarget.style.backgroundColor = '#2563eb';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (selectedCondition.next_step_id || selectedCondition.next_step === -1) {
+                e.currentTarget.style.backgroundColor = '#3b82f6';
+              }
+            }}
+            disabled={!selectedCondition.next_step_id && selectedCondition.next_step !== -1}
           >
             <span style={{ marginRight: '0.5rem' }}>→</span>
             Go to {selectedCondition.next_step === -1 ? 'End Flow' : selectedCondition.next_step_title}

@@ -15,6 +15,29 @@ export async function GET(
   try {
     const { id: stepId } = await params;
     
+    // First, get the current step to know its flow_id
+    const stepResponse = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sql: `SELECT flow_id FROM flow_steps WHERE id = "${stepId}"`
+      })
+    });
+
+    const stepData = await stepResponse.json();
+    
+    if (!stepData.success || stepData.result[0].results.length === 0) {
+      return NextResponse.json(
+        { error: `Step with ID "${stepId}" not found` },
+        { status: 404 }
+      );
+    }
+    
+    const flowId = stepData.result[0].results[0].flow_id;
+    
     // Make API call to Cloudflare D1 to get conditions for this step
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -32,48 +55,69 @@ export async function GET(
     if (data.success) {
       const conditions = data.result[0].results || [];
       
-      // If there are conditions, also fetch the next step titles
+      // If there are conditions, also fetch the next step details
       if (conditions.length > 0) {
         // Get unique next_step values (excluding -1 which means end)
-        const nextStepIds = [...new Set(conditions.map((c: any) => c.next_step).filter((id: number) => id !== -1))];
+        const nextStepOrders = [...new Set(conditions.map((c: any) => c.next_step).filter((id: number) => id !== -1))];
         
-        if (nextStepIds.length > 0) {
-          // Fetch the step titles for these next_step IDs
-          const placeholders = nextStepIds.map(() => '?').join(',');
-          const stepResponse = await fetch(API_URL, {
+        if (nextStepOrders.length > 0) {
+          // Fetch the step details for these next_step order indices within the same flow
+          const placeholders = nextStepOrders.map(() => '?').join(',');
+          const nextStepResponse = await fetch(API_URL, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              sql: `SELECT id, title, order_index FROM flow_steps WHERE order_index IN (${placeholders})`,
-              params: nextStepIds
+              sql: `SELECT id, title, order_index FROM flow_steps WHERE flow_id = "${flowId}" AND order_index IN (${placeholders})`,
+              params: nextStepOrders
             })
           });
           
-          const stepData = await stepResponse.json();
+          const nextStepData = await nextStepResponse.json();
           
-          if (stepData.success) {
-            const stepTitles: Record<number, string> = {};
-            stepData.result[0].results.forEach((step: any) => {
-              stepTitles[step.order_index] = `${step.title} (Step ${step.order_index})`;
+          if (nextStepData.success) {
+            const stepMap: Record<number, {id: string, title: string}> = {};
+            nextStepData.result[0].results.forEach((step: any) => {
+              stepMap[step.order_index] = {id: step.id, title: step.title};
             });
             
-            // Add step titles to conditions
-            const conditionsWithTitles = conditions.map((condition: any) => ({
-              ...condition,
-              next_step_title: condition.next_step === -1 ? 'End Flow' : stepTitles[condition.next_step] || `Step ${condition.next_step}`
-            }));
+            // Add step details to conditions
+            const conditionsWithDetails = conditions.map((condition: any) => {
+              if (condition.next_step === -1) {
+                return {
+                  ...condition,
+                  next_step_title: 'End Flow',
+                  next_step_id: null
+                };
+              } else {
+                const stepInfo = stepMap[condition.next_step];
+                if (stepInfo) {
+                  return {
+                    ...condition,
+                    next_step_title: `${stepInfo.title} (Step ${condition.next_step})`,
+                    next_step_id: stepInfo.id
+                  };
+                } else {
+                  return {
+                    ...condition,
+                    next_step_title: `Step ${condition.next_step} (Not found in flow)`,
+                    next_step_id: null
+                  };
+                }
+              }
+            });
             
-            return NextResponse.json(conditionsWithTitles);
+            return NextResponse.json(conditionsWithDetails);
           }
         }
         
-        // If we couldn't fetch step titles, just return conditions with basic titles
+        // If we couldn't fetch step details, just return conditions with basic titles
         const conditionsWithBasicTitles = conditions.map((condition: any) => ({
           ...condition,
-          next_step_title: condition.next_step === -1 ? 'End Flow' : `Step ${condition.next_step}`
+          next_step_title: condition.next_step === -1 ? 'End Flow' : `Step ${condition.next_step}`,
+          next_step_id: null
         }));
         
         return NextResponse.json(conditionsWithBasicTitles);
