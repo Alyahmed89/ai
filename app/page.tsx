@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -8,6 +8,27 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [flows, setFlows] = useState<any[]>([]);
+  const [flowsLoading, setFlowsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchFlows = async () => {
+      try {
+        setFlowsLoading(true);
+        const response = await fetch('/api/flow-definitions?limit=5');
+        if (response.ok) {
+          const data = await response.json();
+          setFlows(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch flows:', err);
+      } finally {
+        setFlowsLoading(false);
+      }
+    };
+
+    fetchFlows();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,12 +285,34 @@ export default function Home() {
             </div>
           </div>
           
+          <div style={{ marginTop: '1rem' }}>
+            <p><strong>Flows:</strong></p>
+            {flowsLoading ? (
+              <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Loading flows...</p>
+            ) : flows.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                {flows.map((flow) => (
+                  <a 
+                    key={flow.id} 
+                    href={`/flow/${flow.id}`} 
+                    style={{ color: '#3b82f6', textDecoration: 'none' }}
+                  >
+                    {flow.name || `Flow: ${flow.id}`}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>No flows found</p>
+            )}
+          </div>
+          
           <p style={{ marginTop: '0.5rem' }}>
             <strong>Instructions:</strong> 
             <ol style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
               <li>Click "Initialize Database" to create the table</li>
               <li>Fill in the form and click "Create Item"</li>
               <li>Click on any flow step above to view step details</li>
+              <li>Click on any flow to view flow details</li>
             </ol>
           </p>
         </div>
