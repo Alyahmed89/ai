@@ -31,8 +31,7 @@ export default function URLRequestResponseTest({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'request' | 'response' | 'variables'>('request');
-
+  const [showResponse, setShowResponse] = useState(false);
   // Handle variable updates
   const handleVariableChange = (key: string, value: string) => {
     setVariables(prev => ({
@@ -55,6 +54,7 @@ export default function URLRequestResponseTest({
       setIsTesting(true);
       setError(null);
       setTestResult('Test simulation running...');
+      setShowResponse(true);
       
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -74,6 +74,7 @@ export default function URLRequestResponseTest({
       setIsTesting(true);
       setError(null);
       setTestResult('Testing...');
+      setShowResponse(true);
       
       const result = await onTest(url, requestBody, variables);
       
@@ -84,6 +85,7 @@ export default function URLRequestResponseTest({
     } catch (err: any) {
       setError(err.message || 'Test failed');
       setTestResult(null);
+      setShowResponse(true);
     } finally {
       setIsTesting(false);
     }
@@ -142,271 +144,142 @@ export default function URLRequestResponseTest({
         />
       </div>
 
-      {/* Tabs for Request, Response, Variables */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid #e5e7eb',
-        marginBottom: '1.5rem'
-      }}>
-        <button
-          onClick={() => setActiveTab('request')}
+      {/* Token Display - Read only from variables */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{
+          display: 'block',
+          fontSize: '0.875rem',
+          fontWeight: '500',
+          color: '#374151',
+          marginBottom: '0.5rem'
+        }}>
+          Cloudflare API Token
+        </label>
+        <input
+          type="text"
+          value={variables['{{auth_token}}'] || ''}
+          readOnly
           style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: activeTab === 'request' ? '#3b82f6' : 'transparent',
-            color: activeTab === 'request' ? 'white' : '#6b7280',
-            border: 'none',
-            borderBottom: activeTab === 'request' ? '2px solid #3b82f6' : 'none',
-            cursor: 'pointer',
-            fontWeight: '500',
-            fontSize: '0.875rem',
-            transition: 'all 0.2s'
+            width: '100%',
+            padding: '0.75rem',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            fontSize: '1rem',
+            fontFamily: 'monospace',
+            backgroundColor: '#f9fafb',
+            color: '#6b7280'
           }}
-        >
-          Request
-        </button>
-        <button
-          onClick={() => setActiveTab('response')}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: activeTab === 'response' ? '#3b82f6' : 'transparent',
-            color: activeTab === 'response' ? 'white' : '#6b7280',
-            border: 'none',
-            borderBottom: activeTab === 'response' ? '2px solid #3b82f6' : 'none',
-            cursor: 'pointer',
-            fontWeight: '500',
-            fontSize: '0.875rem',
-            transition: 'all 0.2s'
-          }}
-        >
-          Response
-        </button>
-        <button
-          onClick={() => setActiveTab('variables')}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: activeTab === 'variables' ? '#3b82f6' : 'transparent',
-            color: activeTab === 'variables' ? 'white' : '#6b7280',
-            border: 'none',
-            borderBottom: activeTab === 'variables' ? '2px solid #3b82f6' : 'none',
-            cursor: 'pointer',
-            fontWeight: '500',
-            fontSize: '0.875rem',
-            transition: 'all 0.2s'
-          }}
-        >
-          Variables
-        </button>
+          placeholder="Token will appear here from database configuration"
+        />
+        <div style={{
+          marginTop: '0.5rem',
+          fontSize: '0.75rem',
+          color: '#6b7280'
+        }}>
+          This token is read-only and comes from the database configuration.
+        </div>
       </div>
 
-      {/* Request Tab Content */}
-      {activeTab === 'request' && (
-        <div>
-          <label style={{
-            display: 'block',
+      {/* Request Body */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{
+          display: 'block',
+          fontSize: '0.875rem',
+          fontWeight: '500',
+          color: '#374151',
+          marginBottom: '0.5rem'
+        }}>
+          Request Body (JSON)
+        </label>
+        <textarea
+          value={requestBody}
+          onChange={(e) => setRequestBody(e.target.value)}
+          style={{
+            width: '100%',
+            minHeight: '200px',
+            padding: '1rem',
             fontSize: '0.875rem',
-            fontWeight: '500',
-            color: '#374151',
-            marginBottom: '0.5rem'
-          }}>
-            Request Body (JSON)
-          </label>
-          <textarea
-            value={requestBody}
-            onChange={(e) => setRequestBody(e.target.value)}
-            style={{
-              width: '100%',
-              minHeight: '200px',
-              padding: '1rem',
-              fontSize: '0.875rem',
-              fontFamily: 'monospace',
-              color: '#4b5563',
-              lineHeight: '1.5',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.5rem',
-              backgroundColor: '#f9fafb',
-              resize: 'vertical'
-            }}
-            placeholder="Enter request JSON"
-          />
-          <div style={{
-            marginTop: '0.5rem',
-            fontSize: '0.75rem',
-            color: '#6b7280'
-          }}>
-            Tip: Use variables like {'{{api_key}}'} in your request. They will be replaced with values from the Variables tab.
-          </div>
+            fontFamily: 'monospace',
+            color: '#4b5563',
+            lineHeight: '1.5',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            backgroundColor: '#f9fafb',
+            resize: 'vertical'
+          }}
+          placeholder="Enter request JSON"
+        />
+        <div style={{
+          marginTop: '0.5rem',
+          fontSize: '0.75rem',
+          color: '#6b7280'
+        }}>
+          Tip: Use variables like {'{{auth_token}}'}, {'{{api_url}}'}, {'{{http_method}}'} in your request. They will be replaced with values from the Variables section below.
         </div>
-      )}
+      </div>
 
-      {/* Response Tab Content */}
-      {activeTab === 'response' && (
-        <div>
-          <label style={{
-            display: 'block',
-            fontSize: '0.875rem',
-            fontWeight: '500',
-            color: '#374151',
-            marginBottom: '0.5rem'
-          }}>
-            Response Body (JSON)
-          </label>
-          <textarea
-            value={response}
-            onChange={(e) => setResponse(e.target.value)}
-            style={{
-              width: '100%',
-              minHeight: '200px',
-              padding: '1rem',
-              fontSize: '0.875rem',
-              fontFamily: 'monospace',
-              color: '#4b5563',
-              lineHeight: '1.5',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.5rem',
-              backgroundColor: '#f9fafb',
-              resize: 'vertical'
-            }}
-            placeholder="Enter expected response JSON"
-            readOnly={!onTest}
-          />
-          {testResult && (
-            <div style={{
-              marginTop: '1rem',
-              padding: '1rem',
-              backgroundColor: '#f0f9ff',
-              border: '1px solid #bae6fd',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap',
-              color: '#0369a1'
-            }}>
-              <strong>Test Result:</strong>\n{testResult}
-            </div>
-          )}
-          {error && (
-            <div style={{
-              marginTop: '1rem',
-              padding: '1rem',
-              backgroundColor: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap',
-              color: '#dc2626'
-            }}>
-              <strong>Error:</strong>\n{error}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Variables Tab Content */}
-      {activeTab === 'variables' && (
-        <div>
-          <label style={{
-            display: 'block',
-            fontSize: '0.875rem',
-            fontWeight: '500',
-            color: '#374151',
-            marginBottom: '1rem'
-          }}>
-            Environment Variables
-          </label>
-          
-          <div style={{
-            maxHeight: '300px',
-            overflowY: 'auto',
-            border: '1px solid #e5e7eb',
-            borderRadius: '0.5rem'
-          }}>
-            {Object.entries(variables).map(([key, value], index) => (
-              <div
-                key={key}
+      {/* Variables Section - Horizontal List */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{
+          display: 'block',
+          fontSize: '0.875rem',
+          fontWeight: '500',
+          color: '#374151',
+          marginBottom: '0.5rem'
+        }}>
+          Variables
+        </label>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+          marginBottom: '0.5rem'
+        }}>
+          {Object.entries(variables).map(([key, value]) => (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                backgroundColor: '#f3f4f6',
+                borderRadius: '0.375rem',
+                padding: '0.25rem 0.5rem',
+                fontSize: '0.75rem',
+                fontFamily: 'monospace'
+              }}
+            >
+              <span style={{ color: '#374151', marginRight: '0.25rem' }}>{key}:</span>
+              <span style={{ color: '#059669' }}>{value}</span>
+              <button
+                onClick={() => handleRemoveVariable(key)}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0.75rem',
-                  borderBottom: index < Object.keys(variables).length - 1 ? '1px solid #e5e7eb' : 'none',
-                  backgroundColor: index % 2 === 0 ? '#f9fafb' : 'white'
+                  marginLeft: '0.25rem',
+                  padding: '0.125rem 0.25rem',
+                  backgroundColor: 'transparent',
+                  color: '#dc2626',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.625rem'
                 }}
               >
-                <div style={{ flex: 1, marginRight: '1rem' }}>
-                  <input
-                    type="text"
-                    value={key}
-                    onChange={(e) => {
-                      const newKey = e.target.value;
-                      const newVariables = { ...variables };
-                      const oldValue = newVariables[key];
-                      delete newVariables[key];
-                      newVariables[newKey] = oldValue;
-                      setVariables(newVariables);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      fontFamily: 'monospace',
-                      marginBottom: '0.5rem'
-                    }}
-                  />
-                  <input
-                    type="text"
-                    value={value}
-                    onChange={(e) => handleVariableChange(key, e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      fontFamily: 'monospace'
-                    }}
-                  />
-                </div>
-                <button
-                  onClick={() => handleRemoveVariable(key)}
-                  style={{
-                    padding: '0.5rem',
-                    backgroundColor: '#fee2e2',
-                    color: '#dc2626',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    cursor: 'pointer',
-                    fontSize: '0.75rem',
-                    minWidth: '2rem'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            
-            {Object.keys(variables).length === 0 && (
-              <div style={{
-                padding: '2rem',
-                textAlign: 'center',
-                color: '#6b7280',
-                fontSize: '0.875rem'
-              }}>
-                No variables defined.
-              </div>
-            )}
-          </div>
-          
-          <div style={{
-            marginTop: '1rem',
-            fontSize: '0.75rem',
-            color: '#6b7280'
-          }}>
-            Variables are placeholders that will be replaced in your request. Use them for sensitive data like API keys.
-          </div>
+                ×
+              </button>
+            </div>
+          ))}
+          {Object.keys(variables).length === 0 && (
+            <div style={{
+              color: '#6b7280',
+              fontSize: '0.75rem',
+              fontStyle: 'italic'
+            }}>
+              No variables defined. Add variables below.
+            </div>
+          )}
         </div>
-      )}
+        
+
+      </div>
 
       {/* Test Button */}
       <div style={{
@@ -450,6 +323,87 @@ export default function URLRequestResponseTest({
           )}
         </button>
       </div>
+
+      {/* Response Section - Always visible after test */}
+      {showResponse && (
+        <div style={{
+          marginTop: '2rem',
+          paddingTop: '1.5rem',
+          borderTop: '1px solid #e5e7eb'
+        }}>
+          <h3 style={{
+            fontSize: '1.25rem',
+            fontWeight: '600',
+            color: '#111827',
+            marginBottom: '1rem'
+          }}>
+            Response
+          </h3>
+          
+          {testResult && (
+            <div style={{
+              marginBottom: '1rem',
+              padding: '1rem',
+              backgroundColor: '#f0f9ff',
+              border: '1px solid #bae6fd',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontFamily: 'monospace',
+              whiteSpace: 'pre-wrap',
+              color: '#0369a1'
+            }}>
+              <strong>Test Result:</strong>\n{testResult}
+            </div>
+          )}
+          
+          {error && (
+            <div style={{
+              marginBottom: '1rem',
+              padding: '1rem',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontFamily: 'monospace',
+              whiteSpace: 'pre-wrap',
+              color: '#dc2626'
+            }}>
+              <strong>Error:</strong>\n{error}
+            </div>
+          )}
+          
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '0.875rem',
+              fontWeight: '500',
+              color: '#374151',
+              marginBottom: '0.5rem'
+            }}>
+              Response Body
+            </label>
+            <textarea
+              value={response}
+              onChange={(e) => setResponse(e.target.value)}
+              style={{
+                width: '100%',
+                minHeight: '200px',
+                padding: '1rem',
+                fontSize: '0.875rem',
+                fontFamily: 'monospace',
+                color: '#4b5563',
+                lineHeight: '1.5',
+                border: '1px solid #d1d5db',
+                borderRadius: '0.5rem',
+                backgroundColor: '#f9fafb',
+                resize: 'vertical'
+              }}
+              placeholder="Response will appear here after test"
+              readOnly={!onTest}
+            />
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         @keyframes spin {
