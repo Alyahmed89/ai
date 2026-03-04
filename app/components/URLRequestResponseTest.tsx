@@ -7,9 +7,9 @@ interface URLRequestResponseTestProps {
   defaultUrl?: string;
   defaultRequestBody?: string;
   defaultResponse?: string;
-  defaultVariables?: Record<string, string>;
+  defaultApiKey?: string;
   // Callback when test button is clicked
-  onTest?: (url: string, requestBody: string, variables: Record<string, string>) => Promise<{
+  onTest?: (url: string, requestBody: string, apiKey: string) => Promise<{
     status: number;
     statusText: string;
     headers: Record<string, string>;
@@ -21,31 +21,17 @@ export default function URLRequestResponseTest({
   defaultUrl = 'https://api.example.com/endpoint',
   defaultRequestBody = '{\n  "method": "POST",\n  "headers": {\n    "Content-Type": "application/json"\n  },\n  "body": {\n    "key": "value"\n  }\n}',
   defaultResponse = '{\n  "status": "success",\n  "data": {\n    "id": 123,\n    "message": "Request processed successfully"\n  }\n}',
-  defaultVariables = { '{{api_key}}': 'your_api_key_here', '{{user_id}}': '12345' },
+  defaultApiKey = '',
   onTest
 }: URLRequestResponseTestProps) {
   const [url, setUrl] = useState(defaultUrl);
   const [requestBody, setRequestBody] = useState(defaultRequestBody);
+  const [apiKey, setApiKey] = useState(defaultApiKey);
   const [response, setResponse] = useState(defaultResponse);
-  const [variables, setVariables] = useState<Record<string, string>>(defaultVariables);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showResponse, setShowResponse] = useState(false);
-  // Handle variable updates
-  const handleVariableChange = (key: string, value: string) => {
-    setVariables(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-
-  // Remove variable
-  const handleRemoveVariable = (key: string) => {
-    const newVariables = { ...variables };
-    delete newVariables[key];
-    setVariables(newVariables);
-  };
 
   // Handle test button click
   const handleTest = async () => {
@@ -59,13 +45,7 @@ export default function URLRequestResponseTest({
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Apply variables to request body
-      let processedRequestBody = requestBody;
-      Object.entries(variables).forEach(([key, value]) => {
-        processedRequestBody = processedRequestBody.replace(new RegExp(key, 'g'), value);
-      });
-      
-      setTestResult(`Test completed at ${new Date().toLocaleTimeString()}\n\nURL: ${url}\n\nProcessed Request Body:\n${processedRequestBody}`);
+      setTestResult(`Test completed at ${new Date().toLocaleTimeString()}\n\nURL: ${url}\n\nAPI Key: ${apiKey ? '***' + apiKey.slice(-4) : 'Not provided'}\n\nRequest Body:\n${requestBody}`);
       setIsTesting(false);
       return;
     }
@@ -76,7 +56,7 @@ export default function URLRequestResponseTest({
       setTestResult('Testing...');
       setShowResponse(true);
       
-      const result = await onTest(url, requestBody, variables);
+      const result = await onTest(url, requestBody, apiKey);
       
       // Format the response for display
       const formattedResponse = `Test completed at ${new Date().toLocaleTimeString()}\n\nStatus: ${result.status} ${result.statusText}\n\nHeaders:\n${JSON.stringify(result.headers, null, 2)}\n\nResponse Body:\n${result.body}`;
@@ -144,7 +124,7 @@ export default function URLRequestResponseTest({
         />
       </div>
 
-      {/* Token Display - Read only from variables */}
+      {/* API Key Input */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{
           display: 'block',
@@ -156,29 +136,29 @@ export default function URLRequestResponseTest({
           Cloudflare API Token
         </label>
         <input
-          type="text"
-          value={variables['{{auth_token}}'] || ''}
-          readOnly
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
           style={{
             width: '100%',
             padding: '0.75rem',
             border: '1px solid #d1d5db',
             borderRadius: '0.5rem',
             fontSize: '1rem',
-            fontFamily: 'monospace',
-            backgroundColor: '#f9fafb',
-            color: '#6b7280'
+            fontFamily: 'monospace'
           }}
-          placeholder="Token will appear here from database configuration"
+          placeholder="Enter your Cloudflare API token"
         />
         <div style={{
           marginTop: '0.5rem',
           fontSize: '0.75rem',
           color: '#6b7280'
         }}>
-          This token is read-only and comes from the database configuration.
+          This token is required for authenticating with the Cloudflare API.
         </div>
       </div>
+
+
 
       {/* Request Body */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -209,77 +189,9 @@ export default function URLRequestResponseTest({
           }}
           placeholder="Enter request JSON"
         />
-        <div style={{
-          marginTop: '0.5rem',
-          fontSize: '0.75rem',
-          color: '#6b7280'
-        }}>
-          Tip: Use variables like {'{{auth_token}}'}, {'{{api_url}}'}, {'{{http_method}}'} in your request. They will be replaced with values from the Variables section below.
-        </div>
       </div>
 
-      {/* Variables Section - Horizontal List */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <label style={{
-          display: 'block',
-          fontSize: '0.875rem',
-          fontWeight: '500',
-          color: '#374151',
-          marginBottom: '0.5rem'
-        }}>
-          Variables
-        </label>
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          marginBottom: '0.5rem'
-        }}>
-          {Object.entries(variables).map(([key, value]) => (
-            <div
-              key={key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                backgroundColor: '#f3f4f6',
-                borderRadius: '0.375rem',
-                padding: '0.25rem 0.5rem',
-                fontSize: '0.75rem',
-                fontFamily: 'monospace'
-              }}
-            >
-              <span style={{ color: '#374151', marginRight: '0.25rem' }}>{key}:</span>
-              <span style={{ color: '#059669' }}>{value}</span>
-              <button
-                onClick={() => handleRemoveVariable(key)}
-                style={{
-                  marginLeft: '0.25rem',
-                  padding: '0.125rem 0.25rem',
-                  backgroundColor: 'transparent',
-                  color: '#dc2626',
-                  border: 'none',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer',
-                  fontSize: '0.625rem'
-                }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          {Object.keys(variables).length === 0 && (
-            <div style={{
-              color: '#6b7280',
-              fontSize: '0.75rem',
-              fontStyle: 'italic'
-            }}>
-              No variables defined. Add variables below.
-            </div>
-          )}
-        </div>
-        
 
-      </div>
 
       {/* Test Button */}
       <div style={{

@@ -174,62 +174,42 @@ export default function StepPage() {
     return variables;
   };
 
-  const handleTest = async (url: string, requestBody: string, variables: Record<string, string>) => {
-    console.log('Testing API with:', { url, requestBody, variables });
+  const handleTest = async (url: string, requestBody: string, apiKey: string) => {
+    console.log('Testing API with:', { url, requestBody, apiKey: apiKey ? '***' + apiKey.slice(-4) : 'Not provided' });
     
     try {
-      // Parse the input_keys JSON to get the actual API configuration
-      let apiConfig = null;
-      if (inputData?.input_keys) {
-        try {
-          const inputKeys = JSON.parse(inputData.input_keys);
-          if (Array.isArray(inputKeys) && inputKeys.length > 0) {
-            apiConfig = inputKeys[0];
-          }
-        } catch (e) {
-          console.error('Failed to parse input_keys:', e);
-        }
-      }
-
-      // If we have API config from the database, use it
-      if (apiConfig) {
-        const { url: apiUrl, method, headers, body, auth_type, auth_value } = apiConfig;
-        
-        // Prepare headers
-        const requestHeaders: Record<string, string> = { ...headers };
-        
-        // Add authorization if present
-        if (auth_type === 'bearer' && auth_value) {
-          requestHeaders['Authorization'] = `Bearer ${auth_value}`;
-        }
-        
-        // Make the actual API call
-        const response = await fetch(apiUrl, {
-          method: method || 'POST',
-          headers: requestHeaders,
-          body: body ? JSON.stringify(body) : undefined
-        });
-        
-        const responseBody = await response.text();
-        
+      // Parse the request body JSON to validate it
+      let parsedBody;
+      try {
+        parsedBody = JSON.parse(requestBody);
+      } catch (e) {
         return {
-          status: response.status,
-          statusText: response.statusText,
-          headers: Object.fromEntries(response.headers.entries()),
-          body: responseBody
-        };
-      } else {
-        // Fallback to mock response
-        return {
-          status: 200,
-          statusText: 'OK',
+          status: 400,
+          statusText: 'Bad Request',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ 
-            message: 'Test response from mock API',
-            note: 'No API configuration found in database, using mock response'
+            error: 'Invalid JSON in request body',
+            message: e instanceof Error ? e.message : 'Unknown error'
           }, null, 2)
         };
       }
+
+      // Make the API call through our backend proxy to avoid CORS issues
+      const response = await fetch('/api/test-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url,
+          requestBody: parsedBody,
+          apiKey
+        })
+      });
+      
+      const result = await response.json();
+      
+      return result;
     } catch (err) {
       console.error('API test failed:', err);
       return {
@@ -372,11 +352,11 @@ export default function StepPage() {
           </div>
         </div>
 
-        {/* URL + Request + Response + Test Button + Variables Component */}
+        {/* URL + Request + Response + Test Button Component */}
         <URLRequestResponseTest
           defaultUrl={getDefaultUrl()}
           defaultRequestBody={getDefaultRequestBody()}
-          defaultVariables={getDefaultVariables()}
+          defaultApiKey="H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"
           onTest={handleTest}
         />
 
