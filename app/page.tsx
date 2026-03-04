@@ -277,6 +277,7 @@ export default function Home() {
           <div style={{ marginTop: '1rem' }}>
             <p><strong>Tasks:</strong></p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <a href="/tasks" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 'bold' }}>View All Tasks →</a>
               <a href="/task/09949b2d-8c3a-4de8-8834-f403c85577e6" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Implement GET / handler</a>
               <a href="/task/872aac6d-1e93-4b43-b1f7-e366cf3c7423" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Add validation for GET /health</a>
               <a href="/task/a6e1e4ee-970a-4c81-bf0d-9aee1515be6e" style={{ color: '#3b82f6', textDecoration: 'none' }}>Task: Add validation for GET /auth/me</a>
