@@ -405,3 +405,5 @@ export default function StepPage() {
     </div>
   );
 }
+
+export const runtime = 'edge';

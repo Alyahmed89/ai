@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'edge';
+
 export async function POST(request: NextRequest) {
   try {
     const { url, requestBody, apiKey } = await request.json();
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
       headers: Object.fromEntries(response.headers.entries()),
       body: responseBody
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error('API proxy error:', err);
     return NextResponse.json(
       { 
