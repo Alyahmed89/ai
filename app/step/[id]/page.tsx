@@ -55,7 +55,8 @@ export default function StepPage() {
         }
       } catch (err) {
         console.error('Error fetching step:', err);
-        setError(`Failed to load step data: ${err.message}`);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(`Failed to load step data: ${errorMessage}`);
       } finally {
         setLoading(false);
       }

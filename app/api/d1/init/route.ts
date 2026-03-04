@@ -12,13 +12,13 @@ export async function GET(request: NextRequest) {
       message: 'Table created or already exists',
       data: result
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error initializing database:', error);
     
     return NextResponse.json({
       success: false,
       message: 'Failed to initialize database',
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }

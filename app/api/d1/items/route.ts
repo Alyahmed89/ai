@@ -12,13 +12,13 @@ export async function GET(request: NextRequest) {
       success: true,
       data: items
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching items:', error);
     
     return NextResponse.json({
       success: false,
       message: 'Failed to fetch items',
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }
@@ -50,13 +50,13 @@ export async function POST(request: NextRequest) {
       message: 'Item created successfully',
       data: item
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating item:', error);
     
     return NextResponse.json({
       success: false,
       message: 'Failed to create item',
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }
@@ -88,13 +88,13 @@ export async function PUT(request: NextRequest) {
       message: 'Item updated successfully',
       data: item
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating item:', error);
     
     return NextResponse.json({
       success: false,
       message: 'Failed to update item',
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }
@@ -125,13 +125,13 @@ export async function DELETE(request: NextRequest) {
       success: true,
       message: 'Item deleted successfully'
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error deleting item:', error);
     
     return NextResponse.json({
       success: false,
       message: 'Failed to delete item',
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }
