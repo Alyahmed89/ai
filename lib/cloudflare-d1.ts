@@ -1,8 +1,19 @@
-// Cloudflare D1 Database Utility Functions
+// Cloudflare D1 Database Service
+// Centralized service for all D1 database operations
 
-const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID || 'e39371fc55a5c9ef7ed83e16660bd7bb';
-const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || 'H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL';
-const DATABASE_ID = process.env.CLOUDFLARE_D1_DATABASE_ID || 'ce8f2a2c-6e4b-4398-b73e-ba8f204f609a';
+// Configuration from environment variables
+const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+const DATABASE_ID = process.env.CLOUDFLARE_D1_DATABASE_ID;
+
+// Validate required environment variables
+if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN || !DATABASE_ID) {
+  console.error('Missing required Cloudflare D1 environment variables');
+  // In development, we can use defaults, but in production this should fail
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Missing required Cloudflare D1 environment variables');
+  }
+}
 
 const BASE_URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DATABASE_ID}`;
 
@@ -145,4 +156,51 @@ export async function deleteItem(id: number) {
   const sql = `DELETE FROM test_items WHERE id = ?`;
   const result = await executeStatement(sql, [id]);
   return result.success;
+}
+
+// Generic database operations that can be used by all services
+export async function queryDatabase(sql: string, params: any[] = []): Promise<any[]> {
+  try {
+    const result = await executeQuery(sql, params);
+    if (result.success) {
+      return result.result?.[0]?.results || [];
+    }
+    throw new Error(`Database query failed: ${JSON.stringify(result.errors)}`);
+  } catch (error) {
+    console.error('Error in queryDatabase:', error);
+    throw error;
+  }
+}
+
+export async function executeDatabase(sql: string, params: any[] = []): Promise<D1ExecuteResult> {
+  return await executeStatement(sql, params);
+}
+
+// Helper to build WHERE clauses dynamically
+export function buildWhereClause(filters: Record<string, any>): { sql: string, params: any[] } {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      if (Array.isArray(value)) {
+        conditions.push(`${key} IN (${value.map(() => '?').join(',')})`);
+        params.push(...value);
+      } else {
+        conditions.push(`${key} = ?`);
+        params.push(value);
+      }
+    }
+  });
+  
+  const sql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { sql, params };
+}
+
+// Helper to build pagination
+export function buildPagination(limit?: number, offset?: number): string {
+  if (limit !== undefined) {
+    return `LIMIT ${limit}${offset !== undefined ? ` OFFSET ${offset}` : ''}`;
+  }
+  return '';
 }
