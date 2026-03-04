@@ -2,6 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import URLRequestResponseTest from '@/app/components/URLRequestResponseTest';
 
 // Local API route
 const API_URL = '/api/flow-steps';
@@ -14,29 +15,43 @@ export default function StepPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [inputData, setInputData] = useState<any>(null);
+
   useEffect(() => {
     // Fetch real step data from Cloudflare D1 database
     const fetchStep = async () => {
       try {
         setLoading(true);
         
-        // Make API call to local API route
+        // Make API call to local API route for step data
         console.log('Fetching step:', stepId);
-        const response = await fetch(`${API_URL}/${stepId}`);
+        const stepResponse = await fetch(`${API_URL}/${stepId}`);
         
-        console.log('Response status:', response.status);
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`API error: ${response.status} - ${errorText}`);
+        console.log('Step response status:', stepResponse.status);
+        if (!stepResponse.ok) {
+          const errorText = await stepResponse.text();
+          throw new Error(`API error: ${stepResponse.status} - ${errorText}`);
         }
         
-        const data = await response.json();
-        console.log('Response data:', data);
+        const stepData = await stepResponse.json();
+        console.log('Step response data:', stepData);
         
-        if (data.error) {
-          setError(data.error);
+        if (stepData.error) {
+          setError(stepData.error);
         } else {
-          setStep(data);
+          setStep(stepData);
+        }
+
+        // Fetch input data for the step
+        console.log('Fetching input data for step:', stepId);
+        const inputResponse = await fetch(`${API_URL}/${stepId}/input`);
+        
+        if (inputResponse.ok) {
+          const inputData = await inputResponse.json();
+          console.log('Input data:', inputData);
+          setInputData(inputData);
+        } else {
+          console.warn('Failed to fetch input data, using defaults');
         }
       } catch (err) {
         console.error('Error fetching step:', err);
@@ -83,6 +98,151 @@ export default function StepPage() {
       </div>
     );
   }
+
+  // Helper functions to get default values from input data
+  const getDefaultUrl = () => {
+    if (inputData?.input_keys) {
+      try {
+        const inputKeys = JSON.parse(inputData.input_keys);
+        if (Array.isArray(inputKeys) && inputKeys.length > 0) {
+          const config = inputKeys[0];
+          if (config.url) {
+            return config.url;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse input_keys for URL:', e);
+      }
+    }
+    
+    // Default fallback
+    return 'https://api.cloudflare.com/client/v4/accounts/e39371fc55a5c9ef7ed83e16660bd7bb/d1/database/ce8f2a2c-6e4b-4398-b73e-ba8f204f609a/query';
+  };
+
+  const getDefaultRequestBody = () => {
+    if (inputData?.input_keys) {
+      try {
+        const inputKeys = JSON.parse(inputData.input_keys);
+        if (Array.isArray(inputKeys) && inputKeys.length > 0) {
+          const config = inputKeys[0];
+          if (config.body) {
+            return JSON.stringify(config.body, null, 2);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse input_keys for request body:', e);
+      }
+    }
+    
+    // Default fallback
+    return JSON.stringify({ 
+      step_id: stepId,
+      action: 'test',
+      timestamp: new Date().toISOString()
+    }, null, 2);
+  };
+
+  const getDefaultVariables = () => {
+    const variables: Record<string, string> = {};
+    
+    if (inputData?.input_keys) {
+      try {
+        const inputKeys = JSON.parse(inputData.input_keys);
+        if (Array.isArray(inputKeys) && inputKeys.length > 0) {
+          const config = inputKeys[0];
+          
+          // Extract variables from the config
+          if (config.auth_value) {
+            variables['{{auth_token}}'] = config.auth_value;
+          }
+          if (config.url) {
+            variables['{{api_url}}'] = config.url;
+          }
+          if (config.method) {
+            variables['{{http_method}}'] = config.method;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse input_keys for variables:', e);
+      }
+    }
+    
+    // Add some default variables
+    variables['{{step_id}}'] = stepId;
+    variables['{{timestamp}}'] = new Date().toISOString();
+    
+    return variables;
+  };
+
+  const handleTest = async (url: string, requestBody: string, variables: Record<string, string>) => {
+    console.log('Testing API with:', { url, requestBody, variables });
+    
+    try {
+      // Parse the input_keys JSON to get the actual API configuration
+      let apiConfig = null;
+      if (inputData?.input_keys) {
+        try {
+          const inputKeys = JSON.parse(inputData.input_keys);
+          if (Array.isArray(inputKeys) && inputKeys.length > 0) {
+            apiConfig = inputKeys[0];
+          }
+        } catch (e) {
+          console.error('Failed to parse input_keys:', e);
+        }
+      }
+
+      // If we have API config from the database, use it
+      if (apiConfig) {
+        const { url: apiUrl, method, headers, body, auth_type, auth_value } = apiConfig;
+        
+        // Prepare headers
+        const requestHeaders: Record<string, string> = { ...headers };
+        
+        // Add authorization if present
+        if (auth_type === 'bearer' && auth_value) {
+          requestHeaders['Authorization'] = `Bearer ${auth_value}`;
+        }
+        
+        // Make the actual API call
+        const response = await fetch(apiUrl, {
+          method: method || 'POST',
+          headers: requestHeaders,
+          body: body ? JSON.stringify(body) : undefined
+        });
+        
+        const responseBody = await response.text();
+        
+        return {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: responseBody
+        };
+      } else {
+        // Fallback to mock response
+        return {
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ 
+            message: 'Test response from mock API',
+            note: 'No API configuration found in database, using mock response'
+          }, null, 2)
+        };
+      }
+    } catch (err) {
+      console.error('API test failed:', err);
+      return {
+        status: 500,
+        statusText: 'Internal Server Error',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ 
+          error: 'API test failed',
+          message: err instanceof Error ? err.message : 'Unknown error'
+        }, null, 2)
+      };
+    }
+  };
 
   if (error || !step) {
     return (
@@ -211,6 +371,14 @@ export default function StepPage() {
             </div>
           </div>
         </div>
+
+        {/* URL + Request + Response + Test Button + Variables Component */}
+        <URLRequestResponseTest
+          defaultUrl={getDefaultUrl()}
+          defaultRequestBody={getDefaultRequestBody()}
+          defaultVariables={getDefaultVariables()}
+          onTest={handleTest}
+        />
 
         {/* Instructions Text Box Component */}
         <div style={{
