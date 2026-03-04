@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import URLRequestResponseTest from '@/app/components/URLRequestResponseTest';
+import ConditionNavigator from '@/app/components/ConditionNavigator';
 
 // Local API route
 const API_URL = '/api/flow-steps';
@@ -414,6 +415,12 @@ export default function StepPage() {
             onTest={handleTest}
           />
         )}
+
+        {/* Condition Navigation Section - Show if step has conditions */}
+        <ConditionNavigator 
+          stepId={stepId} 
+          currentStepOrder={step.order} 
+        />
       </div>
     </div>
   );
