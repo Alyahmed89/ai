@@ -266,6 +266,7 @@ export default function Home() {
           <div style={{ marginTop: '1rem' }}>
             <p><strong>Flow Steps:</strong></p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <a href="/steps" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 'bold' }}>View All Steps →</a>
               <a href="/step/1" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 1: Requirements Gathering</a>
               <a href="/step/2" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 2: Design Phase</a>
               <a href="/step/3" style={{ color: '#3b82f6', textDecoration: 'none' }}>Step 3: Development</a>
@@ -288,11 +289,12 @@ export default function Home() {
           
           <div style={{ marginTop: '1rem' }}>
             <p><strong>Flows:</strong></p>
-            {flowsLoading ? (
-              <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Loading flows...</p>
-            ) : flows.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                {flows.map((flow) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <a href="/flows" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 'bold' }}>View All Flows →</a>
+              {flowsLoading ? (
+                <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Loading flows...</p>
+              ) : flows.length > 0 ? (
+                flows.map((flow) => (
                   <a 
                     key={flow.id} 
                     href={`/flow/${flow.id}`} 
@@ -300,11 +302,11 @@ export default function Home() {
                   >
                     {flow.name || `Flow: ${flow.id}`}
                   </a>
-                ))}
-              </div>
-            ) : (
-              <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>No flows found</p>
-            )}
+                ))
+              ) : (
+                <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>No flows found</p>
+              )}
+            </div>
           </div>
           
           <p style={{ marginTop: '0.5rem' }}>

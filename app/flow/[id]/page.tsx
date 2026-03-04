@@ -171,7 +171,7 @@ export default function FlowPage() {
           marginBottom: '2rem'
         }}>
           <a
-            href="/"
+            href="/flows"
             style={{
               display: 'inline-flex',
               alignItems: 'center',

@@ -10,6 +10,26 @@ const API_URL = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCO
 
 export async function GET(request: NextRequest) {
   try {
+    // Get query parameters
+    const { searchParams } = new URL(request.url);
+    const limit = searchParams.get('limit') || '50';
+    const offset = searchParams.get('offset') || '0';
+    const stepType = searchParams.get('step_type');
+    
+    // Build SQL query
+    let sql = `SELECT id, title, step_type, order_index FROM flow_steps`;
+    
+    const conditions = [];
+    if (stepType) {
+      conditions.push(`step_type = "${stepType}"`);
+    }
+    
+    if (conditions.length > 0) {
+      sql += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    
+    sql += ` ORDER BY order_index LIMIT ${limit} OFFSET ${offset}`;
+
     // Make API call to Cloudflare D1 to get all steps
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -18,7 +38,7 @@ export async function GET(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        sql: `SELECT id, title, step_type, order_index FROM flow_steps ORDER BY order_index LIMIT 20`
+        sql
       })
     });
 

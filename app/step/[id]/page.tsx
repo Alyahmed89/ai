@@ -312,7 +312,7 @@ export default function StepPage() {
           marginBottom: '2rem'
         }}>
           <a
-            href="/"
+            href="/steps"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
