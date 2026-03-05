@@ -2,9 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-
-// Local API route
-const API_URL = '/api/tasks';
+import { apiClient } from '@/lib/api-client';
 
 export default function TaskPage() {
   const params = useParams();
@@ -20,9 +18,9 @@ export default function TaskPage() {
       try {
         setLoading(true);
         
-        // Make API call to local API route for task data
+        // Make API call to Cloudflare Worker backend for task data
         console.log('Fetching task:', taskId);
-        const taskResponse = await fetch(`${API_URL}/${taskId}`);
+        const taskResponse = await apiClient.getTask(taskId);
         
         console.log('Task response status:', taskResponse.status);
         if (!taskResponse.ok) {

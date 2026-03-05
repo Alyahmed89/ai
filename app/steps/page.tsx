@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 export default function StepsPage() {
   const [steps, setSteps] = useState<any[]>([]);
@@ -11,7 +12,7 @@ export default function StepsPage() {
     const fetchSteps = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/flow-steps?limit=50');
+        const response = await apiClient.getFlowStepsList(50);
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);

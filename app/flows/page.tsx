@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 export default function FlowsPage() {
   const [flows, setFlows] = useState<any[]>([]);
@@ -11,7 +12,7 @@ export default function FlowsPage() {
     const fetchFlows = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/flow-definitions?limit=50');
+        const response = await apiClient.getFlowDefinitions(50);
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);

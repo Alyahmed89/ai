@@ -4,9 +4,7 @@ import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import URLRequestResponseTest from '@/app/components/URLRequestResponseTest';
 import ConditionNavigator from '@/app/components/ConditionNavigator';
-
-// Local API route
-const API_URL = '/api/flow-steps';
+import { apiClient } from '@/lib/api-client';
 
 export default function StepPage() {
   const params = useParams();
@@ -24,9 +22,9 @@ export default function StepPage() {
       try {
         setLoading(true);
         
-        // Make API call to local API route for step data
+        // Make API call to Cloudflare Worker backend for step data
         console.log('Fetching step:', stepId);
-        const stepResponse = await fetch(`${API_URL}/${stepId}`);
+        const stepResponse = await apiClient.getFlowStep(stepId);
         
         console.log('Step response status:', stepResponse.status);
         if (!stepResponse.ok) {
@@ -45,7 +43,7 @@ export default function StepPage() {
 
         // Fetch input data for the step
         console.log('Fetching input data for step:', stepId);
-        const inputResponse = await fetch(`${API_URL}/${stepId}/input`);
+        const inputResponse = await apiClient.getStepInput(stepId);
         
         if (inputResponse.ok) {
           const inputData = await inputResponse.json();
@@ -196,17 +194,11 @@ export default function StepPage() {
         };
       }
 
-      // Make the API call through our backend proxy to avoid CORS issues
-      const response = await fetch('/api/test-request', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          url,
-          requestBody: parsedBody,
-          apiKey
-        })
+      // Make the API call through Cloudflare Worker backend
+      const response = await apiClient.testRequest({
+        url,
+        requestBody: parsedBody,
+        apiKey
       });
       
       const result = await response.json();

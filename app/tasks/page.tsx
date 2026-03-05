@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -11,7 +12,7 @@ export default function TasksPage() {
     const fetchTasks = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/tasks?limit=50');
+        const response = await apiClient.getTasks(50);
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);

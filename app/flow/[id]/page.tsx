@@ -2,9 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-
-// Local API route
-const API_URL = '/api/flow-definitions';
+import { apiClient } from '@/lib/api-client';
 
 export default function FlowPage() {
   const params = useParams();
@@ -20,9 +18,9 @@ export default function FlowPage() {
       try {
         setLoading(true);
         
-        // Make API call to local API route for flow data
+        // Make API call to Cloudflare Worker backend for flow data
         console.log('Fetching flow:', flowId);
-        const flowResponse = await fetch(`${API_URL}/${flowId}`);
+        const flowResponse = await apiClient.getFlowDefinition(flowId);
         
         console.log('Flow response status:', flowResponse.status);
         if (!flowResponse.ok) {

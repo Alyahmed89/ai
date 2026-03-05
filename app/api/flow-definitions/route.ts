@@ -1,27 +1,30 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getFlowDefinitions } from '@/lib/flow-service';
+import { NextRequest } from 'next/server';
+import { proxyToWorker } from '@/lib/api-proxy';
 
 export const runtime = 'edge';
 
+/**
+ * DEPRECATED: This endpoint is now a proxy to Cloudflare Worker backend.
+ * All business logic has been moved to: https://deepseek-agent.alghamdimo89.workers.dev
+ * 
+ * This proxy maintains backward compatibility during migration.
+ */
 export async function GET(request: NextRequest) {
-  try {
-    // Get query parameters
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '20');
-    
-    // Get flow definitions using service
-    const flows = await getFlowDefinitions({
-      limit,
-      orderBy: 'priority',
-      orderDirection: 'DESC'
-    });
-    
-    return NextResponse.json(flows);
-  } catch (err) {
-    console.error('Error fetching flow definitions:', err);
-    return NextResponse.json(
-      { error: 'Failed to load flow definitions from database' },
-      { status: 500 }
-    );
-  }
+  return proxyToWorker('/api/flow-definitions', request);
+}
+
+export async function POST(request: NextRequest) {
+  return proxyToWorker('/api/flow-definitions', request);
+}
+
+export async function PUT(request: NextRequest) {
+  return proxyToWorker('/api/flow-definitions', request);
+}
+
+export async function DELETE(request: NextRequest) {
+  return proxyToWorker('/api/flow-definitions', request);
+}
+
+export async function PATCH(request: NextRequest) {
+  return proxyToWorker('/api/flow-definitions', request);
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -15,7 +16,7 @@ export default function Home() {
     const fetchFlows = async () => {
       try {
         setFlowsLoading(true);
-        const response = await fetch('/api/flow-definitions?limit=5');
+        const response = await apiClient.getFlowDefinitions(5);
         if (response.ok) {
           const data = await response.json();
           setFlows(data);
@@ -43,15 +44,9 @@ export default function Home() {
     setMessage('');
 
     try {
-      const response = await fetch('/api/d1/items', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name,
-          description
-        }),
+      const response = await apiClient.createD1Item({
+        name,
+        description
       });
 
       const data = await response.json();
@@ -77,7 +72,7 @@ export default function Home() {
     setMessage('');
 
     try {
-      const response = await fetch('/api/d1/init');
+      const response = await apiClient.initializeDatabase();
       const data = await response.json();
       
       if (data.success) {

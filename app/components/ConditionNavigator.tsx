@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 interface Condition {
   id: string;
@@ -33,7 +34,7 @@ export default function ConditionNavigator({ stepId, currentStepOrder }: Conditi
         setLoading(true);
         setError('');
         
-        const response = await fetch(`/api/flow-steps/${stepId}/conditions`);
+        const response = await apiClient.getStepConditions(stepId);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch conditions: ${response.status}`);
