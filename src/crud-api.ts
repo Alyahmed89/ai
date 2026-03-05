@@ -64,6 +64,27 @@ crudApi.get('/health', (c) => {
   });
 });
 
+// Test request endpoint (for API testing from frontend)
+crudApi.post('/test-request', async (c) => {
+  try {
+    const body = await c.req.json();
+    
+    return c.json({ 
+      success: true, 
+      received: body,
+      timestamp: new Date().toISOString(),
+      message: 'Test request received successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error processing test request:', error);
+    return c.json(
+      { success: false, error: 'Invalid request', statusCode: 400 },
+      400
+    );
+  }
+});
+
 // Get all flows
 crudApi.get('/flows', async (c) => {
   try {
@@ -573,6 +594,70 @@ crudApi.delete('/flow-steps/:id', async (c) => {
   }
 });
 
+// Get flow step input schema
+crudApi.get('/flow-steps/:id/input', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('SELECT input_keys FROM flow_steps WHERE id = ?').bind(id).first();
+
+    if (!result) {
+      return c.json(notFoundResponse('Flow step not found'));
+    }
+
+    // Parse input_keys JSON if it exists
+    let input_schema = null;
+    let input_validation_rules = null;
+    
+    if (result.input_keys) {
+      try {
+        const inputKeys = JSON.parse(result.input_keys);
+        // Use input_keys as input_schema for compatibility
+        input_schema = inputKeys;
+        // Create basic validation rules based on input_keys structure
+        input_validation_rules = {
+          required: Array.isArray(inputKeys) ? inputKeys.map((item: any) => item.key) : [],
+          types: {}
+        };
+      } catch (e) {
+        // If input_keys is not valid JSON, return it as-is
+        input_schema = result.input_keys;
+        input_validation_rules = { required: [], types: {} };
+      }
+    }
+
+    return c.json(successResponse({ 
+      input_schema, 
+      input_validation_rules 
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// Get flow step conditions
+crudApi.get('/flow-steps/:id/conditions', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare(
+      'SELECT * FROM flow_step_conditions WHERE flow_step_id = ? ORDER BY id'
+    ).bind(id).all();
+
+    return c.json(successResponse(result.results || []));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
 // Alias endpoints for backward compatibility: /api/steps -> /api/flow-steps
 crudApi.get('/steps', async (c) => {
   // Forward to /api/flow-steps handler
@@ -782,5 +867,77 @@ crudApi.post('/flow-runs/:flowRunId/iterations', async (c) => {
     return c.json({ message: 'Iteration created successfully', id }, 201);
   } catch (error) {
     return c.json(handleDbError(error), 500);
+  }
+});
+
+// Alias for /api/flow-definitions -> /api/flows
+crudApi.get('/flow-definitions', async (c) => {
+  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+});
+
+crudApi.get('/flow-definitions/:id', async (c) => {
+  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+});
+
+crudApi.post('/flow-definitions', async (c) => {
+  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+});
+
+crudApi.put('/flow-definitions/:id', async (c) => {
+  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+});
+
+crudApi.delete('/flow-definitions/:id', async (c) => {
+  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+});
+
+// D1 database items endpoint
+crudApi.post('/d1/items', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    const { table, data } = body;
+    
+    if (!table || !data) {
+      return c.json(errorResponse('Missing table or data', 400));
+    }
+    
+    const columns = Object.keys(data).join(', ');
+    const placeholders = Object.keys(data).map(() => '?').join(', ');
+    const values = Object.values(data);
+    
+    const sql = `INSERT INTO ${table} (${columns}) VALUES (${placeholders})`;
+    const result = await db.prepare(sql).bind(...values).run();
+    
+    return c.json(successResponse({ 
+      id: result.meta?.last_row_id,
+      message: 'Item inserted successfully'
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// D1 database initialization check endpoint
+crudApi.get('/d1/init', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const result = await db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    
+    return c.json(successResponse({ 
+      initialized: true,
+      timestamp: new Date().toISOString(),
+      tables: result.results?.map((t: any) => t.name) || []
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
   }
 });
