@@ -101,17 +101,10 @@ export default function StepPage() {
 
   // Helper functions to get default values from input data
   const getDefaultUrl = () => {
-    if (inputData?.input_keys) {
-      try {
-        const inputKeys = JSON.parse(inputData.input_keys);
-        if (Array.isArray(inputKeys) && inputKeys.length > 0) {
-          const config = inputKeys[0];
-          if (config.url) {
-            return config.url;
-          }
-        }
-      } catch (e) {
-        console.error('Failed to parse input_keys for URL:', e);
+    if (inputData?.input_schema && Array.isArray(inputData.input_schema) && inputData.input_schema.length > 0) {
+      const config = inputData.input_schema[0];
+      if (config.url) {
+        return config.url;
       }
     }
     
@@ -120,17 +113,10 @@ export default function StepPage() {
   };
 
   const getDefaultRequestBody = () => {
-    if (inputData?.input_keys) {
-      try {
-        const inputKeys = JSON.parse(inputData.input_keys);
-        if (Array.isArray(inputKeys) && inputKeys.length > 0) {
-          const config = inputKeys[0];
-          if (config.body) {
-            return JSON.stringify(config.body, null, 2);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to parse input_keys for request body:', e);
+    if (inputData?.input_schema && Array.isArray(inputData.input_schema) && inputData.input_schema.length > 0) {
+      const config = inputData.input_schema[0];
+      if (config.body) {
+        return JSON.stringify(config.body, null, 2);
       }
     }
     
@@ -145,25 +131,18 @@ export default function StepPage() {
   const getDefaultVariables = () => {
     const variables: Record<string, string> = {};
     
-    if (inputData?.input_keys) {
-      try {
-        const inputKeys = JSON.parse(inputData.input_keys);
-        if (Array.isArray(inputKeys) && inputKeys.length > 0) {
-          const config = inputKeys[0];
-          
-          // Extract variables from the config
-          if (config.auth_value) {
-            variables['{{auth_token}}'] = config.auth_value;
-          }
-          if (config.url) {
-            variables['{{api_url}}'] = config.url;
-          }
-          if (config.method) {
-            variables['{{http_method}}'] = config.method;
-          }
-        }
-      } catch (e) {
-        console.error('Failed to parse input_keys for variables:', e);
+    if (inputData?.input_schema && Array.isArray(inputData.input_schema) && inputData.input_schema.length > 0) {
+      const config = inputData.input_schema[0];
+      
+      // Extract variables from the config
+      if (config.auth_value) {
+        variables['{{auth_token}}'] = config.auth_value;
+      }
+      if (config.url) {
+        variables['{{api_url}}'] = config.url;
+      }
+      if (config.method) {
+        variables['{{http_method}}'] = config.method;
       }
     }
     
@@ -489,7 +468,7 @@ export default function StepPage() {
               fontFamily: 'monospace',
               resize: 'vertical'
             }}
-            value={step.description}
+            value={step.instructions || step.description || ''}
             readOnly
           />
           <div style={{

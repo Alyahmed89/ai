@@ -290,7 +290,7 @@ export default function ConditionNavigator({ stepId, currentStepOrder }: Conditi
                 fontSize: '1rem',
                 color: '#111827'
               }}>
-                {selectedCondition.next_step_title}
+                {selectedCondition.next_step_title || `Step ${selectedCondition.next_step}`}
               </div>
             </div>
             <div style={{
@@ -331,7 +331,7 @@ export default function ConditionNavigator({ stepId, currentStepOrder }: Conditi
             disabled={!selectedCondition.next_step_id && selectedCondition.next_step !== -1}
           >
             <span style={{ marginRight: '0.5rem' }}>→</span>
-            Go to {selectedCondition.next_step === -1 ? 'End Flow' : selectedCondition.next_step_title}
+            Go to {selectedCondition.next_step === -1 ? 'End Flow' : (selectedCondition.next_step_title || `Step ${selectedCondition.next_step}`)}
           </button>
         </>
       )}
