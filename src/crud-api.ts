@@ -709,6 +709,37 @@ crudApi.put('/flow-runs/:id', async (c) => {
   }
 });
 
+// Delete flow run
+crudApi.delete('/flow-runs/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    if (!id || !/^[0-9a-zA-Z_-]+$/.test(id)) {
+      return c.json(apiResponse(false, undefined, 'Invalid id', 400));
+    }
+
+    const sql = `
+      DELETE FROM flow_runs 
+      WHERE id = ?
+    `;
+
+    const result = await db.prepare(sql).bind(id).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Flow run not found', 404));
+    }
+
+    return c.json(apiResponse(true, { message: 'Flow run deleted successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
 // Get all iterations for a flow run
 crudApi.get('/flow-runs/:flowRunId/iterations', async (c) => {
   try {
