@@ -1,49 +1,34 @@
-# Cloudflare D1 CRUD Application
+# DeepSeek Agent API
 
-A minimalist Next.js frontend with Express.js backend for managing Cloudflare D1 database operations.
+A Cloudflare Worker-based API for managing conversations, flows, tasks, and steps with D1 database integration.
 
 ## Project Structure
 
 ```
-/workspace/
-├── frontend/          # Next.js frontend application
-├── backend/           # Express.js backend API
+/workspace/deepseek-agent/
+├── src/               # Cloudflare Worker source code
+│   ├── index-crud.ts  # Main application entry point
+│   ├── crud-api.ts    # CRUD API endpoints
+│   ├── types.ts       # TypeScript type definitions
+│   └── durable/       # Durable Objects implementation
+├── package.json       # Dependencies and scripts
 └── README.md          # This file
 ```
 
 ## Features
 
-- **Dashboard**: Overview of database statistics and API health
+- **Conversation Management**: Start, attach to, and check status of conversations
 - **Flows Management**: CRUD operations for flow definitions
 - **Tasks Management**: CRUD operations for tasks with status tracking
-- **Minimalist UI**: Clean, Clickup-like interface with Tailwind CSS
-- **Full CRUD Operations**: Create, Read, Update, Delete for all entities
+- **Steps Management**: Manage flow execution steps
+- **D1 Database Integration**: Cloudflare D1 database for persistent storage
+- **Durable Objects**: Stateful conversation execution with alarms
 
 ## Setup Instructions
 
-### Backend Setup
-
-1. Navigate to the backend directory:
+1. Navigate to the project directory:
    ```bash
-   cd /workspace/backend
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the backend server:
-   ```bash
-   npm start
-   ```
-   The backend will run on `http://localhost:48647`
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-   ```bash
-   cd /workspace/frontend
+   cd /workspace/deepseek-agent
    ```
 
 2. Install dependencies:
@@ -55,7 +40,7 @@ A minimalist Next.js frontend with Express.js backend for managing Cloudflare D1
    ```bash
    npm run dev
    ```
-   The frontend will run on `http://localhost:44479`
+   The API will run on the configured Cloudflare Workers dev server port
 
 ## API Endpoints
 
