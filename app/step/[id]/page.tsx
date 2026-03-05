@@ -201,7 +201,73 @@ export default function StepPage() {
         apiKey
       });
       
-      const result = await response.json();
+      // Check if the proxy endpoint exists
+      if (response.status === 404) {
+        console.warn('API proxy endpoint not found (404). Trying direct fetch...');
+        
+        // Try direct fetch as fallback
+        try {
+          const directResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': apiKey ? `Bearer ${apiKey}` : '',
+            },
+            body: JSON.stringify(parsedBody)
+          });
+          
+          const responseText = await directResponse.text();
+          let responseBody;
+          try {
+            responseBody = JSON.parse(responseText);
+          } catch {
+            responseBody = responseText;
+          }
+          
+          return {
+            status: directResponse.status,
+            statusText: directResponse.statusText,
+            headers: Object.fromEntries(directResponse.headers.entries()),
+            body: typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody, null, 2)
+          };
+        } catch (directErr) {
+          console.error('Direct fetch also failed:', directErr);
+          return {
+            status: 502,
+            statusText: 'Bad Gateway',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ 
+              error: 'API proxy endpoint not found and direct fetch failed',
+              message: 'The API proxy endpoint (/api/test-request) returned 404. Direct fetch also failed due to CORS or other issues.',
+              details: directErr instanceof Error ? directErr.message : 'Unknown error'
+            }, null, 2)
+          };
+        }
+      }
+      
+      // If not 404, try to parse the response as JSON
+      let result;
+      try {
+        const responseText = await response.text();
+        try {
+          result = JSON.parse(responseText);
+        } catch {
+          result = {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            body: responseText
+          };
+        }
+      } catch (err) {
+        console.error('Failed to parse response:', err);
+        return {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: `Failed to parse response: ${err instanceof Error ? err.message : 'Unknown error'}`
+        };
+      }
       
       return result;
     } catch (err) {
@@ -212,9 +278,47 @@ export default function StepPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ 
           error: 'API test failed',
-          message: err instanceof Error ? err.message : 'Unknown error'
+          message: err instanceof Error ? err.message : 'Unknown error',
+          note: 'The API proxy endpoint might not be implemented on the backend.'
         }, null, 2)
       };
+    }
+  };
+
+  // Helper function to format dates from various formats
+  const formatDate = (dateValue: any): string => {
+    if (!dateValue) return 'N/A';
+    
+    try {
+      // Handle Unix timestamp (seconds)
+      if (typeof dateValue === 'number') {
+        // Check if it's in seconds (typical Unix timestamp) or milliseconds
+        const timestamp = dateValue < 10000000000 ? dateValue * 1000 : dateValue;
+        return new Date(timestamp).toLocaleDateString();
+      }
+      
+      // Handle string dates
+      if (typeof dateValue === 'string') {
+        // Try to parse the date string
+        const date = new Date(dateValue);
+        if (!isNaN(date.getTime())) {
+          return date.toLocaleDateString();
+        }
+        
+        // Try to handle MySQL/ISO-like format without timezone
+        const mysqlDate = dateValue.replace(' ', 'T');
+        const mysqlDateWithTimezone = mysqlDate.includes('Z') ? mysqlDate : mysqlDate + 'Z';
+        const mysqlParsed = new Date(mysqlDateWithTimezone);
+        if (!isNaN(mysqlParsed.getTime())) {
+          return mysqlParsed.toLocaleDateString();
+        }
+      }
+      
+      // Fallback
+      return 'Invalid Date';
+    } catch (error) {
+      console.error('Error formatting date:', dateValue, error);
+      return 'Invalid Date';
     }
   };
 
@@ -393,7 +497,7 @@ export default function StepPage() {
             fontSize: '0.875rem',
             color: '#6b7280'
           }}>
-            Step ID: {step.id} • Created: {new Date(step.created_at).toLocaleDateString()} • Updated: {new Date(step.updated_at).toLocaleDateString()}
+            Step ID: {step.id} • Created: {formatDate(step.created_at)} • Updated: {formatDate(step.updated_at)}
           </div>
         </div>
 
