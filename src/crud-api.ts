@@ -67,21 +67,57 @@ crudApi.get('/health', (c) => {
 // Test request endpoint (for API testing from frontend)
 crudApi.post('/test-request', async (c) => {
   try {
-    const body = await c.req.json();
+    const { url, method = 'GET', headers = {}, body: requestBody = null } = await c.req.json();
     
-    return c.json({ 
-      success: true, 
-      received: body,
-      timestamp: new Date().toISOString(),
-      message: 'Test request received successfully'
+    if (!url) {
+      return c.json({ error: 'URL is required' }, 400);
+    }
+    
+    // Validate URL
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch (e) {
+      return c.json({ error: 'Invalid URL' }, 400);
+    }
+    
+    // Make the actual HTTP request
+    const fetchOptions: RequestInit = {
+      method: method.toUpperCase(),
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers
+      }
+    };
+    
+    if (requestBody && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
+      fetchOptions.body = JSON.stringify(requestBody);
+    }
+    
+    const response = await fetch(url, fetchOptions);
+    
+    // Get response body as text
+    const responseBody = await response.text();
+    
+    // Convert headers to plain object
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    
+    return c.json({
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      body: responseBody
     });
     
   } catch (error) {
-    console.error('Error processing test request:', error);
-    return c.json(
-      { success: false, error: 'Invalid request', statusCode: 400 },
-      400
-    );
+    console.error('Error making test request:', error);
+    return c.json({ 
+      error: 'Failed to make request',
+      details: error instanceof Error ? error.message : String(error)
+    }, 500);
   }
 });
 
@@ -90,15 +126,14 @@ crudApi.get('/flows', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+      return c.json({ error: 'Database not configured' }, 500);
     }
 
-    // Ensure tables exist before querying
-
     const result = await db.prepare('SELECT * FROM flows ORDER BY created_at DESC').all();
-    return c.json(apiResponse(true, result.results || []));
+    return c.json(result.results || []);
   } catch (error) {
-    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+    console.error('Error fetching flows:', error);
+    return c.json({ error: 'Internal server error' }, 500);
   }
 });
 
@@ -107,19 +142,20 @@ crudApi.get('/flows/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+      return c.json({ error: 'Database not configured' }, 500);
     }
 
     const id = c.req.param('id');
     const result = await db.prepare('SELECT * FROM flows WHERE id = ?').bind(id).first();
 
     if (!result) {
-      return c.json(apiResponse(false, undefined, 'Flow not found', 404));
+      return c.json({ error: 'Flow not found' }, 404);
     }
 
-    return c.json(apiResponse(true, result));
+    return c.json(result);
   } catch (error) {
-    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+    console.error('Error fetching flow:', error);
+    return c.json({ error: 'Internal server error' }, 500);
   }
 });
 
@@ -418,19 +454,20 @@ crudApi.get('/flow-steps/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ error: 'Database not configured' }, 500);
     }
 
     const id = c.req.param('id');
     const result = await db.prepare('SELECT * FROM flow_steps WHERE id = ?').bind(id).first();
 
     if (!result) {
-      return c.json(notFoundResponse('Flow step not found'));
+      return c.json({ error: 'Flow step not found' }, 404);
     }
 
-    return c.json(successResponse(result));
+    return c.json(result);
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    console.error('Error fetching flow step:', error);
+    return c.json({ error: 'Internal server error' }, 500);
   }
 });
 
@@ -599,14 +636,14 @@ crudApi.get('/flow-steps/:id/input', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ error: 'Database not configured' }, 500);
     }
 
     const id = c.req.param('id');
     const result = await db.prepare('SELECT input_keys FROM flow_steps WHERE id = ?').bind(id).first();
 
     if (!result) {
-      return c.json(notFoundResponse('Flow step not found'));
+      return c.json({ error: 'Flow step not found' }, 404);
     }
 
     // Parse input_keys JSON if it exists
@@ -630,12 +667,13 @@ crudApi.get('/flow-steps/:id/input', async (c) => {
       }
     }
 
-    return c.json(successResponse({ 
+    return c.json({ 
       input_schema, 
       input_validation_rules 
-    }));
+    });
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    console.error('Error fetching flow step input:', error);
+    return c.json({ error: 'Internal server error' }, 500);
   }
 });
 
@@ -644,17 +682,49 @@ crudApi.get('/flow-steps/:id/conditions', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      return c.json(errorResponse('Database not configured', 500));
+      return c.json({ error: 'Database not configured' }, 500);
     }
 
     const id = c.req.param('id');
-    const result = await db.prepare(
+    const conditions = await db.prepare(
       'SELECT * FROM flow_step_conditions WHERE flow_step_id = ? ORDER BY id'
     ).bind(id).all();
 
-    return c.json(successResponse(result.results || []));
+    // Get next step information for each condition
+    const conditionsWithNextStep = await Promise.all(
+      (conditions.results || []).map(async (condition: any) => {
+        if (condition.next_step) {
+          try {
+            const nextStep = await db.prepare(
+              'SELECT id, title FROM flow_steps WHERE id = ?'
+            ).bind(condition.next_step).first();
+            
+            return {
+              ...condition,
+              next_step_title: nextStep?.title || null,
+              next_step_id: condition.next_step
+            };
+          } catch (e) {
+            console.error('Error fetching next step:', e);
+            return {
+              ...condition,
+              next_step_title: null,
+              next_step_id: condition.next_step
+            };
+          }
+        }
+        return {
+          ...condition,
+          next_step_title: null,
+          next_step_id: null
+        };
+      })
+    );
+
+    return c.json(conditionsWithNextStep);
   } catch (error) {
-    return c.json(errorResponse(handleDbError(error).error, 500));
+    console.error('Error fetching flow step conditions:', error);
+    return c.json({ error: 'Internal server error' }, 500);
   }
 });
 
