@@ -3,6 +3,9 @@ import { getAllItems, createItem, updateItem, deleteItem, getItemById } from '@/
 
 export const runtime = 'edge';
 
+// Allowlist of safe table names to prevent SQL injection
+const ALLOWED_TABLES = ['test_items'];
+
 // GET all items
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +30,26 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description } = body;
+    const { table = 'test_items', name, description } = body;
+    
+    // Validate table name to prevent SQL injection
+    if (!ALLOWED_TABLES.includes(table)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid table', statusCode: 400 },
+        { status: 400 }
+      );
+    }
+    
+    // Validate column names to prevent SQL injection
+    const columnRegex = /^[a-zA-Z0-9_]+$/;
+    for (const key of Object.keys(body)) {
+      if (!columnRegex.test(key)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid column name', statusCode: 400 },
+          { status: 400 }
+        );
+      }
+    }
     
     if (!name) {
       return NextResponse.json({
@@ -65,7 +87,26 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, name, description } = body;
+    const { table = 'test_items', id, name, description } = body;
+    
+    // Validate table name to prevent SQL injection
+    if (!ALLOWED_TABLES.includes(table)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid table', statusCode: 400 },
+        { status: 400 }
+      );
+    }
+    
+    // Validate column names to prevent SQL injection
+    const columnRegex = /^[a-zA-Z0-9_]+$/;
+    for (const key of Object.keys(body)) {
+      if (!columnRegex.test(key)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid column name', statusCode: 400 },
+          { status: 400 }
+        );
+      }
+    }
     
     if (!id || !name) {
       return NextResponse.json({
