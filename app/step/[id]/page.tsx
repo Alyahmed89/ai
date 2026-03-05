@@ -372,6 +372,11 @@ export default function StepPage() {
     );
   }
 
+  // Debug: log step data
+  console.log('Step data in render:', step);
+  console.log('Step instructions:', step?.instructions);
+  console.log('Step instructions length:', step?.instructions?.length);
+  
   return (
     <div style={{
       minHeight: '100vh',
@@ -423,7 +428,7 @@ export default function StepPage() {
                 fontSize: '1.125rem',
                 color: '#6b7280'
               }}>
-                Step {step.order} • {step.step_type}
+                Step {step.order_index || step.order || 0} • {step.step_type}
               </p>
             </div>
           </div>
@@ -454,6 +459,19 @@ export default function StepPage() {
           }}>
             Instructions
           </h2>
+          <div style={{
+            marginBottom: '0.5rem',
+            fontSize: '0.875rem',
+            color: '#6b7280',
+            fontFamily: 'monospace',
+            backgroundColor: '#f3f4f6',
+            padding: '0.5rem',
+            borderRadius: '0.25rem'
+          }}>
+            Debug: instructions exists: {step.instructions ? 'YES' : 'NO'}, 
+            length: {step.instructions ? step.instructions.length : 0}, 
+            description exists: {step.description ? 'YES' : 'NO'}
+          </div>
           <textarea
             style={{
               width: '100%',
@@ -471,6 +489,24 @@ export default function StepPage() {
             value={step.instructions || step.description || ''}
             readOnly
           />
+          {/* Alternative: try a div instead of textarea */}
+          <div style={{
+            display: 'none',
+            width: '100%',
+            minHeight: '300px',
+            padding: '1rem',
+            fontSize: '1rem',
+            color: '#4b5563',
+            lineHeight: '1.5',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            backgroundColor: '#f9fafb',
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap',
+            overflow: 'auto'
+          }}>
+            {step.instructions || step.description || 'No instructions available'}
+          </div>
           <div style={{
             marginTop: '1rem',
             fontSize: '0.875rem',
