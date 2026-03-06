@@ -59,6 +59,11 @@ A Cloudflare Worker-based API for managing conversations, flows, tasks, and step
 - `DELETE /api/tasks/:id` - Delete task
 - `GET /api/flow-conditions` - Get all flow conditions
 - `GET /api/flow-runs` - Get all flow runs
+- `GET /api/flow-runs/:id` - Get flow run by ID
+- `POST /api/flow-runs` - Create new flow run
+- `PUT /api/flow-runs/:id` - Update flow run
+- `DELETE /api/flow-runs/:id` - Delete flow run
+- `GET /api/flow-runs/:flowRunId/iterations` - Get iterations for a flow run
 
 ## Database Schema
 
@@ -76,11 +81,14 @@ The application works with the following Cloudflare D1 tables:
 4. **tasks** - Task management
    - `id`, `flow_id`, `title`, `description`, `status`, `order_index`, `created_at`
 
-5. **flow_runs** - Flow execution history
-   - `id`, `flow_id`, `status`, `started_at`, `completed_at`, `created_at`
+5. **flow_runs** - Flow execution history with prompts and responses
+   - `id`, `flow_id`, `conversation_id`, `step_id`, `input_prompt`, `output_response`, `status`, `duration_ms`, `created_at`, `next_flow_id`
 
-6. **iterations** - Iteration tracking
-   - `id`, `flow_run_id`, `iteration_number`, `status`, `created_at`
+6. **iterations** - Iteration tracking (table exists in schema but may not be populated)
+   - `id`, `flow_run_id`, `iteration_number`, `prompt`, `response`, `openhands_response`, `status`, `created_at`
+   
+7. **flow_execution_data** - Flow execution metadata
+   - `id`, `flow_id`, `conversation_id`, `key`, `value`, `created_at`, `updated_at`
 
 ## Cloudflare D1 Configuration
 
