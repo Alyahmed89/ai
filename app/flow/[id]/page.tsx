@@ -25,7 +25,7 @@ export default function FlowPage() {
         
         // Make API call to Cloudflare Worker backend for flow data
         console.log('Fetching flow:', flowId);
-        const flowResponse = await apiClient.getFlowDefinition(flowId);
+        const flowResponse = await apiClient.getFlow(flowId);
         
         console.log('Flow response status:', flowResponse.status);
         if (!flowResponse.ok) {
@@ -75,7 +75,7 @@ export default function FlowPage() {
     setEditSuccess('');
 
     try {
-      const response = await apiClient.updateFlowDefinition(flowId, editData);
+      const response = await apiClient.updateFlow(flowId, editData);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -117,7 +117,7 @@ export default function FlowPage() {
     setDeleteError('');
 
     try {
-      const response = await apiClient.deleteFlowDefinition(flowId);
+      const response = await apiClient.deleteFlow(flowId);
       
       if (!response.ok) {
         const errorData = await response.json();

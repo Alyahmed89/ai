@@ -28,7 +28,7 @@ export default function FlowsPage() {
   const fetchFlows = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.getFlowDefinitions(50);
+      const response = await apiClient.getFlows(50);
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -61,7 +61,7 @@ export default function FlowsPage() {
     setCreateSuccess('');
 
     try {
-      const response = await apiClient.createFlowDefinition(formData);
+      const response = await apiClient.createFlow(formData);
       
       if (!response.ok) {
         const errorData = await response.json();

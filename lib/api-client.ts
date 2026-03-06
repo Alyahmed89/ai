@@ -52,6 +52,30 @@ export const apiClient = {
       method: 'DELETE'
     }),
   
+  // Flows
+  getFlows: (limit?: number) => 
+    apiFetch(`/api/flows${limit ? `?limit=${limit}` : ''}`),
+  
+  getFlow: (id: string) => 
+    apiFetch(`/api/flows/${id}`),
+  
+  createFlow: (data: any) => 
+    apiFetch('/api/flows', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  
+  updateFlow: (id: string, data: any) => 
+    apiFetch(`/api/flows/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  
+  deleteFlow: (id: string) => 
+    apiFetch(`/api/flows/${id}`, {
+      method: 'DELETE'
+    }),
+  
   // Flow Definitions
   getFlowDefinitions: (limit?: number) => 
     apiFetch(`/api/flow-definitions${limit ? `?limit=${limit}` : ''}`),
