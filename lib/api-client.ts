@@ -72,7 +72,7 @@ export const apiClient = {
     apiFetch('/api/d1/init'),
   
   // Test Request Proxy
-  testRequest: (data: { url: string; requestBody: any; apiKey?: string }) => 
+  testRequest: (data: { method: string; url: string; requestBody: any; apiKey?: string }) => 
     apiFetch('/api/test-request', {
       method: 'POST',
       body: JSON.stringify(data)

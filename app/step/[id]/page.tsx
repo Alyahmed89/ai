@@ -100,6 +100,18 @@ export default function StepPage() {
   }
 
   // Helper functions to get default values from input data
+  const getDefaultMethod = () => {
+    if (inputData?.input_schema && Array.isArray(inputData.input_schema) && inputData.input_schema.length > 0) {
+      const config = inputData.input_schema[0];
+      if (config.method) {
+        return config.method;
+      }
+    }
+    
+    // Default fallback
+    return 'POST';
+  };
+
   const getDefaultUrl = () => {
     if (inputData?.input_schema && Array.isArray(inputData.input_schema) && inputData.input_schema.length > 0) {
       const config = inputData.input_schema[0];
@@ -149,32 +161,48 @@ export default function StepPage() {
     // Add some default variables
     variables['{{step_id}}'] = stepId;
     variables['{{timestamp}}'] = new Date().toISOString();
+    variables['{{method}}'] = getDefaultMethod();
     
     return variables;
   };
 
-  const handleTest = async (url: string, requestBody: string, apiKey: string) => {
-    console.log('Testing API with:', { url, requestBody, apiKey: apiKey ? '***' + apiKey.slice(-4) : 'Not provided' });
+  const handleTest = async (method: string, url: string, requestBody: string, apiKey: string) => {
+    console.log('Testing API with:', { method, url, requestBody, apiKey: apiKey ? '***' + apiKey.slice(-4) : 'Not provided' });
     
     try {
       // Parse the request body JSON to validate it
       let parsedBody;
-      try {
-        parsedBody = JSON.parse(requestBody);
-      } catch (e) {
-        return {
-          status: 400,
-          statusText: 'Bad Request',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ 
-            error: 'Invalid JSON in request body',
-            message: e instanceof Error ? e.message : 'Unknown error'
-          }, null, 2)
-        };
+      // For GET and HEAD requests, body might be empty or not needed
+      if (method === 'GET' || method === 'HEAD') {
+        if (requestBody.trim()) {
+          try {
+            parsedBody = JSON.parse(requestBody);
+          } catch {
+            // For GET/HEAD, if JSON is invalid but not empty, use empty object
+            parsedBody = {};
+          }
+        } else {
+          parsedBody = {};
+        }
+      } else {
+        try {
+          parsedBody = JSON.parse(requestBody);
+        } catch (e) {
+          return {
+            status: 400,
+            statusText: 'Bad Request',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ 
+              error: 'Invalid JSON in request body',
+              message: e instanceof Error ? e.message : 'Unknown error'
+            }, null, 2)
+          };
+        }
       }
 
       // Make the API call through Cloudflare Worker backend
       const response = await apiClient.testRequest({
+        method,
         url,
         requestBody: parsedBody,
         apiKey
@@ -187,12 +215,12 @@ export default function StepPage() {
         // Try direct fetch as fallback
         try {
           const directResponse = await fetch(url, {
-            method: 'POST',
+            method: method,
             headers: {
               'Content-Type': 'application/json',
               'Authorization': apiKey ? `Bearer ${apiKey}` : '',
             },
-            body: JSON.stringify(parsedBody)
+            body: method !== 'GET' && method !== 'HEAD' ? JSON.stringify(parsedBody) : undefined
           });
           
           const responseText = await directResponse.text();
@@ -437,6 +465,7 @@ export default function StepPage() {
         {/* Input Section - For fetching data */}
         <URLRequestResponseTest
           title="Input"
+          defaultMethod={getDefaultMethod()}
           defaultUrl={getDefaultUrl()}
           defaultRequestBody={getDefaultRequestBody()}
           defaultApiKey="H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"
@@ -520,6 +549,7 @@ export default function StepPage() {
         {step.output && (
           <URLRequestResponseTest
             title="Output"
+            defaultMethod={getDefaultMethod()}
             defaultUrl={inputData?.output_url || getDefaultUrl()}
             defaultRequestBody={inputData?.output_payload_template || getDefaultRequestBody()}
             defaultApiKey={inputData?.output_auth_token || "H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL"}

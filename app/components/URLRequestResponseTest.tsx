@@ -6,12 +6,13 @@ interface URLRequestResponseTestProps {
   // Component title
   title?: string;
   // Default values for the component
+  defaultMethod?: string;
   defaultUrl?: string;
   defaultRequestBody?: string;
   defaultResponse?: string;
   defaultApiKey?: string;
   // Callback when test button is clicked
-  onTest?: (url: string, requestBody: string, apiKey: string) => Promise<{
+  onTest?: (method: string, url: string, requestBody: string, apiKey: string) => Promise<{
     status: number;
     statusText: string;
     headers: Record<string, string>;
@@ -21,12 +22,14 @@ interface URLRequestResponseTestProps {
 
 export default function URLRequestResponseTest({
   title = 'Input',
+  defaultMethod = 'POST',
   defaultUrl = 'https://api.example.com/endpoint',
   defaultRequestBody = '{\n  "method": "POST",\n  "headers": {\n    "Content-Type": "application/json"\n  },\n  "body": {\n    "key": "value"\n  }\n}',
   defaultResponse = '{\n  "status": "success",\n  "data": {\n    "id": 123,\n    "message": "Request processed successfully"\n  }\n}',
   defaultApiKey = '',
   onTest
 }: URLRequestResponseTestProps) {
+  const [method, setMethod] = useState(defaultMethod);
   const [url, setUrl] = useState(defaultUrl);
   const [requestBody, setRequestBody] = useState(defaultRequestBody);
   const [apiKey, setApiKey] = useState(defaultApiKey);
@@ -48,7 +51,7 @@ export default function URLRequestResponseTest({
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      setTestResult(`Test completed at ${new Date().toLocaleTimeString()}\n\nURL: ${url}\n\nAPI Key: ${apiKey ? '***' + apiKey.slice(-4) : 'Not provided'}\n\nRequest Body:\n${requestBody}`);
+      setTestResult(`Test completed at ${new Date().toLocaleTimeString()}\n\nMethod: ${method}\n\nURL: ${url}\n\nAPI Key: ${apiKey ? '***' + apiKey.slice(-4) : 'Not provided'}\n\nRequest Body:\n${requestBody}`);
       setIsTesting(false);
       return;
     }
@@ -59,10 +62,10 @@ export default function URLRequestResponseTest({
       setTestResult('Testing...');
       setShowResponse(true);
       
-      const result = await onTest(url, requestBody, apiKey);
+      const result = await onTest(method, url, requestBody, apiKey);
       
       // Format the response for display
-      const formattedResponse = `Test completed at ${new Date().toLocaleTimeString()}\n\nStatus: ${result.status} ${result.statusText}\n\nHeaders:\n${JSON.stringify(result.headers, null, 2)}\n\nOutput Body:\n${result.body}`;
+      const formattedResponse = `Test completed at ${new Date().toLocaleTimeString()}\n\nMethod: ${method}\n\nStatus: ${result.status} ${result.statusText}\n\nHeaders:\n${JSON.stringify(result.headers, null, 2)}\n\nOutput Body:\n${result.body}`;
       setTestResult(formattedResponse);
       setResponse(result.body);
     } catch (err: any) {
@@ -100,7 +103,7 @@ export default function URLRequestResponseTest({
         {title}
       </h2>
 
-      {/* URL Input */}
+      {/* Method and URL Input */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{
           display: 'block',
@@ -109,22 +112,50 @@ export default function URLRequestResponseTest({
           color: '#374151',
           marginBottom: '0.5rem'
         }}>
-          API Endpoint URL
+          HTTP Method & API Endpoint URL
         </label>
-        <input
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '0.75rem',
-            border: '1px solid #d1d5db',
-            borderRadius: '0.5rem',
-            fontSize: '1rem',
-            fontFamily: 'monospace'
-          }}
-          placeholder="Enter API endpoint URL"
-        />
+        <div style={{
+          display: 'flex',
+          gap: '0.5rem',
+          alignItems: 'center'
+        }}>
+          <select
+            value={method}
+            onChange={(e) => setMethod(e.target.value)}
+            style={{
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              fontSize: '1rem',
+              fontFamily: 'monospace',
+              backgroundColor: 'white',
+              minWidth: '120px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+            <option value="HEAD">HEAD</option>
+            <option value="OPTIONS">OPTIONS</option>
+          </select>
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            style={{
+              flex: '1',
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              fontSize: '1rem',
+              fontFamily: 'monospace'
+            }}
+            placeholder="Enter API endpoint URL"
+          />
+        </div>
       </div>
 
       {/* API Key Input */}
