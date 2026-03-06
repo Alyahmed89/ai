@@ -288,7 +288,7 @@ crudApi.get('/flows/:flowId/steps', async (c) => {
     }
 
     const flowId = c.req.param('flowId');
-    const result = await db.prepare('SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY step_number').bind(flowId).all();
+    const result = await db.prepare('SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
     
     return c.json(result.results || []);
   } catch (error) {
