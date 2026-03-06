@@ -6,6 +6,8 @@ import {
   flowStepUpdateSchema,
   flowCreateSchema,
   flowUpdateSchema,
+  flowDefinitionCreateSchema,
+  flowDefinitionUpdateSchema,
   taskCreateSchema,
   taskUpdateSchema,
   validateSchema 
@@ -940,25 +942,180 @@ crudApi.post('/flow-runs/:flowRunId/iterations', async (c) => {
   }
 });
 
-// Alias for /api/flow-definitions -> /api/flows
+// Get all flow definitions
 crudApi.get('/flow-definitions', async (c) => {
-  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const result = await db.prepare('SELECT * FROM flow_definitions ORDER BY priority DESC, created_at DESC').all();
+    return c.json(result.results || []);
+  } catch (error) {
+    console.error('Error fetching flow definitions:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
 });
 
+// Get flow definition by ID
 crudApi.get('/flow-definitions/:id', async (c) => {
-  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('SELECT * FROM flow_definitions WHERE id = ?').bind(id).first();
+
+    if (!result) {
+      return c.json({ error: 'Flow definition not found' }, 404);
+    }
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching flow definition:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
 });
 
+// Create new flow definition
 crudApi.post('/flow-definitions', async (c) => {
-  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(flowDefinitionCreateSchema, body);
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { id, name, description, max_iterations, repository, branch, next_flow_id, priority } = validatedData;
+    
+    const sql = `
+      INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, next_flow_id, priority, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `;
+
+    await db.prepare(sql).bind(
+      id,
+      name,
+      dbValue(description),
+      max_iterations || 20,
+      repository,
+      branch || 'main',
+      dbValue(next_flow_id),
+      priority || 0
+    ).run();
+    
+    return c.json(apiResponse(true, { id, message: 'Flow definition created successfully' }, undefined, 201));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
 });
 
+// Update flow definition
 crudApi.put('/flow-definitions/:id', async (c) => {
-  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(flowDefinitionUpdateSchema, { ...body, id });
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { name, description, max_iterations, repository, branch, next_flow_id, priority } = validatedData;
+
+    // Build dynamic SQL for partial updates
+    const updates: string[] = [];
+    const values: any[] = [];
+    
+    if (name !== undefined) {
+      updates.push('name = ?');
+      values.push(name);
+    }
+    if (description !== undefined) {
+      updates.push('description = ?');
+      values.push(dbValue(description));
+    }
+    if (max_iterations !== undefined) {
+      updates.push('max_iterations = ?');
+      values.push(max_iterations);
+    }
+    if (repository !== undefined) {
+      updates.push('repository = ?');
+      values.push(repository);
+    }
+    if (branch !== undefined) {
+      updates.push('branch = ?');
+      values.push(branch);
+    }
+    if (next_flow_id !== undefined) {
+      updates.push('next_flow_id = ?');
+      values.push(dbValue(next_flow_id));
+    }
+    if (priority !== undefined) {
+      updates.push('priority = ?');
+      values.push(priority);
+    }
+    
+    // Always update the updated_at timestamp
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    
+    if (updates.length === 1) { // Only updated_at was added
+      return c.json(apiResponse(false, undefined, 'No fields to update', 400));
+    }
+    
+    const sql = `UPDATE flow_definitions SET ${updates.join(', ')} WHERE id = ?`;
+    values.push(id);
+    
+    const result = await db.prepare(sql).bind(...values).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Flow definition not found', 404));
+    }
+
+    return c.json(apiResponse(true, { id, message: 'Flow definition updated successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
 });
 
+// Delete flow definition
 crudApi.delete('/flow-definitions/:id', async (c) => {
-  return crudApi.fetch(new Request(c.req.url.replace('/flow-definitions', '/flows'), c.req));
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    const result = await db.prepare('DELETE FROM flow_definitions WHERE id = ?').bind(id).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Flow definition not found', 404));
+    }
+
+    return c.json(apiResponse(true, { id, message: 'Flow definition deleted successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
 });
 
 

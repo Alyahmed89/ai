@@ -66,6 +66,33 @@ export const flowUpdateSchema = flowCreateSchema.partial().extend({
   id: z.string().min(1, 'id is required for update'),
 });
 
+// Flow Definition Schema
+export const flowDefinitionSchema = z.object({
+  id: z.string().min(1, 'id is required'),
+  name: z.string().min(1, 'name is required'),
+  description: z.string().optional().nullable(),
+  max_iterations: z.number().int().positive().default(20),
+  repository: z.string().min(1, 'repository is required'),
+  branch: z.string().default('main'),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+  next_flow_id: z.string().optional().nullable(),
+  priority: z.number().int().default(0),
+});
+
+// Flow Definition Create Schema
+export const flowDefinitionCreateSchema = flowDefinitionSchema.omit({ 
+  created_at: true, 
+  updated_at: true 
+}).extend({
+  id: z.string().min(1, 'id is required'),
+});
+
+// Flow Definition Update Schema
+export const flowDefinitionUpdateSchema = flowDefinitionCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update'),
+});
+
 // Task Schema (simplified - actual schema has 31 columns)
 export const taskSchema = z.object({
   id: idSchema,
