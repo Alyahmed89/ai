@@ -421,21 +421,38 @@ export default function FlowPage() {
                   </button>
                 </>
               ) : (
-                <button
-                  onClick={handleEdit}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    cursor: 'pointer',
-                    fontWeight: '500',
-                    fontSize: '0.875rem'
-                  }}
-                >
-                  Edit
-                </button>
+                <>
+                  <button
+                    onClick={() => window.location.href = `/flows/${flowId}/steps`}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#8b5cf6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    View Steps
+                  </button>
+                  <button
+                    onClick={handleEdit}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    Edit
+                  </button>
+                </>
               )}
             </div>
           </div>

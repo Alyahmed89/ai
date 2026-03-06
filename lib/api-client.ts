@@ -86,6 +86,10 @@ export const apiClient = {
   getFlowStep: (id: string) => 
     apiFetch(`/api/flow-steps/${id}`),
   
+  // New endpoint for flow-specific steps
+  getFlowSpecificSteps: (flowId: string) => 
+    apiFetch(`/api/flows/${flowId}/steps`),
+  
   createFlowStep: (data: any) => 
     apiFetch('/api/flow-steps', {
       method: 'POST',
