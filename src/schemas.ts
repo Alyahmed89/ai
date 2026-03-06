@@ -23,6 +23,7 @@ export const flowStepSchema = z.object({
   output_url: z.string().url().optional().nullable().default(null),
   output_payload_template: z.string().optional().nullable().default(null),
   default_next_step: z.number().int().optional().nullable().default(null),
+  default_next_step_id: z.string().optional().nullable().default(null),
   output_auth_token: z.string().optional().nullable().default(null),
   input_keys: z.string().optional().nullable().default(null),
   output: booleanSchema.default(false),

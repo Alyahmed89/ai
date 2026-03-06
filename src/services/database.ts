@@ -611,7 +611,8 @@ export async function getNextStepBasedOnConditions(
     
     // First, check if current step has conditions
     const conditionsQuery = `
-      SELECT fsc.condition_type, fsc.condition_value, fsc.condition_operator, fsc.next_step
+      SELECT fsc.condition_type, fsc.condition_value, fsc.condition_operator, 
+             fsc.next_step, fsc.next_step_id
       FROM flow_step_conditions fsc
       WHERE fsc.flow_step_id = ?
       ORDER BY fsc.created_at
@@ -624,7 +625,7 @@ export async function getNextStepBasedOnConditions(
       
       // Check each condition against the response
       for (const condition of conditionsResult.results) {
-        const { condition_type, condition_value, condition_operator, next_step } = condition;
+        const { condition_type, condition_value, condition_operator, next_step, next_step_id } = condition;
         let conditionMet = false;
         
         switch (condition_type) {
@@ -647,11 +648,11 @@ export async function getNextStepBasedOnConditions(
         }
         
         if (conditionMet) {
-          console.log(`[DATABASE] Condition met: ${condition_type} "${condition_value}" -> next_step: ${next_step}`);
+          console.log(`[DATABASE] Condition met: ${condition_type} "${condition_value}" -> next_step_id: ${next_step_id}, next_step (legacy): ${next_step}`);
           
-          // Special case: next_step = -1 means terminate flow
-          if (next_step === -1) {
-            console.log(`[DATABASE] Termination condition met (next_step = -1), flow should end`);
+          // Check for termination first (next_step_id = 'TERMINATE_FLOW' or next_step = -1)
+          if (next_step_id === 'TERMINATE_FLOW' || next_step === -1) {
+            console.log(`[DATABASE] Termination condition met, flow should end`);
             // Return a special marker to indicate termination
             return {
               step_id: 'TERMINATE_FLOW',
@@ -672,36 +673,73 @@ export async function getNextStepBasedOnConditions(
             } as unknown as StepData;
           }
           
-          // Get the step details for the next step
-          const nextStepQuery = `
-            SELECT 
-              fs.id as step_id,
-              fs.step_key,
-              fs.title,
-              fs.instructions as description,
-              fs.step_type,
-              fs.order_index,
-              fs.page_key,
-              fs.blocking,
-              fs.auto_fail_on_error,
-              fs.retryable,
-              fs.task_id,
-              fs.input_keys,
-              CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
-              fs.output_url,
-              fs.output_auth_token
-            FROM flow_steps fs
-            WHERE fs.flow_id = ? AND fs.order_index = ?
-            LIMIT 1
-          `;
+          // Try to get next step by step ID first (new system)
+          let nextStepResult = null;
+          if (next_step_id && next_step_id !== 'TERMINATE_FLOW') {
+            const nextStepByIdQuery = `
+              SELECT 
+                fs.id as step_id,
+                fs.step_key,
+                fs.title,
+                fs.instructions as description,
+                fs.step_type,
+                fs.order_index,
+                fs.page_key,
+                fs.blocking,
+                fs.auto_fail_on_error,
+                fs.retryable,
+                fs.task_id,
+                fs.input_keys,
+                CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
+                fs.output_url,
+                fs.output_auth_token
+              FROM flow_steps fs
+              WHERE fs.id = ?
+              LIMIT 1
+            `;
+            
+            nextStepResult = await db.prepare(nextStepByIdQuery).bind(next_step_id).first();
+            
+            if (nextStepResult) {
+              console.log(`[DATABASE] Found next step by ID: ${nextStepResult.title} (step_id: ${next_step_id})`);
+              return nextStepResult as unknown as StepData;
+            } else {
+              console.warn(`[DATABASE] No step found with ID ${next_step_id}, falling back to legacy index lookup`);
+            }
+          }
           
-          const nextStepResult = await db.prepare(nextStepQuery).bind(flow_id, next_step).first();
-          
-          if (nextStepResult) {
-            console.log(`[DATABASE] Found next step: ${nextStepResult.title} (order_index: ${next_step})`);
-            return nextStepResult as unknown as StepData;
-          } else {
-            console.warn(`[DATABASE] No step found at order_index ${next_step} for flow ${flow_id}`);
+          // Fall back to legacy index-based lookup if step ID not found or not provided
+          if (next_step !== null && next_step !== undefined && next_step !== -1) {
+            const nextStepByIndexQuery = `
+              SELECT 
+                fs.id as step_id,
+                fs.step_key,
+                fs.title,
+                fs.instructions as description,
+                fs.step_type,
+                fs.order_index,
+                fs.page_key,
+                fs.blocking,
+                fs.auto_fail_on_error,
+                fs.retryable,
+                fs.task_id,
+                fs.input_keys,
+                CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
+                fs.output_url,
+                fs.output_auth_token
+              FROM flow_steps fs
+              WHERE fs.flow_id = ? AND fs.order_index = ?
+              LIMIT 1
+            `;
+            
+            nextStepResult = await db.prepare(nextStepByIndexQuery).bind(flow_id, next_step).first();
+            
+            if (nextStepResult) {
+              console.log(`[DATABASE] Found next step by index: ${nextStepResult.title} (order_index: ${next_step})`);
+              return nextStepResult as unknown as StepData;
+            } else {
+              console.warn(`[DATABASE] No step found at order_index ${next_step} for flow ${flow_id}`);
+            }
           }
         }
       }
@@ -729,7 +767,8 @@ export async function getNextStepBasedOnConditions(
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.output_auth_token,
-        fs.default_next_step
+        fs.default_next_step,
+        fs.default_next_step_id
       FROM flow_steps fs
       WHERE fs.id = ?
       LIMIT 1
@@ -737,11 +776,48 @@ export async function getNextStepBasedOnConditions(
     
     const currentStepResult = await db.prepare(defaultStepQuery).bind(current_step_id).first();
     
+    // Try default_next_step_id first (new system)
+    if (currentStepResult && currentStepResult.default_next_step_id) {
+      console.log(`[DATABASE] Using default_next_step_id: ${currentStepResult.default_next_step_id} for step ${current_step_id}`);
+      
+      const defaultStepByIdQuery = `
+        SELECT 
+          fs.id as step_id,
+          fs.step_key,
+          fs.title,
+          fs.instructions as description,
+          fs.step_type,
+          fs.order_index,
+          fs.page_key,
+          fs.blocking,
+          fs.auto_fail_on_error,
+          fs.retryable,
+          fs.task_id,
+          fs.input_keys,
+          CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
+          fs.output_url,
+          fs.output_auth_token
+        FROM flow_steps fs
+        WHERE fs.id = ?
+        LIMIT 1
+      `;
+      
+      const defaultStepResult = await db.prepare(defaultStepByIdQuery).bind(currentStepResult.default_next_step_id).first();
+      
+      if (defaultStepResult) {
+        console.log(`[DATABASE] Found default next step by ID: ${defaultStepResult.title} (step_id: ${currentStepResult.default_next_step_id})`);
+        return defaultStepResult as unknown as StepData;
+      } else {
+        console.warn(`[DATABASE] No step found with ID ${currentStepResult.default_next_step_id}, falling back to legacy index lookup`);
+      }
+    }
+    
+    // Fall back to legacy default_next_step (index-based)
     if (currentStepResult && currentStepResult.default_next_step) {
-      console.log(`[DATABASE] Using default_next_step: ${currentStepResult.default_next_step} for step ${current_step_id}`);
+      console.log(`[DATABASE] Using legacy default_next_step: ${currentStepResult.default_next_step} for step ${current_step_id}`);
       
       // Get the step at default_next_step order_index
-      const defaultStepQuery = `
+      const defaultStepByIndexQuery = `
         SELECT 
           fs.id as step_id,
           fs.step_key,
@@ -763,10 +839,10 @@ export async function getNextStepBasedOnConditions(
         LIMIT 1
       `;
       
-      const defaultStepResult = await db.prepare(defaultStepQuery).bind(flow_id, currentStepResult.default_next_step).first();
+      const defaultStepResult = await db.prepare(defaultStepByIndexQuery).bind(flow_id, currentStepResult.default_next_step).first();
       
       if (defaultStepResult) {
-        console.log(`[DATABASE] Found default next step: ${defaultStepResult.title} (order_index: ${currentStepResult.default_next_step})`);
+        console.log(`[DATABASE] Found default next step by index: ${defaultStepResult.title} (order_index: ${currentStepResult.default_next_step})`);
         return defaultStepResult as unknown as StepData;
       }
     }

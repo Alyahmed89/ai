@@ -695,26 +695,57 @@ crudApi.get('/flow-steps/:id/conditions', async (c) => {
     // Get next step information for each condition
     const conditionsWithNextStep = await Promise.all(
       (conditions.results || []).map(async (condition: any) => {
-        if (condition.next_step) {
+        // Try to get next step by next_step_id first (new system)
+        if (condition.next_step_id && condition.next_step_id !== 'TERMINATE_FLOW') {
           try {
             const nextStep = await db.prepare(
               'SELECT id, title FROM flow_steps WHERE id = ?'
-            ).bind(condition.next_step).first();
+            ).bind(condition.next_step_id).first();
             
             return {
               ...condition,
               next_step_title: nextStep?.title || null,
-              next_step_id: condition.next_step
+              next_step_id: condition.next_step_id
             };
           } catch (e) {
-            console.error('Error fetching next step:', e);
-            return {
-              ...condition,
-              next_step_title: null,
-              next_step_id: condition.next_step
-            };
+            console.error('Error fetching next step by ID:', e);
+            // Fall through to legacy lookup
           }
         }
+        
+        // Fall back to legacy next_step (index-based) lookup
+        if (condition.next_step && condition.next_step !== -1) {
+          try {
+            // Get current step to find its flow_id
+            const currentStep = await db.prepare(
+              'SELECT flow_id FROM flow_steps WHERE id = ?'
+            ).bind(id).first();
+            
+            if (currentStep) {
+              const nextStep = await db.prepare(
+                'SELECT id, title FROM flow_steps WHERE flow_id = ? AND order_index = ?'
+              ).bind(currentStep.flow_id, condition.next_step).first();
+              
+              return {
+                ...condition,
+                next_step_title: nextStep?.title || null,
+                next_step_id: nextStep?.id || null
+              };
+            }
+          } catch (e) {
+            console.error('Error fetching next step by index:', e);
+          }
+        }
+        
+        // Handle termination case
+        if (condition.next_step === -1 || condition.next_step_id === 'TERMINATE_FLOW') {
+          return {
+            ...condition,
+            next_step_title: 'TERMINATE_FLOW',
+            next_step_id: 'TERMINATE_FLOW'
+          };
+        }
+        
         return {
           ...condition,
           next_step_title: null,
