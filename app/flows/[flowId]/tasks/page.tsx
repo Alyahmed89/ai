@@ -53,38 +53,61 @@ export default function FlowTasksPage({ params }: { params: Promise<{ flowId: st
 
   const getPriorityColor = (priority: string) => {
     switch (priority.toLowerCase()) {
-      case 'high': return 'bg-red-100 text-red-800';
-      case 'medium': return 'bg-yellow-100 text-yellow-800';
-      case 'low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'high': return { backgroundColor: '#fee2e2', color: '#991b1b' };
+      case 'medium': return { backgroundColor: '#fef3c7', color: '#92400e' };
+      case 'low': return { backgroundColor: '#d1fae5', color: '#065f46' };
+      default: return { backgroundColor: '#f3f4f6', color: '#374151' };
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
-      case 'done': return 'bg-green-100 text-green-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'done': return { backgroundColor: '#d1fae5', color: '#065f46' };
+      case 'in_progress': return { backgroundColor: '#dbeafe', color: '#1e40af' };
+      case 'pending': return { backgroundColor: '#fef3c7', color: '#92400e' };
+      default: return { backgroundColor: '#f3f4f6', color: '#374151' };
     }
   };
 
   const getTaskTypeColor = (taskType: string) => {
     switch (taskType.toLowerCase()) {
-      case 'implementation': return 'bg-purple-100 text-purple-800';
-      case 'validation': return 'bg-indigo-100 text-indigo-800';
-      case 'testing': return 'bg-pink-100 text-pink-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'implementation': return { backgroundColor: '#f3e8ff', color: '#6b21a8' };
+      case 'validation': return { backgroundColor: '#e0e7ff', color: '#3730a3' };
+      case 'testing': return { backgroundColor: '#fce7f3', color: '#9d174d' };
+      default: return { backgroundColor: '#f3f4f6', color: '#374151' };
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center py-12">
-            <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-lg text-gray-600">Loading tasks for flow {flowId}...</p>
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f9fafb',
+        padding: '1rem'
+      }}>
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto'
+        }}>
+          <div style={{
+            textAlign: 'center',
+            padding: '3rem 0'
+          }}>
+            <div style={{
+              width: '3rem',
+              height: '3rem',
+              border: '4px solid #e5e7eb',
+              borderTop: '4px solid #3b82f6',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto 1rem'
+            }}></div>
+            <p style={{
+              fontSize: '1.125rem',
+              color: '#6b7280'
+            }}>
+              Loading tasks for flow {flowId}...
+            </p>
           </div>
         </div>
       </div>
@@ -93,14 +116,51 @@ export default function FlowTasksPage({ params }: { params: Promise<{ flowId: st
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <h2 className="text-xl font-semibold text-red-800 mb-2">Error Loading Tasks</h2>
-            <p className="text-red-600">{error}</p>
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f9fafb',
+        padding: '1rem'
+      }}>
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto'
+        }}>
+          <div style={{
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '0.5rem',
+            padding: '1.5rem',
+            textAlign: 'center'
+          }}>
+            <h2 style={{
+              fontSize: '1.25rem',
+              fontWeight: '600',
+              color: '#991b1b',
+              marginBottom: '0.5rem'
+            }}>
+              Error Loading Tasks
+            </h2>
+            <p style={{
+              color: '#dc2626',
+              marginBottom: '1rem'
+            }}>
+              {error}
+            </p>
             <button 
               onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: '#dc2626',
+                color: 'white',
+                borderRadius: '0.375rem',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: '500',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
             >
               Try Again
             </button>
@@ -111,95 +171,310 @@ export default function FlowTasksPage({ params }: { params: Promise<{ flowId: st
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Tasks for Flow: {flowId}</h1>
-          <p className="text-gray-600">
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#f9fafb',
+      padding: '1rem'
+    }}>
+      <div style={{
+        maxWidth: '1200px',
+        margin: '0 auto'
+      }}>
+        <div style={{
+          marginBottom: '2rem'
+        }}>
+          <h1 style={{
+            fontSize: '1.875rem',
+            fontWeight: 'bold',
+            color: '#111827',
+            marginBottom: '0.5rem'
+          }}>
+            Tasks for Flow: {flowId}
+          </h1>
+          <p style={{
+            color: '#6b7280'
+          }}>
             {tasks.length === 0 ? 'No tasks found' : `Showing ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`}
           </p>
         </div>
 
         {tasks.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-500 text-lg">No tasks found for this flow.</p>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '0.5rem',
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+            padding: '2rem',
+            textAlign: 'center'
+          }}>
+            <p style={{
+              color: '#6b7280',
+              fontSize: '1.125rem'
+            }}>
+              No tasks found for this flow.
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {tasks.map((task) => (
-              <div 
-                key={task.id} 
-                className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">{task.title}</h3>
-                  <div className="flex flex-wrap gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
-                      {task.priority}
-                    </span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
-                      {task.status}
-                    </span>
-                  </div>
-                </div>
-                
-                {task.description && (
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-3">{task.description}</p>
-                )}
-                
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTaskTypeColor(task.task_type)}`}>
-                      {task.task_type}
-                    </span>
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      {task.estimated_complexity}
-                    </span>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(1, 1fr)',
+            gap: '1.5rem'
+          }}>
+            {tasks.map((task) => {
+              const priorityColor = getPriorityColor(task.priority);
+              const statusColor = getStatusColor(task.status);
+              const taskTypeColor = getTaskTypeColor(task.task_type);
+              
+              return (
+                <div 
+                  key={task.id} 
+                  style={{
+                    backgroundColor: 'white',
+                    borderRadius: '0.5rem',
+                    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+                    padding: '1.5rem',
+                    transition: 'box-shadow 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'}
+                  onMouseOut={(e) => e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)'}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '1rem'
+                  }}>
+                    <h3 style={{
+                      fontSize: '1.125rem',
+                      fontWeight: '600',
+                      color: '#111827',
+                      margin: 0,
+                      flex: 1
+                    }}>
+                      {task.title}
+                    </h3>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem'
+                    }}>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        ...priorityColor
+                      }}>
+                        {task.priority}
+                      </span>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        ...statusColor
+                      }}>
+                        {task.status}
+                      </span>
+                    </div>
                   </div>
                   
-                  {task.endpoint_path && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-gray-700">Endpoint:</span>
-                      <code className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
-                        {task.http_method} {task.endpoint_path}
-                      </code>
-                    </div>
+                  {task.description && (
+                    <p style={{
+                      color: '#6b7280',
+                      fontSize: '0.875rem',
+                      marginBottom: '1rem'
+                    }}>
+                      {task.description}
+                    </p>
                   )}
                   
-                  <div className="text-xs text-gray-500">
-                    Created: {new Date(task.created_at).toLocaleDateString()}
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        ...taskTypeColor
+                      }}>
+                        {task.task_type}
+                      </span>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        color: '#6b7280',
+                        backgroundColor: '#f3f4f6',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '0.25rem'
+                      }}>
+                        {task.estimated_complexity}
+                      </span>
+                    </div>
+                    
+                    {task.endpoint_path && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}>
+                        <span style={{
+                          fontSize: '0.75rem',
+                          fontWeight: '500',
+                          color: '#374151'
+                        }}>
+                          Endpoint:
+                        </span>
+                        <code style={{
+                          fontSize: '0.75rem',
+                          backgroundColor: '#f3f4f6',
+                          color: '#1f2937',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '0.25rem',
+                          fontFamily: 'monospace'
+                        }}>
+                          {task.http_method} {task.endpoint_path}
+                        </code>
+                      </div>
+                    )}
+                    
+                    <div style={{
+                      fontSize: '0.75rem',
+                      color: '#6b7280'
+                    }}>
+                      Created: {new Date(task.created_at).toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <div className="flex flex-wrap gap-4 mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-500"></div>
-              <span className="text-sm text-gray-600">High Priority</span>
+        <div style={{
+          marginTop: '2rem',
+          paddingTop: '1.5rem',
+          borderTop: '1px solid #e5e7eb'
+        }}>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            marginBottom: '1rem'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <div style={{
+                width: '0.75rem',
+                height: '0.75rem',
+                borderRadius: '50%',
+                backgroundColor: '#dc2626'
+              }}></div>
+              <span style={{
+                fontSize: '0.875rem',
+                color: '#6b7280'
+              }}>
+                High Priority
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-              <span className="text-sm text-gray-600">Medium Priority</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <div style={{
+                width: '0.75rem',
+                height: '0.75rem',
+                borderRadius: '50%',
+                backgroundColor: '#f59e0b'
+              }}></div>
+              <span style={{
+                fontSize: '0.875rem',
+                color: '#6b7280'
+              }}>
+                Medium Priority
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              <span className="text-sm text-gray-600">Low Priority</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <div style={{
+                width: '0.75rem',
+                height: '0.75rem',
+                borderRadius: '50%',
+                backgroundColor: '#10b981'
+              }}></div>
+              <span style={{
+                fontSize: '0.875rem',
+                color: '#6b7280'
+              }}>
+                Low Priority
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-              <span className="text-sm text-gray-600">In Progress</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <div style={{
+                width: '0.75rem',
+                height: '0.75rem',
+                borderRadius: '50%',
+                backgroundColor: '#3b82f6'
+              }}></div>
+              <span style={{
+                fontSize: '0.875rem',
+                color: '#6b7280'
+              }}>
+                In Progress
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-              <span className="text-sm text-gray-600">Implementation</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <div style={{
+                width: '0.75rem',
+                height: '0.75rem',
+                borderRadius: '50%',
+                backgroundColor: '#8b5cf6'
+              }}></div>
+              <span style={{
+                fontSize: '0.875rem',
+                color: '#6b7280'
+              }}>
+                Implementation
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
-              <span className="text-sm text-gray-600">Validation</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <div style={{
+                width: '0.75rem',
+                height: '0.75rem',
+                borderRadius: '50%',
+                backgroundColor: '#4f46e5'
+              }}></div>
+              <span style={{
+                fontSize: '0.875rem',
+                color: '#6b7280'
+              }}>
+                Validation
+              </span>
             </div>
           </div>
         </div>
