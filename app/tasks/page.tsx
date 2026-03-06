@@ -7,35 +7,98 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createSuccess, setCreateSuccess] = useState('');
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    status: 'pending',
+    priority: 'medium',
+    task_type: 'Task',
+    flow_id: ''
+  });
+
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.getTasks(50);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setTasks(data);
+      }
+    } catch (err) {
+      console.error('Error fetching tasks:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to load tasks: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        setLoading(true);
-        const response = await apiClient.getTasks(50);
-        
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setTasks(data);
-        }
-      } catch (err) {
-        console.error('Error fetching tasks:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        setError(`Failed to load tasks: ${errorMessage}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchTasks();
   }, []);
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    setCreateError('');
+    setCreateSuccess('');
+
+    try {
+      const response = await apiClient.createTask(formData);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setCreateError(data.error);
+      } else {
+        setCreateSuccess(`Task created successfully! ID: ${data.id || 'N/A'}`);
+        setShowCreateForm(false);
+        setFormData({
+          title: '',
+          description: '',
+          status: 'pending',
+          priority: 'medium',
+          task_type: 'Task',
+          flow_id: ''
+        });
+        // Refresh the tasks list
+        fetchTasks();
+      }
+    } catch (err) {
+      console.error('Error creating task:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setCreateError(`Failed to create task: ${errorMessage}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
 
   if (loading) {
     return (
@@ -155,22 +218,46 @@ export default function TasksPage() {
         <div style={{
           marginBottom: '2rem'
         }}>
-          <a
-            href="/"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              color: '#6b7280',
-              textDecoration: 'none',
-              marginBottom: '1rem',
-              transition: 'color 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.color = '#374151'}
-            onMouseOut={(e) => e.currentTarget.style.color = '#6b7280'}
-          >
-            <span style={{ marginRight: '0.5rem' }}>←</span>
-            Back to home
-          </a>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: '1rem'
+          }}>
+            <a
+              href="/"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: '#6b7280',
+                textDecoration: 'none',
+                transition: 'color 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.color = '#374151'}
+              onMouseOut={(e) => e.currentTarget.style.color = '#6b7280'}
+            >
+              <span style={{ marginRight: '0.5rem' }}>←</span>
+              Back to home
+            </a>
+            
+            <button
+              onClick={() => setShowCreateForm(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontWeight: '500',
+                fontSize: '0.875rem'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+            >
+              + Create New Task
+            </button>
+          </div>
           
           <h1 style={{
             fontSize: '2.25rem',

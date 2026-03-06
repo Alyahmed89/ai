@@ -35,12 +35,46 @@ export const apiClient = {
   getTask: (id: string) => 
     apiFetch(`/api/tasks/${id}`),
   
+  createTask: (data: any) => 
+    apiFetch('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  
+  updateTask: (id: string, data: any) => 
+    apiFetch(`/api/tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  
+  deleteTask: (id: string) => 
+    apiFetch(`/api/tasks/${id}`, {
+      method: 'DELETE'
+    }),
+  
   // Flow Definitions
   getFlowDefinitions: (limit?: number) => 
     apiFetch(`/api/flow-definitions${limit ? `?limit=${limit}` : ''}`),
   
   getFlowDefinition: (id: string) => 
     apiFetch(`/api/flow-definitions/${id}`),
+  
+  createFlowDefinition: (data: any) => 
+    apiFetch('/api/flow-definitions', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  
+  updateFlowDefinition: (id: string, data: any) => 
+    apiFetch(`/api/flow-definitions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  
+  deleteFlowDefinition: (id: string) => 
+    apiFetch(`/api/flow-definitions/${id}`, {
+      method: 'DELETE'
+    }),
   
   getFlowSteps: (flowId: string) => 
     apiFetch(`/api/flow-definitions/${flowId}/steps`),
@@ -51,6 +85,23 @@ export const apiClient = {
   
   getFlowStep: (id: string) => 
     apiFetch(`/api/flow-steps/${id}`),
+  
+  createFlowStep: (data: any) => 
+    apiFetch('/api/flow-steps', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  
+  updateFlowStep: (id: string, data: any) => 
+    apiFetch(`/api/flow-steps/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  
+  deleteFlowStep: (id: string) => 
+    apiFetch(`/api/flow-steps/${id}`, {
+      method: 'DELETE'
+    }),
   
   getStepConditions: (stepId: string) => 
     apiFetch(`/api/flow-steps/${stepId}/conditions`),

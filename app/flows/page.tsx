@@ -7,35 +7,104 @@ export default function FlowsPage() {
   const [flows, setFlows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createSuccess, setCreateSuccess] = useState('');
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    repository: '',
+    branch: 'main',
+    priority: 0,
+    max_iterations: 20,
+    first_prompt: '',
+    deepseek_system: '',
+    next_flow_id: ''
+  });
+
+  const fetchFlows = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.getFlowDefinitions(50);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setFlows(data);
+      }
+    } catch (err) {
+      console.error('Error fetching flows:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to load flows: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchFlows = async () => {
-      try {
-        setLoading(true);
-        const response = await apiClient.getFlowDefinitions(50);
-        
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setFlows(data);
-        }
-      } catch (err) {
-        console.error('Error fetching flows:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        setError(`Failed to load flows: ${errorMessage}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchFlows();
   }, []);
+
+  const handleCreateFlow = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    setCreateError('');
+    setCreateSuccess('');
+
+    try {
+      const response = await apiClient.createFlowDefinition(formData);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setCreateError(data.error);
+      } else {
+        setCreateSuccess(`Flow created successfully! ID: ${data.id || 'N/A'}`);
+        setShowCreateForm(false);
+        setFormData({
+          name: '',
+          description: '',
+          repository: '',
+          branch: 'main',
+          priority: 0,
+          max_iterations: 20,
+          first_prompt: '',
+          deepseek_system: '',
+          next_flow_id: ''
+        });
+        // Refresh the flows list
+        fetchFlows();
+      }
+    } catch (err) {
+      console.error('Error creating flow:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setCreateError(`Failed to create flow: ${errorMessage}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'priority' || name === 'max_iterations' ? parseInt(value) || 0 : value
+    }));
+  };
 
   if (loading) {
     return (
@@ -155,22 +224,46 @@ export default function FlowsPage() {
         <div style={{
           marginBottom: '2rem'
         }}>
-          <a
-            href="/"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              color: '#6b7280',
-              textDecoration: 'none',
-              marginBottom: '1rem',
-              transition: 'color 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.color = '#374151'}
-            onMouseOut={(e) => e.currentTarget.style.color = '#6b7280'}
-          >
-            <span style={{ marginRight: '0.5rem' }}>←</span>
-            Back to home
-          </a>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: '1rem'
+          }}>
+            <a
+              href="/"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: '#6b7280',
+                textDecoration: 'none',
+                transition: 'color 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.color = '#374151'}
+              onMouseOut={(e) => e.currentTarget.style.color = '#6b7280'}
+            >
+              <span style={{ marginRight: '0.5rem' }}>←</span>
+              Back to home
+            </a>
+            
+            <button
+              onClick={() => setShowCreateForm(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontWeight: '500',
+                fontSize: '0.875rem'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+            >
+              + Create New Flow
+            </button>
+          </div>
           
           <h1 style={{
             fontSize: '2.25rem',
@@ -387,6 +480,405 @@ export default function FlowsPage() {
           </p>
         </div>
       </div>
+
+      {/* Create Flow Modal */}
+      {showCreateForm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            maxWidth: '600px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{
+              padding: '1.5rem',
+              borderBottom: '1px solid #e5e7eb'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1rem'
+              }}>
+                <h2 style={{
+                  fontSize: '1.5rem',
+                  fontWeight: '600',
+                  color: '#111827'
+                }}>
+                  Create New Flow
+                </h2>
+                <button
+                  onClick={() => setShowCreateForm(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '1.5rem',
+                    color: '#6b7280',
+                    cursor: 'pointer',
+                    padding: '0.25rem'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              
+              {createError && (
+                <div style={{
+                  backgroundColor: '#fee2e2',
+                  border: '1px solid #fca5a5',
+                  color: '#dc2626',
+                  padding: '0.75rem',
+                  borderRadius: '0.5rem',
+                  marginBottom: '1rem',
+                  fontSize: '0.875rem'
+                }}>
+                  {createError}
+                </div>
+              )}
+              
+              {createSuccess && (
+                <div style={{
+                  backgroundColor: '#d1fae5',
+                  border: '1px solid #a7f3d0',
+                  color: '#065f46',
+                  padding: '0.75rem',
+                  borderRadius: '0.5rem',
+                  marginBottom: '1rem',
+                  fontSize: '0.875rem'
+                }}>
+                  {createSuccess}
+                </div>
+              )}
+            </div>
+            
+            <form onSubmit={handleCreateFlow}>
+              <div style={{
+                padding: '1.5rem'
+              }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '0.5rem'
+                    }}>
+                      Name *
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.875rem'
+                      }}
+                      placeholder="Flow name"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '0.5rem'
+                    }}>
+                      Priority
+                    </label>
+                    <input
+                      type="number"
+                      name="priority"
+                      value={formData.priority}
+                      onChange={handleInputChange}
+                      min="0"
+                      max="10"
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.875rem'
+                      }}
+                    />
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.5rem'
+                  }}>
+                    Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      minHeight: '80px',
+                      resize: 'vertical'
+                    }}
+                    placeholder="Flow description"
+                  />
+                </div>
+                
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '0.5rem'
+                    }}>
+                      Repository
+                    </label>
+                    <input
+                      type="text"
+                      name="repository"
+                      value={formData.repository}
+                      onChange={handleInputChange}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.875rem'
+                      }}
+                      placeholder="owner/repo"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '0.5rem'
+                    }}>
+                      Branch
+                    </label>
+                    <input
+                      type="text"
+                      name="branch"
+                      value={formData.branch}
+                      onChange={handleInputChange}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.875rem'
+                      }}
+                      placeholder="main"
+                    />
+                  </div>
+                </div>
+                
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '0.5rem'
+                    }}>
+                      Max Iterations
+                    </label>
+                    <input
+                      type="number"
+                      name="max_iterations"
+                      value={formData.max_iterations}
+                      onChange={handleInputChange}
+                      min="1"
+                      max="100"
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.875rem'
+                      }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '0.5rem'
+                    }}>
+                      Next Flow ID
+                    </label>
+                    <input
+                      type="text"
+                      name="next_flow_id"
+                      value={formData.next_flow_id}
+                      onChange={handleInputChange}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.875rem'
+                      }}
+                      placeholder="Optional next flow ID"
+                    />
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.5rem'
+                  }}>
+                    First Prompt
+                  </label>
+                  <textarea
+                    name="first_prompt"
+                    value={formData.first_prompt}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      minHeight: '80px',
+                      resize: 'vertical'
+                    }}
+                    placeholder="Initial prompt for the flow"
+                  />
+                </div>
+                
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.5rem'
+                  }}>
+                    DeepSeek System Instructions
+                  </label>
+                  <textarea
+                    name="deepseek_system"
+                    value={formData.deepseek_system}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      minHeight: '100px',
+                      resize: 'vertical'
+                    }}
+                    placeholder="System instructions for DeepSeek"
+                  />
+                </div>
+              </div>
+              
+              <div style={{
+                padding: '1.5rem',
+                borderTop: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.75rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  disabled={creating}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#f3f4f6',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    fontSize: '0.875rem',
+                    opacity: creating ? 0.7 : 1
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    fontSize: '0.875rem',
+                    opacity: creating ? 0.7 : 1
+                  }}
+                >
+                  {creating ? 'Creating...' : 'Create Flow'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
