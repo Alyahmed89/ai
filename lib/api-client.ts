@@ -32,6 +32,9 @@ export const apiClient = {
   getTasks: (limit?: number) => 
     apiFetch(`/api/tasks${limit ? `?limit=${limit}` : ''}`),
   
+  getTasksByFlowId: (flowId: string) => 
+    apiFetch(`/api/tasks?flowId=${flowId}`),
+  
   getTask: (id: string) => 
     apiFetch(`/api/tasks/${id}`),
   
