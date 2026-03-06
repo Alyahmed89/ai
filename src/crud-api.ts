@@ -842,6 +842,27 @@ crudApi.get('/flow-runs', async (c) => {
   }
 });
 
+// Get flow run by ID
+crudApi.get('/flow-runs/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('SELECT * FROM flow_runs WHERE id = ?').bind(id).first();
+
+    if (!result) {
+      return c.json({ error: 'Flow run not found' }, 404);
+    }
+
+    return c.json(result);
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
 // Create flow run
 crudApi.post('/flow-runs', async (c) => {
   try {
