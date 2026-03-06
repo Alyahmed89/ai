@@ -122,6 +122,14 @@ npm run start
 - `getStepInput()`: Get step input data
 - `getStepStats()`: Get step statistics
 
+### Flow Runs API Client (`/lib/api-client.ts`)
+- `getFlowRuns()`: Get flow runs with filtering by flow ID
+- `getFlowRun()`: Get single flow run by ID (fetches all and filters)
+- `createFlowRun()`: Create new flow run
+- `updateFlowRun()`: Update existing flow run
+- `deleteFlowRun()`: Delete flow run
+- `getFlowRunIterations()`: Get iterations for a flow run
+
 ## API Routes
 
 All API routes are minimal and delegate to service modules:
@@ -132,6 +140,9 @@ All API routes are minimal and delegate to service modules:
 - `/api/flow-definitions/[id]` - Single flow details
 - `/api/flow-steps` - Flow steps list
 - `/api/flow-steps/[id]` - Single step details
+- `/api/flow-runs` - Flow runs list with filtering by flow ID
+- `/api/flow-runs/[id]` - Single flow run details (backend endpoint may not exist)
+- `/api/flow-runs/[id]/iterations` - Iterations for a flow run (table may not exist)
 
 ## Pages
 
@@ -142,6 +153,43 @@ All API routes are minimal and delegate to service modules:
 - `/flows/[id]` - Flow detail page
 - `/steps` - Step list page
 - `/steps/[id]` - Step detail page
+- `/flow-runs` - Flow runs list page with filtering
+- `/flow-run/[id]` - Flow run detail page with prompts and responses
+
+## Flow Runs Implementation Details
+
+The flow runs functionality has been implemented with the following features:
+
+### Frontend Pages:
+1. **Flow Runs List (`/flow-runs`)**: 
+   - Displays all flow runs from the backend API
+   - Includes filtering by Flow ID
+   - Shows prompts and responses (truncated for readability)
+   - Clickable rows navigate to flow run details
+
+2. **Flow Run Detail (`/flow-run/[id]`)**: 
+   - Shows complete flow run information including:
+     - Flow ID (with link to flow detail page)
+     - Conversation ID
+     - Step ID
+     - Status with color-coded badges
+     - Duration
+     - Creation timestamp
+   - Displays full input prompt and output response
+   - Handles missing backend endpoints gracefully (fetches all and filters)
+
+### API Client Methods:
+- `getFlowRuns(limit?, flowId?)`: Gets flow runs with optional filtering
+- `getFlowRun(id)`: Gets specific flow run (falls back to fetching all)
+- `createFlowRun(data)`: Creates new flow run
+- `updateFlowRun(id, data)`: Updates existing flow run
+- `deleteFlowRun(id)`: Deletes flow run
+- `getFlowRunIterations(flowRunId)`: Gets iterations for a flow run
+
+### Backend Compatibility:
+- The implementation works with existing backend endpoints
+- Handles cases where specific endpoints don't exist (e.g., `/api/flow-runs/[id]`)
+- Gracefully handles missing tables (e.g., iterations table)
 
 ## Why This Architecture?
 

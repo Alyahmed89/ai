@@ -134,5 +134,37 @@ export const apiClient = {
     apiFetch('/api/test-request', {
       method: 'POST',
       body: JSON.stringify(data)
-    })
+    }),
+  
+  // Flow Runs
+  getFlowRuns: (limit?: number, flowId?: string) => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (flowId) params.append('flowId', flowId);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/api/flow-runs${query}`);
+  },
+  
+  getFlowRun: (id: string) => 
+    apiFetch(`/api/flow-runs/${id}`),
+  
+  createFlowRun: (data: any) => 
+    apiFetch('/api/flow-runs', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  
+  updateFlowRun: (id: string, data: any) => 
+    apiFetch(`/api/flow-runs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  
+  deleteFlowRun: (id: string) => 
+    apiFetch(`/api/flow-runs/${id}`, {
+      method: 'DELETE'
+    }),
+  
+  getFlowRunIterations: (flowRunId: string) => 
+    apiFetch(`/api/flow-runs/${flowRunId}/iterations`)
 };
