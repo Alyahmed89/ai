@@ -13,6 +13,15 @@ export default function StepPage() {
   const [step, setStep] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+  const [editData, setEditData] = useState<any>(null);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const [inputData, setInputData] = useState<any>(null);
 
@@ -39,6 +48,7 @@ export default function StepPage() {
           setError(stepData.error);
         } else {
           setStep(stepData);
+          setEditData(stepData);
         }
 
         // Fetch input data for the step
@@ -65,6 +75,80 @@ export default function StepPage() {
       fetchStep();
     }
   }, [stepId]);
+
+  const handleEdit = () => {
+    setEditing(true);
+    setEditError('');
+    setEditSuccess('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(false);
+    setEditData(step);
+    setEditError('');
+    setEditSuccess('');
+  };
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    setEditError('');
+    setEditSuccess('');
+
+    try {
+      const response = await apiClient.updateFlowStep(stepId, editData);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setEditError(data.error);
+      } else {
+        setEditSuccess('Step updated successfully!');
+        setStep(editData);
+        setEditing(false);
+      }
+    } catch (err) {
+      console.error('Error updating step:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setEditError(`Failed to update step: ${errorMessage}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setEditData((prev: any) => ({
+      ...prev,
+      [name]: name === 'order_index' || name === 'order' || name === 'output' ? parseInt(value) || 0 : value
+    }));
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError('');
+
+    try {
+      const response = await apiClient.deleteFlowStep(stepId);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error: ${response.status}`);
+      }
+      
+      // Redirect to steps page after successful deletion
+      window.location.href = '/steps';
+    } catch (err) {
+      console.error('Error deleting step:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setDeleteError(`Failed to delete step: ${errorMessage}`);
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -444,20 +528,165 @@ export default function StepPage() {
             gap: '1rem'
           }}>
             <div>
-              <h1 style={{
-                fontSize: '2.25rem',
-                fontWeight: 'bold',
-                color: '#111827',
-                marginBottom: '0.5rem'
+              {editing ? (
+                <div style={{ marginBottom: '1rem' }}>
+                  <input
+                    type="text"
+                    name="title"
+                    value={editData?.title || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      fontSize: '2.25rem',
+                      fontWeight: 'bold',
+                      color: '#111827',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      padding: '0.5rem',
+                      width: '100%',
+                      maxWidth: '500px'
+                    }}
+                  />
+                </div>
+              ) : (
+                <h1 style={{
+                  fontSize: '2.25rem',
+                  fontWeight: 'bold',
+                  color: '#111827',
+                  marginBottom: '0.5rem'
+                }}>
+                  {step.title}
+                </h1>
+              )}
+              <div style={{
+                display: 'flex',
+                gap: '1rem',
+                alignItems: 'center',
+                flexWrap: 'wrap'
               }}>
-                {step.title}
-              </h1>
-              <p style={{
-                fontSize: '1.125rem',
-                color: '#6b7280'
-              }}>
-                Step {step.order_index || step.order || 0} • {step.step_type}
-              </p>
+                {editing ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.125rem', color: '#6b7280' }}>Order:</span>
+                      <input
+                        type="number"
+                        name="order_index"
+                        value={editData?.order_index || editData?.order || 0}
+                        onChange={handleInputChange}
+                        min="0"
+                        max="100"
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.875rem',
+                          width: '80px'
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.125rem', color: '#6b7280' }}>Type:</span>
+                      <select
+                        name="step_type"
+                        value={editData?.step_type || ''}
+                        onChange={handleInputChange}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.875rem',
+                          width: '120px'
+                        }}
+                      >
+                        <option value="input">Input</option>
+                        <option value="output">Output</option>
+                        <option value="process">Process</option>
+                        <option value="decision">Decision</option>
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <p style={{
+                    fontSize: '1.125rem',
+                    color: '#6b7280'
+                  }}>
+                    Step {step.order_index || step.order || 0} • {step.step_type}
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {editing ? (
+                <>
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#f3f4f6',
+                      color: '#374151',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '0.875rem',
+                      opacity: saving ? 0.7 : 1
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={saving}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '0.875rem',
+                      opacity: saving ? 0.7 : 1
+                    }}
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleEdit}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -488,6 +717,34 @@ export default function StepPage() {
           }}>
             Instructions
           </h2>
+          
+          {editError && (
+            <div style={{
+              backgroundColor: '#fee2e2',
+              border: '1px solid #fca5a5',
+              color: '#dc2626',
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              marginBottom: '1rem',
+              fontSize: '0.875rem'
+            }}>
+              {editError}
+            </div>
+          )}
+          
+          {editSuccess && (
+            <div style={{
+              backgroundColor: '#d1fae5',
+              border: '1px solid #a7f3d0',
+              color: '#065f46',
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              marginBottom: '1rem',
+              fontSize: '0.875rem'
+            }}>
+              {editSuccess}
+            </div>
+          )}
           <div style={{
             marginBottom: '0.5rem',
             fontSize: '0.875rem',
@@ -501,23 +758,44 @@ export default function StepPage() {
             length: {step.instructions ? step.instructions.length : 0}, 
             description exists: {step.description ? 'YES' : 'NO'}
           </div>
-          <textarea
-            style={{
-              width: '100%',
-              minHeight: '300px',
-              padding: '1rem',
-              fontSize: '1rem',
-              color: '#4b5563',
-              lineHeight: '1.5',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.5rem',
-              backgroundColor: '#f9fafb',
-              fontFamily: 'monospace',
-              resize: 'vertical'
-            }}
-            value={step.instructions || step.description || ''}
-            readOnly
-          />
+          {editing ? (
+            <textarea
+              name="instructions"
+              style={{
+                width: '100%',
+                minHeight: '300px',
+                padding: '1rem',
+                fontSize: '1rem',
+                color: '#4b5563',
+                lineHeight: '1.5',
+                border: '1px solid #d1d5db',
+                borderRadius: '0.5rem',
+                backgroundColor: '#f9fafb',
+                fontFamily: 'monospace',
+                resize: 'vertical'
+              }}
+              value={editData?.instructions || editData?.description || ''}
+              onChange={handleInputChange}
+            />
+          ) : (
+            <textarea
+              style={{
+                width: '100%',
+                minHeight: '300px',
+                padding: '1rem',
+                fontSize: '1rem',
+                color: '#4b5563',
+                lineHeight: '1.5',
+                border: '1px solid #d1d5db',
+                borderRadius: '0.5rem',
+                backgroundColor: '#f9fafb',
+                fontFamily: 'monospace',
+                resize: 'vertical'
+              }}
+              value={step.instructions || step.description || ''}
+              readOnly
+            />
+          )}
           {/* Alternative: try a div instead of textarea */}
           <div style={{
             display: 'none',
@@ -563,6 +841,102 @@ export default function StepPage() {
           currentStepOrder={step.order} 
         />
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            padding: '2rem',
+            maxWidth: '500px',
+            width: '100%',
+            margin: '1rem'
+          }}>
+            <h3 style={{
+              fontSize: '1.5rem',
+              fontWeight: '600',
+              color: '#111827',
+              marginBottom: '1rem'
+            }}>
+              Delete Step
+            </h3>
+            
+            {deleteError && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                border: '1px solid #fca5a5',
+                color: '#dc2626',
+                padding: '0.75rem',
+                borderRadius: '0.5rem',
+                marginBottom: '1rem',
+                fontSize: '0.875rem'
+              }}>
+                {deleteError}
+              </div>
+            )}
+            
+            <p style={{
+              color: '#6b7280',
+              marginBottom: '1.5rem'
+            }}>
+              Are you sure you want to delete the step "{step.title}"? This action cannot be undone.
+            </p>
+            
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '0.75rem'
+            }}>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  fontSize: '0.875rem',
+                  opacity: deleting ? 0.7 : 1
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  fontSize: '0.875rem',
+                  opacity: deleting ? 0.7 : 1
+                }}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
