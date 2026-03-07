@@ -10,6 +10,19 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [flowInfo, setFlowInfo] = useState<any>(null);
+  
+  // State for create step modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [formData, setFormData] = useState({
+    title: '',
+    step_type: 'input',
+    order_index: '',
+    step_key: '',
+    flow_id: flowId, // Pre-fill with current flow ID
+    description: ''
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -55,6 +68,87 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
       fetchData();
     }
   }, [flowId]);
+
+  // Form handling functions
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const refreshSteps = async () => {
+    try {
+      const stepsResponse = await apiClient.getFlowSpecificSteps(flowId);
+      if (stepsResponse.ok) {
+        const stepsData = await stepsResponse.json();
+        if (!stepsData.error) {
+          setSteps(stepsData);
+        }
+      }
+    } catch (err) {
+      console.error('Error refreshing steps:', err);
+    }
+  };
+
+  const handleCreateStep = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Basic validation
+    if (!formData.title.trim()) {
+      setCreateError('Title is required');
+      return;
+    }
+    
+    if (!formData.step_type.trim()) {
+      setCreateError('Step type is required');
+      return;
+    }
+    
+    setCreating(true);
+    setCreateError('');
+    
+    try {
+      // Prepare data for API
+      const stepData = {
+        title: formData.title.trim(),
+        step_type: formData.step_type,
+        order_index: formData.order_index ? parseInt(formData.order_index) : null,
+        step_key: formData.step_key.trim() || null,
+        flow_id: formData.flow_id.trim() || null,
+        description: formData.description.trim() || null
+      };
+      
+      const response = await apiClient.createFlowStep(stepData);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error: ${response.status}`);
+      }
+      
+      // Reset form and close modal
+      setFormData({
+        title: '',
+        step_type: 'input',
+        order_index: '',
+        step_key: '',
+        flow_id: flowId,
+        description: ''
+      });
+      setShowCreateModal(false);
+      
+      // Refresh steps list
+      await refreshSteps();
+      
+    } catch (err) {
+      console.error('Error creating step:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setCreateError(`Failed to create step: ${errorMessage}`);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -191,20 +285,52 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
             Back to flow
           </a>
           
-          <h1 style={{
-            fontSize: '2.25rem',
-            fontWeight: 'bold',
-            color: '#111827',
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
             marginBottom: '0.5rem'
           }}>
-            {flowInfo?.name || `Flow: ${flowId.substring(0, 8)}...`}
-          </h1>
-          <p style={{
-            fontSize: '1.125rem',
-            color: '#6b7280'
-          }}>
-            {steps.length} step{steps.length !== 1 ? 's' : ''} found
-          </p>
+            <div>
+              <h1 style={{
+                fontSize: '2.25rem',
+                fontWeight: 'bold',
+                color: '#111827',
+                marginBottom: '0.5rem'
+              }}>
+                {flowInfo?.name || `Flow: ${flowId.substring(0, 8)}...`}
+              </h1>
+              <p style={{
+                fontSize: '1.125rem',
+                color: '#6b7280'
+              }}>
+                {steps.length} step{steps.length !== 1 ? 's' : ''} found
+              </p>
+            </div>
+            
+            <button
+              onClick={() => setShowCreateModal(true)}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                fontSize: '1rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+            >
+              <span>+</span>
+              Create New Step
+            </button>
+          </div>
         </div>
 
         {/* Steps List - Simple table showing only titles for now */}
@@ -355,6 +481,387 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
           </p>
         </div>
       </div>
+
+      {/* Create Step Modal */}
+      {showCreateModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            maxWidth: '500px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{
+              padding: '1.5rem',
+              borderBottom: '1px solid #e5e7eb'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1rem'
+              }}>
+                <h2 style={{
+                  fontSize: '1.5rem',
+                  fontWeight: 'bold',
+                  color: '#111827'
+                }}>
+                  Create New Step
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setCreateError('');
+                    setFormData({
+                      title: '',
+                      step_type: 'input',
+                      order_index: '',
+                      step_key: '',
+                      flow_id: flowId,
+                      description: ''
+                    });
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '1.5rem',
+                    color: '#6b7280',
+                    cursor: 'pointer',
+                    padding: '0.25rem',
+                    borderRadius: '0.25rem',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  ×
+                </button>
+              </div>
+              
+              {createError && (
+                <div style={{
+                  padding: '0.75rem',
+                  backgroundColor: '#fee2e2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '0.375rem',
+                  marginBottom: '1rem'
+                }}>
+                  <p style={{
+                    color: '#dc2626',
+                    fontSize: '0.875rem',
+                    margin: 0
+                  }}>
+                    {createError}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <form onSubmit={handleCreateStep}>
+              <div style={{
+                padding: '1.5rem'
+              }}>
+                <div style={{
+                  marginBottom: '1rem'
+                }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.25rem'
+                  }}>
+                    Title <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="title"
+                    value={formData.title}
+                    onChange={handleInputChange}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '1rem',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                </div>
+                
+                <div style={{
+                  marginBottom: '1rem'
+                }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.25rem'
+                  }}>
+                    Step Type <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <select
+                    name="step_type"
+                    value={formData.step_type}
+                    onChange={handleInputChange}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '1rem',
+                      backgroundColor: 'white',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  >
+                    <option value="input">Input</option>
+                    <option value="output">Output</option>
+                    <option value="analysis">Analysis</option>
+                    <option value="optimization">Optimization</option>
+                    <option value="design">Design</option>
+                    <option value="planning">Planning</option>
+                    <option value="processing">Processing</option>
+                    <option value="validation">Validation</option>
+                  </select>
+                </div>
+                
+                <div style={{
+                  marginBottom: '1rem'
+                }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.25rem'
+                  }}>
+                    Order Index
+                  </label>
+                  <input
+                    type="number"
+                    name="order_index"
+                    value={formData.order_index}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '1rem',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                </div>
+                
+                <div style={{
+                  marginBottom: '1rem'
+                }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.25rem'
+                  }}>
+                    Step Key
+                  </label>
+                  <input
+                    type="text"
+                    name="step_key"
+                    value={formData.step_key}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '1rem',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                </div>
+                
+                <div style={{
+                  marginBottom: '1rem'
+                }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.25rem'
+                  }}>
+                    Flow ID
+                  </label>
+                  <input
+                    type="text"
+                    name="flow_id"
+                    value={formData.flow_id}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '1rem',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                  <p style={{
+                    fontSize: '0.75rem',
+                    color: '#6b7280',
+                    marginTop: '0.25rem'
+                  }}>
+                    Pre-filled with current flow ID. Leave empty to create a global step.
+                  </p>
+                </div>
+                
+                <div style={{
+                  marginBottom: '1.5rem'
+                }}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.25rem'
+                  }}>
+                    Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '1rem',
+                      resize: 'vertical',
+                      transition: 'border-color 0.2s'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                </div>
+              </div>
+              
+              <div style={{
+                padding: '1.5rem',
+                borderTop: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.75rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setCreateError('');
+                    setFormData({
+                      title: '',
+                      step_type: 'input',
+                      order_index: '',
+                      step_key: '',
+                      flow_id: flowId,
+                      description: ''
+                    });
+                  }}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: 'white',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: creating ? '#93c5fd' : '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    cursor: creating ? 'not-allowed' : 'pointer',
+                    transition: 'background-color 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                  onMouseOver={(e) => {
+                    if (!creating) {
+                      e.target.style.backgroundColor = '#2563eb';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!creating) {
+                      e.target.style.backgroundColor = '#3b82f6';
+                    }
+                  }}
+                >
+                  {creating ? (
+                    <>
+                      <div style={{
+                        width: '1rem',
+                        height: '1rem',
+                        border: '2px solid rgba(255, 255, 255, 0.3)',
+                        borderTop: '2px solid white',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Step'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
