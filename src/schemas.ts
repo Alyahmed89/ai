@@ -84,7 +84,7 @@ export const flowDefinitionCreateSchema = flowDefinitionSchema.omit({
   created_at: true, 
   updated_at: true 
 }).extend({
-  id: z.string().min(1, 'id is required'),
+  id: idSchema,
 });
 
 // Flow Definition Update Schema

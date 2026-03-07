@@ -373,6 +373,9 @@ crudApi.post('/tasks', async (c) => {
     }
     const validatedData = validation.data!;
 
+    // Generate ID if not provided
+    const taskId = validatedData.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const sql = `
       INSERT INTO tasks (id, flow_id, title, description, status, order_index)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -382,7 +385,7 @@ crudApi.post('/tasks', async (c) => {
     console.log('INSERT TASK - validatedData:', JSON.stringify(validatedData, null, 2));
     
     await db.prepare(sql).bind(
-      validatedData.id, 
+      taskId, 
       validatedData.flow_id, 
       validatedData.title, 
       dbValue(validatedData.description), 
@@ -390,7 +393,7 @@ crudApi.post('/tasks', async (c) => {
       validatedData.order_index
     ).run();
     
-    return c.json({ message: 'Task created successfully', id: validatedData.id }, 201);
+    return c.json({ message: 'Task created successfully', id: taskId }, 201);
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
@@ -898,14 +901,17 @@ crudApi.post('/flow-runs', async (c) => {
     const { id, flow_id, status, started_at, completed_at } = body;
     const created_at = Math.floor(Date.now() / 1000);
 
+    // Generate ID if not provided
+    const flowRunId = id || `flow-run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const sql = `
       INSERT INTO flow_runs (id, flow_id, status, started_at, completed_at, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    await db.prepare(sql).bind(id, flow_id, status || 'running', started_at, completed_at, created_at).run();
+    await db.prepare(sql).bind(flowRunId, flow_id, status || 'running', started_at, completed_at, created_at).run();
     
-    return c.json({ message: 'Flow run created successfully', id }, 201);
+    return c.json({ message: 'Flow run created successfully', id: flowRunId }, 201);
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
@@ -1004,14 +1010,17 @@ crudApi.post('/flow-runs/:flowRunId/iterations', async (c) => {
     const { id, iteration_number, status } = body;
     const created_at = Math.floor(Date.now() / 1000);
 
+    // Generate ID if not provided
+    const iterationId = id || `iteration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const sql = `
       INSERT INTO iterations (id, flow_run_id, iteration_number, status, created_at)
       VALUES (?, ?, ?, ?, ?)
     `;
 
-    await db.prepare(sql).bind(id, flowRunId, iteration_number, status || 'running', created_at).run();
+    await db.prepare(sql).bind(iterationId, flowRunId, iteration_number, status || 'running', created_at).run();
     
-    return c.json({ message: 'Iteration created successfully', id }, 201);
+    return c.json({ message: 'Iteration created successfully', id: iterationId }, 201);
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
@@ -1074,13 +1083,16 @@ crudApi.post('/flow-definitions', async (c) => {
     const validatedData = validation.data!;
     const { id, name, description, max_iterations, repository, branch, next_flow_id, priority } = validatedData;
     
+    // Generate ID if not provided
+    const flowDefinitionId = id || `flow-def-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     const sql = `
       INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, next_flow_id, priority, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     await db.prepare(sql).bind(
-      id,
+      flowDefinitionId,
       name,
       dbValue(description),
       max_iterations || 20,
@@ -1090,7 +1102,7 @@ crudApi.post('/flow-definitions', async (c) => {
       priority || 0
     ).run();
     
-    return c.json(apiResponse(true, { id, message: 'Flow definition created successfully' }, undefined, 201));
+    return c.json(apiResponse(true, { id: flowDefinitionId, message: 'Flow definition created successfully' }, undefined, 201));
   } catch (error) {
     return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
   }
