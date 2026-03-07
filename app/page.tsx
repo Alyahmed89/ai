@@ -125,6 +125,48 @@ export default function Home() {
     }
   };
 
+  // Helper function to get all running flow runs
+  const getAllRunningFlowRuns = () => {
+    return flowRuns.filter(run => 
+      run.status === 'running' || run.status === 'pending'
+    );
+  };
+
+  // Helper function to stop all running flows
+  const handleStopAllFlows = async () => {
+    const runningFlows = getAllRunningFlowRuns();
+    if (runningFlows.length === 0) {
+      alert('No running flows to stop');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to stop ${runningFlows.length} running flow(s)?`)) {
+      return;
+    }
+
+    try {
+      // Stop each running flow
+      for (const flowRun of runningFlows) {
+        if (flowRun.conversation_id) {
+          await apiClient.stopFlow(flowRun.conversation_id);
+        } else {
+          await apiClient.updateFlowRunStatus(flowRun.id, {
+            status: 'cancelled',
+            completed_at: Math.floor(Date.now() / 1000)
+          });
+        }
+      }
+      
+      // Refresh the flow runs list
+      fetchFlowRuns();
+      
+      alert(`Successfully stopped ${runningFlows.length} flow(s)`);
+    } catch (err) {
+      console.error('Error stopping all flows:', err);
+      alert(`Failed to stop all flows: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{
@@ -352,6 +394,78 @@ export default function Home() {
                 Clear Filter
               </button>
             )}
+          </div>
+          
+          {/* Prominent Start/Stop buttons at the top */}
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            alignItems: 'center',
+            marginTop: '1.5rem',
+            flexWrap: 'wrap'
+          }}>
+            <button
+              onClick={() => {
+                // For the home page, we need to know which flow to start
+                // We could fetch flows list or prompt user for flow ID
+                const flowId = prompt('Enter Flow ID to start:');
+                if (flowId && flowId.trim()) {
+                  handleStartFlow(flowId.trim());
+                }
+              }}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+            >
+              <span>▶</span>
+              Start New Flow Run
+            </button>
+            
+            <button
+              onClick={handleStopAllFlows}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
+            >
+              <span>⏹</span>
+              Stop All Running Flows
+            </button>
+            
+            <div style={{
+              fontSize: '0.875rem',
+              color: '#6b7280',
+              marginLeft: 'auto'
+            }}>
+              {getAllRunningFlowRuns().length > 0 && (
+                <span>
+                  {getAllRunningFlowRuns().length} flow{getAllRunningFlowRuns().length !== 1 ? 's' : ''} currently running
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
