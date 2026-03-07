@@ -406,12 +406,9 @@ export default function Home() {
           }}>
             <button
               onClick={() => {
-                // For the home page, we need to know which flow to start
-                // We could fetch flows list or prompt user for flow ID
-                const flowId = prompt('Enter Flow ID to start:');
-                if (flowId && flowId.trim()) {
-                  handleStartFlow(flowId.trim());
-                }
+                // Automatically start flow priority 1 without popup
+                // Using "honoch" as the flow ID based on the step page
+                handleStartFlow("honoch");
               }}
               style={{
                 padding: '0.75rem 1.5rem',
@@ -430,7 +427,7 @@ export default function Home() {
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
             >
               <span>▶</span>
-              Start New Flow Run
+              Start Flow Priority 1 (honoch)
             </button>
             
             <button
