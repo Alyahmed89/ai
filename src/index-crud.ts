@@ -244,16 +244,23 @@ app.post('/start', async (c) => {
       // Validate flow_id exists in database
       if (c.env.FLOW_RUNS_DB) {
         try {
-          const flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows WHERE id = ?').bind(flow_id).first();
+          // Try flow_definitions table first (has priority column and real data)
+          let flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions WHERE id = ?').bind(flow_id).first();
+          
+          // If not found in flow_definitions, try flows table (for backward compatibility)
+          if (!flowResult) {
+            flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows WHERE id = ?').bind(flow_id).first();
+          }
+          
           if (!flowResult) {
             return c.json(notFoundResponse(`Flow not found: ${flow_id}`));
           }
           
           // Use flow definition values if not provided in request
           const targetFlowId = flow_id;
-          const targetRepository = repository || (flowResult as any).repo;
+          const targetRepository = repository || (flowResult as any).repository || (flowResult as any).repo;
           const targetBranch = branch || (flowResult as any).branch;
-          const targetInitialUserPrompt = initial_user_prompt || (flowResult as any).description;
+          const targetInitialUserPrompt = initial_user_prompt || (flowResult as any).description || (flowResult as any).name;
           const targetMaxIterations = max_iterations || (flowResult as any).max_iterations;
           
           console.log(`[HTTP:START:FLOW] Using flow definition: ${targetFlowId}, repo: ${targetRepository}, branch: ${targetBranch}`);
@@ -375,30 +382,32 @@ app.get('/start', async (c) => {
     
     try {
       let flowResult;
-      let sqlQuery;
       
       if (targetPriority !== null) {
-        // Get a flow with specific priority
-        sqlQuery = 'SELECT * FROM flows WHERE priority = ? ORDER BY created_at DESC LIMIT 1';
-        flowResult = await c.env.FLOW_RUNS_DB.prepare(sqlQuery).bind(targetPriority).first();
-      } else {
-        // Get the flow with highest priority (priority DESC)
-        sqlQuery = 'SELECT * FROM flows ORDER BY priority DESC, created_at DESC LIMIT 1';
-        flowResult = await c.env.FLOW_RUNS_DB.prepare(sqlQuery).first();
-      }
-      
-      if (!flowResult) {
-        if (targetPriority !== null) {
+        // Get a flow with specific priority - only flow_definitions has priority column
+        flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions WHERE priority = ? ORDER BY created_at DESC LIMIT 1').bind(targetPriority).first();
+        
+        if (!flowResult) {
           return c.json(notFoundResponse(`No flows found with priority ${targetPriority}`));
-        } else {
+        }
+      } else {
+        // Get the flow with highest priority - try flow_definitions first (has priority column)
+        flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions ORDER BY priority DESC, created_at DESC LIMIT 1').first();
+        
+        // If no flows in flow_definitions, try flows table (without priority ordering)
+        if (!flowResult) {
+          flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
+        }
+        
+        if (!flowResult) {
           return c.json(notFoundResponse('No flows found in database'));
         }
       }
       
       const targetFlowId = (flowResult as any).id;
-      const targetRepository = (flowResult as any).repo;
+      const targetRepository = (flowResult as any).repository || (flowResult as any).repo;
       const targetBranch = (flowResult as any).branch || 'main';
-      const targetInitialUserPrompt = (flowResult as any).name || `Execute flow: ${targetFlowId}`;
+      const targetInitialUserPrompt = (flowResult as any).name || (flowResult as any).description || `Execute flow: ${targetFlowId}`;
       const targetMaxIterations = (flowResult as any).max_iterations || 20;
       const flowPriority = (flowResult as any).priority || 0;
       
