@@ -22,6 +22,15 @@ export default function RootLayout({
             padding: 0;
             font-family: ${inter.style.fontFamily}, system-ui, -apple-system, sans-serif;
           }
+          
+          @keyframes spin {
+            from {
+              transform: rotate(0deg);
+            }
+            to {
+              transform: rotate(360deg);
+            }
+          }
         `}</style>
       </head>
       <body>
