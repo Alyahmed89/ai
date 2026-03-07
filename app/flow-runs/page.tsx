@@ -485,3 +485,5 @@ export default function FlowRunsPage() {
     </div>
   );
 }
+
+export const runtime = 'edge';
