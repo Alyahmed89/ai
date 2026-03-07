@@ -4,6 +4,7 @@
 export interface CloudflareBindings {
   DEEPSEEK_API_KEY: string;
   OPENHANDS_API_URL: string;
+  ADMIN_KEY?: string; // Optional admin key for protected endpoints
   CONVERSATIONS: DurableObjectNamespace;
   FLOW_RUNS_DB?: D1Database; // Optional - may not be configured
   PROJECT_FACTS_DB?: D1Database; // Optional - for authoritative project facts

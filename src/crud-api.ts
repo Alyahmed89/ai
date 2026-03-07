@@ -69,6 +69,17 @@ crudApi.get('/health', (c) => {
 // Test request endpoint (for API testing from frontend)
 crudApi.post('/test-request', async (c) => {
   try {
+    // Security check: require x-admin-key header
+    const adminKey = c.req.header('x-admin-key');
+    const expectedAdminKey = c.env.ADMIN_KEY;
+    
+    if (!adminKey || !expectedAdminKey || adminKey !== expectedAdminKey) {
+      return c.json({ 
+        error: 'Unauthorized',
+        message: 'Valid x-admin-key header is required'
+      }, 401);
+    }
+    
     const { url, method = 'GET', headers = {}, body: requestBody = null } = await c.req.json();
     
     if (!url) {
@@ -83,6 +94,9 @@ crudApi.post('/test-request', async (c) => {
       return c.json({ error: 'Invalid URL' }, 400);
     }
     
+    // Start timing the request
+    const startTime = Date.now();
+    
     // Make the actual HTTP request
     const fetchOptions: RequestInit = {
       method: method.toUpperCase(),
@@ -92,14 +106,22 @@ crudApi.post('/test-request', async (c) => {
       }
     };
     
-    if (requestBody && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
+    // Add body for appropriate methods
+    if (requestBody && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
       fetchOptions.body = JSON.stringify(requestBody);
     }
     
     const response = await fetch(url, fetchOptions);
     
-    // Get response body as text
-    const responseBody = await response.text();
+    // Get response body and try to parse as JSON, fall back to text
+    let responseBody: any;
+    const responseText = await response.text();
+    
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
     
     // Convert headers to plain object
     const responseHeaders: Record<string, string> = {};
@@ -107,11 +129,16 @@ crudApi.post('/test-request', async (c) => {
       responseHeaders[key] = value;
     });
     
+    // Calculate request duration
+    const endTime = Date.now();
+    const timeMs = endTime - startTime;
+    
     return c.json({
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
-      body: responseBody
+      body: responseBody,
+      time_ms: timeMs
     });
     
   } catch (error) {
