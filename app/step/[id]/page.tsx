@@ -942,4 +942,5 @@ export default function StepPage() {
 }
 
 
-export const dynamic = 'force-static';
+
+export const runtime = 'edge';

@@ -360,4 +360,5 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
 }
 
 
-export const dynamic = 'force-static';
+
+export const runtime = 'edge';

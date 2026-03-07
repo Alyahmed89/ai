@@ -933,4 +933,5 @@ export default function FlowPage() {
 }
 
 
-export const dynamic = 'force-static';
+
+export const runtime = 'edge';
