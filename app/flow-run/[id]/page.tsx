@@ -493,5 +493,3 @@ export default function FlowRunPage() {
 
 
 export const runtime = 'edge';
-
-export const runtime = 'edge';
