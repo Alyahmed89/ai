@@ -3,7 +3,6 @@
 import { useState, useEffect, use } from 'react';
 import { apiClient } from '@/lib/api-client';
 
-export const runtime = 'edge';
 
 interface Task {
   id: string;

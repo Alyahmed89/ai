@@ -883,4 +883,3 @@ export default function FlowsPage() {
   );
 }
 
-export const runtime = 'edge';

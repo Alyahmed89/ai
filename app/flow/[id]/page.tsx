@@ -932,4 +932,3 @@ export default function FlowPage() {
   );
 }
 
-export const runtime = 'edge';

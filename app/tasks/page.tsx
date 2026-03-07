@@ -472,4 +472,3 @@ export default function TasksPage() {
   );
 }
 
-export const runtime = 'edge';

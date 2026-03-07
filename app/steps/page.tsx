@@ -346,4 +346,3 @@ export default function StepsPage() {
   );
 }
 
-export const runtime = 'edge';

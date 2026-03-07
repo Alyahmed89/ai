@@ -486,4 +486,3 @@ export default function FlowRunsPage() {
   );
 }
 
-export const runtime = 'edge';
