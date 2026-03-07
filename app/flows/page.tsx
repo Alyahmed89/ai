@@ -5,12 +5,15 @@ import { apiClient } from '@/lib/api-client';
 
 export default function FlowsPage() {
   const [flows, setFlows] = useState<any[]>([]);
+  const [flowRuns, setFlowRuns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createSuccess, setCreateSuccess] = useState('');
+  const [startingFlow, setStartingFlow] = useState<string | null>(null);
+  const [stoppingFlow, setStoppingFlow] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -26,18 +29,30 @@ export default function FlowsPage() {
   const fetchFlows = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.getFlowDefinitions(50);
+      const [flowsResponse, flowRunsResponse] = await Promise.all([
+        apiClient.getFlowDefinitions(50),
+        apiClient.getFlowRuns(100)
+      ]);
       
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+      if (!flowsResponse.ok) {
+        throw new Error(`API error for flows: ${flowsResponse.status}`);
       }
       
-      const data = await response.json();
+      if (!flowRunsResponse.ok) {
+        console.warn(`API error for flow runs: ${flowRunsResponse.status}`);
+      }
       
-      if (data.error) {
-        setError(data.error);
+      const flowsData = await flowsResponse.json();
+      const flowRunsData = flowRunsResponse.ok ? await flowRunsResponse.json() : [];
+      
+      if (flowsData.error) {
+        setError(flowsData.error);
       } else {
-        setFlows(data);
+        setFlows(flowsData);
+      }
+      
+      if (!flowRunsData.error) {
+        setFlowRuns(flowRunsData);
       }
     } catch (err) {
       console.error('Error fetching flows:', err);
@@ -100,6 +115,127 @@ export default function FlowsPage() {
       ...prev,
       [name]: name === 'priority' || name === 'max_iterations' ? parseInt(value) || 0 : value
     }));
+  };
+
+  const handleStartFlow = async (flowId: string) => {
+    try {
+      setStartingFlow(flowId);
+      const response = await apiClient.startFlow({
+        flow_id: flowId,
+        repository: "owner/repo", // Default value, should be configurable
+        branch: "main",
+        initial_user_prompt: "",
+        max_iterations: 10
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start flow: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Flow started:', data);
+      
+      // Refresh the flows and flow runs list
+      fetchFlows();
+      
+      alert(`Flow started successfully! Conversation ID: ${data.conversation_id}`);
+    } catch (err) {
+      console.error('Error starting flow:', err);
+      alert(`Failed to start flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setStartingFlow(null);
+    }
+  };
+
+  const handleStopFlow = async (flowRunId: string) => {
+    try {
+      setStoppingFlow(flowRunId);
+      
+      // First try to stop via the Durable Object endpoint
+      // We need to get the conversation_id from the flow run
+      const flowRun = flowRuns.find(fr => fr.id === flowRunId);
+      if (flowRun && flowRun.conversation_id) {
+        const response = await apiClient.stopFlow(flowRun.conversation_id);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to stop flow: ${response.status}`);
+        }
+        
+        console.log('Flow stopped via Durable Object');
+      } else {
+        // Fallback: update flow run status
+        const response = await apiClient.updateFlowRunStatus(flowRunId, {
+          status: 'cancelled',
+          completed_at: Math.floor(Date.now() / 1000)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to update flow run status: ${response.status}`);
+        }
+        
+        console.log('Flow run status updated to cancelled');
+      }
+      
+      // Refresh the flows and flow runs list
+      fetchFlows();
+      
+      alert('Flow stopped successfully!');
+    } catch (err) {
+      console.error('Error stopping flow:', err);
+      alert(`Failed to stop flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setStoppingFlow(null);
+    }
+  };
+
+  // Helper function to check if a flow has running instances
+  const getRunningFlowRunsForFlow = (flowId: string) => {
+    return flowRuns.filter(run => 
+      run.flow_id === flowId && 
+      (run.status === 'running' || run.status === 'pending')
+    );
+  };
+
+  // Helper function to get all running flow runs
+  const getAllRunningFlowRuns = () => {
+    return flowRuns.filter(run => 
+      run.status === 'running' || run.status === 'pending'
+    );
+  };
+
+  // Helper function to stop all running flows
+  const handleStopAllFlows = async () => {
+    const runningFlows = getAllRunningFlowRuns();
+    if (runningFlows.length === 0) {
+      alert('No running flows to stop');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to stop ${runningFlows.length} running flow(s)?`)) {
+      return;
+    }
+
+    try {
+      // Stop each running flow
+      for (const flowRun of runningFlows) {
+        if (flowRun.conversation_id) {
+          await apiClient.stopFlow(flowRun.conversation_id);
+        } else {
+          await apiClient.updateFlowRunStatus(flowRun.id, {
+            status: 'cancelled',
+            completed_at: Math.floor(Date.now() / 1000)
+          });
+        }
+      }
+      
+      // Refresh the flows and flow runs list
+      fetchFlows();
+      
+      alert(`Successfully stopped ${runningFlows.length} flow(s)`);
+    } catch (err) {
+      console.error('Error stopping all flows:', err);
+      alert(`Failed to stop all flows: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   };
 
   if (loading) {
@@ -271,10 +407,88 @@ export default function FlowsPage() {
           </h1>
           <p style={{
             fontSize: '1.125rem',
-            color: '#6b7280'
+            color: '#6b7280',
+            marginBottom: '1rem'
           }}>
             {flows.length} flow{flows.length !== 1 ? 's' : ''} found
           </p>
+          
+          {/* Prominent Start/Stop buttons at the top */}
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            alignItems: 'center',
+            marginBottom: '1rem',
+            flexWrap: 'wrap'
+          }}>
+            <button
+              onClick={() => {
+                if (flows.length === 0) {
+                  alert('No flows available to start. Please create a flow first.');
+                  return;
+                }
+                
+                // Simple implementation: start the first flow
+                // In a more complete implementation, this would open a dialog to select which flow to start
+                const firstFlow = flows[0];
+                if (confirm(`Start flow "${firstFlow.name || firstFlow.id}"?`)) {
+                  handleStartFlow(firstFlow.id);
+                }
+              }}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+            >
+              <span>▶</span>
+              Start Flow Run
+            </button>
+            
+            <button
+              onClick={handleStopAllFlows}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
+            >
+              <span>⏹</span>
+              Stop All Running Flows
+            </button>
+            
+            <div style={{
+              fontSize: '0.875rem',
+              color: '#6b7280',
+              marginLeft: 'auto'
+            }}>
+              {getAllRunningFlowRuns().length > 0 && (
+                <span>
+                  {getAllRunningFlowRuns().length} flow{getAllRunningFlowRuns().length !== 1 ? 's' : ''} currently running
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Flows List */}
@@ -369,10 +583,24 @@ export default function FlowsPage() {
                     }}>
                       Created
                     </th>
+                    <th style={{
+                      padding: '1rem',
+                      textAlign: 'left',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {flows.map((flow) => (
+                  {flows.map((flow) => {
+                    const runningFlowRuns = getRunningFlowRunsForFlow(flow.id);
+                    const hasRunningInstances = runningFlowRuns.length > 0;
+                    
+                    return (
                     <tr 
                       key={flow.id}
                       style={{
@@ -454,8 +682,63 @@ export default function FlowsPage() {
                       }}>
                         {new Date(flow.created_at).toLocaleDateString()}
                       </td>
+                      <td style={{
+                        padding: '1rem',
+                        fontSize: '0.875rem',
+                        color: '#6b7280',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          {/* Start button - show if no running instances or if user wants to start another */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartFlow(flow.id);
+                            }}
+                            disabled={startingFlow === flow.id}
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              backgroundColor: '#10b981',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '0.375rem',
+                              fontSize: '0.75rem',
+                              fontWeight: '500',
+                              cursor: startingFlow === flow.id ? 'not-allowed' : 'pointer',
+                              opacity: startingFlow === flow.id ? 0.7 : 1
+                            }}
+                          >
+                            {startingFlow === flow.id ? 'Starting...' : 'Start'}
+                          </button>
+                          
+                          {/* Stop buttons for each running instance */}
+                          {hasRunningInstances && runningFlowRuns.map((flowRun) => (
+                            <button
+                              key={flowRun.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStopFlow(flowRun.id);
+                              }}
+                              disabled={stoppingFlow === flowRun.id}
+                              style={{
+                                padding: '0.25rem 0.75rem',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                cursor: stoppingFlow === flowRun.id ? 'not-allowed' : 'pointer',
+                                opacity: stoppingFlow === flowRun.id ? 0.7 : 1
+                              }}
+                            >
+                              {stoppingFlow === flowRun.id ? 'Stopping...' : `Stop (${runningFlowRuns.length})`}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
