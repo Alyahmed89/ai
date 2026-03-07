@@ -850,6 +850,9 @@ export class ConversationOrchestratorDO_2026A {
       
       await this.state.storage.put('conversation', this.conversation);
       
+      // Create initial flow run record in database
+      await this.createInitialFlowRun();
+      
       // Schedule first alarm immediately
       await this.scheduleNextAlarm(ALARM_DELAY_INIT);
       
