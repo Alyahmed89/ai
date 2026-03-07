@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getTaskData, getFirstPendingTask } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
@@ -516,9 +516,8 @@ export class ConversationOrchestratorDO_2026A {
         branch?: string;
         initial_user_prompt: string;
         max_iterations?: number;
-        deepseek_system?: string;
       };
-      const { repository, branch, initial_user_prompt, max_iterations, deepseek_system } = body;
+      const { repository, branch, initial_user_prompt, max_iterations } = body;
       
       if (!repository || !initial_user_prompt) {
         return new Response(JSON.stringify({ error: 'Need repository and initial_user_prompt' }), {
@@ -544,7 +543,6 @@ export class ConversationOrchestratorDO_2026A {
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        deepseek_system,
         project_facts: [] // Empty array instead of database query
       };
       
@@ -586,9 +584,8 @@ export class ConversationOrchestratorDO_2026A {
         branch?: string;
         initial_user_prompt?: string;
         max_iterations?: number;
-        deepseek_system?: string;
       };
-      const { flow_id, repository, branch, initial_user_prompt, max_iterations, deepseek_system } = body;
+      const { flow_id, repository, branch, initial_user_prompt, max_iterations } = body;
       
       console.log(`[DO:${this.state.id}] Parsed request: flow_id=${flow_id}`);
       
@@ -616,7 +613,6 @@ export class ConversationOrchestratorDO_2026A {
       // Variables that might be overridden by flow definition
       let effectiveRepository = repository;
       let effectiveBranch = branch;
-      let effectiveDeepseekSystem = deepseek_system;
       
       if (this.env.FLOW_RUNS_DB) {
         console.log(`[DO:${this.state.id}] FLOW_RUNS_DB is available`);
@@ -637,7 +633,6 @@ export class ConversationOrchestratorDO_2026A {
             // Use flow definition values if not provided in request
             effectiveRepository = repository || flowDefinition.repository;
             effectiveBranch = branch || flowDefinition.branch;
-            effectiveDeepseekSystem = deepseek_system || flowDefinition.deepseek_system;
             const effectiveFlowMaxIterations = flowDefinition.max_iterations;
             
             // Use flow max iterations if not specified in request
@@ -834,7 +829,6 @@ export class ConversationOrchestratorDO_2026A {
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        deepseek_system: effectiveDeepseekSystem || 'You are a flow execution assistant. Follow the flow steps precisely. Return structured JSON when asked.',
         project_facts: [], // Empty array instead of database query
         flow_id: flow_id, // Store flow ID for flow execution
         flow_execution_mode: true, // Flag to indicate flow execution mode
@@ -904,7 +898,6 @@ export class ConversationOrchestratorDO_2026A {
       let flowDefinition = null;
       let effectiveRepository = '[FLOW]';
       let effectiveBranch = '[FLOW]';
-      let effectiveDeepseekSystem = 'You are OpenHands. Execute exactly what is asked.';
       let effectiveMaxIterations = 20; // Default
       let databaseAvailable = false;
       
@@ -921,7 +914,6 @@ export class ConversationOrchestratorDO_2026A {
             // Use flow definition values
             effectiveRepository = flowDefinition.repository || '[FLOW]';
             effectiveBranch = flowDefinition.branch || '[FLOW]';
-            effectiveDeepseekSystem = flowDefinition.deepseek_system || 'You are OpenHands. Execute exactly what is asked.';
             
             // Use flow max iterations if available
             if (flowDefinition.max_iterations && flowDefinition.max_iterations > 0) {
@@ -973,7 +965,6 @@ export class ConversationOrchestratorDO_2026A {
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        deepseek_system: effectiveDeepseekSystem,
         project_facts: [],
         flow_id: flow_id,
         flow_steps: steps,
@@ -1189,9 +1180,8 @@ export class ConversationOrchestratorDO_2026A {
       const body = await request.json() as {
         openhands_conversation_id: string;
         max_iterations?: number;
-        deepseek_system?: string;
       };
-      const { openhands_conversation_id, max_iterations, deepseek_system } = body;
+      const { openhands_conversation_id, max_iterations } = body;
       
       if (!openhands_conversation_id) {
         return new Response(JSON.stringify({ error: 'Need openhands_conversation_id' }), {
@@ -1220,7 +1210,6 @@ export class ConversationOrchestratorDO_2026A {
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        deepseek_system: deepseek_system || 'You are an AI assistant that coordinates between OpenHands and DeepSeek. When OpenHands completes a task and asks "Proceed?", you should analyze the results and provide the next instruction. Always be concise and focused on the task.',
         project_facts: projectFacts,
         openhands_conversation_id: openhands_conversation_id
       };
@@ -1694,8 +1683,7 @@ export class ConversationOrchestratorDO_2026A {
             branch: this.conversation.branch,
             iteration: this.conversation.iteration,
             max_iterations: this.conversation.max_iterations
-          },
-          this.conversation.deepseek_system
+          }
         );
         
         // Store initial messages in conversation
@@ -1739,8 +1727,7 @@ export class ConversationOrchestratorDO_2026A {
         branch: this.conversation.branch,
         iteration: this.conversation.iteration,
         max_iterations: this.conversation.max_iterations
-      },
-      this.conversation.deepseek_system
+      }
     );
     
     // Store initial messages in conversation
@@ -2655,17 +2642,40 @@ export class ConversationOrchestratorDO_2026A {
     console.log(`[DO:${this.state.id}] Handling flow completion for: ${this.conversation.flow_id}`);
     
     try {
-      // Get next_flow_id from flow_definitions table
-      const nextFlow = await this.env.FLOW_RUNS_DB.prepare(`
-        SELECT next_flow_id FROM flow_definitions WHERE id = ?
-      `).bind(this.conversation.flow_id).first();
+      // Get last response from the flow run
+      const lastResponse = getLastFlowResponse(this.conversation.conversation_messages);
+      console.log(`[DO:${this.state.id}] Last flow response (first 200 chars): ${lastResponse.substring(0, 200)}...`);
       
-      if (nextFlow?.next_flow_id) {
-        console.log(`[DO:${this.state.id}] Starting next flow from flow_definitions: ${nextFlow.next_flow_id}`);
-        await this.startSpecificFlow(nextFlow.next_flow_id);
+      // Check for conditional next flow based on last response
+      const conditionalNextFlowId = await getNextFlowBasedOnConditions(
+        this.env.FLOW_RUNS_DB,
+        this.conversation.flow_id,
+        lastResponse
+      );
+      
+      let nextFlowId: string | null = null;
+      
+      if (conditionalNextFlowId) {
+        console.log(`[DO:${this.state.id}] Using conditional next flow: ${conditionalNextFlowId}`);
+        nextFlowId = conditionalNextFlowId;
       } else {
-        console.log(`[DO:${this.state.id}] No next_flow_id defined in flow_definitions for: ${this.conversation.flow_id}`);
-        console.log(`[DO:${this.state.id}] Flow chain ends here`);
+        // Fall back to static next_flow_id from flow_definitions table
+        const nextFlow = await this.env.FLOW_RUNS_DB.prepare(`
+          SELECT next_flow_id FROM flow_definitions WHERE id = ?
+        `).bind(this.conversation.flow_id).first();
+        
+        if (nextFlow?.next_flow_id) {
+          console.log(`[DO:${this.state.id}] Using static next flow from flow_definitions: ${nextFlow.next_flow_id}`);
+          nextFlowId = nextFlow.next_flow_id;
+        } else {
+          console.log(`[DO:${this.state.id}] No next_flow_id defined in flow_definitions for: ${this.conversation.flow_id}`);
+          console.log(`[DO:${this.state.id}] Flow chain ends here`);
+        }
+      }
+      
+      if (nextFlowId) {
+        console.log(`[DO:${this.state.id}] Starting next flow: ${nextFlowId}`);
+        await this.startSpecificFlow(nextFlowId);
       }
       
       // Mark flow as completed to prevent double execution
@@ -2725,7 +2735,6 @@ export class ConversationOrchestratorDO_2026A {
       this.conversation.pending_event_id = undefined;
       this.conversation.last_event_seen_at = undefined;
       this.conversation.cooldown_started_at = undefined;
-      this.conversation.deepseek_system = undefined;
       this.conversation.conversation_messages = undefined;
       
       await this.state.storage.put('conversation', this.conversation);
@@ -3324,8 +3333,7 @@ ${messageContent}`;
       repository: this.conversation!.repository, // Use same repository
       branch: doneData.new_branch || this.conversation!.branch || 'main',
       initial_user_prompt: doneData.new_prompt,
-      max_iterations: this.conversation!.max_iterations, // Use same max iterations
-      deepseek_system: doneData.new_deepseek_system || this.conversation!.deepseek_system
+      max_iterations: this.conversation!.max_iterations // Use same max iterations
     };
 
     try {
@@ -3378,8 +3386,7 @@ ${messageContent}`;
       repository: this.conversation.repository,
       branch: this.conversation.branch || 'main',
       initial_user_prompt: this.conversation.initial_user_prompt,
-      max_iterations: this.conversation.max_iterations,
-      deepseek_system: this.conversation.deepseek_system
+      max_iterations: this.conversation.max_iterations
     };
 
     try {
@@ -3666,8 +3673,7 @@ ${messageContent}`;
       repository: flow.repository, // Use repository column (not repo)
       branch: flow.branch || 'main',
       initial_user_prompt: firstStep.instructions, // Get from first step instructions
-      max_iterations: flow.max_iterations || 20,
-      deepseek_system: this.conversation?.deepseek_system || undefined // Use current or undefined
+      max_iterations: flow.max_iterations || 20
     };
     
     try {
@@ -3926,7 +3932,6 @@ ${messageContent}`;
       id: this.flowRunId,
       conversation_id: this.state.id.toString(),
       initial_prompt: this.conversation.initial_user_prompt,
-      deepseek_system: this.conversation.deepseek_system,
       repository: this.conversation.repository,
       branch: this.conversation.branch || 'main',
       max_iterations: this.conversation.max_iterations,

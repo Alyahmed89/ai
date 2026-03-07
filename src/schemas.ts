@@ -48,8 +48,6 @@ export const flowStepUpdateSchema = flowStepCreateSchema.partial().extend({
 export const flowSchema = z.object({
   id: idSchema,
   name: z.string().min(1, 'name is required'),
-  first_prompt: z.string().optional().nullable(),
-  deepseek_system: z.string().optional().nullable(),
   repo: z.string().optional().nullable(),
   branch: z.string().optional().nullable(),
   max_iterations: z.number().int().positive().default(5),

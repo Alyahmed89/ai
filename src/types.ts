@@ -46,8 +46,7 @@ export interface ConversationData {
   // Error tracking for OpenHands API
   openhands_error_count?: number; // Consecutive OpenHands API errors
   
-  // DeepSeek system message (optional, set via API)
-  deepseek_system?: string;
+
   
   // DeepSeek conversation history (maintains context across iterations)
   conversation_messages?: DeepSeekMessage[];
@@ -233,7 +232,6 @@ export interface IterationData {
 export interface DoneResponseData {
   done: boolean;
   new_prompt?: string;
-  new_deepseek_system?: string;
   new_branch?: string;
   is_end_flow_early?: boolean;
   stop_reason?: string;

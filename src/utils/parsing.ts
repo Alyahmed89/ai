@@ -5,7 +5,7 @@ import { DoneResponseData, CreateTaskData, SkipTaskData } from '../types';
 // Hardened regex patterns for AI tokens
 const CREATE_TASK_REGEX = /\[CREATE_TASK\]\s+flow_id:\s*(\w+)\s+title:\s*([^]+?)\s+description:\s*([^]+?)\s+order_index:\s*(\d+)\s+priority:\s*(\d+)/;
 const SKIP_TASK_REGEX = /\[SKIP_TASK\]\s+task_id:\s*([\w_-]+)\s+reason:\s*([^]+)/;
-const END_FLOW_REGEX = /\[END_FLOW\](?:\s+prompt:\s*([^]+?))?(?:\s+deepseek_system:\s*([^]+?))?(?:\s+branch:\s*([^]+?))?/;
+const END_FLOW_REGEX = /\[END_FLOW\](?:\s+prompt:\s*([^]+?))?(?:\s+branch:\s*([^]+?))?/;
 const END_FLOW_EARLY_REGEX = /\[END_FLOW_EARLY\](?:\s+reason:\s*([^]+))?/;
 
 /**
@@ -36,12 +36,11 @@ export function parseDoneResponse(response: string): DoneResponseData {
 
   // For END_FLOW with next prompt, start new flow
   if (endFlowMatch) {
-    const [, nextPrompt, nextDeepseekSystem, nextBranch] = endFlowMatch;
+    const [, nextPrompt, nextBranch] = endFlowMatch;
     if (nextPrompt) {
       return {
         done: true,
         new_prompt: nextPrompt.trim(),
-        new_deepseek_system: nextDeepseekSystem?.trim() || undefined,
         new_branch: nextBranch?.trim() || undefined
       };
     }

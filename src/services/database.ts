@@ -9,11 +9,16 @@ import { FlowRunData, IterationData, ProjectFact, StepData } from '../types';
  */
 export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise<{success: boolean; error?: string}> {
   try {
+    // Calculate started_at and completed_at based on status
+    const now = Math.floor(Date.now() / 1000);
+    const started_at = flowRun.status === 'active' ? now : null;
+    const completed_at = (flowRun.status === 'completed' || flowRun.status === 'failed' || flowRun.status === 'stopped' || flowRun.status === 'new_flow_started') ? now : null;
+    
     await db.prepare(`
       INSERT INTO flow_runs (
         id, flow_id, conversation_id, step_id, input_prompt, output_response,
-        status, duration_ms, created_at, next_flow_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, duration_ms, created_at, next_flow_id, started_at, completed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       flowRun.id,
       flowRun.flow_id || null,
@@ -23,8 +28,10 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
       flowRun.output_response || null,
       flowRun.status || 'active',
       flowRun.duration_ms || 0,
-      flowRun.created_at || Date.now(),
-      flowRun.next_flow_id || null
+      flowRun.created_at || now,
+      flowRun.next_flow_id || null,
+      started_at,
+      completed_at
     ).run();
 
     return { success: true };
@@ -51,13 +58,20 @@ export async function updateFlowRunStatus(
   nextFlowId?: string
 ): Promise<{success: boolean; error?: string}> {
   try {
+    // Set completed_at for terminal states
+    const completed_at = (status === 'completed' || status === 'failed' || status === 'stopped' || status === 'new_flow_started') 
+      ? Math.floor(Date.now() / 1000) 
+      : null;
+    
     await db.prepare(`
       UPDATE flow_runs 
-      SET status = ?, next_flow_id = ?
+      SET status = ?, next_flow_id = ?, stop_reason = ?, completed_at = ?
       WHERE id = ?
     `).bind(
       status,
       nextFlowId || null,
+      stopReason || null,
+      completed_at,
       flowRunId
     ).run();
 
@@ -1064,8 +1078,7 @@ export async function getFlowDefinition(
 ): Promise<{
   id: string;
   name: string;
-  description: string;
-  deepseek_system: string;
+  description: string | null;
   max_iterations: number;
   repository: string;
   branch: string;
@@ -1074,7 +1087,7 @@ export async function getFlowDefinition(
     // First try the flows table with repo column
     try {
       const result = await db.prepare(`
-        SELECT id, name, first_prompt as description, deepseek_system, max_iterations, repo as repository, branch
+        SELECT id, name, '' as description, max_iterations, repo as repository, branch
         FROM flows
         WHERE id = ?
       `).bind(flow_id).first();
@@ -1091,7 +1104,7 @@ export async function getFlowDefinition(
     // Note: This is a fallback in case the table name is different
     try {
       const result2 = await db.prepare(`
-        SELECT id, name, description, max_iterations, repository, branch, NULL as deepseek_system
+        SELECT id, name, description, max_iterations, repository, branch
         FROM flow_definitions
         WHERE id = ?
       `).bind(flow_id).first();
@@ -1240,6 +1253,101 @@ export async function getFlowContext(
     };
   } catch (error: any) {
     console.error(`[DATABASE] Error getting flow context: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Get the last response from a flow run
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @param conversation_messages Conversation messages array
+ * @returns Last response text or empty string
+ */
+export function getLastFlowResponse(conversation_messages?: any[]): string {
+  if (!conversation_messages || conversation_messages.length === 0) {
+    return '';
+  }
+  
+  // Find the last assistant message (DeepSeek response)
+  for (let i = conversation_messages.length - 1; i >= 0; i--) {
+    const message = conversation_messages[i];
+    if (message.role === 'assistant' && message.content) {
+      return message.content;
+    }
+  }
+  
+  return '';
+}
+
+/**
+ * Get next flow ID based on flow conditions
+ * @param db D1Database instance
+ * @param flow_id Current flow ID
+ * @param last_response Last response text from the flow
+ * @returns Next flow ID or null if no condition matches
+ */
+export async function getNextFlowBasedOnConditions(
+  db: D1Database,
+  flow_id: string,
+  last_response: string
+): Promise<string | null> {
+  try {
+    console.log(`[DATABASE] Getting next flow based on conditions for flow ${flow_id}, last response: ${last_response.substring(0, 100)}...`);
+    
+    // Check if current flow has conditions
+    const conditionsQuery = `
+      SELECT ffc.condition_type, ffc.condition_value, ffc.condition_operator, 
+             ffc.next_flow_id
+      FROM flow_flow_conditions ffc
+      WHERE ffc.flow_id = ?
+      ORDER BY ffc.created_at
+    `;
+    
+    const conditionsResult = await db.prepare(conditionsQuery).bind(flow_id).all();
+    
+    if (conditionsResult.results && conditionsResult.results.length > 0) {
+      console.log(`[DATABASE] Found ${conditionsResult.results.length} flow conditions for flow ${flow_id}`);
+      
+      // Check each condition against the response
+      for (const condition of conditionsResult.results) {
+        const { condition_type, condition_value, condition_operator, next_flow_id } = condition;
+        let conditionMet = false;
+        
+        switch (condition_type) {
+          case 'response_contains':
+            conditionMet = last_response.toLowerCase().includes(condition_value.toLowerCase());
+            break;
+          case 'response_matches':
+            // Simple exact match (case-insensitive)
+            conditionMet = last_response.toLowerCase() === condition_value.toLowerCase();
+            break;
+          case 'response_starts_with':
+            conditionMet = last_response.toLowerCase().startsWith(condition_value.toLowerCase());
+            break;
+          case 'response_ends_with':
+            conditionMet = last_response.toLowerCase().endsWith(condition_value.toLowerCase());
+            break;
+          default:
+            console.warn(`[DATABASE] Unknown flow condition type: ${condition_type}`);
+            continue;
+        }
+        
+        if (conditionMet) {
+          console.log(`[DATABASE] Flow condition met: ${condition_type} "${condition_value}" -> next_flow_id: ${next_flow_id}`);
+          return next_flow_id;
+        }
+      }
+      
+      console.log(`[DATABASE] No flow conditions matched for flow ${flow_id}`);
+    } else {
+      console.log(`[DATABASE] No flow conditions found for flow ${flow_id}`);
+    }
+    
+    return null;
+    
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting next flow based on conditions: ${error.message}`);
     return null;
   }
 }

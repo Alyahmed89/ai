@@ -180,21 +180,19 @@ crudApi.post('/flows', async (c) => {
     }
     
     const validatedData = validation.data!;
-    const { id, name, first_prompt, deepseek_system, repo, branch, max_iterations, steps } = validatedData;
+    const { id, name, repo, branch, max_iterations, steps } = validatedData;
     
     // Generate ID if not provided
     const flowId = id || `flow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     const sql = `
-      INSERT INTO flows (id, name, first_prompt, deepseek_system, repo, branch, max_iterations, steps, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO flows (id, name, repo, branch, max_iterations, steps, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
 
     await db.prepare(sql).bind(
       flowId,
       name,
-      dbValue(first_prompt),
-      dbValue(deepseek_system),
       dbValue(repo),
       dbValue(branch),
       max_iterations || 5,
@@ -227,18 +225,16 @@ crudApi.put('/flows/:id', async (c) => {
     }
     
     const validatedData = validation.data!;
-    const { name, first_prompt, deepseek_system, repo, branch, max_iterations, steps } = validatedData;
+    const { name, repo, branch, max_iterations, steps } = validatedData;
 
     const sql = `
       UPDATE flows 
-      SET name = ?, first_prompt = ?, deepseek_system = ?, repo = ?, branch = ?, max_iterations = ?, steps = ?
+      SET name = ?, repo = ?, branch = ?, max_iterations = ?, steps = ?
       WHERE id = ?
     `;
 
     const result = await db.prepare(sql).bind(
       name,
-      dbValue(first_prompt),
-      dbValue(deepseek_system),
       dbValue(repo),
       dbValue(branch),
       max_iterations,

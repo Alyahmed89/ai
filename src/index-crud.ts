@@ -235,7 +235,7 @@ app.get('/health', async (c) => {
 app.post('/start', async (c) => {
   try {
     const body = await c.req.json();
-    const { repository, branch, initial_user_prompt, max_iterations, deepseek_system, flow_id } = body;
+    const { repository, branch, initial_user_prompt, max_iterations, flow_id } = body;
     
     // FLOW-BASED EXECUTION
     if (flow_id) {
@@ -253,9 +253,8 @@ app.post('/start', async (c) => {
           const targetFlowId = flow_id;
           const targetRepository = repository || (flowResult as any).repo;
           const targetBranch = branch || (flowResult as any).branch;
-          const targetInitialUserPrompt = initial_user_prompt || (flowResult as any).first_prompt;
+          const targetInitialUserPrompt = initial_user_prompt || (flowResult as any).description;
           const targetMaxIterations = max_iterations || (flowResult as any).max_iterations;
-          const targetDeepseekSystem = deepseek_system || (flowResult as any).deepseek_system;
           
           console.log(`[HTTP:START:FLOW] Using flow definition: ${targetFlowId}, repo: ${targetRepository}, branch: ${targetBranch}`);
           
@@ -271,8 +270,7 @@ app.post('/start', async (c) => {
               repository: targetRepository,
               branch: targetBranch, // Don't provide default - let flow definition determine it
               initial_user_prompt: targetInitialUserPrompt || `Execute flow: ${targetFlowId}`,
-              max_iterations: targetMaxIterations || 20,
-              deepseek_system: targetDeepseekSystem // Don't provide default - let flow definition determine it
+              max_iterations: targetMaxIterations || 20
             })
           });
           
@@ -327,8 +325,7 @@ app.post('/start', async (c) => {
           repository,
           branch: branch || 'main',
           initial_user_prompt,
-          max_iterations: max_iterations || 20,
-          deepseek_system: deepseek_system || 'You are a helpful assistant.'
+          max_iterations: max_iterations || 20
         })
       });
       
@@ -361,7 +358,44 @@ app.post('/start', async (c) => {
   }
 });
 
-
+// ============================================================================
+// STATUS ENDPOINT (missing implementation)
+// ============================================================================
+app.get('/status/:id', async (c) => {
+  try {
+    const conversationId = c.req.param('id');
+    
+    if (!c.env.CONVERSATIONS) {
+      return c.json(errorResponse('Durable Objects not configured', 500));
+    }
+    
+    // Get the Durable Object
+    let id;
+    try {
+      id = c.env.CONVERSATIONS.idFromString(conversationId);
+    } catch (error) {
+      return c.json(errorResponse('Invalid conversation ID', 400));
+    }
+    
+    const conversationDo = c.env.CONVERSATIONS.get(id);
+    
+    // Call the Durable Object's get-state endpoint
+    const doResponse = await conversationDo.fetch('http://placeholder/get-state');
+    
+    if (!doResponse.ok) {
+      const errorText = await doResponse.text();
+      console.error(`[HTTP:STATUS] Durable Object error: ${doResponse.status} - ${errorText}`);
+      return c.json(errorResponse(`Failed to get conversation status: ${doResponse.status}`, 500));
+    }
+    
+    const state = await doResponse.json();
+    return c.json(successResponse(state));
+    
+  } catch (error: any) {
+    console.error(`[HTTP:STATUS] Endpoint error: ${error.message}`);
+    return c.json(errorResponse(error.message, 500));
+  }
+});
 
 export default app;
 export { ConversationOrchestratorDO_2026A };

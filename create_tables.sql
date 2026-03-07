@@ -5,8 +5,6 @@
 CREATE TABLE IF NOT EXISTS flows (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    first_prompt TEXT,
-    deepseek_system TEXT,
     repo TEXT,
     branch TEXT,
     max_iterations INTEGER DEFAULT 5,
@@ -70,9 +68,9 @@ CREATE TABLE IF NOT EXISTS iterations (
 );
 
 -- Insert sample data for testing
-INSERT INTO flows (id, name, first_prompt, repo, branch, max_iterations) VALUES 
-('flow-1', 'Code Review Flow', 'Review this code for bugs', 'example/repo', 'main', 3),
-('flow-2', 'Documentation Flow', 'Generate documentation for this API', 'docs/repo', 'master', 5);
+INSERT INTO flows (id, name, repo, branch, max_iterations) VALUES 
+('flow-1', 'Code Review Flow', 'example/repo', 'main', 3),
+('flow-2', 'Documentation Flow', 'docs/repo', 'master', 5);
 
 INSERT INTO tasks (id, flow_id, title, description, status, order_index) VALUES
 ('task-1', 'flow-1', 'Fix bug in login', 'User login fails with incorrect password', 'pending', 1),

@@ -29,7 +29,7 @@ export const STATIC_PROMPTS = [
 ];
 
 // Force end flow message
-export const FORCE_END_FLOW_MESSAGE = '[END_FLOW] prompt: Please continue with the next task. deepseek_system: You are an AI assistant analyzing code repositories. branch: main';
+export const FORCE_END_FLOW_MESSAGE = '[END_FLOW] prompt: Please continue with the next task. branch: main';
 
 // DeepSeek response timeout and checking prompt
 export const DEEPSEEK_RESPONSE_TIMEOUT = 120000; // 2 minutes max for DeepSeek response
