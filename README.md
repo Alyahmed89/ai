@@ -46,12 +46,20 @@ A Cloudflare Worker-based API for managing conversations, flows, tasks, and step
 
 ### Backend API (Port 48647)
 
+#### Flow Execution Endpoints
+- `POST /start` - Start a new conversation/flow execution (requires JSON body with `flow_id` or `repository` and `initial_user_prompt`)
+- `GET /start` - Start the highest priority flow automatically (optional query parameter: `?priority=N` to start flow with specific priority)
+- `GET /status/:id` - Get status of a conversation/flow execution
+
+#### CRUD API Endpoints (under `/api/`)
 - `GET /api/health` - Health check
 - `GET /api/flows` - Get all flows
 - `POST /api/flows` - Create new flow
 - `GET /api/flows/:id` - Get flow by ID
 - `PUT /api/flows/:id` - Update flow
 - `DELETE /api/flows/:id` - Delete flow
+- `GET /api/flows/:flowId/steps` - Get all steps for a specific flow
+- `GET /api/flows/:flowId/tasks` - Get all tasks for a specific flow
 - `GET /api/tasks` - Get all tasks
 - `POST /api/tasks` - Create new task
 - `GET /api/tasks/:id` - Get task by ID
@@ -65,12 +73,60 @@ A Cloudflare Worker-based API for managing conversations, flows, tasks, and step
 - `DELETE /api/flow-runs/:id` - Delete flow run
 - `GET /api/flow-runs/:flowRunId/iterations` - Get iterations for a flow run
 
+### API Examples
+
+#### Start flow execution
+```bash
+# POST /start - Start a specific flow by ID
+curl -X POST "http://localhost:8787/start" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flow_id": "etaflow"
+  }'
+
+# GET /start - Start the highest priority flow automatically
+curl -X GET "http://localhost:8787/start"
+
+# GET /start?priority=1 - Start a flow with priority 1
+curl -X GET "http://localhost:8787/start?priority=1"
+
+# GET /status/:id - Check status of a running flow
+curl -X GET "http://localhost:8787/status/{conversation_id}"
+```
+
+#### Get tasks for a specific flow
+```bash
+# Get all tasks for the etaflow
+curl -X GET "http://localhost:8787/api/flows/etaflow/tasks"
+
+# Get all tasks for the honoflow  
+curl -X GET "http://localhost:8787/api/flows/honoflow/tasks"
+
+# Get all steps for the etaflow
+curl -X GET "http://localhost:8787/api/flows/etaflow/steps"
+```
+
+#### Create a new task for a flow
+```bash
+curl -X POST "http://localhost:8787/api/tasks" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "new_task_001",
+    "flow_id": "etaflow",
+    "title": "New Task",
+    "description": "Task description",
+    "status": "pending",
+    "order_index": 13
+  }'
+```
+
 ## Database Schema
 
 The application works with the following Cloudflare D1 tables:
 
 1. **flows** - Flow definitions
-   - `id`, `name`, `first_prompt`, `deepseek_system`, `repo`, `branch`, `max_iterations`, `steps`, `created_at`
+   - `id`, `name`, `first_prompt`, `deepseek_system`, `repo`, `branch`, `max_iterations`, `steps`, `priority`, `created_at`
+   - Note: `priority` field (integer, default 0) determines execution priority. Higher number = higher priority.
 
 2. **flow_steps** - Steps within flows
    - `id`, `flow_id`, `step_number`, `prompt`, `created_at`
