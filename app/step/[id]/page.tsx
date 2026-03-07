@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import URLRequestResponseTest from '@/app/components/URLRequestResponseTest';
-import ConditionNavigator from '@/app/components/ConditionNavigator';
+import EditableConditionList from '@/app/components/EditableConditionList';
 import { apiClient } from '@/lib/api-client';
 
 export default function StepPage() {
@@ -835,8 +835,8 @@ export default function StepPage() {
           />
         )}
 
-        {/* Condition Navigation Section - Show if step has conditions */}
-        <ConditionNavigator 
+        {/* Editable Condition List Section - Show if step has conditions */}
+        <EditableConditionList 
           stepId={stepId} 
           currentStepOrder={step.order} 
         />
