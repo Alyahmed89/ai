@@ -8,6 +8,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterFlowId, setFilterFlowId] = useState('');
+  const [startingFlow, setStartingFlow] = useState<string | null>(null);
+  const [stoppingFlow, setStoppingFlow] = useState<string | null>(null);
 
   const fetchFlowRuns = async () => {
     try {
@@ -50,6 +52,77 @@ export default function Home() {
     if (!text) return 'N/A';
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
+  };
+
+  const handleStartFlow = async (flowId: string) => {
+    try {
+      setStartingFlow(flowId);
+      const response = await apiClient.startFlow({
+        flow_id: flowId,
+        repository: "owner/repo", // Default value, should be configurable
+        branch: "main",
+        initial_user_prompt: "",
+        max_iterations: 10
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start flow: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Flow started:', data);
+      
+      // Refresh the flow runs list
+      fetchFlowRuns();
+      
+      alert(`Flow started successfully! Conversation ID: ${data.conversation_id}`);
+    } catch (err) {
+      console.error('Error starting flow:', err);
+      alert(`Failed to start flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setStartingFlow(null);
+    }
+  };
+
+  const handleStopFlow = async (flowRunId: string) => {
+    try {
+      setStoppingFlow(flowRunId);
+      
+      // First try to stop via the Durable Object endpoint
+      // We need to get the conversation_id from the flow run
+      const flowRun = flowRuns.find(fr => fr.id === flowRunId);
+      if (flowRun && flowRun.conversation_id) {
+        const response = await apiClient.stopFlow(flowRun.conversation_id);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to stop flow: ${response.status}`);
+        }
+        
+        console.log('Flow stopped via Durable Object');
+      } else {
+        // Fallback: update flow run status
+        const response = await apiClient.updateFlowRunStatus(flowRunId, {
+          status: 'cancelled',
+          completed_at: Math.floor(Date.now() / 1000)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to update flow run status: ${response.status}`);
+        }
+        
+        console.log('Flow run status updated to cancelled');
+      }
+      
+      // Refresh the flow runs list
+      fetchFlowRuns();
+      
+      alert('Flow stopped successfully!');
+    } catch (err) {
+      console.error('Error stopping flow:', err);
+      alert(`Failed to stop flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setStoppingFlow(null);
+    }
   };
 
   if (loading) {
@@ -392,6 +465,16 @@ export default function Home() {
                       color: '#374151',
                       whiteSpace: 'nowrap'
                     }}>
+                      Actions
+                    </th>
+                    <th style={{
+                      padding: '1rem',
+                      textAlign: 'left',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#374151',
+                      whiteSpace: 'nowrap'
+                    }}>
                       Created
                     </th>
                   </tr>
@@ -502,6 +585,62 @@ export default function Home() {
                         color: '#6b7280'
                       }}>
                         {flowRun.duration_ms ? `${(flowRun.duration_ms / 1000).toFixed(2)}s` : 'N/A'}
+                      </td>
+                      <td style={{
+                        padding: '1rem',
+                        fontSize: '0.875rem',
+                        color: '#6b7280',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          {/* Start button - show for completed/failed/cancelled flows */}
+                          {(flowRun.status === 'completed' || flowRun.status === 'failed' || flowRun.status === 'cancelled' || !flowRun.status) && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartFlow(flowRun.flow_id);
+                              }}
+                              disabled={startingFlow === flowRun.flow_id}
+                              style={{
+                                padding: '0.25rem 0.75rem',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                cursor: startingFlow === flowRun.flow_id ? 'not-allowed' : 'pointer',
+                                opacity: startingFlow === flowRun.flow_id ? 0.7 : 1
+                              }}
+                            >
+                              {startingFlow === flowRun.flow_id ? 'Starting...' : 'Start'}
+                            </button>
+                          )}
+                          
+                          {/* Stop button - show for running/pending flows */}
+                          {(flowRun.status === 'running' || flowRun.status === 'pending') && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStopFlow(flowRun.id);
+                              }}
+                              disabled={stoppingFlow === flowRun.id}
+                              style={{
+                                padding: '0.25rem 0.75rem',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                cursor: stoppingFlow === flowRun.id ? 'not-allowed' : 'pointer',
+                                opacity: stoppingFlow === flowRun.id ? 0.7 : 1
+                              }}
+                            >
+                              {stoppingFlow === flowRun.id ? 'Stopping...' : 'Stop'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td style={{
                         padding: '1rem',

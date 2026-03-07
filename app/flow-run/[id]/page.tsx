@@ -11,6 +11,9 @@ export default function FlowRunPage() {
   const [flowRun, setFlowRun] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [stopping, setStopping] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [conversationStatus, setConversationStatus] = useState<any>(null);
 
   useEffect(() => {
     const fetchFlowRun = async () => {
@@ -54,6 +57,79 @@ export default function FlowRunPage() {
   const formatDuration = (ms: number) => {
     if (!ms) return 'N/A';
     return `${(ms / 1000).toFixed(2)} seconds`;
+  };
+
+  const handleStopFlow = async () => {
+    try {
+      setStopping(true);
+      
+      // First try to stop via the Durable Object endpoint
+      if (flowRun.conversation_id) {
+        const response = await apiClient.stopFlow(flowRun.conversation_id);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to stop flow: ${response.status}`);
+        }
+        
+        console.log('Flow stopped via Durable Object');
+      } else {
+        // Fallback: update flow run status
+        const response = await apiClient.updateFlowRunStatus(flowRunId, {
+          status: 'cancelled',
+          completed_at: Math.floor(Date.now() / 1000)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to update flow run status: ${response.status}`);
+        }
+        
+        console.log('Flow run status updated to cancelled');
+      }
+      
+      // Refresh the flow run data
+      const allResponse = await apiClient.getFlowRuns();
+      if (allResponse.ok) {
+        const allData = await allResponse.json();
+        const updatedFlowRun = allData.find((run: any) => run.id === flowRunId);
+        if (updatedFlowRun) {
+          setFlowRun(updatedFlowRun);
+        }
+      }
+      
+      alert('Flow stopped successfully!');
+    } catch (err) {
+      console.error('Error stopping flow:', err);
+      alert(`Failed to stop flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setStopping(false);
+    }
+  };
+
+  const handleCheckStatus = async () => {
+    if (!flowRun.conversation_id) {
+      alert('No conversation ID available for this flow run');
+      return;
+    }
+    
+    try {
+      setCheckingStatus(true);
+      const response = await apiClient.getConversationStatus(flowRun.conversation_id);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setConversationStatus(data);
+      
+      console.log('Conversation status:', data);
+      alert(`Status checked successfully! Current state: ${data.state || 'unknown'}`);
+    } catch (err) {
+      console.error('Error checking status:', err);
+      alert(`Failed to check status: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setCheckingStatus(false);
+    }
   };
 
   if (loading) {
@@ -236,6 +312,85 @@ export default function FlowRunPage() {
                 }}>
                   Status: {flowRun.status || 'pending'}
                 </span>
+                
+                {/* Stop button for running/pending flows */}
+                {(flowRun.status === 'running' || flowRun.status === 'pending') && (
+                  <button
+                    onClick={handleStopFlow}
+                    disabled={stopping}
+                    style={{
+                      padding: '0.25rem 0.75rem',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      cursor: stopping ? 'not-allowed' : 'pointer',
+                      opacity: stopping ? 0.7 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    {stopping ? (
+                      <>
+                        <span style={{
+                          width: '0.75rem',
+                          height: '0.75rem',
+                          border: '2px solid rgba(255,255,255,0.3)',
+                          borderTop: '2px solid white',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite',
+                          display: 'inline-block'
+                        }}></span>
+                        Stopping...
+                      </>
+                    ) : (
+                      'Stop Flow'
+                    )}
+                  </button>
+                )}
+                
+                {/* Status check button for flows with conversation_id */}
+                {flowRun.conversation_id && (
+                  <button
+                    onClick={handleCheckStatus}
+                    disabled={checkingStatus}
+                    style={{
+                      padding: '0.25rem 0.75rem',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      cursor: checkingStatus ? 'not-allowed' : 'pointer',
+                      opacity: checkingStatus ? 0.7 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                  >
+                    {checkingStatus ? (
+                      <>
+                        <span style={{
+                          width: '0.75rem',
+                          height: '0.75rem',
+                          border: '2px solid rgba(255,255,255,0.3)',
+                          borderTop: '2px solid white',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite',
+                          display: 'inline-block'
+                        }}></span>
+                        Checking...
+                      </>
+                    ) : (
+                      'Check Status'
+                    )}
+                  </button>
+                )}
+                
                 <span style={{
                   fontSize: '1.125rem',
                   color: '#6b7280'
