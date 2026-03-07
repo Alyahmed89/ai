@@ -244,8 +244,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
               fontWeight: '500',
               transition: 'background-color 0.2s'
             }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+            onMouseOver={(e) => (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#2563eb'}
+            onMouseOut={(e) => (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#3b82f6'}
           >
             Go back home
           </a>
@@ -278,8 +278,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
               marginBottom: '1rem',
               transition: 'color 0.2s'
             }}
-            onMouseOver={(e) => e.currentTarget.style.color = '#374151'}
-            onMouseOut={(e) => e.currentTarget.style.color = '#6b7280'}
+            onMouseOver={(e) => (e.currentTarget as HTMLAnchorElement).style.color = '#374151'}
+            onMouseOut={(e) => (e.currentTarget as HTMLAnchorElement).style.color = '#6b7280'}
           >
             <span style={{ marginRight: '0.5rem' }}>←</span>
             Back to flow
@@ -324,8 +324,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                 alignItems: 'center',
                 gap: '0.5rem'
               }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+              onMouseOver={(e) => (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#2563eb'}
+              onMouseOut={(e) => (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#3b82f6'}
             >
               <span>+</span>
               Create New Step
@@ -406,8 +406,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                         transition: 'background-color 0.2s',
                         cursor: 'pointer'
                       }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      onMouseOver={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#f9fafb'}
+                      onMouseOut={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'}
                       onClick={() => window.location.href = `/step/${step.id}`}
                     >
                       <td style={{
@@ -546,8 +546,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                     borderRadius: '0.25rem',
                     transition: 'background-color 0.2s'
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  onMouseOver={(e) => (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f3f4f6'}
+                  onMouseOut={(e) => (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'}
                 >
                   ×
                 </button>
@@ -602,8 +602,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                       fontSize: '1rem',
                       transition: 'border-color 0.2s'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => (e.target as HTMLInputElement).style.borderColor = '#3b82f6'}
+                    onBlur={(e) => (e.target as HTMLInputElement).style.borderColor = '#d1d5db'}
                   />
                 </div>
                 
@@ -633,8 +633,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                       backgroundColor: 'white',
                       transition: 'border-color 0.2s'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => (e.target as HTMLSelectElement).style.borderColor = '#3b82f6'}
+                    onBlur={(e) => (e.target as HTMLSelectElement).style.borderColor = '#d1d5db'}
                   >
                     <option value="input">Input</option>
                     <option value="output">Output</option>
@@ -672,8 +672,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                       fontSize: '1rem',
                       transition: 'border-color 0.2s'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => (e.target as HTMLInputElement).style.borderColor = '#3b82f6'}
+                    onBlur={(e) => (e.target as HTMLInputElement).style.borderColor = '#d1d5db'}
                   />
                 </div>
                 
@@ -702,8 +702,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                       fontSize: '1rem',
                       transition: 'border-color 0.2s'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => (e.target as HTMLInputElement).style.borderColor = '#3b82f6'}
+                    onBlur={(e) => (e.target as HTMLInputElement).style.borderColor = '#d1d5db'}
                   />
                 </div>
                 
@@ -732,8 +732,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                       fontSize: '1rem',
                       transition: 'border-color 0.2s'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => (e.target as HTMLInputElement).style.borderColor = '#3b82f6'}
+                    onBlur={(e) => (e.target as HTMLInputElement).style.borderColor = '#d1d5db'}
                   />
                   <p style={{
                     fontSize: '0.75rem',
@@ -770,8 +770,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                       resize: 'vertical',
                       transition: 'border-color 0.2s'
                     }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                    onFocus={(e) => (e.target as HTMLTextAreaElement).style.borderColor = '#3b82f6'}
+                    onBlur={(e) => (e.target as HTMLTextAreaElement).style.borderColor = '#d1d5db'}
                   />
                 </div>
               </div>
@@ -808,8 +808,8 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                     cursor: 'pointer',
                     transition: 'all 0.2s'
                   }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
-                  onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                  onMouseOver={(e) => (e.target as HTMLButtonElement).style.backgroundColor = '#f9fafb'}
+                  onMouseOut={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'white'}
                 >
                   Cancel
                 </button>
@@ -832,12 +832,12 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
                   }}
                   onMouseOver={(e) => {
                     if (!creating) {
-                      e.target.style.backgroundColor = '#2563eb';
+                      (e.target as HTMLButtonElement).style.backgroundColor = '#2563eb';
                     }
                   }}
                   onMouseOut={(e) => {
                     if (!creating) {
-                      e.target.style.backgroundColor = '#3b82f6';
+                      (e.target as HTMLButtonElement).style.backgroundColor = '#3b82f6';
                     }
                   }}
                 >
