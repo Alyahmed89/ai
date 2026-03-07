@@ -483,3 +483,5 @@ export default function FlowTasksPage({ params }: { params: Promise<{ flowId: st
 }
 
 export const runtime = 'edge';
+
+export const runtime = 'edge';

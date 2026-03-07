@@ -944,3 +944,5 @@ export default function StepPage() {
 
 
 export const runtime = 'edge';
+
+export const runtime = 'edge';
