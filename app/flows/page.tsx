@@ -20,8 +20,6 @@ export default function FlowsPage() {
     branch: 'main',
     priority: 0,
     max_iterations: 20,
-    first_prompt: '',
-    deepseek_system: '',
     next_flow_id: ''
   });
 
@@ -82,8 +80,6 @@ export default function FlowsPage() {
           branch: 'main',
           priority: 0,
           max_iterations: 20,
-          first_prompt: '',
-          deepseek_system: '',
           next_flow_id: ''
         });
         // Refresh the flows list
@@ -777,59 +773,7 @@ export default function FlowsPage() {
                   </div>
                 </div>
                 
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    First Prompt
-                  </label>
-                  <textarea
-                    name="first_prompt"
-                    value={formData.first_prompt}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      minHeight: '80px',
-                      resize: 'vertical'
-                    }}
-                    placeholder="Initial prompt for the flow"
-                  />
-                </div>
-                
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    DeepSeek System Instructions
-                  </label>
-                  <textarea
-                    name="deepseek_system"
-                    value={formData.deepseek_system}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      minHeight: '100px',
-                      resize: 'vertical'
-                    }}
-                    placeholder="System instructions for DeepSeek"
-                  />
-                </div>
+
               </div>
               
               <div style={{

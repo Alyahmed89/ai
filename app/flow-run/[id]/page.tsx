@@ -398,91 +398,275 @@ export default function FlowRunPage() {
               Prompt & Response
             </h3>
             
+            {/* Chat-like Interface */}
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              display: 'flex',
+              flexDirection: 'column',
               gap: '1.5rem'
             }}>
-              {/* Prompt */}
+              {/* User Message (Prompt) */}
               <div style={{
-                backgroundColor: '#f9fafb',
-                borderRadius: '0.5rem',
-                padding: '1.5rem',
-                border: '1px solid #e5e7eb'
+                display: 'flex',
+                gap: '1rem',
+                alignItems: 'flex-start'
               }}>
-                <h4 style={{
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  color: '#111827',
-                  marginBottom: '1rem',
+                <div style={{
+                  width: '2rem',
+                  height: '2rem',
+                  backgroundColor: '#3b82f6',
+                  borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.5rem'
+                  justifyContent: 'center',
+                  flexShrink: 0
                 }}>
                   <span style={{
-                    width: '0.5rem',
-                    height: '0.5rem',
-                    backgroundColor: '#3b82f6',
-                    borderRadius: '50%'
-                  }}></span>
-                  Input Prompt
-                </h4>
+                    color: 'white',
+                    fontSize: '0.875rem',
+                    fontWeight: 'bold'
+                  }}>
+                    U
+                  </span>
+                </div>
                 <div style={{
-                  backgroundColor: 'white',
-                  borderRadius: '0.375rem',
-                  padding: '1rem',
-                  border: '1px solid #e5e7eb',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  fontFamily: 'monospace',
-                  fontSize: '0.875rem',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word'
+                  flex: 1,
+                  backgroundColor: '#f3f4f6',
+                  borderRadius: '1rem',
+                  borderTopLeftRadius: '0.25rem',
+                  padding: '1rem 1.25rem',
+                  position: 'relative'
                 }}>
-                  {flowRun.input_prompt || 'No prompt available'}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem'
+                  }}>
+                    <div style={{
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      color: '#111827'
+                    }}>
+                      User Prompt
+                    </div>
+                    {flowRun.step_id && (
+                      <a 
+                        href={`/flows/${flowRun.flow_id}/steps#${flowRun.step_id}`}
+                        style={{
+                          fontSize: '0.75rem',
+                          color: '#3b82f6',
+                          textDecoration: 'none',
+                          backgroundColor: '#dbeafe',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '0.25rem'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                      >
+                        Step: {flowRun.step_id.substring(0, 8)}...
+                      </a>
+                    )}
+                  </div>
+                  <div style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    color: '#374151'
+                  }}>
+                    {flowRun.input_prompt || 'No prompt available'}
+                  </div>
+                  <div style={{
+                    position: 'absolute',
+                    top: '0',
+                    left: '-0.5rem',
+                    width: '0',
+                    height: '0',
+                    borderTop: '0.5rem solid transparent',
+                    borderBottom: '0.5rem solid transparent',
+                    borderRight: '0.5rem solid #f3f4f6'
+                  }}></div>
                 </div>
               </div>
               
-              {/* Response */}
+              {/* Assistant Message (Response) */}
               <div style={{
-                backgroundColor: '#f9fafb',
-                borderRadius: '0.5rem',
-                padding: '1.5rem',
-                border: '1px solid #e5e7eb'
+                display: 'flex',
+                gap: '1rem',
+                alignItems: 'flex-start'
               }}>
-                <h4 style={{
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  color: '#111827',
-                  marginBottom: '1rem',
+                <div style={{
+                  width: '2rem',
+                  height: '2rem',
+                  backgroundColor: '#10b981',
+                  borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.5rem'
+                  justifyContent: 'center',
+                  flexShrink: 0
                 }}>
                   <span style={{
-                    width: '0.5rem',
-                    height: '0.5rem',
-                    backgroundColor: '#10b981',
-                    borderRadius: '50%'
-                  }}></span>
-                  Output Response
-                </h4>
+                    color: 'white',
+                    fontSize: '0.875rem',
+                    fontWeight: 'bold'
+                  }}>
+                    AI
+                  </span>
+                </div>
                 <div style={{
-                  backgroundColor: 'white',
-                  borderRadius: '0.375rem',
-                  padding: '1rem',
-                  border: '1px solid #e5e7eb',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  fontFamily: 'monospace',
-                  fontSize: '0.875rem',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word'
+                  flex: 1,
+                  backgroundColor: '#d1fae5',
+                  borderRadius: '1rem',
+                  borderTopLeftRadius: '0.25rem',
+                  padding: '1rem 1.25rem',
+                  position: 'relative'
                 }}>
-                  {flowRun.output_response || 'No response available'}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem'
+                  }}>
+                    <div style={{
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      color: '#065f46'
+                    }}>
+                      AI Response
+                    </div>
+                    {flowRun.step_id && (
+                      <div style={{
+                        fontSize: '0.75rem',
+                        color: '#065f46',
+                        backgroundColor: '#a7f3d0',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '0.25rem'
+                      }}>
+                        Generated by step
+                      </div>
+                    )}
+                  </div>
+                  <div style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    color: '#065f46'
+                  }}>
+                    {flowRun.output_response || 'No response available'}
+                  </div>
+                  <div style={{
+                    position: 'absolute',
+                    top: '0',
+                    left: '-0.5rem',
+                    width: '0',
+                    height: '0',
+                    borderTop: '0.5rem solid transparent',
+                    borderBottom: '0.5rem solid transparent',
+                    borderRight: '0.5rem solid #d1fae5'
+                  }}></div>
                 </div>
               </div>
             </div>
+
+            {/* Condition Section */}
+            {flowRun.condition && (
+              <div style={{
+                marginTop: '2rem',
+                paddingTop: '1.5rem',
+                borderTop: '1px solid #e5e7eb'
+              }}>
+                <h3 style={{
+                  fontSize: '1.25rem',
+                  fontWeight: '600',
+                  color: '#111827',
+                  marginBottom: '1rem'
+                }}>
+                  Navigation Condition
+                </h3>
+                <div style={{
+                  backgroundColor: '#fef3c7',
+                  borderRadius: '0.5rem',
+                  padding: '1.5rem',
+                  border: '1px solid #fbbf24'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    marginBottom: '0.75rem'
+                  }}>
+                    <div style={{
+                      width: '1.5rem',
+                      height: '1.5rem',
+                      backgroundColor: '#f59e0b',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <span style={{
+                        color: 'white',
+                        fontSize: '0.875rem',
+                        fontWeight: 'bold'
+                      }}>
+                        !
+                      </span>
+                    </div>
+                    <div>
+                      <h4 style={{
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        color: '#92400e',
+                        marginBottom: '0.25rem'
+                      }}>
+                        Condition that determined next flow
+                      </h4>
+                      <p style={{
+                        fontSize: '0.875rem',
+                        color: '#92400e'
+                      }}>
+                        This condition was evaluated to determine which flow to execute next.
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '0.375rem',
+                    padding: '1rem',
+                    border: '1px solid #fbbf24',
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}>
+                    {flowRun.condition}
+                  </div>
+                  {flowRun.next_flow_id && (
+                    <div style={{
+                      marginTop: '1rem',
+                      fontSize: '0.875rem',
+                      color: '#92400e'
+                    }}>
+                      <strong>Result:</strong> Condition evaluated to true, proceeding to flow: 
+                      <a 
+                        href={`/flow/${flowRun.next_flow_id}`}
+                        style={{
+                          color: '#3b82f6',
+                          textDecoration: 'none',
+                          marginLeft: '0.5rem'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                      >
+                        {flowRun.next_flow_id}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -432,10 +432,27 @@ export default function FlowPage() {
                       borderRadius: '0.375rem',
                       cursor: 'pointer',
                       fontWeight: '500',
-                      fontSize: '0.875rem'
+                      fontSize: '0.875rem',
+                      marginRight: '0.5rem'
                     }}
                   >
                     View Steps
+                  </button>
+                  <button
+                    onClick={() => window.location.href = `/flows/${flowId}/tasks`}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '0.875rem',
+                      marginRight: '0.5rem'
+                    }}
+                  >
+                    View Tasks
                   </button>
                   <button
                     onClick={handleEdit}

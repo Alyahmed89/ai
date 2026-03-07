@@ -166,5 +166,56 @@ export const apiClient = {
     }),
   
   getFlowRunIterations: (flowRunId: string) => 
-    apiFetch(`/api/flow-runs/${flowRunId}/iterations`)
+    apiFetch(`/api/flow-runs/${flowRunId}/iterations`),
+  
+  // New endpoints from user requirements
+  startFlow: (data: any) =>
+    apiFetch('/start', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  
+  getConversationStatus: (conversationId: string) =>
+    apiFetch(`/status/${conversationId}`),
+  
+  // Flow endpoints (different from flow-definitions)
+  getFlows: (limit?: number) =>
+    apiFetch(`/api/flows${limit ? `?limit=${limit}` : ''}`),
+  
+  getFlow: (id: string) =>
+    apiFetch(`/api/flows/${id}`),
+  
+  getFlowSteps: (flowId: string) =>
+    apiFetch(`/api/flows/${flowId}/steps`),
+  
+  // Flow steps list
+  getAllFlowSteps: (limit?: number) =>
+    apiFetch(`/api/flow-steps${limit ? `?limit=${limit}` : ''}`),
+  
+  // Stop flow endpoints
+  stopFlow: (conversationId: string) => {
+    // Note: This would need to be implemented differently for Durable Object
+    // For now, we'll provide a placeholder
+    console.warn('Stopping flow via Durable Object requires direct Durable Object fetch');
+    return apiFetch(`/api/stop/${conversationId}`, {
+      method: 'POST'
+    });
+  },
+  
+  updateFlowRunStatus: (flowRunId: string, data: { status: string; completed_at?: number }) =>
+    apiFetch(`/api/flow-runs/${flowRunId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  
+  deleteFlowRunRecord: (flowRunId: string) =>
+    apiFetch(`/api/flow-runs/${flowRunId}`, {
+      method: 'DELETE'
+    }),
+  
+  createFlowRunManual: (data: any) =>
+    apiFetch('/api/flow-runs', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
 };
