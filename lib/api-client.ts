@@ -185,10 +185,12 @@ export const apiClient = {
   getFlow: (id: string) =>
     apiFetch(`/api/flows/${id}`),
   
-  getFlowSteps: (flowId: string) =>
+  // Note: getFlowSteps already exists for flow-definitions
+  // This is for the new /api/flows/{id}/steps endpoint
+  getFlowStepsByFlowId: (flowId: string) =>
     apiFetch(`/api/flows/${flowId}/steps`),
   
-  // Flow steps list
+  // Flow steps list - alias for getFlowStepsList
   getAllFlowSteps: (limit?: number) =>
     apiFetch(`/api/flow-steps${limit ? `?limit=${limit}` : ''}`),
   
