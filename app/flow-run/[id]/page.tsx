@@ -490,3 +490,5 @@ export default function FlowRunPage() {
   );
 }
 
+
+export const dynamic = 'force-static';

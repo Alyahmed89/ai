@@ -288,3 +288,5 @@ export default function TaskPage() {
   );
 }
 
+
+export const dynamic = 'force-static';

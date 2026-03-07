@@ -481,3 +481,4 @@ export default function FlowTasksPage({ params }: { params: Promise<{ flowId: st
     </div>
   );
 }
+export const dynamic = 'force-static';
