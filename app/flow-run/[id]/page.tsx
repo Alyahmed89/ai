@@ -540,6 +540,262 @@ export default function FlowRunPage() {
             )}
           </div>
 
+          {/* Next Flow Possibilities Section */}
+          {flowRun.next_flow_possibilities && flowRun.next_flow_possibilities.length > 0 && (
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '0.75rem',
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+              padding: '2rem',
+              marginBottom: '2rem',
+              marginTop: '2rem'
+            }}>
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: '600',
+                color: '#111827',
+                marginBottom: '1rem'
+              }}>
+                Next Flow Possibilities
+              </h2>
+              
+              <p style={{
+                fontSize: '1rem',
+                color: '#6b7280',
+                marginBottom: '1.5rem'
+              }}>
+                Based on the current flow configuration, here are the possible next flows that could be executed:
+              </p>
+              
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '1rem'
+              }}>
+                {flowRun.next_flow_possibilities.map((possibility: any, index: number) => (
+                  <div key={index} style={{
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '0.5rem',
+                    padding: '1rem',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <h4 style={{
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        color: '#111827'
+                      }}>
+                        Option {index + 1}
+                      </h4>
+                      <a 
+                        href={`/flow/${possibility.next_flow_id}`}
+                        style={{
+                          fontSize: '0.875rem',
+                          color: '#3b82f6',
+                          textDecoration: 'none',
+                          backgroundColor: '#dbeafe',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '0.25rem'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                      >
+                        Flow: {possibility.next_flow_id}
+                      </a>
+                    </div>
+                    
+                    <div style={{
+                      fontSize: '0.875rem',
+                      color: '#6b7280',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <strong>Condition:</strong> {possibility.condition_type}
+                    </div>
+                    
+                    <div style={{
+                      fontSize: '0.875rem',
+                      color: '#6b7280',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <strong>Value:</strong> {possibility.condition_value}
+                    </div>
+                    
+                    <div style={{
+                      fontSize: '0.875rem',
+                      color: '#6b7280'
+                    }}>
+                      <strong>Operator:</strong> {possibility.condition_operator || 'equals'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actual Next Flow Run Section */}
+          {flowRun.actual_next_flow_run && (
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '0.75rem',
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+              padding: '2rem',
+              marginBottom: '2rem'
+            }}>
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: '600',
+                color: '#111827',
+                marginBottom: '1rem'
+              }}>
+                Actual Next Flow Run
+              </h2>
+              
+              <p style={{
+                fontSize: '1rem',
+                color: '#6b7280',
+                marginBottom: '1.5rem'
+              }}>
+                This flow run was followed by the following flow run:
+              </p>
+              
+              <div style={{
+                backgroundColor: '#f0f9ff',
+                borderRadius: '0.5rem',
+                padding: '1.5rem',
+                border: '1px solid #bae6fd'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  marginBottom: '1rem'
+                }}>
+                  <div>
+                    <h4 style={{
+                      fontSize: '1.125rem',
+                      fontWeight: '600',
+                      color: '#0369a1',
+                      marginBottom: '0.25rem'
+                    }}>
+                      {flowRun.actual_next_flow_run.id}
+                    </h4>
+                    <div style={{
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                      flexWrap: 'wrap'
+                    }}>
+                      <span style={{
+                        padding: '0.25rem 0.75rem',
+                        backgroundColor: flowRun.actual_next_flow_run.status === 'completed' ? '#d1fae5' : 
+                                        flowRun.actual_next_flow_run.status === 'failed' ? '#fee2e2' : '#fef3c7',
+                        color: flowRun.actual_next_flow_run.status === 'completed' ? '#065f46' : 
+                              flowRun.actual_next_flow_run.status === 'failed' ? '#991b1b' : '#92400e',
+                        borderRadius: '9999px',
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        textTransform: 'capitalize'
+                      }}>
+                        Status: {flowRun.actual_next_flow_run.status || 'pending'}
+                      </span>
+                      <span style={{
+                        fontSize: '0.875rem',
+                        color: '#6b7280'
+                      }}>
+                        Flow: {flowRun.actual_next_flow_run.flow_id}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <a 
+                    href={`/flow-run/${flowRun.actual_next_flow_run.id}`}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      display: 'inline-block'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+                  >
+                    View Details
+                  </a>
+                </div>
+                
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                  gap: '1rem',
+                  marginTop: '1rem'
+                }}>
+                  <div>
+                    <h5 style={{
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      marginBottom: '0.25rem'
+                    }}>
+                      Started At
+                    </h5>
+                    <p style={{
+                      fontSize: '0.875rem',
+                      color: '#111827'
+                    }}>
+                      {flowRun.actual_next_flow_run.started_at ? formatDate(flowRun.actual_next_flow_run.started_at) : 'N/A'}
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <h5 style={{
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      marginBottom: '0.25rem'
+                    }}>
+                      Duration
+                    </h5>
+                    <p style={{
+                      fontSize: '0.875rem',
+                      color: '#111827'
+                    }}>
+                      {formatDuration(flowRun.actual_next_flow_run.duration_ms || 0)}
+                    </p>
+                  </div>
+                  
+                  {flowRun.actual_next_flow_run.step_id && (
+                    <div>
+                      <h5 style={{
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        color: '#6b7280',
+                        marginBottom: '0.25rem'
+                      }}>
+                        Step ID
+                      </h5>
+                      <p style={{
+                        fontSize: '0.875rem',
+                        color: '#111827'
+                      }}>
+                        {flowRun.actual_next_flow_run.step_id}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Prompt and Response Section */}
           <div style={{
             marginTop: '2rem'
