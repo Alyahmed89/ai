@@ -1,57 +1,88 @@
-# Ultra Minimal Next.js App with Service Architecture
+# Graph-Based Documentation System UI
 
-A clean, minimal Next.js application with optimized service-based architecture for better bundle size and maintainability.
+A minimal, clean UI for managing graph-based documentation and flow systems built with Next.js and TailwindCSS.
 
 ## Features
 
-- **Service-based architecture**: Business logic separated from API routes
-- **Minimal bundle size**: Optimized for Cloudflare Workers deployment
-- **TypeScript ready**: Full TypeScript support out of the box
-- **Clean structure**: Modular service layers and minimal API routes
-- **Production ready**: Can be built and deployed with edge runtime
-- **Environment variable support**: Secure configuration management
+- **Hierarchical Document Management**: Unlimited nesting levels with vertical hierarchy
+- **Contextual Relationships**: Horizontal links with conditions for cross-references
+- **Clean Minimal UI**: Built with TailwindCSS only, no component libraries
+- **Full CRUD Operations**: Create, read, update, delete nodes with real-time updates
+- **Bidirectional Navigation**: Vertical tree + horizontal links with reciprocal relationships
+- **Condition Management**: Add/remove conditions on nodes and links
+- **Right Panel Editing**: Detailed editing interface for selected nodes
 
 ## Architecture Overview
 
-The application follows a service-based architecture:
+The application follows a component-based architecture with custom hooks for state management:
 
 ```
-/
-├── app/
-│   ├── api/              # Minimal API routes (request/response only)
-│   ├── flows/            # Flow list and detail pages
-│   ├── steps/            # Step list and detail pages
-│   ├── tasks/            # Task list and detail pages
-│   ├── layout.tsx        # Root layout
-│   └── page.tsx          # Home page
-├── lib/
-│   ├── cloudflare-d1.ts  # Shared D1 database service
-│   ├── task-service.ts   # Task business logic
-│   ├── flow-service.ts   # Flow business logic
-│   └── step-service.ts   # Step business logic
-├── package.json          # Minimal dependencies
-├── next.config.ts        # Next.js configuration
-├── tsconfig.json         # TypeScript configuration
-├── .env.example          # Environment variable template
-└── README.md             # This file
+app/
+├── components/
+│   ├── NodeItem.tsx      # Individual node card with edit/delete controls
+│   ├── VerticalTree.tsx  # Hierarchical tree display with connectors
+│   ├── HorizontalLinks.tsx # Side badges for horizontal navigation
+│   ├── TopBar.tsx        # Header with breadcrumb navigation
+│   ├── MainCanvas.tsx    # Central area for tree display
+│   └── RightPanel.tsx    # Edit panel for selected nodes
+├── hooks/
+│   └── useNodes.ts       # Custom hook for node state management
+├── types/
+│   └── index.ts          # TypeScript type definitions
+├── layout.tsx            # Root layout with metadata
+├── page.tsx              # Main application page
+└── items/
+    └── [id]/
+        └── page.tsx      # Dynamic item detail pages
 ```
 
-## Key Architectural Improvements
+## Core Components
 
-### 1. Service Layer Architecture
-- **API Routes**: Minimal request/response handling only
-- **Service Modules**: All business logic moved to `/lib/` services
-- **Shared D1 Service**: Centralized database operations
+### 1. NodeItem Component
+- Individual node card with title, content, and conditions
+- Edit/Delete buttons visible on hover
+- Horizontal link badges for navigation
+- Inline editing mode with save/cancel
 
-### 2. Bundle Size Optimization
-- **No code duplication**: Shared services reduce bundle size
-- **Edge runtime**: All API routes use `export const runtime = 'edge'`
-- **Minimal dependencies**: Only essential packages included
+### 2. VerticalTree Component
+- Displays hierarchical tree structure
+- Visual connectors between parent and child nodes
+- Handles unlimited nesting levels
+- Click-to-select functionality for right panel
 
-### 3. Environment Configuration
-- **Secure credentials**: Cloudflare D1 credentials in environment variables
-- **Development/production**: Separate configurations
-- **Template file**: `.env.example` for documentation
+### 3. HorizontalLinks Component
+- Side badges showing contextual relationships
+- Bidirectional links with reciprocal relationships
+- Condition tags on links
+- Click to navigate to related nodes
+
+### 4. State Management (useNodes Hook)
+- Manages all node operations (CRUD)
+- Handles parent-child relationships
+- Manages bidirectional horizontal links
+- Persists state across navigation
+
+## Data Model
+
+```typescript
+interface Node {
+  id: string;
+  title: string;
+  content: string;
+  parentId: string | null;
+  children: string[];
+  leftLinks: Link[];
+  rightLinks: Link[];
+  conditions: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Link {
+  targetId: string;
+  condition: string;
+}
+```
 
 ## Getting Started
 
@@ -59,20 +90,6 @@ The application follows a service-based architecture:
 
 ```bash
 npm install
-```
-
-### Environment Setup
-
-1. Copy the environment template:
-```bash
-cp .env.example .env.local
-```
-
-2. Update `.env.local` with your Cloudflare D1 credentials:
-```
-CLOUDFLARE_ACCOUNT_ID=your_account_id
-CLOUDFLARE_API_TOKEN=your_api_token
-CLOUDFLARE_D1_DATABASE_ID=your_database_id
 ```
 
 ### Development
@@ -83,7 +100,7 @@ Start the development server:
 npm run dev
 ```
 
-The app will be available at [http://localhost:42452](http://localhost:42452).
+The app will be available at [http://localhost:3000](http://localhost:3000).
 
 ### Production Build
 
@@ -96,121 +113,102 @@ npm run build
 Start the production server:
 
 ```bash
-npm run start
+npm start
 ```
 
-## Service Modules
+## Usage Guide
 
-### Task Service (`/lib/task-service.ts`)
-- `getTasks()`: Get tasks with filtering and pagination
-- `getTaskById()`: Get single task by ID
-- `createTask()`: Create new task
-- `updateTask()`: Update existing task
-- `getTaskStats()`: Get task statistics
+### 1. Adding Nodes
+- Click `+` buttons above/below any node to add child nodes
+- Click `←` or `→` buttons to add horizontal links
+- New nodes appear with inline editing enabled
 
-### Flow Service (`/lib/flow-service.ts`)
-- `getFlowDefinitions()`: Get flow definitions
-- `getFlowDefinitionById()`: Get single flow by ID
-- `getFlowSteps()`: Get steps for a flow
-- `createFlowDefinition()`: Create new flow
-- `getFlowStats()`: Get flow statistics
+### 2. Editing Nodes
+- Click "Edit" on any node for inline editing
+- Select a node to open it in the right panel
+- Edit title, content, and conditions in the right panel
+- Changes save automatically
 
-### Step Service (`/lib/step-service.ts`)
-- `getFlowSteps()`: Get all flow steps
-- `getFlowStepById()`: Get single step by ID
-- `getStepConditions()`: Get step conditions
-- `getStepInput()`: Get step input data
-- `getStepStats()`: Get step statistics
+### 3. Navigating
+- Click horizontal link badges to navigate to related nodes
+- Use breadcrumb navigation at the top to move up the hierarchy
+- Browser back button works for navigation history
 
-### Flow Runs API Client (`/lib/api-client.ts`)
-- `getFlowRuns()`: Get flow runs with filtering by flow ID
-- `getFlowRun()`: Get single flow run by ID (fetches all and filters)
-- `createFlowRun()`: Create new flow run
-- `updateFlowRun()`: Update existing flow run
-- `deleteFlowRun()`: Delete flow run
-- `getFlowRunIterations()`: Get iterations for a flow run
+### 4. Managing Conditions
+- Add conditions in the right panel for selected nodes
+- Conditions appear as tags on nodes and links
+- Remove conditions by clicking the × button
 
-## API Routes
+### 5. Deleting Nodes
+- Click "Delete" on any node
+- Nodes are removed from hierarchy and all links
+- Parent nodes automatically update their children list
 
-All API routes are minimal and delegate to service modules:
+## Key Implementation Details
 
-- `/api/tasks` - Task list with filtering
-- `/api/tasks/[id]` - Single task details
-- `/api/flow-definitions` - Flow definitions list
-- `/api/flow-definitions/[id]` - Single flow details
-- `/api/flow-steps` - Flow steps list
-- `/api/flow-steps/[id]` - Single step details
-- `/api/flow-runs` - Flow runs list with filtering by flow ID
-- `/api/flow-runs/[id]` - Single flow run details (backend endpoint may not exist)
-- `/api/flow-runs/[id]/iterations` - Iterations for a flow run (table may not exist)
+### Unique ID Generation
+```typescript
+// Uses timestamp + random string to ensure uniqueness
+const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+```
 
-## Pages
+### Bidirectional Horizontal Links
+When adding a right link from Node A to Node B:
+1. Adds right link in Node A's `rightLinks` array
+2. Adds reciprocal left link in Node B's `leftLinks` array
+3. Both links share the same condition
 
-- `/` - Home page with navigation
-- `/tasks` - Task list page
-- `/tasks/[id]` - Task detail page
-- `/flows` - Flow list page
-- `/flows/[id]` - Flow detail page
-- `/steps` - Step list page
-- `/steps/[id]` - Step detail page
-- `/flow-runs` - Flow runs list page with filtering
-- `/flow-run/[id]` - Flow run detail page with prompts and responses
+### Delete with Cleanup
+1. Removes node from parent's children array
+2. Removes reciprocal horizontal links from connected nodes
+3. Navigates to parent if current node was deleted
+4. Updates all related state atomically
 
-## Flow Runs Implementation Details
+## Styling Principles
 
-The flow runs functionality has been implemented with the following features:
+- **Minimalist Design**: White background, gray-100 separators, subtle shadows
+- **Clean Typography**: System fonts with proper hierarchy and spacing
+- **Responsive Layout**: Max width `max-w-3xl` for optimal readability
+- **Subtle Interactions**: Hover states, smooth transitions, clear focus states
+- **Consistent Spacing**: Tailwind spacing scale used throughout
 
-### Frontend Pages:
-1. **Flow Runs List (`/flow-runs`)**: 
-   - Displays all flow runs from the backend API
-   - Includes filtering by Flow ID
-   - Shows prompts and responses (truncated for readability)
-   - Clickable rows navigate to flow run details
+## Performance Considerations
 
-2. **Flow Run Detail (`/flow-run/[id]`)**: 
-   - Shows complete flow run information including:
-     - Flow ID (with link to flow detail page)
-     - Conversation ID
-     - Step ID
-     - Status with color-coded badges
-     - Duration
-     - Creation timestamp
-   - Displays full input prompt and output response
-   - Handles missing backend endpoints gracefully (fetches all and filters)
+1. **Lazy Loading**: Children loaded on demand for deep hierarchies
+2. **Simple DOM**: Minimal nested elements, efficient rendering
+3. **Optimized State Updates**: Batched updates with React state
+4. **No Heavy Libraries**: Pure TailwindCSS, no canvas or chart libraries
+5. **Efficient Navigation**: Client-side routing with Next.js App Router
 
-### API Client Methods:
-- `getFlowRuns(limit?, flowId?)`: Gets flow runs with optional filtering
-- `getFlowRun(id)`: Gets specific flow run (falls back to fetching all)
-- `createFlowRun(data)`: Creates new flow run
-- `updateFlowRun(id, data)`: Updates existing flow run
-- `deleteFlowRun(id)`: Deletes flow run
-- `getFlowRunIterations(flowRunId)`: Gets iterations for a flow run
+## Tech Stack Details
 
-### Backend Compatibility:
-- The implementation works with existing backend endpoints
-- Handles cases where specific endpoints don't exist (e.g., `/api/flow-runs/[id]`)
-- Gracefully handles missing tables (e.g., iterations table)
+- **Next.js 16.1.6**: React framework with App Router
+- **React 19.2.3**: Latest React version with concurrent features
+- **TailwindCSS 3.4.0**: Utility-first CSS framework
+- **TypeScript**: Full type safety throughout the codebase
+- **Custom Hooks**: No external state libraries (Redux/Zustand)
 
-## Why This Architecture?
+## Testing Results
 
-This architecture is designed for:
-- **Better bundle size**: Services reduce code duplication in API routes
-- **Maintainability**: Business logic separated from API layer
-- **Scalability**: Easy to add new services and endpoints
-- **Edge deployment**: Optimized for Cloudflare Workers
-- **Security**: Credentials in environment variables, not in code
+✅ **All CRUD operations** working correctly  
+✅ **Navigation** (vertical, horizontal, breadcrumb) functional  
+✅ **Right panel editing** with real-time updates  
+✅ **Condition management** add/remove working  
+✅ **Delete functionality** with proper cleanup  
+✅ **Bidirectional horizontal links** properly synchronized  
+✅ **Inline editing** with save/cancel functionality  
+✅ **Breadcrumb navigation** showing correct hierarchy  
 
-## Deployment Considerations
+## Future Enhancements
 
-### For Cloudflare Workers:
-1. Use `next-on-pages` for deployment
-2. Ensure environment variables are set in Cloudflare dashboard
-3. Consider splitting into multiple workers if bundle exceeds 3MB
-
-### For Vercel:
-1. Set environment variables in Vercel dashboard
-2. Edge runtime is supported for API routes
-3. Static pages can be pre-rendered
+1. **API Integration**: Connect to backend GraphQL/REST API
+2. **Collaboration**: Real-time updates with WebSockets
+3. **Export/Import**: JSON export/import functionality
+4. **Search**: Full-text search across nodes
+5. **Themes**: Dark mode support
+6. **Offline Support**: Local storage persistence
+7. **Drag & Drop**: Reorder nodes visually
+8. **Export Formats**: Markdown, PDF, or image export
 
 ## License
 

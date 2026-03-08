@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Ultra Minimal Next.js App",
-  description: "A clean, minimal Next.js starting point",
+  title: "Graph Documentation System",
+  description: "A minimal, clean UI for graph-based documentation and flow system",
 };
 
 export default function RootLayout({
@@ -14,26 +15,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head>
-        <style>{`
-          body {
-            margin: 0;
-            padding: 0;
-            font-family: ${inter.style.fontFamily}, system-ui, -apple-system, sans-serif;
-          }
-          
-          @keyframes spin {
-            from {
-              transform: rotate(0deg);
-            }
-            to {
-              transform: rotate(360deg);
-            }
-          }
-        `}</style>
-      </head>
-      <body>
+    <html lang="en" className={inter.className}>
+      <body className="bg-white text-gray-900">
         {children}
       </body>
     </html>

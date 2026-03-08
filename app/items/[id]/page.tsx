@@ -1,12 +1,16 @@
 'use client';
 
+import { useParams } from 'next/navigation';
 import { useNodes } from '@/app/hooks/useNodes';
 import TopBar from '@/app/components/TopBar';
 import MainCanvas from '@/app/components/MainCanvas';
 import RightPanel from '@/app/components/RightPanel';
 import VerticalTree from '@/app/components/VerticalTree';
 
-export default function Home() {
+export default function ItemPage() {
+  const params = useParams();
+  const nodeId = params.id as string;
+  
   const {
     nodes,
     currentNodeId,
@@ -19,8 +23,12 @@ export default function Home() {
     navigateHorizontal,
     getBreadcrumbs,
     setCurrentNodeId,
-    setNodes,
   } = useNodes();
+
+  // Set the current node to the one from the URL
+  if (nodeId && nodeId !== currentNodeId) {
+    setCurrentNodeId(nodeId);
+  }
 
   const currentNode = getNode(currentNodeId);
   const selectedNode = selectedNodeId ? getNode(selectedNodeId) : null;
@@ -31,12 +39,7 @@ export default function Home() {
   };
 
   const handleDelete = (nodeId: string) => {
-    // Simple confirmation for testing - in production you might want a proper modal
-    // Temporarily bypass for testing
     deleteNode(nodeId);
-    // if (window.confirm('Delete this node?')) {
-    //   deleteNode(nodeId);
-    // }
   };
 
   const handleAddAbove = (nodeId: string) => {
@@ -59,13 +62,9 @@ export default function Home() {
     navigateHorizontal(targetNodeId);
   };
 
-  const handleNavigateBreadcrumb = (nodeId: string) => {
-    setCurrentNodeId(nodeId);
-  };
-
   const handleNewNode = () => {
     // Add a new root node
-    const newNodeId = `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newNodeId = `node-${Date.now()}`;
     const newNode = {
       id: newNodeId,
       title: 'New Document',
@@ -79,8 +78,7 @@ export default function Home() {
       updatedAt: new Date().toISOString(),
     };
     
-    // Add the new node to the nodes array
-    setNodes(prev => [...prev, newNode]);
+    updateNode(newNode);
     setCurrentNodeId(newNodeId);
   };
 
@@ -96,7 +94,7 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-gray-500">Loading...</div>
+          <div className="text-gray-500">Node not found</div>
         </div>
       </div>
     );
@@ -108,7 +106,6 @@ export default function Home() {
         projectName="Documentation Project"
         breadcrumbs={breadcrumbs}
         onNewNode={handleNewNode}
-        onNavigateBreadcrumb={handleNavigateBreadcrumb}
       />
       
       <div className="flex flex-1">
@@ -123,7 +120,6 @@ export default function Home() {
             onAddLeft={handleAddLeft}
             onAddRight={handleAddRight}
             onNavigateHorizontal={handleNavigateHorizontal}
-            onSelect={setSelectedNodeId}
           />
         </MainCanvas>
         
