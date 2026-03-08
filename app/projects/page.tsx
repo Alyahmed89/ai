@@ -6,10 +6,14 @@ import { apiClient } from '@/lib/api-client';
 interface Project {
   id: string;
   name: string;
-  status: 'active' | 'archived' | 'completed';
-  metadata: string;
-  created_at: string;
-  updated_at: string;
+  status: string;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
+  node_count?: number;
+  flow_count?: number;
+  task_count?: number;
+  execution_count?: number;
 }
 
 export default function ProjectsPage() {
@@ -36,6 +40,8 @@ export default function ProjectsPage() {
       
       if (data.error) {
         setError(data.error);
+      } else if (data.success && data.data) {
+        setProjects(data.data);
       } else {
         setProjects(data);
       }
@@ -126,7 +132,8 @@ export default function ProjectsPage() {
     }
   };
 
-  const parseMetadata = (metadata: string) => {
+  const parseMetadata = (metadata: string | null) => {
+    if (!metadata) return {};
     try {
       return JSON.parse(metadata);
     } catch {
@@ -134,8 +141,11 @@ export default function ProjectsPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+  const formatDate = (dateValue: string | number) => {
+    if (typeof dateValue === 'number') {
+      return new Date(dateValue * 1000).toLocaleString();
+    }
+    return new Date(dateValue).toLocaleString();
   };
 
   const getStatusColor = (status: string) => {
@@ -434,7 +444,7 @@ export default function ProjectsPage() {
                 </label>
                 <select
                   value={newProject.status}
-                  onChange={(e) => setNewProject({...newProject, status: e.target.value as any})}
+                  onChange={(e) => setNewProject({...newProject, status: e.target.value as 'active' | 'archived' | 'completed'})}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
