@@ -246,5 +246,47 @@ export const apiClient = {
   deleteProject: (id: string) =>
     apiFetch(`/graph/projects/${id}`, {
       method: 'DELETE'
+    }),
+
+  // Node Management
+  getNodes: (limit?: number, projectId?: string) => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (projectId) params.append('project_id', projectId);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/graph/nodes${query}`);
+  },
+
+  getNode: (id: string) =>
+    apiFetch(`/graph/nodes/${id}`),
+
+  createNode: (data: {
+    project_id: string;
+    type: string;
+    title: string;
+    content: string;
+    status: string;
+    metadata: string;
+  }) =>
+    apiFetch('/graph/nodes', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  updateNode: (id: string, data: {
+    type?: string;
+    title?: string;
+    content?: string;
+    status?: string;
+    metadata?: string;
+  }) =>
+    apiFetch(`/graph/nodes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
+
+  deleteNode: (id: string) =>
+    apiFetch(`/graph/nodes/${id}`, {
+      method: 'DELETE'
     })
 };
