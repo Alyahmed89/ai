@@ -1,0 +1,677 @@
+// Graph API for Projects, Nodes, Relationships, Dependencies, Tags, Rules, Contexts, etc.
+// Implements the complete API specification with 19 categories
+import { Hono } from 'hono';
+import { CloudflareBindings } from './types';
+import { 
+  successResponse,
+  errorResponse,
+  notFoundResponse,
+  validationErrorResponse
+} from './response';
+import { z } from 'zod';
+
+// Helper function to handle database errors
+function handleDbError(error: any) {
+  console.error('Database error:', error);
+  return {
+    success: false,
+    error: error.message || 'Database error'
+  };
+}
+
+// Helper function to convert undefined to null for database
+function dbValue(value: any): any {
+  return value === undefined ? null : value;
+}
+
+// Helper function for consistent API responses
+function apiResponse(success: boolean, data?: any, error?: string, statusCode: number = 200) {
+  return {
+    success,
+    data,
+    error,
+    statusCode
+  };
+}
+
+// Validation schemas for Graph API entities
+const projectCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  name: z.string().min(1, 'name is required'),
+  status: z.enum(['active', 'archived', 'deleted']).default('active'),
+  metadata: z.string().optional().nullable()
+});
+
+const projectUpdateSchema = projectCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+const nodeCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  project_id: z.string().min(1, 'project_id is required'),
+  type: z.enum(['task', 'doc', 'api', 'concept', 'rule', 'context', 'data', 'ui', 'system']),
+  title: z.string().min(1, 'title is required'),
+  content: z.string().optional().nullable(),
+  status: z.enum(['active', 'inactive', 'completed', 'failed']).default('active'),
+  metadata: z.string().optional().nullable()
+});
+
+const nodeUpdateSchema = nodeCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+const levelCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  parent_node_id: z.string().min(1, 'parent_node_id is required'),
+  child_node_id: z.string().min(1, 'child_node_id is required'),
+  order_index: z.number().int().default(0)
+});
+
+const relationshipCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  source_node_id: z.string().min(1, 'source_node_id is required'),
+  target_node_id: z.string().min(1, 'target_node_id is required'),
+  relation_type: z.string().min(1, 'relation_type is required'),
+  weight: z.number().min(0).max(1).default(1.0),
+  metadata: z.string().optional().nullable()
+});
+
+const dependencyCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  node_id: z.string().min(1, 'node_id is required'),
+  depends_on_node_id: z.string().min(1, 'depends_on_node_id is required'),
+  dependency_type: z.string().min(1, 'dependency_type is required'),
+  metadata: z.string().optional().nullable()
+});
+
+const tagCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  name: z.string().min(1, 'name is required'),
+  color: z.string().optional().nullable()
+});
+
+const nodeTagCreateSchema = z.object({
+  node_id: z.string().min(1, 'node_id is required'),
+  tag_id: z.string().min(1, 'tag_id is required')
+});
+
+const ruleCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  node_id: z.string().min(1, 'node_id is required'),
+  rule_pattern: z.string().min(1, 'rule_pattern is required'),
+  execution_type: z.string().min(1, 'execution_type is required'),
+  engine: z.string().default('javascript'),
+  metadata: z.string().optional().nullable()
+});
+
+const ruleUpdateSchema = ruleCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+const ruleVariableCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  rule_id: z.string().min(1, 'rule_id is required'),
+  name: z.string().min(1, 'name is required'),
+  type: z.string().min(1, 'type is required'),
+  source: z.string().min(1, 'source is required'),
+  default_value: z.string().optional().nullable()
+});
+
+const flowTransitionCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  from_step_id: z.string().min(1, 'from_step_id is required'),
+  to_step_id: z.string().min(1, 'to_step_id is required'),
+  condition_rule_id: z.string().optional().nullable(),
+  metadata: z.string().optional().nullable()
+});
+
+const contextCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  entity_type: z.string().min(1, 'entity_type is required'),
+  entity_id: z.string().min(1, 'entity_id is required'),
+  metadata: z.string().optional().nullable()
+});
+
+const contextVariableCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  context_id: z.string().min(1, 'context_id is required'),
+  name: z.string().min(1, 'name is required'),
+  value: z.string().min(1, 'value is required')
+});
+
+const contextVariableUpdateSchema = contextVariableCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+const executionCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  node_id: z.string().min(1, 'node_id is required'),
+  context_id: z.string().optional().nullable(),
+  engine: z.string().default('default')
+});
+
+// Process Graph schemas
+const flowCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  project_id: z.string().min(1, 'project_id is required'),
+  title: z.string().min(1, 'title is required'),
+  status: z.enum(['active', 'archived', 'draft']).default('active'),
+  metadata: z.string().optional().nullable()
+});
+
+const flowUpdateSchema = flowCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+const stepCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  flow_id: z.string().min(1, 'flow_id is required'),
+  title: z.string().min(1, 'title is required'),
+  type: z.enum(['action', 'decision', 'input', 'output', 'validation']).default('action'),
+  content: z.string().optional().nullable(),
+  order_index: z.number().int().default(0),
+  metadata: z.string().optional().nullable()
+});
+
+const stepUpdateSchema = stepCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+const stepEdgeCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  source_step_id: z.string().min(1, 'source_step_id is required'),
+  target_step_id: z.string().min(1, 'target_step_id is required'),
+  condition: z.string().optional().nullable(),
+  weight: z.number().default(1.0),
+  metadata: z.string().optional().nullable()
+});
+
+const flowRunCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  flow_id: z.string().min(1, 'flow_id is required'),
+  status: z.enum(['running', 'completed', 'failed', 'paused']).default('running'),
+  metadata: z.string().optional().nullable()
+});
+
+const flowRunUpdateSchema = flowRunCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+const stepRunCreateSchema = z.object({
+  id: z.string().min(1).optional(),
+  flow_run_id: z.string().min(1, 'flow_run_id is required'),
+  step_id: z.string().min(1, 'step_id is required'),
+  status: z.enum(['pending', 'running', 'completed', 'failed', 'skipped']).default('pending'),
+  output: z.string().optional().nullable(),
+  metadata: z.string().optional().nullable()
+});
+
+const stepRunUpdateSchema = stepRunCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update')
+});
+
+// Helper function to validate with Zod
+function validateSchema<T>(schema: z.ZodSchema<T>, data: any): { success: boolean; data?: T; error?: string } {
+  try {
+    const validated = schema.parse(data);
+    return { success: true, data: validated };
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      const errors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return { success: false, error: `Validation failed: ${errors}` };
+    }
+    return { success: false, error: 'Unknown validation error' };
+  }
+}
+
+// Create Graph API router
+export const graphApi = new Hono<{ Bindings: CloudflareBindings }>();
+
+// ============================================================================
+// 1. PROJECTS
+// ============================================================================
+
+// GET /projects - List projects
+graphApi.get('/projects', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const result = await db.prepare('SELECT * FROM projects ORDER BY updated_at DESC').all();
+    return c.json(successResponse(result.results || []));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// POST /projects - Create project
+graphApi.post('/projects', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(projectCreateSchema, body);
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { id, name, status, metadata } = validatedData;
+    
+    // Generate ID if not provided
+    const projectId = id || `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = Math.floor(Date.now() / 1000);
+
+    const sql = `
+      INSERT INTO projects (id, name, status, node_count, flow_count, task_count, execution_count, created_at, updated_at, metadata)
+      VALUES (?, ?, ?, 0, 0, 0, 0, ?, ?, ?)
+    `;
+
+    await db.prepare(sql).bind(
+      projectId,
+      name,
+      status,
+      now,
+      now,
+      dbValue(metadata)
+    ).run();
+    
+    return c.json(apiResponse(true, { id: projectId, message: 'Project created successfully' }, undefined, 201));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// GET /projects/{id} - Get project details
+graphApi.get('/projects/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('SELECT * FROM projects WHERE id = ?').bind(id).first();
+
+    if (!result) {
+      return c.json(notFoundResponse('Project not found'));
+    }
+
+    return c.json(successResponse(result));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// PATCH /projects/{id} - Update project
+graphApi.patch('/projects/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(projectUpdateSchema, { ...body, id });
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { name, status, metadata } = validatedData;
+    
+    // Build dynamic UPDATE query
+    const updates: string[] = [];
+    const bindings: any[] = [];
+    
+    if (name !== undefined) {
+      updates.push('name = ?');
+      bindings.push(name);
+    }
+    
+    if (status !== undefined) {
+      updates.push('status = ?');
+      bindings.push(status);
+    }
+    
+    if (metadata !== undefined) {
+      updates.push('metadata = ?');
+      bindings.push(dbValue(metadata));
+    }
+    
+    // Always update updated_at
+    updates.push('updated_at = ?');
+    bindings.push(Math.floor(Date.now() / 1000));
+    
+    if (updates.length === 1) { // Only updated_at was added
+      return c.json(apiResponse(false, undefined, 'No fields to update', 400));
+    }
+    
+    bindings.push(id);
+    
+    const sql = `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`;
+    
+    const result = await db.prepare(sql).bind(...bindings).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Project not found', 404));
+    }
+
+    return c.json(apiResponse(true, { message: 'Project updated successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// DELETE /projects/{id} - Delete project
+graphApi.delete('/projects/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('DELETE FROM projects WHERE id = ?').bind(id).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Project not found', 404));
+    }
+
+    return c.json(apiResponse(true, { message: 'Project deleted successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// ============================================================================
+// 2. NODES
+// ============================================================================
+
+// GET /projects/{projectId}/nodes - List nodes with filters
+graphApi.get('/projects/:projectId/nodes', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const projectId = c.req.param('projectId');
+    const type = c.req.query('type');
+    const tag = c.req.query('tag');
+    const status = c.req.query('status');
+    const search = c.req.query('search');
+    
+    let query = 'SELECT n.* FROM nodes n WHERE n.project_id = ?';
+    const bindings: any[] = [projectId];
+    
+    // Apply filters
+    if (type) {
+      query += ' AND n.type = ?';
+      bindings.push(type);
+    }
+    
+    if (status) {
+      query += ' AND n.status = ?';
+      bindings.push(status);
+    }
+    
+    if (search) {
+      query += ' AND (n.title LIKE ? OR n.content LIKE ?)';
+      const searchTerm = `%${search}%`;
+      bindings.push(searchTerm, searchTerm);
+    }
+    
+    if (tag) {
+      query += ' AND EXISTS (SELECT 1 FROM node_tags nt JOIN tags t ON nt.tag_id = t.id WHERE nt.node_id = n.id AND t.name = ?)';
+      bindings.push(tag);
+    }
+    
+    query += ' ORDER BY n.updated_at DESC';
+    
+    const result = await db.prepare(query).bind(...bindings).all();
+    return c.json(successResponse(result.results || []));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// POST /nodes - Create node
+graphApi.post('/nodes', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(nodeCreateSchema, body);
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { id, project_id, type, title, content, status, metadata } = validatedData;
+    
+    // Generate ID if not provided
+    const nodeId = id || `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = Math.floor(Date.now() / 1000);
+
+    const sql = `
+      INSERT INTO nodes (id, project_id, type, title, content, status, created_at, updated_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await db.prepare(sql).bind(
+      nodeId,
+      project_id,
+      type,
+      title,
+      dbValue(content),
+      status,
+      now,
+      now,
+      dbValue(metadata)
+    ).run();
+    
+    // Update project node count
+    await db.prepare('UPDATE projects SET node_count = node_count + 1, updated_at = ? WHERE id = ?')
+      .bind(now, project_id).run();
+    
+    return c.json(apiResponse(true, { id: nodeId, message: 'Node created successfully' }, undefined, 201));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// GET /nodes/{id} - Get node details with relationships, dependencies, tags, children, parent
+graphApi.get('/nodes/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get node
+    const node = await db.prepare('SELECT * FROM nodes WHERE id = ?').bind(id).first();
+    if (!node) {
+      return c.json(notFoundResponse('Node not found'));
+    }
+    
+    // Get tags
+    const tags = await db.prepare(`
+      SELECT t.* FROM tags t
+      JOIN node_tags nt ON t.id = nt.tag_id
+      WHERE nt.node_id = ?
+    `).bind(id).all();
+    
+    // Get relationships where this node is source
+    const relationships = await db.prepare(`
+      SELECT r.*, n2.title as target_title, n2.type as target_type 
+      FROM relationships r
+      JOIN nodes n2 ON r.target_node_id = n2.id
+      WHERE r.source_node_id = ?
+    `).bind(id).all();
+    
+    // Get dependencies where this node depends on others
+    const dependencies = await db.prepare(`
+      SELECT d.*, n2.title as depends_on_title, n2.type as depends_on_type
+      FROM dependencies d
+      JOIN nodes n2 ON d.depends_on_node_id = n2.id
+      WHERE d.node_id = ?
+    `).bind(id).all();
+    
+    // Get children (nodes where this node is parent)
+    const children = await db.prepare(`
+      SELECT n.*, l.order_index
+      FROM nodes n
+      JOIN levels l ON n.id = l.child_node_id
+      WHERE l.parent_node_id = ?
+      ORDER BY l.order_index
+    `).bind(id).all();
+    
+    // Get parent (node where this node is child)
+    const parent = await db.prepare(`
+      SELECT n.*, l.order_index
+      FROM nodes n
+      JOIN levels l ON n.id = l.parent_node_id
+      WHERE l.child_node_id = ?
+    `).bind(id).first();
+    
+    return c.json(successResponse({
+      node,
+      tags: tags.results || [],
+      relationships: relationships.results || [],
+      dependencies: dependencies.results || [],
+      children: children.results || [],
+      parent: parent || null
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// PATCH /nodes/{id} - Update node
+graphApi.patch('/nodes/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(nodeUpdateSchema, { ...body, id });
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { project_id, type, title, content, status, metadata } = validatedData;
+    
+    // Build dynamic UPDATE query
+    const updates: string[] = [];
+    const bindings: any[] = [];
+    
+    if (project_id !== undefined) {
+      updates.push('project_id = ?');
+      bindings.push(project_id);
+    }
+    
+    if (type !== undefined) {
+      updates.push('type = ?');
+      bindings.push(type);
+    }
+    
+    if (title !== undefined) {
+      updates.push('title = ?');
+      bindings.push(title);
+    }
+    
+    if (content !== undefined) {
+      updates.push('content = ?');
+      bindings.push(dbValue(content));
+    }
+    
+    if (status !== undefined) {
+      updates.push('status = ?');
+      bindings.push(status);
+    }
+    
+    if (metadata !== undefined) {
+      updates.push('metadata = ?');
+      bindings.push(dbValue(metadata));
+    }
+    
+    // Always update updated_at
+    updates.push('updated_at = ?');
+    bindings.push(Math.floor(Date.now() / 1000));
+    
+    if (updates.length === 1) { // Only updated_at was added
+      return c.json(apiResponse(false, undefined, 'No fields to update', 400));
+    }
+    
+    bindings.push(id);
+    
+    const sql = `UPDATE nodes SET ${updates.join(', ')} WHERE id = ?`;
+    
+    const result = await db.prepare(sql).bind(...bindings).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Node not found', 404));
+    }
+
+    return c.json(apiResponse(true, { message: 'Node updated successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// DELETE /nodes/{id} - Delete node
+graphApi.delete('/nodes/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get node to know project_id for updating count
+    const node = await db.prepare('SELECT project_id FROM nodes WHERE id = ?').bind(id).first();
+    if (!node) {
+      return c.json(apiResponse(false, undefined, 'Node not found', 404));
+    }
+    
+    const result = await db.prepare('DELETE FROM nodes WHERE id = ?').bind(id).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Node not found', 404));
+    }
+    
+    // Update project node count
+    const now = Math.floor(Date.now() / 1000);
+    await db.prepare('UPDATE projects SET node_count = node_count - 1, updated_at = ? WHERE id = ?')
+      .bind(now, (node as any).project_id).run();
+
+    return c.json(apiResponse(true, { message: 'Node deleted successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});

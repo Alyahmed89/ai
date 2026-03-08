@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { CloudflareBindings } from './types';
 import { ConversationOrchestratorDO_2026A } from './durable/ConversationDO';
 import { crudApi } from './crud-api';
+import { graphApi } from './graph-api';
 import { successResponse, errorResponse, notFoundResponse } from './response';
 
 // Dummy FlowControllerDO to satisfy existing binding
@@ -54,6 +55,9 @@ app.use('*', async (c, next) => {
 
 // Mount CRUD API at /api
 app.route('/api', crudApi);
+
+// Mount Graph API at /graph
+app.route('/graph', graphApi);
 
 // Rate limiting middleware with token bucket algorithm
 const rateLimitMiddleware = async (c: any, next: any) => {
