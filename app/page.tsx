@@ -75,10 +75,12 @@ export default function Home() {
       // Refresh the flow runs list
       fetchFlowRuns();
       
-      alert(`Flow started successfully! Conversation ID: ${data.conversation_id}`);
+      // No popup - just log to console
+      console.log(`Flow started successfully! Conversation ID: ${data.conversation_id}`);
     } catch (err) {
       console.error('Error starting flow:', err);
-      alert(`Failed to start flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // No popup - just log to console
+      console.error(`Failed to start flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setStartingFlow(null);
     }
@@ -116,10 +118,12 @@ export default function Home() {
       // Refresh the flow runs list
       fetchFlowRuns();
       
-      alert('Flow stopped successfully!');
+      // No popup - just log to console
+      console.log('Flow stopped successfully!');
     } catch (err) {
       console.error('Error stopping flow:', err);
-      alert(`Failed to stop flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // No popup - just log to console
+      console.error(`Failed to stop flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setStoppingFlow(null);
     }
@@ -136,13 +140,13 @@ export default function Home() {
   const handleStopAllFlows = async () => {
     const runningFlows = getAllRunningFlowRuns();
     if (runningFlows.length === 0) {
-      alert('No running flows to stop');
+      // No popup - just log to console
+      console.log('No running flows to stop');
       return;
     }
 
-    if (!confirm(`Are you sure you want to stop ${runningFlows.length} running flow(s)?`)) {
-      return;
-    }
+    // No confirmation popup - just proceed
+    console.log(`Stopping ${runningFlows.length} running flow(s)...`);
 
     try {
       // Stop each running flow
@@ -160,10 +164,12 @@ export default function Home() {
       // Refresh the flow runs list
       fetchFlowRuns();
       
-      alert(`Successfully stopped ${runningFlows.length} flow(s)`);
+      // No popup - just log to console
+      console.log(`Successfully stopped ${runningFlows.length} flow(s)`);
     } catch (err) {
       console.error('Error stopping all flows:', err);
-      alert(`Failed to stop all flows: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // No popup - just log to console
+      console.error(`Failed to stop all flows: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -444,7 +450,7 @@ export default function Home() {
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
             >
               <span>▶</span>
-              Start Flow Priority 1 (honoch)
+              Start
             </button>
             
             <button
