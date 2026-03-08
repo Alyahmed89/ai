@@ -4,7 +4,8 @@
 
 ### **Knowledge Graph Tables:**
 1. **`projects`** - Project management
-   - `id`, `name`, `status`, `node_count`, `flow_count`, `task_count`, `execution_count`, `created_at`, `updated_at`, `metadata`
+   - `id`, `name`, `status`, `created_at`, `updated_at`, `metadata`
+   - **Note**: Removed computed counters (node_count, flow_count, task_count, execution_count)
 
 2. **`nodes`** - Knowledge nodes (NOT flows!)
    - `id`, `project_id`, `type`, `title`, `content`, `status`, `created_at`, `updated_at`, `metadata`
@@ -12,17 +13,15 @@
 
 3. **`relationships`** - Connections between nodes
    - `id`, `source_node_id`, `target_node_id`, `relation_type`, `weight`, `created_at`, `metadata`
+   - **Note**: Use `relation_type='depends_on'` for dependencies
 
-4. **`dependencies`** - Dependency relationships
-   - `id`, `node_id`, `depends_on_node_id`, `dependency_type`, `created_at`, `metadata`
+4. **`node_hierarchy`** - Hierarchy/parent-child relationships (renamed from `levels`)
+   - `id`, `parent_node_id`, `child_node_id`, `order_index`, `created_at`
 
-5. **`levels`** - Hierarchy/parent-child relationships
-   - `id`, `parent_node_id`, `child_node_id`, `order_index`, `created_at`, `metadata`
-
-6. **`tags`** - Tag definitions
+5. **`tags`** - Tag definitions
    - `id`, `name`, `color`, `created_at`
 
-7. **`node_tags`** - Junction table for node-tag relationships
+6. **`node_tags`** - Junction table for node-tag relationships
    - `node_id`, `tag_id`, `created_at`
 
 ### **Process Graph Tables:**
@@ -30,17 +29,21 @@
    - `id`, `project_id`, `title`, `status`, `created_at`, `updated_at`, `metadata`
 
 2. **`process_steps`** - Steps within a flow
-   - `id`, `flow_id`, `title`, `type`, `content`, `order_index`, `created_at`, `updated_at`, `metadata`
-   - **Step types**: `action`, `decision`, `input`, `output`, `validation`
+   - `id`, `flow_id`, `title`, `type`, `tool`, `content`, `order_index`, `created_at`, `updated_at`, `metadata`
+   - **Step types**: `ai`, `api`, `script`, `human`, `condition`, `tool`
+   - **Tool examples**: `openai`, `repo_search`, `test_runner`, `code_writer`, `http_client`, `bash`
 
 3. **`process_step_edges`** - Connections between steps with conditions
-   - `id`, `source_step_id`, `target_step_id`, `condition`, `weight`, `created_at`, `metadata`
+   - `id`, `source_step_id`, `target_step_id`, `edge_type`, `condition`, `weight`, `created_at`, `metadata`
+   - **Edge types**: `next`, `success`, `error`, `retry`, `fallback`
 
 4. **`process_flow_runs`** - Flow execution instances
-   - `id`, `flow_id`, `status`, `started_at`, `finished_at`, `created_at`, `updated_at`, `metadata`
+   - `id`, `flow_id`, `status`, `current_step_id`, `started_at`, `finished_at`, `created_at`, `updated_at`, `metadata`
+   - **Note**: Added `current_step_id` to track execution position
 
 5. **`process_step_runs`** - Step execution instances
    - `id`, `flow_run_id`, `step_id`, `status`, `output`, `started_at`, `finished_at`, `created_at`, `updated_at`, `metadata`
+   - **Constraint**: `UNIQUE(flow_run_id, step_id)` prevents duplicate executions
 
 ## ✅ **Sample Data Inserted**
 
