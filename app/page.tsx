@@ -54,16 +54,10 @@ export default function Home() {
     return text.substring(0, maxLength) + '...';
   };
 
-  const handleStartFlow = async (flowId: string) => {
+  const handleStartFlow = async () => {
     try {
-      setStartingFlow(flowId);
-      const response = await apiClient.startFlow({
-        flow_id: flowId,
-        repository: "owner/repo", // Default value, should be configurable
-        branch: "main",
-        initial_user_prompt: "",
-        max_iterations: 10
-      });
+      setStartingFlow("default");
+      const response = await apiClient.startFlow();
 
       if (!response.ok) {
         throw new Error(`Failed to start flow: ${response.status}`);
@@ -76,7 +70,7 @@ export default function Home() {
       fetchFlowRuns();
       
       // No popup - just log to console
-      console.log(`Flow started successfully! Conversation ID: ${data.conversation_id}`);
+      console.log(`Flow started successfully!`);
     } catch (err) {
       console.error('Error starting flow:', err);
       // No popup - just log to console
@@ -429,9 +423,8 @@ export default function Home() {
           }}>
             <button
               onClick={() => {
-                // Automatically start flow priority 1 without popup
-                // Using "honoch" as the flow ID based on the step page
-                handleStartFlow("honoch");
+                // Simple API call to start flow
+                handleStartFlow();
               }}
               style={{
                 padding: '0.75rem 1.5rem',
@@ -732,9 +725,9 @@ export default function Home() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleStartFlow(flowRun.flow_id);
+                                handleStartFlow();
                               }}
-                              disabled={startingFlow === flowRun.flow_id}
+                              disabled={startingFlow === "default"}
                               style={{
                                 padding: '0.25rem 0.75rem',
                                 backgroundColor: '#10b981',

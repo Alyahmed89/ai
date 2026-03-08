@@ -169,10 +169,9 @@ export const apiClient = {
     apiFetch(`/api/flow-runs/${flowRunId}/iterations`),
   
   // New endpoints from user requirements
-  startFlow: (data: any) =>
+  startFlow: () =>
     apiFetch('/start', {
-      method: 'POST',
-      body: JSON.stringify(data)
+      method: 'POST'
     }),
   
   getConversationStatus: (conversationId: string) =>

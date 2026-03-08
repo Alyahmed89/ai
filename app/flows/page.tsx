@@ -117,16 +117,10 @@ export default function FlowsPage() {
     }));
   };
 
-  const handleStartFlow = async (flowId: string) => {
+  const handleStartFlow = async () => {
     try {
-      setStartingFlow(flowId);
-      const response = await apiClient.startFlow({
-        flow_id: flowId,
-        repository: "owner/repo", // Default value, should be configurable
-        branch: "main",
-        initial_user_prompt: "",
-        max_iterations: 10
-      });
+      setStartingFlow("default");
+      const response = await apiClient.startFlow();
 
       if (!response.ok) {
         throw new Error(`Failed to start flow: ${response.status}`);
@@ -138,7 +132,7 @@ export default function FlowsPage() {
       // Refresh the flows and flow runs list
       fetchFlows();
       
-      alert(`Flow started successfully! Conversation ID: ${data.conversation_id}`);
+      alert(`Flow started successfully!`);
     } catch (err) {
       console.error('Error starting flow:', err);
       alert(`Failed to start flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -432,7 +426,7 @@ export default function FlowsPage() {
                 // In a more complete implementation, this would open a dialog to select which flow to start
                 const firstFlow = flows[0];
                 if (confirm(`Start flow "${firstFlow.name || firstFlow.id}"?`)) {
-                  handleStartFlow(firstFlow.id);
+                  handleStartFlow();
                 }
               }}
               style={{
@@ -693,9 +687,9 @@ export default function FlowsPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleStartFlow(flow.id);
+                              handleStartFlow();
                             }}
-                            disabled={startingFlow === flow.id}
+                            disabled={startingFlow === "default"}
                             style={{
                               padding: '0.25rem 0.75rem',
                               backgroundColor: '#10b981',
