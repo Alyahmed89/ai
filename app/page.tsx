@@ -341,6 +341,23 @@ export default function Home() {
                 View Tasks
               </a>
               <a
+                href="/projects"
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#f3f4f6',
+                  color: '#374151',
+                  borderRadius: '0.5rem',
+                  textDecoration: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+              >
+                View Projects
+              </a>
+              <a
                 href="/api-test"
                 style={{
                   padding: '0.5rem 1rem',

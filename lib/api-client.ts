@@ -218,5 +218,33 @@ export const apiClient = {
     apiFetch('/api/flow-runs', {
       method: 'POST',
       body: JSON.stringify(data)
+    }),
+
+  // Project Management
+  getProjects: (limit?: number) => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/graph/projects${query}`);
+  },
+
+  getProject: (id: string) =>
+    apiFetch(`/graph/projects/${id}`),
+
+  createProject: (data: { name: string; status: string; metadata: string }) =>
+    apiFetch('/graph/projects', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  updateProject: (id: string, data: { status?: string; metadata?: string }) =>
+    apiFetch(`/graph/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
+
+  deleteProject: (id: string) =>
+    apiFetch(`/graph/projects/${id}`, {
+      method: 'DELETE'
     })
 };
