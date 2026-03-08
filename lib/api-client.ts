@@ -171,7 +171,7 @@ export const apiClient = {
   // New endpoints from user requirements
   startFlow: () =>
     apiFetch('/start', {
-      method: 'POST'
+      method: 'GET'
     }),
   
   getConversationStatus: (conversationId: string) =>
