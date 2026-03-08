@@ -381,7 +381,7 @@ export default function TasksPage() {
                           fontWeight: '500',
                           marginBottom: '0.25rem'
                         }}>
-                          {task.title}
+                          {task.title || 'Untitled Task'}
                         </div>
                         <div style={{
                           fontSize: '0.75rem',
@@ -391,8 +391,8 @@ export default function TasksPage() {
                           whiteSpace: 'nowrap',
                           maxWidth: '300px'
                         }}>
-                          {task.description.substring(0, 100)}
-                          {task.description.length > 100 ? '...' : ''}
+                          {task.description ? task.description.substring(0, 100) : 'No description'}
+                          {task.description && task.description.length > 100 ? '...' : ''}
                         </div>
                       </td>
                       <td style={{
@@ -444,7 +444,7 @@ export default function TasksPage() {
                         color: '#6b7280',
                         whiteSpace: 'nowrap'
                       }}>
-                        {new Date(task.created_at).toLocaleDateString()}
+                        {task.created_at ? new Date(task.created_at).toLocaleDateString() : 'N/A'}
                       </td>
                     </tr>
                   ))}

@@ -199,7 +199,7 @@ export default function TaskPage() {
                 color: '#111827',
                 marginBottom: '0.5rem'
               }}>
-                {task.title}
+                {task.title || 'Untitled Task'}
               </h1>
               <div style={{
                 display: 'flex',
@@ -280,7 +280,7 @@ export default function TaskPage() {
             fontSize: '0.875rem',
             color: '#6b7280'
           }}>
-            Task ID: {task.id} • Created: {new Date(task.created_at).toLocaleDateString()}
+            Task ID: {task.id} • Created: {task.created_at ? new Date(task.created_at).toLocaleDateString() : 'N/A'}
           </div>
         </div>
       </div>
