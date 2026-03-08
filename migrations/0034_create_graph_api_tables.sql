@@ -13,11 +13,13 @@ CREATE TABLE projects (
   status TEXT DEFAULT 'active', -- 'active', 'archived', 'deleted'
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  deleted_at INTEGER, -- Soft delete timestamp (NULL = not deleted)
   metadata TEXT -- JSON metadata
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at);
+CREATE INDEX IF NOT EXISTS idx_projects_deleted_at ON projects(deleted_at);
 
 -- ============================================================================
 -- 2. NODES (core entity for knowledge graph structure)
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   status TEXT DEFAULT 'active', -- 'active', 'inactive', 'completed', 'failed'
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  deleted_at INTEGER, -- Soft delete timestamp (NULL = not deleted)
   metadata TEXT, -- JSON metadata
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
@@ -39,6 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_nodes_project_id ON nodes(project_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
 CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);
 CREATE INDEX IF NOT EXISTS idx_nodes_updated_at ON nodes(updated_at);
+CREATE INDEX IF NOT EXISTS idx_nodes_deleted_at ON nodes(deleted_at);
 
 -- ============================================================================
 -- 3. NODE_HIERARCHY (parent-child relationships)
@@ -213,11 +217,13 @@ CREATE TABLE IF NOT EXISTS flows (
   metadata TEXT, -- JSON metadata
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  deleted_at INTEGER, -- Soft delete timestamp (NULL = not deleted)
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_flows_project_id ON flows(project_id);
 CREATE INDEX IF NOT EXISTS idx_flows_status ON flows(status);
+CREATE INDEX IF NOT EXISTS idx_flows_deleted_at ON flows(deleted_at);
 
 -- ============================================================================
 -- 8. STEPS (steps within flows)
@@ -233,11 +239,13 @@ CREATE TABLE IF NOT EXISTS steps (
   metadata TEXT, -- JSON metadata
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  deleted_at INTEGER, -- Soft delete timestamp (NULL = not deleted)
   FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_steps_flow_id ON steps(flow_id);
 CREATE INDEX IF NOT EXISTS idx_steps_order_index ON steps(order_index);
+CREATE INDEX IF NOT EXISTS idx_steps_deleted_at ON steps(deleted_at);
 
 -- ============================================================================
 -- 9. STEP EDGES (connections between steps for branching/conditions)
