@@ -328,7 +328,21 @@ crudApi.get('/tasks', async (c) => {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
-    const result = await db.prepare('SELECT * FROM tasks ORDER BY order_index').all();
+    // Check for flowId query parameter
+    const flowId = c.req.query('flowId');
+    
+    let query = 'SELECT * FROM tasks';
+    let params: any[] = [];
+    
+    // Only filter if flowId is provided and not empty
+    if (flowId && flowId.trim() !== '') {
+      query += ' WHERE flow_id = ?';
+      params.push(flowId.trim());
+    }
+    
+    query += ' ORDER BY order_index';
+    
+    const result = await db.prepare(query).bind(...params).all();
     return c.json(result.results || []);
   } catch (error) {
     return c.json(handleDbError(error), 500);

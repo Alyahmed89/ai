@@ -312,10 +312,93 @@ app.post('/start', async (c) => {
       }
       
     } else {
+      // Check if we should start highest priority flow (when no parameters provided)
+      if (!repository && !initial_user_prompt) {
+        console.log(`[HTTP:START] No flow_id provided and no repository/initial_user_prompt - starting highest priority flow`);
+        
+        // Start highest priority flow (same logic as GET /start)
+        if (!c.env.FLOW_RUNS_DB) {
+          return c.json(errorResponse('Database not configured for flow execution', 500));
+        }
+        
+        try {
+          // Get the flow with highest priority - try flow_definitions first (has priority column)
+          let flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions ORDER BY priority DESC, created_at DESC LIMIT 1').first();
+          
+          // If no flows in flow_definitions, try flows table (without priority ordering)
+          if (!flowResult) {
+            flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
+          }
+          
+          if (!flowResult) {
+            return c.json(notFoundResponse('No flows found in database'));
+          }
+          
+          const targetFlowId = (flowResult as any).id;
+          const targetRepository = (flowResult as any).repository || (flowResult as any).repo;
+          const targetBranch = (flowResult as any).branch || 'main';
+          const targetInitialUserPrompt = (flowResult as any).name || (flowResult as any).description || `Execute flow: ${targetFlowId}`;
+          const targetMaxIterations = (flowResult as any).max_iterations || 20;
+          const flowPriority = (flowResult as any).priority || 0;
+          
+          console.log(`[HTTP:START] Starting highest priority flow: ${targetFlowId} (priority: ${flowPriority}), repo: ${targetRepository}, branch: ${targetBranch}`);
+          
+          // Create a new Durable Object for this conversation
+          const id = c.env.CONVERSATIONS.newUniqueId();
+          const conversationDo = c.env.CONVERSATIONS.get(id);
+          
+          // Initialize the Durable Object with flow context
+          const initResponse = await conversationDo.fetch('http://placeholder/initialize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              repository: targetRepository,
+              branch: targetBranch,
+              initial_user_prompt: targetInitialUserPrompt,
+              max_iterations: targetMaxIterations
+            })
+          });
+          
+          if (!initResponse.ok) {
+            const errorText = await initResponse.text();
+            console.error(`[HTTP:START] Durable Object init failed: ${initResponse.status} - ${errorText}`);
+            return c.json(errorResponse(`Failed to start flow execution: ${initResponse.status}`, 500));
+          }
+          
+          // Track active conversation count
+          try {
+            if (c.env.RATE_LIMIT_KV) {
+              const activeConversationsKey = 'global:active_conversations';
+              const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
+              const newCount = parseInt(currentCount || '0') + 1;
+              await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
+              console.log(`[RATE_LIMIT] Active conversations: ${newCount}`);
+            }
+          } catch (error) {
+            console.error(`[RATE_LIMIT] Error tracking active conversation: ${error}`);
+          }
+          
+          // Return IMMEDIATELY - work happens in alarms
+          return c.json(successResponse({ 
+            message: 'Highest priority flow execution started. Work will happen in background via alarms.',
+            conversation_id: id.toString(), 
+            flow_id: targetFlowId,
+            flow_name: (flowResult as any).name,
+            flow_priority: flowPriority,
+            note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step', 
+            check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}` 
+          }));
+          
+        } catch (dbError: any) {
+          console.error(`[HTTP:START] Database error: ${dbError.message}`);
+          return c.json(errorResponse(`Database error: ${dbError.message}`, 500));
+        }
+      }
+      
       // ORIGINAL REPOSITORY-BASED CONVERSATION
       // Validate required fields
       if (!repository || !initial_user_prompt) {
-        return c.json(errorResponse('Need repository and initial_user_prompt (branch is optional), or provide flow ID', 400));
+        return c.json(errorResponse('Need repository and initial_user_prompt (branch is optional), provide flow ID, or send empty JSON {} to start highest priority flow', 400));
       }
 
       console.log(`[HTTP:START] Creating conversation for repository: ${repository}`);
