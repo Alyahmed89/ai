@@ -11,10 +11,6 @@ CREATE TABLE projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   status TEXT DEFAULT 'active', -- 'active', 'archived', 'deleted'
-  node_count INTEGER DEFAULT 0,
-  flow_count INTEGER DEFAULT 0,
-  task_count INTEGER DEFAULT 0,
-  execution_count INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   metadata TEXT -- JSON metadata
@@ -45,9 +41,9 @@ CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);
 CREATE INDEX IF NOT EXISTS idx_nodes_updated_at ON nodes(updated_at);
 
 -- ============================================================================
--- 3. LEVELS (hierarchy/parent-child relationships)
+-- 3. NODE_HIERARCHY (parent-child relationships)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS levels (
+CREATE TABLE IF NOT EXISTS node_hierarchy (
   id TEXT PRIMARY KEY,
   parent_node_id TEXT NOT NULL,
   child_node_id TEXT NOT NULL,
@@ -58,8 +54,8 @@ CREATE TABLE IF NOT EXISTS levels (
   UNIQUE(parent_node_id, child_node_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_levels_parent ON levels(parent_node_id);
-CREATE INDEX IF NOT EXISTS idx_levels_child ON levels(child_node_id);
+CREATE INDEX IF NOT EXISTS idx_node_hierarchy_parent ON node_hierarchy(parent_node_id);
+CREATE INDEX IF NOT EXISTS idx_node_hierarchy_child ON node_hierarchy(child_node_id);
 
 -- ============================================================================
 -- 4. RELATIONSHIPS (graph edges between nodes)
@@ -84,20 +80,8 @@ CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relation_type
 -- ============================================================================
 -- 5. DEPENDENCIES (special type of relationship)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS dependencies (
-  id TEXT PRIMARY KEY,
-  node_id TEXT NOT NULL,
-  depends_on_node_id TEXT NOT NULL,
-  dependency_type TEXT NOT NULL, -- 'hard', 'soft', 'temporal', 'resource'
-  created_at INTEGER NOT NULL,
-  metadata TEXT, -- JSON metadata
-  FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-  FOREIGN KEY (depends_on_node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-  UNIQUE(node_id, depends_on_node_id, dependency_type)
-);
-
-CREATE INDEX IF NOT EXISTS idx_dependencies_node ON dependencies(node_id);
-CREATE INDEX IF NOT EXISTS idx_dependencies_depends_on ON dependencies(depends_on_node_id);
+-- DEPRECATED: Dependencies are now handled via relationships with relation_type='depends_on'
+-- This table is removed to avoid duplicate logic
 
 -- ============================================================================
 -- 6. TAGS (categorization system)
@@ -242,7 +226,8 @@ CREATE TABLE IF NOT EXISTS steps (
   id TEXT PRIMARY KEY,
   flow_id TEXT NOT NULL,
   title TEXT NOT NULL,
-  type TEXT NOT NULL, -- 'action', 'decision', 'input', 'output', 'validation'
+  type TEXT NOT NULL, -- 'ai', 'api', 'script', 'human', 'condition', 'tool'
+  tool TEXT, -- Specific tool: 'openai', 'repo_search', 'test_runner', 'code_writer', etc.
   content TEXT, -- JSON or text content (instructions, configuration)
   order_index INTEGER DEFAULT 0,
   metadata TEXT, -- JSON metadata
@@ -261,13 +246,14 @@ CREATE TABLE IF NOT EXISTS step_edges (
   id TEXT PRIMARY KEY,
   source_step_id TEXT NOT NULL,
   target_step_id TEXT NOT NULL,
+  edge_type TEXT DEFAULT 'next', -- 'next', 'success', 'error', 'retry', 'fallback'
   condition TEXT, -- Condition expression (optional)
   weight REAL DEFAULT 1.0, -- Weight for probabilistic branching
   metadata TEXT, -- JSON metadata
   created_at INTEGER NOT NULL,
   FOREIGN KEY (source_step_id) REFERENCES steps(id) ON DELETE CASCADE,
   FOREIGN KEY (target_step_id) REFERENCES steps(id) ON DELETE CASCADE,
-  UNIQUE(source_step_id, target_step_id, condition)
+  UNIQUE(source_step_id, target_step_id, edge_type, condition)
 );
 
 CREATE INDEX IF NOT EXISTS idx_step_edges_source ON step_edges(source_step_id);
@@ -280,12 +266,14 @@ CREATE TABLE IF NOT EXISTS flow_runs (
   id TEXT PRIMARY KEY,
   flow_id TEXT NOT NULL,
   status TEXT DEFAULT 'running', -- 'running', 'completed', 'failed', 'paused'
+  current_step_id TEXT, -- Current step being executed
   started_at INTEGER NOT NULL,
   finished_at INTEGER,
   metadata TEXT, -- JSON metadata
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
+  FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE,
+  FOREIGN KEY (current_step_id) REFERENCES steps(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_flow_runs_flow_id ON flow_runs(flow_id);
@@ -307,7 +295,8 @@ CREATE TABLE IF NOT EXISTS step_runs (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (flow_run_id) REFERENCES flow_runs(id) ON DELETE CASCADE,
-  FOREIGN KEY (step_id) REFERENCES steps(id) ON DELETE CASCADE
+  FOREIGN KEY (step_id) REFERENCES steps(id) ON DELETE CASCADE,
+  UNIQUE(flow_run_id, step_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_step_runs_flow_run_id ON step_runs(flow_run_id);
@@ -324,8 +313,8 @@ DROP TABLE IF EXISTS flow_transitions;
 -- ============================================================================
 
 -- Insert sample project
-INSERT OR IGNORE INTO projects (id, name, status, node_count, flow_count, task_count, execution_count, created_at, updated_at, metadata) VALUES
-('project-1', 'DeepSeek Agent', 'active', 0, 0, 0, 0, strftime('%s', 'now'), strftime('%s', 'now'), '{"description": "AI agent for code analysis and execution"}');
+INSERT OR IGNORE INTO projects (id, name, status, created_at, updated_at, metadata) VALUES
+('project-1', 'DeepSeek Agent', 'active', strftime('%s', 'now'), strftime('%s', 'now'), '{"description": "AI agent for code analysis and execution"}');
 
 -- Insert sample nodes (knowledge graph)
 INSERT OR IGNORE INTO nodes (id, project_id, type, title, content, status, created_at, updated_at, metadata) VALUES
