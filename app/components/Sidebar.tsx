@@ -30,25 +30,39 @@ export default function Sidebar({ nodes, currentNodeId, onSelectNode }: SidebarP
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.getProjects(50);
       
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      const data = await response.json();
-      
-      if (data.error) {
-        setError(data.error);
-      } else if (data.success && data.data) {
-        setProjects(data.data);
-      } else {
-        setProjects(data);
+      try {
+        const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/api/projects?limit=50', {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          setError(data.error);
+        } else if (data.success && data.data) {
+          setProjects(data.data);
+        } else {
+          setProjects(data);
+        }
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        throw fetchErr;
       }
     } catch (err) {
       console.error('Error fetching projects:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Failed to load projects: ${errorMessage}`);
+      setError(`Failed to load projects: ${errorMessage}. Showing sample data.`);
       
       // Fallback to mock data if API fails
       setProjects([
