@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Graph Documentation System",
-  description: "A minimal, clean UI for graph-based documentation and flow system",
+  title: "Flowruns - Projects Dashboard",
+  description: "A project management and flow execution system",
 };
 
 export default function RootLayout({

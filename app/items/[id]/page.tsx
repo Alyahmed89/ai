@@ -105,7 +105,7 @@ export default function ItemPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <TopBar
-        projectName="Documentation Project"
+        projectName="Flowruns"
         breadcrumbs={breadcrumbs}
         onNewNode={handleNewNode}
       />

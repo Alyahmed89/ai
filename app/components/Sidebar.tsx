@@ -1,128 +1,207 @@
 'use client';
 
-import { Node } from '@/app/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
+
+interface Project {
+  id: string;
+  name: string;
+  status: string;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
+  node_count?: number;
+  flow_count?: number;
+  task_count?: number;
+  execution_count?: number;
+}
 
 interface SidebarProps {
-  nodes: Node[];
+  nodes: any[];
   currentNodeId: string;
   onSelectNode: (nodeId: string) => void;
 }
 
 export default function Sidebar({ nodes, currentNodeId, onSelectNode }: SidebarProps) {
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['1'])); // Start with root expanded
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const toggleNode = (nodeId: string) => {
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
-      }
-      return newSet;
-    });
+  const fetchProjects = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      // For now, use mock data immediately to test rendering
+      // In production, this would be an API call
+      setTimeout(() => {
+        setError('API server is not reachable. Showing sample projects.');
+        // Add mock data for development
+        setProjects([
+          {
+            id: '1',
+            name: 'Sample Project 1',
+            status: 'active',
+            metadata: '{"description": "This is a sample project for demonstration"}',
+            created_at: Date.now() / 1000 - 86400 * 7,
+            updated_at: Date.now() / 1000 - 86400 * 2,
+            node_count: 5,
+            flow_count: 2,
+            task_count: 10,
+            execution_count: 25
+          },
+          {
+            id: '2',
+            name: 'Sample Project 2',
+            status: 'completed',
+            metadata: '{"description": "A completed project example"}',
+            created_at: Date.now() / 1000 - 86400 * 30,
+            updated_at: Date.now() / 1000 - 86400 * 5,
+            node_count: 3,
+            flow_count: 1,
+            task_count: 5,
+            execution_count: 12
+          }
+        ]);
+        setLoading(false);
+      }, 100);
+    } catch (err) {
+      console.error('Error fetching projects:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to load projects: ${errorMessage}`);
+      setLoading(false);
+    }
   };
 
-  // Build tree structure
-  const buildTree = () => {
-    const nodeMap = new Map<string, Node>();
-    const childrenMap = new Map<string, Node[]>();
-    
-    // Create maps
-    nodes.forEach(node => {
-      nodeMap.set(node.id, node);
-    });
-    
-    // Build children map
-    nodes.forEach(node => {
-      node.children.forEach(child => {
-        const childList = childrenMap.get(node.id) || [];
-        const childNode = nodeMap.get(child.nodeId);
-        if (childNode) {
-          childList.push(childNode);
-        }
-        childrenMap.set(node.id, childList);
-      });
-    });
-    
-    // Get root nodes (nodes with no parent)
-    const rootNodes = nodes.filter(node => !node.parentId);
-    
-    return { rootNodes, nodeMap, childrenMap };
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return '#10b981';
+      case 'completed': return '#3b82f6';
+      case 'archived': return '#6b7280';
+      default: return '#6b7280';
+    }
   };
 
-  const { rootNodes, nodeMap, childrenMap } = buildTree();
+  const formatDate = (dateValue: string | number) => {
+    if (typeof dateValue === 'number') {
+      return new Date(dateValue * 1000).toLocaleDateString();
+    }
+    return new Date(dateValue).toLocaleDateString();
+  };
 
-  const renderNode = (node: Node, depth: number = 0) => {
-    const isExpanded = expandedNodes.has(node.id);
-    const isCurrent = node.id === currentNodeId;
-    const children = childrenMap.get(node.id) || [];
-    const hasChildren = children.length > 0;
-
+  if (loading) {
     return (
-      <div key={node.id} className="select-none">
-        <div 
-          className={`flex items-center py-2 px-3 hover:bg-gray-50 cursor-pointer transition-colors duration-150 ${
-            isCurrent ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-          }`}
-          style={{ paddingLeft: `${depth * 20 + 12}px` }}
-          onClick={() => onSelectNode(node.id)}
-        >
-          {hasChildren && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleNode(node.id);
-              }}
-              className="mr-2 w-5 h-5 flex items-center justify-center text-gray-500 hover:text-gray-700"
-            >
-              {isExpanded ? '−' : '+'}
-            </button>
-          )}
-          {!hasChildren && <div className="mr-2 w-5"></div>}
-          <div className="flex-1 truncate">
-            <div className={`font-medium ${isCurrent ? 'text-blue-600' : 'text-gray-700'}`}>
-              {node.title}
-            </div>
-            {node.children.length > 0 && (
-              <div className="text-xs text-gray-500 mt-1">
-                {node.children.length} child{node.children.length !== 1 ? 'ren' : ''}
-              </div>
-            )}
-          </div>
+      <div className="w-64 border-r border-gray-200 bg-white overflow-y-auto h-full">
+        <div className="p-4 border-b border-gray-200">
+          <h2 className="font-semibold text-gray-900">Projects</h2>
+          <p className="text-xs text-gray-500 mt-1">Loading projects...</p>
         </div>
-        
-        {isExpanded && hasChildren && (
-          <div>
-            {children.map(child => renderNode(child, depth + 1))}
-          </div>
-        )}
+        <div className="p-4 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
       </div>
     );
-  };
+  }
+
+  if (error) {
+    return (
+      <div className="w-64 border-r border-gray-200 bg-white overflow-y-auto h-full">
+        <div className="p-4 border-b border-gray-200">
+          <h2 className="font-semibold text-gray-900">Projects</h2>
+          <p className="text-xs text-gray-500 mt-1">Error loading projects</p>
+        </div>
+        <div className="p-4">
+          <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+            {error}
+          </div>
+          <button
+            onClick={fetchProjects}
+            className="mt-3 w-full px-3 py-2 text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-64 border-r border-gray-200 bg-white overflow-y-auto h-full">
       <div className="p-4 border-b border-gray-200">
-        <h2 className="font-semibold text-gray-900">Documentation Tree</h2>
-        <p className="text-xs text-gray-500 mt-1">All nodes in hierarchy</p>
+        <h2 className="font-semibold text-gray-900">Projects</h2>
+        <p className="text-xs text-gray-500 mt-1">{projects.length} project{projects.length !== 1 ? 's' : ''} available</p>
       </div>
       
       <div className="py-2">
-        {rootNodes.map(node => renderNode(node))}
+        {projects.length === 0 ? (
+          <div className="p-4 text-center text-gray-500 text-sm">
+            No projects found. Create your first project!
+          </div>
+        ) : (
+          projects.map((project) => (
+            <div
+              key={project.id}
+              className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+              onClick={() => {
+                // For now, we'll navigate to the project details page
+                // In the future, this could select the project and show its content
+                window.location.href = `/projects`;
+              }}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div 
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: getStatusColor(project.status) }}
+                    />
+                    <h3 className="font-medium text-gray-900 truncate">
+                      {project.name}
+                    </h3>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 text-xs text-gray-500 mt-2">
+                    <span className="capitalize">{project.status}</span>
+                    <span>•</span>
+                    <span>{formatDate(project.created_at)}</span>
+                  </div>
+                  
+                  {project.node_count !== undefined && (
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="text-xs text-gray-500">
+                        <span className="font-medium">{project.node_count || 0}</span> nodes
+                      </div>
+                      {project.flow_count !== undefined && (
+                        <div className="text-xs text-gray-500">
+                          <span className="font-medium">{project.flow_count || 0}</span> flows
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
       
-      <div className="p-4 border-t border-gray-200 text-xs text-gray-500">
-        <div className="flex items-center justify-between">
-          <span>Total nodes: {nodes.length}</span>
-          <button
-            onClick={() => setExpandedNodes(new Set())}
-            className="text-blue-600 hover:text-blue-800"
-          >
-            Collapse all
-          </button>
-        </div>
+      <div className="p-4 border-t border-gray-200">
+        <a
+          href="/projects"
+          className="block w-full text-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+        >
+          View All Projects
+        </a>
+        <a
+          href="/projects"
+          className="block w-full text-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors mt-2"
+        >
+          + Create New Project
+        </a>
       </div>
     </div>
   );
