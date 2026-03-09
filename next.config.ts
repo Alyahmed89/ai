@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: 'bottom-right',
   },
+  // Disable source maps in production to reduce bundle size
+  productionBrowserSourceMaps: false,
+  // Enable compression
+  compress: true,
+  // Optimize bundle splitting
+  experimental: {
+    optimizeCss: true,
+  },
 };
 
 export default nextConfig;

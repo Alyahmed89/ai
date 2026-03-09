@@ -4,7 +4,6 @@ import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
 
-export const runtime = 'edge';
 
 export default function TaskPage() {
   const params = useParams();

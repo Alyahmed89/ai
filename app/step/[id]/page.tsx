@@ -2,11 +2,19 @@
 
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import URLRequestResponseTest from '@/app/components/URLRequestResponseTest';
-import EditableConditionList from '@/app/components/EditableConditionList';
+import dynamic from 'next/dynamic';
 import { apiClient } from '@/lib/api-client';
 
-export const runtime = 'edge';
+
+const URLRequestResponseTest = dynamic(() => import('@/app/components/URLRequestResponseTest'), {
+  ssr: false,
+  loading: () => <div>Loading URL Test Component...</div>
+});
+
+const EditableConditionList = dynamic(() => import('@/app/components/EditableConditionList'), {
+  ssr: false,
+  loading: () => <div>Loading Condition Editor...</div>
+});
 
 export default function StepPage() {
   const params = useParams();

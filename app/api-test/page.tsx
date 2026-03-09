@@ -1,6 +1,11 @@
 'use client';
 
-import APITestingUI from '@/app/components/APITestingUI';
+import dynamic from 'next/dynamic';
+
+const APITestingUI = dynamic(() => import('@/app/components/APITestingUI'), {
+  ssr: false,
+  loading: () => <div>Loading API Testing UI...</div>
+});
 
 export default function APITestPage() {
   // In a real app, you might get this from environment variables or user input
