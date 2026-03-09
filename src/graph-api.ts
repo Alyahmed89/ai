@@ -239,7 +239,7 @@ graphApi.get('/projects', async (c) => {
       return c.json(errorResponse('Database not configured', 500));
     }
 
-    const result = await db.prepare('SELECT * FROM projects ORDER BY updated_at DESC').all();
+    const result = await db.prepare('SELECT * FROM projects WHERE deleted_at IS NULL ORDER BY updated_at DESC').all();
     return c.json(successResponse(result.results || []));
   } catch (error) {
     return c.json(errorResponse(handleDbError(error).error, 500));
@@ -298,7 +298,7 @@ graphApi.get('/projects/:id', async (c) => {
     }
 
     const id = c.req.param('id');
-    const result = await db.prepare('SELECT * FROM projects WHERE id = ?').bind(id).first();
+    const result = await db.prepare('SELECT * FROM projects WHERE id = ? AND deleted_at IS NULL').bind(id).first();
 
     if (!result) {
       return c.json(notFoundResponse('Project not found'));
@@ -359,7 +359,7 @@ graphApi.patch('/projects/:id', async (c) => {
     
     bindings.push(id);
     
-    const sql = `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE projects SET ${updates.join(', ')} WHERE id = ? AND deleted_at IS NULL`;
     
     const result = await db.prepare(sql).bind(...bindings).run();
 
@@ -373,7 +373,7 @@ graphApi.patch('/projects/:id', async (c) => {
   }
 });
 
-// DELETE /projects/{id} - Delete project
+// DELETE /projects/{id} - Delete project (soft delete)
 graphApi.delete('/projects/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
@@ -382,13 +382,15 @@ graphApi.delete('/projects/:id', async (c) => {
     }
 
     const id = c.req.param('id');
-    const result = await db.prepare('DELETE FROM projects WHERE id = ?').bind(id).run();
+    const now = Math.floor(Date.now() / 1000);
+    const result = await db.prepare('UPDATE projects SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+      .bind(now, now, id).run();
 
     if (result.meta.changes === 0) {
       return c.json(apiResponse(false, undefined, 'Project not found', 404));
     }
 
-    return c.json(apiResponse(true, { message: 'Project deleted successfully' }));
+    return c.json(apiResponse(true, { message: 'Project soft deleted successfully' }));
   } catch (error) {
     return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
   }
@@ -412,7 +414,7 @@ graphApi.get('/projects/:projectId/nodes', async (c) => {
     const status = c.req.query('status');
     const search = c.req.query('search');
     
-    let query = 'SELECT n.* FROM nodes n WHERE n.project_id = ?';
+    let query = 'SELECT n.* FROM nodes n WHERE n.project_id = ? AND n.deleted_at IS NULL';
     const bindings: any[] = [projectId];
     
     // Apply filters
@@ -507,7 +509,7 @@ graphApi.get('/nodes/:id', async (c) => {
     const id = c.req.param('id');
     
     // Get node
-    const node = await db.prepare('SELECT * FROM nodes WHERE id = ?').bind(id).first();
+    const node = await db.prepare('SELECT * FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(id).first();
     if (!node) {
       return c.json(notFoundResponse('Node not found'));
     }
@@ -524,7 +526,7 @@ graphApi.get('/nodes/:id', async (c) => {
       SELECT r.*, n2.title as target_title, n2.type as target_type 
       FROM relationships r
       JOIN nodes n2 ON r.target_node_id = n2.id
-      WHERE r.source_node_id = ?
+      WHERE r.source_node_id = ? AND n2.deleted_at IS NULL
     `).bind(id).all();
     
     // Get dependencies where this node depends on others
@@ -532,7 +534,7 @@ graphApi.get('/nodes/:id', async (c) => {
       SELECT d.*, n2.title as depends_on_title, n2.type as depends_on_type
       FROM dependencies d
       JOIN nodes n2 ON d.depends_on_node_id = n2.id
-      WHERE d.node_id = ?
+      WHERE d.node_id = ? AND n2.deleted_at IS NULL
     `).bind(id).all();
     
     // Get children (nodes where this node is parent)
@@ -540,7 +542,7 @@ graphApi.get('/nodes/:id', async (c) => {
       SELECT n.*, l.order_index
       FROM nodes n
       JOIN levels l ON n.id = l.child_node_id
-      WHERE l.parent_node_id = ?
+      WHERE l.parent_node_id = ? AND n.deleted_at IS NULL
       ORDER BY l.order_index
     `).bind(id).all();
     
@@ -549,7 +551,7 @@ graphApi.get('/nodes/:id', async (c) => {
       SELECT n.*, l.order_index
       FROM nodes n
       JOIN levels l ON n.id = l.parent_node_id
-      WHERE l.child_node_id = ?
+      WHERE l.child_node_id = ? AND n.deleted_at IS NULL
     `).bind(id).first();
     
     return c.json(successResponse({
@@ -584,6 +586,16 @@ graphApi.patch('/nodes/:id', async (c) => {
     
     const validatedData = validation.data!;
     const { project_id, type, title, content, status, metadata } = validatedData;
+    
+    // Get current node to know old project_id if project_id is being updated
+    let oldProjectId: string | undefined;
+    if (project_id !== undefined) {
+      const currentNode = await db.prepare('SELECT project_id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(id).first();
+      if (!currentNode) {
+        return c.json(apiResponse(false, undefined, 'Node not found', 404));
+      }
+      oldProjectId = (currentNode as any).project_id;
+    }
     
     // Build dynamic UPDATE query
     const updates: string[] = [];
@@ -620,8 +632,9 @@ graphApi.patch('/nodes/:id', async (c) => {
     }
     
     // Always update updated_at
+    const now = Math.floor(Date.now() / 1000);
     updates.push('updated_at = ?');
-    bindings.push(Math.floor(Date.now() / 1000));
+    bindings.push(now);
     
     if (updates.length === 1) { // Only updated_at was added
       return c.json(apiResponse(false, undefined, 'No fields to update', 400));
@@ -629,12 +642,23 @@ graphApi.patch('/nodes/:id', async (c) => {
     
     bindings.push(id);
     
-    const sql = `UPDATE nodes SET ${updates.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE nodes SET ${updates.join(', ')} WHERE id = ? AND deleted_at IS NULL`;
     
     const result = await db.prepare(sql).bind(...bindings).run();
 
     if (result.meta.changes === 0) {
       return c.json(apiResponse(false, undefined, 'Node not found', 404));
+    }
+    
+    // Update project counts if project_id was changed
+    if (project_id !== undefined && oldProjectId && oldProjectId !== project_id) {
+      // Decrement old project's node_count
+      await db.prepare('UPDATE projects SET node_count = node_count - 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+        .bind(now, oldProjectId).run();
+      
+      // Increment new project's node_count
+      await db.prepare('UPDATE projects SET node_count = node_count + 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+        .bind(now, project_id).run();
     }
 
     return c.json(apiResponse(true, { message: 'Node updated successfully' }));
@@ -643,7 +667,7 @@ graphApi.patch('/nodes/:id', async (c) => {
   }
 });
 
-// DELETE /nodes/{id} - Delete node
+// DELETE /nodes/{id} - Delete node (soft delete)
 graphApi.delete('/nodes/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
@@ -654,23 +678,25 @@ graphApi.delete('/nodes/:id', async (c) => {
     const id = c.req.param('id');
     
     // Get node to know project_id for updating count
-    const node = await db.prepare('SELECT project_id FROM nodes WHERE id = ?').bind(id).first();
+    const node = await db.prepare('SELECT project_id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(id).first();
     if (!node) {
       return c.json(apiResponse(false, undefined, 'Node not found', 404));
     }
     
-    const result = await db.prepare('DELETE FROM nodes WHERE id = ?').bind(id).run();
+    // Soft delete: set deleted_at timestamp instead of hard delete
+    const now = Math.floor(Date.now() / 1000);
+    const result = await db.prepare('UPDATE nodes SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+      .bind(now, now, id).run();
 
     if (result.meta.changes === 0) {
       return c.json(apiResponse(false, undefined, 'Node not found', 404));
     }
     
     // Update project node count
-    const now = Math.floor(Date.now() / 1000);
     await db.prepare('UPDATE projects SET node_count = node_count - 1, updated_at = ? WHERE id = ?')
       .bind(now, (node as any).project_id).run();
 
-    return c.json(apiResponse(true, { message: 'Node deleted successfully' }));
+    return c.json(apiResponse(true, { message: 'Node soft deleted successfully' }));
   } catch (error) {
     return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
   }

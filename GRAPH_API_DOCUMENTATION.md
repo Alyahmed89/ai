@@ -54,19 +54,39 @@ Delete project.
 
 ## 2. Nodes
 
-### GET `/graph/projects/{projectId}/nodes`
-List nodes with filters.
+### **1. GET `/graph/projects/{projectId}/nodes`** - List Nodes
+**Filters Available**:
+- `type` - Filter by node type (`task`, `doc`, `api`, `concept`, `rule`, `context`, `data`, `ui`, `system`)
+- `tag` - Filter by tag name (exact match)
+- `status` - Filter by status (`active`, `inactive`, `completed`, `failed`)
+- `search` - Search in title and content (case-insensitive)
 
-**Query Parameters:**
-- `type`: Filter by node type (task, flow, rule, context, data, api, ui, system)
-- `tag`: Filter by tag name
-- `status`: Filter by status (active, inactive, completed, failed)
-- `search`: Search in title or content
+**Conditions**:
+- Database must be configured (`FLOW_RUNS_DB`)
+- Project must exist
+- Returns empty array if no matches
+- Supports soft delete filtering (only returns nodes where `deleted_at IS NULL`)
 
-### POST `/graph/nodes`
-Create a new node.
+---
 
-**Request Body:**
+### **2. POST `/graph/nodes`** - Create Node
+**Required Fields**:
+- `project_id` - Must reference existing project
+- `type` - Must be from allowed enum
+- `title` - Minimum 1 character
+
+**Optional Fields**:
+- `id` - Auto-generated if not provided
+- `content` - Node content/description
+- `status` - Defaults to `active`
+- `metadata` - JSON string for custom data
+
+**Conditions**:
+- Validates all inputs with Zod schema
+- Auto-increments project's `node_count`
+- Sets `created_at` and `updated_at` timestamps
+
+**Request Body**:
 ```json
 {
   "id": "node-1", // optional
@@ -79,22 +99,67 @@ Create a new node.
 }
 ```
 
-### GET `/graph/nodes/{id}`
-Get node details with full context.
+---
 
-**Response includes:**
-- `node`: Node details
-- `tags`: Array of tags
-- `relationships`: Outgoing relationships
-- `dependencies`: Dependencies on other nodes
-- `children`: Child nodes (hierarchy)
-- `parent`: Parent node (if any)
+### **3. GET `/graph/nodes/{id}`** - Get Node Details
+**Returns Complete Node Graph**:
+- Node details
+- Tags assigned to node
+- Relationships (where node is source)
+- Dependencies (what this node depends on)
+- Children nodes (hierarchy)
+- Parent node (if exists)
 
-### PATCH `/graph/nodes/{id}`
-Update node.
+**Conditions**:
+- Node must exist and not be soft-deleted (returns 404 if not found)
+- Includes all related data in single response
 
-### DELETE `/graph/nodes/{id}`
-Delete node.
+---
+
+### **4. PATCH `/graph/nodes/{id}`** - Update Node
+**Partial Updates Allowed**:
+- Any combination of: `project_id`, `type`, `title`, `content`, `status`, `metadata`
+
+**Conditions**:
+- At least one field must be provided (besides `id`)
+- `updated_at` automatically updated
+- Returns 400 if no fields to update
+- Returns 404 if node not found or soft-deleted
+
+---
+
+### **5. DELETE `/graph/nodes/{id}`** - Delete Node
+**Soft Delete Implementation**:
+- Sets `deleted_at` timestamp
+- Decrements project's `node_count`
+- Data preserved for recovery
+
+**Conditions**:
+- Node must exist and not already be soft-deleted (returns 404 if not found)
+- Uses soft delete pattern
+
+---
+
+### **Node Type Validation**
+```typescript
+type NodeType = 'task' | 'doc' | 'api' | 'concept' | 'rule' | 'context' | 'data' | 'ui' | 'system'
+```
+
+### **Node Status Validation**
+```typescript
+type NodeStatus = 'active' | 'inactive' | 'completed' | 'failed'
+```
+
+### **Field Requirements**
+| Field | Required | Min Length | Default | Notes |
+|-------|----------|------------|---------|-------|
+| `id` | No | 1 | Auto-generated | Format: `node-{timestamp}-{random}` |
+| `project_id` | Yes | 1 | - | Must exist in projects table |
+| `type` | Yes | - | - | Must be valid enum value |
+| `title` | Yes | 1 | - | Cannot be empty |
+| `content` | No | - | `null` | Can be null or empty |
+| `status` | No | - | `active` | Must be valid enum value |
+| `metadata` | No | - | `null` | JSON string, can be null |
 
 ## 3. Hierarchy (Levels)
 
@@ -425,7 +490,7 @@ Analyze node with AI.
 
 The following tables have been created:
 
-1. **projects** - Enhanced with counts and status
+1. **projects** - Enhanced with counts (`node_count`, `flow_count`, `task_count`, `execution_count`) and status
 2. **nodes** - Core entity with type, title, content, status
 3. **levels** - Hierarchy/parent-child relationships
 4. **relationships** - Graph edges between nodes
