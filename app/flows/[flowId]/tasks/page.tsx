@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from 'react';
 import { apiClient } from '@/lib/api-client';
 
+export const runtime = 'edge';
 
 interface Task {
   id: string;
@@ -482,4 +483,3 @@ export default function FlowTasksPage({ params }: { params: Promise<{ flowId: st
   );
 }
 
-export const runtime = 'edge';

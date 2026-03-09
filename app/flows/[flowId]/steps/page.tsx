@@ -3,6 +3,8 @@
 import { useState, useEffect, use } from 'react';
 import { apiClient } from '@/lib/api-client';
 
+export const runtime = 'edge';
+
 export default function FlowStepsPage({ params }: { params: Promise<{ flowId: string }> }) {
   const { flowId } = use(params);
   
@@ -865,7 +867,6 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
     </div>
   );
 }
-
 
 
 export const runtime = 'edge';
