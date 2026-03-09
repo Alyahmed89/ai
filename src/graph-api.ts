@@ -448,6 +448,34 @@ graphApi.get('/projects/:projectId/nodes', async (c) => {
   }
 });
 
+// GET /projects/{projectId}/root-nodes - Get all root nodes (level 1 nodes with no parent)
+graphApi.get('/projects/:projectId/root-nodes', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const projectId = c.req.param('projectId');
+    
+    // SQL query to get root nodes (nodes with no parent in node_hierarchy table)
+    const query = `
+      SELECT n.* 
+      FROM nodes n
+      LEFT JOIN node_hierarchy nh ON n.id = nh.child_node_id
+      WHERE n.project_id = ? 
+        AND n.deleted_at IS NULL
+        AND nh.child_node_id IS NULL
+      ORDER BY n.updated_at DESC
+    `;
+    
+    const result = await db.prepare(query).bind(projectId).all();
+    return c.json(successResponse(result.results || []));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
 // POST /nodes - Create node
 graphApi.post('/nodes', async (c) => {
   try {
@@ -541,7 +569,7 @@ graphApi.get('/nodes/:id', async (c) => {
     const children = await db.prepare(`
       SELECT n.*, l.order_index
       FROM nodes n
-      JOIN levels l ON n.id = l.child_node_id
+      JOIN node_hierarchy l ON n.id = l.child_node_id
       WHERE l.parent_node_id = ? AND n.deleted_at IS NULL
       ORDER BY l.order_index
     `).bind(id).all();
@@ -550,7 +578,7 @@ graphApi.get('/nodes/:id', async (c) => {
     const parent = await db.prepare(`
       SELECT n.*, l.order_index
       FROM nodes n
-      JOIN levels l ON n.id = l.parent_node_id
+      JOIN node_hierarchy l ON n.id = l.parent_node_id
       WHERE l.child_node_id = ? AND n.deleted_at IS NULL
     `).bind(id).first();
     
