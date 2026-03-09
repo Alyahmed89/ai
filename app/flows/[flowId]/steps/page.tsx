@@ -869,4 +869,3 @@ export default function FlowStepsPage({ params }: { params: Promise<{ flowId: st
 }
 
 
-export const runtime = 'edge';
