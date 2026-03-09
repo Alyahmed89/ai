@@ -10,129 +10,146 @@ const initialNodes: Node[] = [
     title: 'Getting Started',
     content: 'Welcome to the documentation system. This is the root node.',
     parentId: null,
-    children: ['2', '3'],
+    children: [
+      { nodeId: '2', condition: 'platform = web' },
+      { nodeId: '3', condition: 'platform = mobile' }
+    ],
     leftLinks: [],
     rightLinks: [
-      { targetId: '4', condition: 'platform = mobile', description: 'For mobile devices' },
-      { targetId: '5', condition: 'platform = web', description: 'For web browsers' },
-      { targetId: '6', condition: 'user = admin', description: 'Admin access required' },
+      { targetId: '4', description: 'Advanced topics' },
+      { targetId: '5', description: 'Reference materials' },
     ],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '2',
-    title: 'Installation',
-    content: 'Install the required dependencies and set up the environment.',
+    title: 'Web Installation',
+    content: 'Installation guide for web platform.',
     parentId: '1',
-    children: [],
+    children: [
+      { nodeId: '6', condition: 'os = windows' },
+      { nodeId: '7', condition: 'os = macos' },
+      { nodeId: '8', condition: 'os = linux' }
+    ],
     leftLinks: [],
     rightLinks: [
-      { targetId: '7', condition: 'os = windows', description: 'Windows installation' },
-      { targetId: '8', condition: 'os = macos', description: 'macOS installation' },
-      { targetId: '9', condition: 'os = linux', description: 'Linux installation' },
+      { targetId: '9', description: 'Troubleshooting' },
     ],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '3',
-    title: 'Configuration',
-    content: 'Configure your project settings and preferences.',
+    title: 'Mobile Installation',
+    content: 'Installation guide for mobile platform.',
     parentId: '1',
-    children: [],
+    children: [
+      { nodeId: '10', condition: 'device = ios' },
+      { nodeId: '11', condition: 'device = android' }
+    ],
     leftLinks: [],
     rightLinks: [
-      { targetId: '10', condition: 'environment = development', description: 'Development setup' },
-      { targetId: '11', condition: 'environment = production', description: 'Production setup' },
+      { targetId: '12', description: 'Mobile-specific issues' },
     ],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '4',
-    title: 'Mobile App',
-    content: 'Documentation for the mobile application interface.',
+    title: 'Advanced Topics',
+    content: 'Advanced documentation topics.',
     parentId: null,
     children: [],
-    leftLinks: [{ targetId: '1', condition: 'back', description: 'Return to main' }],
+    leftLinks: [{ targetId: '1', description: 'Back to basics' }],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '5',
-    title: 'Web Interface',
-    content: 'Documentation for the web-based interface.',
+    title: 'Reference Materials',
+    content: 'API references and technical specifications.',
     parentId: null,
     children: [],
-    leftLinks: [{ targetId: '1', condition: 'back', description: 'Return to main' }],
+    leftLinks: [{ targetId: '1', description: 'Back to basics' }],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '6',
-    title: 'Admin Panel',
-    content: 'Administrator controls and system management.',
-    parentId: null,
+    title: 'Windows Setup',
+    content: 'Windows-specific installation steps.',
+    parentId: '2',
     children: [],
-    leftLinks: [{ targetId: '1', condition: 'back', description: 'Return to main' }],
+    leftLinks: [],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '7',
-    title: 'Windows Setup',
-    content: 'Installation guide for Windows operating system.',
-    parentId: null,
+    title: 'macOS Setup',
+    content: 'macOS-specific installation steps.',
+    parentId: '2',
     children: [],
-    leftLinks: [{ targetId: '2', condition: 'back', description: 'Return to installation' }],
+    leftLinks: [],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '8',
-    title: 'macOS Setup',
-    content: 'Installation guide for macOS.',
-    parentId: null,
+    title: 'Linux Setup',
+    content: 'Linux-specific installation steps.',
+    parentId: '2',
     children: [],
-    leftLinks: [{ targetId: '2', condition: 'back', description: 'Return to installation' }],
+    leftLinks: [],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '9',
-    title: 'Linux Setup',
-    content: 'Installation guide for Linux distributions.',
+    title: 'Troubleshooting',
+    content: 'Common issues and solutions.',
     parentId: null,
     children: [],
-    leftLinks: [{ targetId: '2', condition: 'back', description: 'Return to installation' }],
+    leftLinks: [{ targetId: '2', description: 'Back to installation' }],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '10',
-    title: 'Development Config',
-    content: 'Configuration for development environment.',
-    parentId: null,
+    title: 'iOS Setup',
+    content: 'iOS-specific installation steps.',
+    parentId: '3',
     children: [],
-    leftLinks: [{ targetId: '3', condition: 'back', description: 'Return to configuration' }],
+    leftLinks: [],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: '11',
-    title: 'Production Config',
-    content: 'Configuration for production deployment.',
+    title: 'Android Setup',
+    content: 'Android-specific installation steps.',
+    parentId: '3',
+    children: [],
+    leftLinks: [],
+    rightLinks: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: '12',
+    title: 'Mobile Issues',
+    content: 'Mobile-specific troubleshooting.',
     parentId: null,
     children: [],
-    leftLinks: [{ targetId: '3', condition: 'back', description: 'Return to configuration' }],
+    leftLinks: [{ targetId: '3', description: 'Back to mobile installation' }],
     rightLinks: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -166,7 +183,7 @@ export function useNodes() {
         if (node.id === nodeToDelete.parentId) {
           return {
             ...node,
-            children: node.children.filter(id => id !== nodeId),
+            children: node.children.filter(child => child.nodeId !== nodeId),
           };
         }
         return node;
@@ -225,11 +242,11 @@ export function useNodes() {
           // Insert in parent's children at correct position
           const parentIndex = updated.findIndex(n => n.id === parent.id);
           // referenceNodeId is guaranteed to be defined here because of the check above
-          const childIndex = parent.children.indexOf(referenceNodeId!);
+          const childIndex = parent.children.findIndex(child => child.nodeId === referenceNodeId!);
           
           if (childIndex !== -1) {
             const insertIndex = position === 'above' ? childIndex : childIndex + 1;
-            parent.children.splice(insertIndex, 0, newNodeId);
+            parent.children.splice(insertIndex, 0, { nodeId: newNodeId });
             newNode.parentId = parent.id;
           }
         } else {
@@ -238,7 +255,7 @@ export function useNodes() {
             // Add as child of the reference node
             const refNodeIndex = updated.findIndex(n => n.id === referenceNodeId!);
             if (refNodeIndex !== -1) {
-              updated[refNodeIndex].children.push(newNodeId);
+              updated[refNodeIndex].children.push({ nodeId: newNodeId });
               newNode.parentId = referenceNodeId!;
             }
           } else if (position === 'above') {
@@ -248,11 +265,11 @@ export function useNodes() {
           }
         }
       } else if (position === 'left' || position === 'right') {
-        // Add horizontal link
+        // Add horizontal link (no conditions on horizontal links)
         if (referenceNodeId) {
           const link: HorizontalLink = {
             targetId: newNodeId,
-            condition: 'condition',
+            description: 'New link',
           };
           
           const refNodeIndex = updated.findIndex(n => n.id === referenceNodeId!);
@@ -262,7 +279,7 @@ export function useNodes() {
               // Create reciprocal right link from new node to reference node
               const reciprocalLink: HorizontalLink = {
                 targetId: referenceNodeId!,
-                condition: 'condition',
+                description: 'Reciprocal link',
               };
               newNode.rightLinks.push(reciprocalLink);
             } else {
@@ -270,7 +287,7 @@ export function useNodes() {
               // Create reciprocal left link from new node to reference node
               const reciprocalLink: HorizontalLink = {
                 targetId: referenceNodeId!,
-                condition: 'condition',
+                description: 'Reciprocal link',
               };
               newNode.leftLinks.push(reciprocalLink);
             }

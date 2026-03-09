@@ -5,6 +5,7 @@ import { Node } from '@/app/types';
 
 interface NodeItemProps {
   node: Node;
+  nodes: Node[];
   onEdit: (node: Node) => void;
   onDelete: (nodeId: string) => void;
   onAddAbove: (nodeId: string) => void;
@@ -12,11 +13,11 @@ interface NodeItemProps {
   onAddLeft: (nodeId: string) => void;
   onAddRight: (nodeId: string) => void;
   onNavigateHorizontal: (nodeId: string, direction: 'left' | 'right') => void;
-  onSelect?: (nodeId: string) => void;
 }
 
 export default function NodeItem({
   node,
+  nodes,
   onEdit,
   onDelete,
   onAddAbove,
@@ -24,7 +25,6 @@ export default function NodeItem({
   onAddLeft,
   onAddRight,
   onNavigateHorizontal,
-  onSelect,
 }: NodeItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(node.title);
@@ -41,11 +41,25 @@ export default function NodeItem({
     setIsEditing(false);
   };
 
+  // Helper function to get node title by ID
+  const getNodeTitle = (nodeId: string) => {
+    const targetNode = nodes.find(n => n.id === nodeId);
+    return targetNode ? targetNode.title : 'Unknown Node';
+  };
+
+  // Get child nodes with their conditions
+  const childNodes = node.children.map(child => {
+    const childNode = nodes.find(n => n.id === child.nodeId);
+    return {
+      node: childNode,
+      condition: child.condition
+    };
+  }).filter(item => item.node);
+
   return (
-    <div className="relative group">
+    <div className="relative group w-full">
       <div 
-        className="bg-white border border-gray-200 rounded-xl p-6 text-sm hover:border-blue-300 hover:shadow-lg transition-all duration-300 max-w-md mx-auto w-full cursor-pointer animate-fade-in"
-        onClick={() => onSelect && onSelect(node.id)}
+        className="border-b border-gray-200 p-6 text-sm animate-fade-in w-full"
       >
         {isEditing ? (
           <div className="space-y-4 animate-slide-in-up">
@@ -92,14 +106,14 @@ export default function NodeItem({
               <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex space-x-2">
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="text-xs bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 text-blue-700 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-200 hover:border-blue-300 transition-all duration-200 hover:shadow-sm font-medium"
+                  className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5 font-medium"
                   title="Edit"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => onDelete(node.id)}
-                  className="text-xs bg-gradient-to-r from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 text-red-700 hover:text-red-800 px-3 py-1.5 rounded-lg border border-red-200 hover:border-red-300 transition-all duration-200 hover:shadow-sm font-medium"
+                  className="text-xs text-red-600 hover:text-red-800 px-3 py-1.5 font-medium"
                   title="Delete"
                 >
                   Delete
@@ -108,29 +122,40 @@ export default function NodeItem({
             </div>
             <p className="text-gray-600 mb-3">{node.content}</p>
             
+            {/* Child nodes with conditions */}
+            {childNodes.length > 0 && (
+              <div className="mb-4">
+                <div className="text-xs font-medium text-gray-500 mb-2">Child Nodes:</div>
+                <div className="flex flex-wrap gap-2">
+                  {childNodes.map((child, index) => (
+                    <div key={index} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg">
+                      <div className="font-medium text-gray-700">{child.node?.title}</div>
+                      {child.condition && (
+                        <div className="text-gray-500 mt-1">{child.condition}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {/* Horizontal links with conditions displayed on arrows */}
             <div className="flex justify-between items-center relative">
               {node.leftLinks && node.leftLinks.length > 0 && (
                 <div className="flex flex-col items-start space-y-2">
                   {node.leftLinks.map((link, index) => (
-                    <div key={index} className="relative arrow-connector arrow-connector-left">
+                    <div key={index} className="relative">
                       <button
                         onClick={() => onNavigateHorizontal(link.targetId, 'left')}
-                        className="text-xs text-gray-700 hover:text-blue-600 flex items-center px-3 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-all duration-200 hover:shadow-sm group"
-                        title={link.description || link.condition}
+                        className="text-xs text-gray-600 hover:text-blue-600 flex items-center px-2 py-1 group"
+                        title={link.description}
                       >
-                        <span className="mr-2 text-gray-400 group-hover:text-blue-500">←</span>
-                        <span className="font-medium">Left Link</span>
+                        <span className="mr-1 text-gray-400 group-hover:text-blue-500">←</span>
+                        <span className="font-medium truncate max-w-[120px]">{getNodeTitle(link.targetId)}</span>
                       </button>
-                      {link.condition && (
-                        <div className="condition-badge condition-badge-left">
-                          <span className="text-gray-700 font-medium">{link.condition}</span>
-                          {link.description && (
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-20">
-                              {link.description}
-                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-800"></div>
-                            </div>
-                          )}
+                      {link.description && (
+                        <div className="text-xs text-gray-500 mt-1 px-2 py-0.5 border border-gray-200 rounded">
+                          {link.description}
                         </div>
                       )}
                     </div>
@@ -141,24 +166,18 @@ export default function NodeItem({
               {node.rightLinks && node.rightLinks.length > 0 && (
                 <div className="flex flex-col items-end space-y-2">
                   {node.rightLinks.map((link, index) => (
-                    <div key={index} className="relative arrow-connector arrow-connector-right">
+                    <div key={index} className="relative">
                       <button
                         onClick={() => onNavigateHorizontal(link.targetId, 'right')}
-                        className="text-xs text-gray-700 hover:text-blue-600 flex items-center px-3 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-all duration-200 hover:shadow-sm group"
-                        title={link.description || link.condition}
+                        className="text-xs text-gray-600 hover:text-blue-600 flex items-center px-2 py-1 group"
+                        title={link.description}
                       >
-                        <span className="font-medium">Right Link</span>
-                        <span className="ml-2 text-gray-400 group-hover:text-blue-500">→</span>
+                        <span className="font-medium truncate max-w-[120px]">{getNodeTitle(link.targetId)}</span>
+                        <span className="ml-1 text-gray-400 group-hover:text-blue-500">→</span>
                       </button>
-                      {link.condition && (
-                        <div className="condition-badge condition-badge-right">
-                          <span className="text-gray-700 font-medium">{link.condition}</span>
-                          {link.description && (
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-20">
-                              {link.description}
-                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-800"></div>
-                            </div>
-                          )}
+                      {link.description && (
+                        <div className="text-xs text-gray-500 mt-1 px-2 py-0.5 border border-gray-200 rounded">
+                          {link.description}
                         </div>
                       )}
                     </div>
@@ -171,31 +190,31 @@ export default function NodeItem({
       </div>
       
       {/* Action buttons - visible on hover */}
-      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300 flex space-x-2 bg-white/90 backdrop-blur-sm rounded-full p-1 shadow-lg border border-gray-200">
+      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300 flex space-x-2">
         <button
           onClick={() => onAddAbove(node.id)}
-          className="text-xs bg-gradient-to-br from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 text-blue-700 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-sm"
+          className="text-xs text-gray-500 hover:text-blue-600 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200"
           title="Add above"
         >
           <span className="font-bold">↑</span>
         </button>
         <button
           onClick={() => onAddBelow(node.id)}
-          className="text-xs bg-gradient-to-br from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 text-green-700 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-sm"
+          className="text-xs text-gray-500 hover:text-green-600 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200"
           title="Add below"
         >
           <span className="font-bold">↓</span>
         </button>
         <button
           onClick={() => onAddLeft(node.id)}
-          className="text-xs bg-gradient-to-br from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 text-purple-700 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-sm"
+          className="text-xs text-gray-500 hover:text-purple-600 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200"
           title="Add left"
         >
           <span className="font-bold">←</span>
         </button>
         <button
           onClick={() => onAddRight(node.id)}
-          className="text-xs bg-gradient-to-br from-amber-50 to-amber-100 hover:from-amber-100 hover:to-amber-200 text-amber-700 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200 shadow-sm"
+          className="text-xs text-gray-500 hover:text-amber-600 rounded-full w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform duration-200"
           title="Add right"
         >
           <span className="font-bold">→</span>

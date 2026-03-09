@@ -3,15 +3,13 @@
 import { useNodes } from '@/app/hooks/useNodes';
 import TopBar from '@/app/components/TopBar';
 import MainCanvas from '@/app/components/MainCanvas';
-import RightPanel from '@/app/components/RightPanel';
 import VerticalTree from '@/app/components/VerticalTree';
+import Sidebar from '@/app/components/Sidebar';
 
 export default function Home() {
   const {
     nodes,
     currentNodeId,
-    selectedNodeId,
-    setSelectedNodeId,
     getNode,
     updateNode,
     deleteNode,
@@ -23,7 +21,6 @@ export default function Home() {
   } = useNodes();
 
   const currentNode = getNode(currentNodeId);
-  const selectedNode = selectedNodeId ? getNode(selectedNodeId) : null;
   const breadcrumbs = getBreadcrumbs(currentNodeId);
 
   const handleEdit = (node: any) => {
@@ -31,12 +28,7 @@ export default function Home() {
   };
 
   const handleDelete = (nodeId: string) => {
-    // Simple confirmation for testing - in production you might want a proper modal
-    // Temporarily bypass for testing
     deleteNode(nodeId);
-    // if (window.confirm('Delete this node?')) {
-    //   deleteNode(nodeId);
-    // }
   };
 
   const handleAddAbove = (nodeId: string) => {
@@ -83,14 +75,6 @@ export default function Home() {
     setCurrentNodeId(newNodeId);
   };
 
-  const handleUpdateNode = (node: any) => {
-    updateNode(node);
-  };
-
-  const handleClosePanel = () => {
-    setSelectedNodeId(null);
-  };
-
   if (!currentNode) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -111,6 +95,11 @@ export default function Home() {
       />
       
       <div className="flex flex-1">
+        <Sidebar
+          nodes={nodes}
+          currentNodeId={currentNodeId}
+          onSelectNode={setCurrentNodeId}
+        />
         <MainCanvas>
           <VerticalTree
             nodes={nodes}
@@ -122,15 +111,8 @@ export default function Home() {
             onAddLeft={handleAddLeft}
             onAddRight={handleAddRight}
             onNavigateHorizontal={handleNavigateHorizontal}
-            onSelect={setSelectedNodeId}
           />
         </MainCanvas>
-        
-        <RightPanel
-          node={selectedNode}
-          onUpdateNode={handleUpdateNode}
-          onClose={handleClosePanel}
-        />
       </div>
     </div>
   );

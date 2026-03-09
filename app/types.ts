@@ -3,16 +3,20 @@ export interface Node {
   title: string;
   content: string;
   parentId: string | null;
-  children: string[];
+  children: ChildNode[];
   leftLinks: HorizontalLink[];
   rightLinks: HorizontalLink[];
   createdAt: string;
   updatedAt: string;
 }
 
+export interface ChildNode {
+  nodeId: string;
+  condition?: string;
+}
+
 export interface HorizontalLink {
   targetId: string;
-  condition: string;
   description?: string;
 }
 

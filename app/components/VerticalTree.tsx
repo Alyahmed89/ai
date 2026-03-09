@@ -13,7 +13,6 @@ interface VerticalTreeProps {
   onAddLeft: (nodeId: string) => void;
   onAddRight: (nodeId: string) => void;
   onNavigateHorizontal: (nodeId: string, direction: 'left' | 'right') => void;
-  onSelect?: (nodeId: string) => void;
 }
 
 export default function VerticalTree({
@@ -26,7 +25,6 @@ export default function VerticalTree({
   onAddLeft,
   onAddRight,
   onNavigateHorizontal,
-  onSelect,
 }: VerticalTreeProps) {
   // Find the current node
   const currentNode = nodes.find(node => node.id === currentNodeId);
@@ -61,10 +59,10 @@ export default function VerticalTree({
     // Then add children recursively
     const addChildren = (parentNode: Node, depth: number) => {
       hierarchy.push(parentNode);
-      parentNode.children.forEach(childId => {
-        const child = nodes.find(n => n.id === childId);
-        if (child) {
-          addChildren(child, depth + 1);
+      parentNode.children.forEach(child => {
+        const childNode = nodes.find(n => n.id === child.nodeId);
+        if (childNode) {
+          addChildren(childNode, depth + 1);
         }
       });
     };
@@ -80,11 +78,12 @@ export default function VerticalTree({
   const hierarchy = buildHierarchy(currentNodeId);
 
   return (
-    <div className="flex flex-col items-center gap-10 py-6">
+    <div className="w-full">
       {hierarchy.map((node, index) => (
-        <div key={node.id} className="w-full flex flex-col items-center animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
+        <div key={node.id} className="w-full animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
           <NodeItem
             node={node}
+            nodes={nodes}
             onEdit={onEdit}
             onDelete={onDelete}
             onAddAbove={onAddAbove}
@@ -92,15 +91,7 @@ export default function VerticalTree({
             onAddLeft={onAddLeft}
             onAddRight={onAddRight}
             onNavigateHorizontal={onNavigateHorizontal}
-            onSelect={onSelect}
           />
-          
-          {/* Vertical connector */}
-          {index < hierarchy.length - 1 && (
-            <div className="node-connector">
-              <div className="w-0.5 h-12 bg-gradient-to-b from-blue-200 via-blue-400 to-blue-200 rounded-full mx-auto shadow-sm"></div>
-            </div>
-          )}
         </div>
       ))}
     </div>
