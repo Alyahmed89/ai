@@ -33,57 +33,66 @@ export default function Home() {
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      setError('');
+      const response = await apiClient.getProjects(50);
       
-      // For now, use mock data immediately to test rendering
-      // In production, this would be an API call
-      setTimeout(() => {
-        setError('API server is not reachable. Showing sample projects for demonstration.');
-        // Add mock data for development
-        setProjects([
-          {
-            id: '1',
-            name: 'Sample Project 1',
-            status: 'active',
-            metadata: '{"description": "This is a sample project for demonstration"}',
-            created_at: Date.now() / 1000 - 86400 * 7, // 7 days ago
-            updated_at: Date.now() / 1000 - 86400 * 2, // 2 days ago
-            node_count: 5,
-            flow_count: 2,
-            task_count: 10,
-            execution_count: 25
-          },
-          {
-            id: '2',
-            name: 'Sample Project 2',
-            status: 'completed',
-            metadata: '{"description": "A completed project example"}',
-            created_at: Date.now() / 1000 - 86400 * 30, // 30 days ago
-            updated_at: Date.now() / 1000 - 86400 * 5, // 5 days ago
-            node_count: 3,
-            flow_count: 1,
-            task_count: 5,
-            execution_count: 12
-          },
-          {
-            id: '3',
-            name: 'Archived Project',
-            status: 'archived',
-            metadata: '{"description": "An archived project"}',
-            created_at: Date.now() / 1000 - 86400 * 60, // 60 days ago
-            updated_at: Date.now() / 1000 - 86400 * 30, // 30 days ago
-            node_count: 8,
-            flow_count: 3,
-            task_count: 15,
-            execution_count: 40
-          }
-        ]);
-        setLoading(false);
-      }, 100);
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setError(data.error);
+      } else if (data.success && data.data) {
+        setProjects(data.data);
+      } else {
+        setProjects(data);
+      }
     } catch (err) {
       console.error('Error fetching projects:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Failed to load projects: ${errorMessage}`);
+      
+      // Fallback to mock data if API fails
+      setProjects([
+        {
+          id: '1',
+          name: 'Sample Project 1',
+          status: 'active',
+          metadata: '{"description": "This is a sample project for demonstration"}',
+          created_at: Date.now() / 1000 - 86400 * 7, // 7 days ago
+          updated_at: Date.now() / 1000 - 86400 * 2, // 2 days ago
+          node_count: 5,
+          flow_count: 2,
+          task_count: 10,
+          execution_count: 25
+        },
+        {
+          id: '2',
+          name: 'Sample Project 2',
+          status: 'completed',
+          metadata: '{"description": "A completed project example"}',
+          created_at: Date.now() / 1000 - 86400 * 30, // 30 days ago
+          updated_at: Date.now() / 1000 - 86400 * 5, // 5 days ago
+          node_count: 3,
+          flow_count: 1,
+          task_count: 5,
+          execution_count: 12
+        },
+        {
+          id: '3',
+          name: 'Archived Project',
+          status: 'archived',
+          metadata: '{"description": "An archived project"}',
+          created_at: Date.now() / 1000 - 86400 * 60, // 60 days ago
+          updated_at: Date.now() / 1000 - 86400 * 30, // 30 days ago
+          node_count: 8,
+          flow_count: 3,
+          task_count: 15,
+          execution_count: 40
+        }
+      ]);
+    } finally {
       setLoading(false);
     }
   };
