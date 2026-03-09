@@ -6,6 +6,8 @@ import URLRequestResponseTest from '@/app/components/URLRequestResponseTest';
 import EditableConditionList from '@/app/components/EditableConditionList';
 import { apiClient } from '@/lib/api-client';
 
+export const runtime = 'edge';
+
 export default function StepPage() {
   const params = useParams();
   const stepId = params.id as string;

@@ -7,6 +7,8 @@ import MainCanvas from '@/app/components/MainCanvas';
 import RightPanel from '@/app/components/RightPanel';
 import VerticalTree from '@/app/components/VerticalTree';
 
+export const runtime = 'edge';
+
 export default function ItemPage() {
   const params = useParams();
   const nodeId = params.id as string;

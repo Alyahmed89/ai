@@ -4,6 +4,8 @@ import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api-client';
 
+export const runtime = 'edge';
+
 export default function FlowRunPage() {
   const params = useParams();
   const flowRunId = params.id as string;
