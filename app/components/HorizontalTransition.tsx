@@ -2,19 +2,19 @@
 
 import { Node } from '@/app/types';
 
-interface ConditionalTransitionProps {
+interface HorizontalTransitionProps {
   nodes: Node[];
   currentNodeId: string;
   direction: 'left' | 'right';
   onNavigate: (nodeId: string) => void;
 }
 
-export default function ConditionalTransition({ 
+export default function HorizontalTransition({ 
   nodes, 
   currentNodeId, 
   direction, 
   onNavigate 
-}: ConditionalTransitionProps) {
+}: HorizontalTransitionProps) {
   const currentNode = nodes.find(node => node.id === currentNodeId);
   
   if (!currentNode) return null;
@@ -51,9 +51,9 @@ export default function ConditionalTransition({
                 )}
               </button>
               
-              {link.condition && (
+              {link.description && (
                 <div className="text-xs text-gray-500 mt-1 px-2 py-1 bg-gray-50 rounded border border-gray-200">
-                  {link.condition}
+                  {link.description}
                 </div>
               )}
             </div>
