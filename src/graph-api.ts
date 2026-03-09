@@ -701,3 +701,556 @@ graphApi.delete('/nodes/:id', async (c) => {
     return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
   }
 });
+
+// ============================================================================
+// 3. NODE HIERARCHY (Parent/Children Relationships)
+// ============================================================================
+
+// GET /nodes/{id}/children - Get child nodes
+graphApi.get('/nodes/:id/children', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get children nodes
+    const children = await db.prepare(`
+      SELECT n.*, l.order_index
+      FROM nodes n
+      JOIN node_hierarchy l ON n.id = l.child_node_id
+      WHERE l.parent_node_id = ? AND n.deleted_at IS NULL
+      ORDER BY l.order_index
+    `).bind(id).all();
+    
+    return c.json(successResponse(children.results || []));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// GET /nodes/{id}/parent - Get parent node
+graphApi.get('/nodes/:id/parent', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get parent node
+    const parent = await db.prepare(`
+      SELECT n.*, l.order_index
+      FROM nodes n
+      JOIN node_hierarchy l ON n.id = l.parent_node_id
+      WHERE l.child_node_id = ? AND n.deleted_at IS NULL
+    `).bind(id).first();
+    
+    return c.json(successResponse(parent || null));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// POST /nodes/{id}/children - Add child node
+graphApi.post('/nodes/:id/children', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const parentId = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate request body
+    if (!body.child_id) {
+      return c.json(apiResponse(false, undefined, 'child_id is required', 400));
+    }
+    
+    const childId = body.child_id;
+    const orderIndex = body.order_index || 0;
+    
+    // Check if parent and child nodes exist
+    const parentNode = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(parentId).first();
+    if (!parentNode) {
+      return c.json(apiResponse(false, undefined, 'Parent node not found', 404));
+    }
+    
+    const childNode = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(childId).first();
+    if (!childNode) {
+      return c.json(apiResponse(false, undefined, 'Child node not found', 404));
+    }
+    
+    // Check if relationship already exists
+    const existing = await db.prepare('SELECT id FROM node_hierarchy WHERE parent_node_id = ? AND child_node_id = ?')
+      .bind(parentId, childId).first();
+    if (existing) {
+      return c.json(apiResponse(false, undefined, 'Child relationship already exists', 400));
+    }
+    
+    // Create hierarchy relationship
+    const hierarchyId = `hierarchy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = Math.floor(Date.now() / 1000);
+    
+    await db.prepare(`
+      INSERT INTO node_hierarchy (id, parent_node_id, child_node_id, order_index, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(hierarchyId, parentId, childId, orderIndex, now).run();
+    
+    return c.json(apiResponse(true, { 
+      id: hierarchyId, 
+      parent_id: parentId, 
+      child_id: childId,
+      order_index: orderIndex,
+      message: 'Child node added successfully' 
+    }, undefined, 201));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// DELETE /nodes/{id}/children/{childId} - Remove child node
+graphApi.delete('/nodes/:id/children/:childId', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const parentId = c.req.param('id');
+    const childId = c.req.param('childId');
+    
+    // Delete hierarchy relationship
+    const result = await db.prepare('DELETE FROM node_hierarchy WHERE parent_node_id = ? AND child_node_id = ?')
+      .bind(parentId, childId).run();
+    
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Child relationship not found', 404));
+    }
+    
+    return c.json(apiResponse(true, { message: 'Child relationship removed successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// ============================================================================
+// 4. HORIZONTAL LINKS (Left/Right Links)
+// ============================================================================
+
+// GET /nodes/{id}/links - Get all links (left/right)
+graphApi.get('/nodes/:id/links', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get links where this node is source
+    const outgoingLinks = await db.prepare(`
+      SELECT r.*, n2.title as target_title, n2.type as target_type, 'outgoing' as direction
+      FROM relationships r
+      JOIN nodes n2 ON r.target_node_id = n2.id
+      WHERE r.source_node_id = ? AND n2.deleted_at IS NULL
+    `).bind(id).all();
+    
+    // Get links where this node is target
+    const incomingLinks = await db.prepare(`
+      SELECT r.*, n2.title as source_title, n2.type as source_type, 'incoming' as direction
+      FROM relationships r
+      JOIN nodes n2 ON r.source_node_id = n2.id
+      WHERE r.target_node_id = ? AND n2.deleted_at IS NULL
+    `).bind(id).all();
+    
+    return c.json(successResponse({
+      outgoing: outgoingLinks.results || [],
+      incoming: incomingLinks.results || []
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// POST /nodes/{id}/links - Create new link
+graphApi.post('/nodes/:id/links', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const sourceId = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate request body
+    if (!body.target_id) {
+      return c.json(apiResponse(false, undefined, 'target_id is required', 400));
+    }
+    if (!body.relation_type) {
+      return c.json(apiResponse(false, undefined, 'relation_type is required', 400));
+    }
+    
+    const targetId = body.target_id;
+    const relationType = body.relation_type;
+    const weight = body.weight || 1.0;
+    const metadata = body.metadata || null;
+    
+    // Check if source and target nodes exist
+    const sourceNode = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(sourceId).first();
+    if (!sourceNode) {
+      return c.json(apiResponse(false, undefined, 'Source node not found', 404));
+    }
+    
+    const targetNode = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(targetId).first();
+    if (!targetNode) {
+      return c.json(apiResponse(false, undefined, 'Target node not found', 404));
+    }
+    
+    // Check if relationship already exists
+    const existing = await db.prepare('SELECT id FROM relationships WHERE source_node_id = ? AND target_node_id = ? AND relation_type = ?')
+      .bind(sourceId, targetId, relationType).first();
+    if (existing) {
+      return c.json(apiResponse(false, undefined, 'Relationship already exists', 400));
+    }
+    
+    // Create relationship
+    const relationshipId = `rel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = Math.floor(Date.now() / 1000);
+    
+    await db.prepare(`
+      INSERT INTO relationships (id, source_node_id, target_node_id, relation_type, weight, created_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(relationshipId, sourceId, targetId, relationType, weight, now, dbValue(metadata)).run();
+    
+    return c.json(apiResponse(true, { 
+      id: relationshipId, 
+      source_id: sourceId, 
+      target_id: targetId,
+      relation_type: relationType,
+      weight: weight,
+      message: 'Link created successfully' 
+    }, undefined, 201));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// DELETE /nodes/{id}/links/{linkId} - Remove link
+graphApi.delete('/nodes/:id/links/:linkId', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const nodeId = c.req.param('id');
+    const linkId = c.req.param('linkId');
+    
+    // Delete relationship (checking if node is either source or target)
+    const result = await db.prepare('DELETE FROM relationships WHERE id = ? AND (source_node_id = ? OR target_node_id = ?)')
+      .bind(linkId, nodeId, nodeId).run();
+    
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Link not found or node not part of this link', 404));
+    }
+    
+    return c.json(apiResponse(true, { message: 'Link removed successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// ============================================================================
+// 5. RELATIONSHIPS MANAGEMENT
+// ============================================================================
+
+// GET /nodes/{id}/relationships - Get relationships for a node
+graphApi.get('/nodes/:id/relationships', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get outgoing relationships
+    const outgoing = await db.prepare(`
+      SELECT r.*, n2.title as target_title, n2.type as target_type
+      FROM relationships r
+      JOIN nodes n2 ON r.target_node_id = n2.id
+      WHERE r.source_node_id = ? AND n2.deleted_at IS NULL
+    `).bind(id).all();
+    
+    // Get incoming relationships
+    const incoming = await db.prepare(`
+      SELECT r.*, n2.title as source_title, n2.type as source_type
+      FROM relationships r
+      JOIN nodes n2 ON r.source_node_id = n2.id
+      WHERE r.target_node_id = ? AND n2.deleted_at IS NULL
+    `).bind(id).all();
+    
+    return c.json(successResponse({
+      outgoing: outgoing.results || [],
+      incoming: incoming.results || []
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// POST /relationships - Create relationship
+graphApi.post('/relationships', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(relationshipCreateSchema, body);
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { id, source_node_id, target_node_id, relation_type, weight, metadata } = validatedData;
+    
+    // Check if source and target nodes exist
+    const sourceNode = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(source_node_id).first();
+    if (!sourceNode) {
+      return c.json(apiResponse(false, undefined, 'Source node not found', 404));
+    }
+    
+    const targetNode = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(target_node_id).first();
+    if (!targetNode) {
+      return c.json(apiResponse(false, undefined, 'Target node not found', 404));
+    }
+    
+    // Generate ID if not provided
+    const relationshipId = id || `rel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = Math.floor(Date.now() / 1000);
+    
+    await db.prepare(`
+      INSERT INTO relationships (id, source_node_id, target_node_id, relation_type, weight, created_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(relationshipId, source_node_id, target_node_id, relation_type, weight, now, dbValue(metadata)).run();
+    
+    return c.json(apiResponse(true, { 
+      id: relationshipId, 
+      message: 'Relationship created successfully' 
+    }, undefined, 201));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// DELETE /relationships/{id} - Delete relationship
+graphApi.delete('/relationships/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    const result = await db.prepare('DELETE FROM relationships WHERE id = ?').bind(id).run();
+    
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Relationship not found', 404));
+    }
+    
+    return c.json(apiResponse(true, { message: 'Relationship deleted successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// ============================================================================
+// 6. DEPENDENCIES MANAGEMENT
+// ============================================================================
+
+// GET /nodes/{id}/dependencies - Get dependencies for a node
+graphApi.get('/nodes/:id/dependencies', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get dependencies where this node depends on others
+    const depends_on = await db.prepare(`
+      SELECT r.*, n2.title as depends_on_title, n2.type as depends_on_type
+      FROM relationships r
+      JOIN nodes n2 ON r.target_node_id = n2.id
+      WHERE r.source_node_id = ? AND r.relation_type = 'depends_on' AND n2.deleted_at IS NULL
+    `).bind(id).all();
+    
+    // Get dependencies where others depend on this node
+    const depended_by = await db.prepare(`
+      SELECT r.*, n2.title as node_title, n2.type as node_type
+      FROM relationships r
+      JOIN nodes n2 ON r.source_node_id = n2.id
+      WHERE r.target_node_id = ? AND r.relation_type = 'depends_on' AND n2.deleted_at IS NULL
+    `).bind(id).all();
+    
+    return c.json(successResponse({
+      depends_on: depends_on.results || [],
+      depended_by: depended_by.results || []
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// POST /dependencies - Create dependency
+graphApi.post('/dependencies', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(dependencyCreateSchema, body);
+    if (!validation.success) {
+      return c.json(apiResponse(false, undefined, validation.error, 400));
+    }
+    
+    const validatedData = validation.data!;
+    const { id, node_id, depends_on_node_id, dependency_type, metadata } = validatedData;
+    
+    // Check if nodes exist
+    const node = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(node_id).first();
+    if (!node) {
+      return c.json(apiResponse(false, undefined, 'Node not found', 404));
+    }
+    
+    const dependsOnNode = await db.prepare('SELECT id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(depends_on_node_id).first();
+    if (!dependsOnNode) {
+      return c.json(apiResponse(false, undefined, 'Depends on node not found', 404));
+    }
+    
+    // Generate ID if not provided
+    const dependencyId = id || `dep-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Create dependency as a relationship with relation_type='depends_on'
+    await db.prepare(`
+      INSERT INTO relationships (id, source_node_id, target_node_id, relation_type, weight, created_at, metadata)
+      VALUES (?, ?, ?, 'depends_on', 1.0, ?, ?)
+    `).bind(dependencyId, node_id, depends_on_node_id, now, dbValue(metadata)).run();
+    
+    return c.json(apiResponse(true, { 
+      id: dependencyId, 
+      message: 'Dependency created successfully' 
+    }, undefined, 201));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// DELETE /dependencies/{id} - Delete dependency
+graphApi.delete('/dependencies/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    const result = await db.prepare('DELETE FROM relationships WHERE id = ? AND relation_type = ?').bind(id, 'depends_on').run();
+    
+    if (result.meta.changes === 0) {
+      return c.json(apiResponse(false, undefined, 'Dependency not found', 404));
+    }
+    
+    return c.json(apiResponse(true, { message: 'Dependency deleted successfully' }));
+  } catch (error) {
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// ============================================================================
+// 7. BREADCRUMBS
+// ============================================================================
+
+// GET /nodes/{id}/breadcrumbs - Get breadcrumb trail
+graphApi.get('/nodes/:id/breadcrumbs', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    
+    // Get the node to start with
+    const node = await db.prepare('SELECT * FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(id).first();
+    if (!node) {
+      return c.json(notFoundResponse('Node not found'));
+    }
+    
+    const breadcrumbs = [];
+    let currentNode = node;
+    let depth = 0;
+    const maxDepth = 20; // Prevent infinite loops
+    
+    // Add current node as first breadcrumb
+    breadcrumbs.push({
+      id: (currentNode as any).id,
+      title: (currentNode as any).title,
+      type: (currentNode as any).type,
+      depth: depth
+    });
+    
+    // Traverse up the hierarchy to get ancestors
+    while (depth < maxDepth) {
+      depth++;
+      
+      // Get parent of current node
+      const parent = await db.prepare(`
+        SELECT n.*, l.order_index
+        FROM nodes n
+        JOIN node_hierarchy l ON n.id = l.parent_node_id
+        WHERE l.child_node_id = ? AND n.deleted_at IS NULL
+      `).bind((currentNode as any).id).first();
+      
+      if (!parent) {
+        break; // No more parents
+      }
+      
+      // Add parent to breadcrumbs (at the beginning since we're going up)
+      breadcrumbs.unshift({
+        id: (parent as any).id,
+        title: (parent as any).title,
+        type: (parent as any).type,
+        depth: depth
+      });
+      
+      currentNode = parent;
+    }
+    
+    return c.json(successResponse({
+      node_id: id,
+      breadcrumbs: breadcrumbs,
+      depth: breadcrumbs.length
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
