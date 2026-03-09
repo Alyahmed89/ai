@@ -39,7 +39,7 @@ export default function Home() {
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
       try {
-        const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/api/projects?limit=50', {
+        const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/graph/projects?limit=50', {
           signal: controller.signal
         });
         
