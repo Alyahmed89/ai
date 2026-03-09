@@ -74,7 +74,6 @@ export default function Home() {
       children: [],
       leftLinks: [],
       rightLinks: [],
-      conditions: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

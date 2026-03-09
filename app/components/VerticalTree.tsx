@@ -80,9 +80,9 @@ export default function VerticalTree({
   const hierarchy = buildHierarchy(currentNodeId);
 
   return (
-    <div className="flex flex-col items-center gap-8">
+    <div className="flex flex-col items-center gap-10 py-6">
       {hierarchy.map((node, index) => (
-        <div key={node.id} className="w-full flex flex-col items-center">
+        <div key={node.id} className="w-full flex flex-col items-center animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
           <NodeItem
             node={node}
             onEdit={onEdit}
@@ -97,7 +97,9 @@ export default function VerticalTree({
           
           {/* Vertical connector */}
           {index < hierarchy.length - 1 && (
-            <div className="w-px h-8 bg-gray-300"></div>
+            <div className="node-connector">
+              <div className="w-0.5 h-12 bg-gradient-to-b from-blue-200 via-blue-400 to-blue-200 rounded-full mx-auto shadow-sm"></div>
+            </div>
           )}
         </div>
       ))}

@@ -6,7 +6,6 @@ export interface Node {
   children: string[];
   leftLinks: HorizontalLink[];
   rightLinks: HorizontalLink[];
-  conditions: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -14,6 +13,7 @@ export interface Node {
 export interface HorizontalLink {
   targetId: string;
   condition: string;
+  description?: string;
 }
 
 export interface Project {
