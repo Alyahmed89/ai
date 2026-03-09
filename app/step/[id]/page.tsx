@@ -945,4 +945,3 @@ export default function StepPage() {
 
 
 
-export const runtime = 'edge';

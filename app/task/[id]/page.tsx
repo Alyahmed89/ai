@@ -292,4 +292,3 @@ export default function TaskPage() {
 
 
 
-export const runtime = 'edge';
