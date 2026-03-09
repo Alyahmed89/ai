@@ -1,4 +1,5 @@
 'use client';
+export const runtime = "edge";
 
 import { useParams } from 'next/navigation';
 import { useNodes } from '@/app/hooks/useNodes';
