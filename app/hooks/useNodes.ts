@@ -148,7 +148,7 @@ export function useNodes() {
       if (position === 'above' || position === 'below') {
         // Find reference node
         const refNode = prev.find(n => n.id === referenceNodeId);
-        if (!refNode) return updated;
+        if (!refNode || !referenceNodeId) return updated;
         
         // Find parent
         const parent = refNode.parentId ? prev.find(n => n.id === refNode.parentId) : null;
@@ -156,7 +156,8 @@ export function useNodes() {
         if (parent) {
           // Insert in parent's children at correct position
           const parentIndex = updated.findIndex(n => n.id === parent.id);
-          const childIndex = parent.children.indexOf(referenceNodeId);
+          // referenceNodeId is guaranteed to be defined here because of the check above
+          const childIndex = parent.children.indexOf(referenceNodeId!);
           
           if (childIndex !== -1) {
             const insertIndex = position === 'above' ? childIndex : childIndex + 1;
@@ -167,10 +168,10 @@ export function useNodes() {
           // If no parent, the reference node is a root node
           if (position === 'below') {
             // Add as child of the reference node
-            const refNodeIndex = updated.findIndex(n => n.id === referenceNodeId);
+            const refNodeIndex = updated.findIndex(n => n.id === referenceNodeId!);
             if (refNodeIndex !== -1) {
               updated[refNodeIndex].children.push(newNodeId);
-              newNode.parentId = referenceNodeId;
+              newNode.parentId = referenceNodeId!;
             }
           } else if (position === 'above') {
             // For 'above' on a root node, we can't insert above without a parent
@@ -186,13 +187,13 @@ export function useNodes() {
             condition: 'condition',
           };
           
-          const refNodeIndex = updated.findIndex(n => n.id === referenceNodeId);
+          const refNodeIndex = updated.findIndex(n => n.id === referenceNodeId!);
           if (refNodeIndex !== -1) {
             if (position === 'left') {
               updated[refNodeIndex].leftLinks.push(link);
               // Create reciprocal right link from new node to reference node
               const reciprocalLink: HorizontalLink = {
-                targetId: referenceNodeId,
+                targetId: referenceNodeId!,
                 condition: 'condition',
               };
               newNode.rightLinks.push(reciprocalLink);
@@ -200,7 +201,7 @@ export function useNodes() {
               updated[refNodeIndex].rightLinks.push(link);
               // Create reciprocal left link from new node to reference node
               const reciprocalLink: HorizontalLink = {
-                targetId: referenceNodeId,
+                targetId: referenceNodeId!,
                 condition: 'condition',
               };
               newNode.leftLinks.push(reciprocalLink);
