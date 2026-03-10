@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import UnifiedSidebar from '@/app/components/UnifiedSidebar';
 import UnifiedTopBar from '@/app/components/UnifiedTopBar';
 import UnifiedMainContent from '@/app/components/UnifiedMainContent';
+import NodeBox from '@/app/components/NodeBox';
 import { apiClient } from '@/lib/api-client';
 
 type NodeType = 'project' | 'doc' | 'flow' | 'task' | 'step' | 'flow-run';
