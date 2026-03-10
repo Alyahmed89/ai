@@ -543,7 +543,8 @@ export class ConversationOrchestratorDO_2026A {
         status: 'active',
         created_at: Date.now(),
         updated_at: Date.now(),
-        project_facts: [] // Empty array instead of database query
+        project_facts: [], // Empty array instead of database query
+        agent: 'openhands' // Default agent for non-flow initialization
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -845,7 +846,10 @@ export class ConversationOrchestratorDO_2026A {
         task_execution_mode: currentStep !== null,
         current_task_id: currentStep?.step_id,
         current_task_title: currentStep?.title,
-        current_task_description: currentStep?.description || undefined
+        current_task_description: currentStep?.description || undefined,
+        
+        // Set agent from flow definition or default to 'openhands'
+        agent: flowDefinition?.agent || 'openhands'
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -923,16 +927,7 @@ export class ConversationOrchestratorDO_2026A {
               effectiveMaxIterations = flowDefinition.max_iterations;
             }
             
-            // Store agent type if specified
-            if (flowDefinition.agent) {
-              this.conversation.agent = flowDefinition.agent;
-              console.log(`[DO:${this.state.id}] Using agent from flow definition: ${flowDefinition.agent}`);
-            } else {
-              this.conversation.agent = 'openhands'; // Default
-              console.log(`[DO:${this.state.id}] No agent specified in flow definition, using default: openhands`);
-            }
-            
-            console.log(`[DO:${this.state.id}] Using repository from database: ${effectiveRepository}, branch: ${effectiveBranch}`);
+            console.log(`[DO:${this.state.id}] Using repository from database: ${effectiveRepository}, branch: ${effectiveBranch}, agent: ${flowDefinition?.agent || 'openhands'}`);
             
             // Warn if repository is placeholder
             if (effectiveRepository === '[FLOW]') {
@@ -981,7 +976,8 @@ export class ConversationOrchestratorDO_2026A {
         project_facts: [],
         flow_id: flow_id,
         flow_steps: steps,
-        current_step_index: 0
+        current_step_index: 0,
+        agent: flowDefinition?.agent || 'openhands' // Set agent from flow definition
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -1224,7 +1220,8 @@ export class ConversationOrchestratorDO_2026A {
         created_at: Date.now(),
         updated_at: Date.now(),
         project_facts: projectFacts,
-        openhands_conversation_id: openhands_conversation_id
+        openhands_conversation_id: openhands_conversation_id,
+        agent: 'openhands' // Default to openhands for attached conversations
       };
       
       await this.state.storage.put('conversation', this.conversation);
