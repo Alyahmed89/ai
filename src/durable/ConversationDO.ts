@@ -901,6 +901,9 @@ export class ConversationOrchestratorDO_2026A {
       
       console.log(`[DO:${this.state.id}] Starting ultra-minimal flow: ${flow_id}`);
       
+      // Store flow_id for error reporting
+      let errorContext = `flow_id: ${flow_id}`;
+      
       // Load flow definition from database
       let flowDefinition = null;
       let effectiveRepository = '[FLOW]';
@@ -910,12 +913,15 @@ export class ConversationOrchestratorDO_2026A {
       
       if (this.env.FLOW_RUNS_DB) {
         try {
+          errorContext += `, FLOW_RUNS_DB: available`;
           // Import database functions
           const { getFlowDefinition } = await import('../services/database');
+          console.log(`[DO:${this.state.id}] Calling getFlowDefinition for ${flow_id}`);
           flowDefinition = await getFlowDefinition(this.env.FLOW_RUNS_DB, flow_id);
           
           if (flowDefinition) {
             console.log(`[DO:${this.state.id}] Loaded flow definition for ${flow_id}: ${flowDefinition.name}`);
+            console.log(`[DO:${this.state.id}] Flow definition agent field: ${flowDefinition.agent || 'not set (defaults to openhands)'}`);
             databaseAvailable = true;
             
             // Use flow definition values
@@ -942,20 +948,30 @@ export class ConversationOrchestratorDO_2026A {
           console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
           console.error(`[DO:${this.state.id}] Database error details: ${error.message}`);
           console.error(`[DO:${this.state.id}] Using placeholder values. Check if tables exist: 'flows' (with repo, branch columns) or 'flow_definitions'.`);
+          errorContext += `, flow_definition_error: ${error.message}`;
         }
       } else {
         console.warn(`[DO:${this.state.id}] FLOW_RUNS_DB not configured. Using placeholder values for repository and branch.`);
+        errorContext += `, FLOW_RUNS_DB: not configured`;
       }
       
       // Load steps from database
+      errorContext += `, loading steps`;
       const steps = await this.loadFlowStepsFromDB(flow_id);
       
       if (!steps || steps.length === 0) {
-        return new Response(JSON.stringify({ error: `No steps found for flow: ${flow_id}` }), {
+        console.error(`[DO:${this.state.id}] No steps found for flow: ${flow_id}`);
+        return new Response(JSON.stringify({ 
+          error: `No steps found for flow: ${flow_id}`,
+          context: errorContext
+        }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' }
         });
       }
+      
+      console.log(`[DO:${this.state.id}] Loaded ${steps.length} steps for flow: ${flow_id}`);
+      errorContext += `, steps: ${steps.length}`;
       
       // Adjust max iterations based on number of steps if not set by flow definition
       if (effectiveMaxIterations === 20) {
@@ -1052,7 +1068,13 @@ export class ConversationOrchestratorDO_2026A {
       
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Start flow error: ${error.message}`);
-      return new Response(JSON.stringify({ error: error.message }), {
+      console.error(`[DO:${this.state.id}] Error context: ${errorContext}`);
+      console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
+      return new Response(JSON.stringify({ 
+        error: error.message,
+        context: errorContext,
+        flow_id: flow_id
+      }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
