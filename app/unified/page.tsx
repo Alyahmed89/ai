@@ -4,179 +4,211 @@ import { useState, useEffect } from 'react';
 import UnifiedSidebar from '@/app/components/UnifiedSidebar';
 import UnifiedTopBar from '@/app/components/UnifiedTopBar';
 import UnifiedMainContent from '@/app/components/UnifiedMainContent';
+import { apiClient } from '@/lib/api-client';
 
-// Mock data for demonstration
-const mockProjects = [
-  {
-    id: 'project-1',
-    title: 'Marketing Campaign',
-    type: 'project' as const,
-    children: [
-      {
-        id: 'doc-1',
-        title: 'Campaign Strategy',
-        type: 'doc' as const,
-        content: 'Overview of Q2 marketing campaign strategy',
-        children: [
-          {
-            id: 'flow-1',
-            title: 'Social Media Flow',
-            type: 'flow' as const,
-            content: 'Automated social media posting workflow',
-            children: [
-              {
-                id: 'task-1',
-                title: 'Create Posts',
-                type: 'task' as const,
-                content: 'Draft social media posts for each platform',
-                leftLinks: [
-                  { targetId: 'doc-1', description: 'Strategy doc', type: 'doc' }
-                ]
-              },
-              {
-                id: 'task-2',
-                title: 'Schedule Posts',
-                type: 'task' as const,
-                content: 'Schedule posts using automation tool',
-                rightLinks: [
-                  { targetId: 'flow-run-1', description: 'Latest run', type: 'flow-run' }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: 'doc-2',
-        title: 'Budget Planning',
-        type: 'doc' as const,
-        content: 'Q2 marketing budget allocation',
-        children: []
-      }
-    ]
-  },
-  {
-    id: 'project-2',
-    title: 'Product Development',
-    type: 'project' as const,
-    children: [
-      {
-        id: 'flow-2',
-        title: 'Feature Pipeline',
-        type: 'flow' as const,
-        content: 'New feature development workflow',
-        children: [
-          {
-            id: 'step-1',
-            title: 'Design Review',
-            type: 'step' as const,
-            content: 'Review UI/UX designs with team',
-            leftLinks: [
-              { targetId: 'doc-3', description: 'Design specs', type: 'doc' }
-            ]
-          },
-          {
-            id: 'step-2',
-            title: 'Implementation',
-            type: 'step' as const,
-            content: 'Code implementation phase',
-            rightLinks: [
-              { targetId: 'task-3', description: 'Dev tasks', type: 'task' }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-];
+type NodeType = 'project' | 'doc' | 'flow' | 'task' | 'step' | 'flow-run';
 
-// Flatten nodes for easier access
-const flattenNodes = (nodes: any[]): any[] => {
-  let result: any[] = [];
-  nodes.forEach(node => {
-    result.push(node);
-    if (node.children) {
-      result = result.concat(flattenNodes(node.children));
-    }
-  });
-  return result;
-};
+interface Project {
+  id: string;
+  name: string;
+  status: string;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
+}
 
-const allNodes = flattenNodes(mockProjects);
+interface ApiNode {
+  id: string;
+  project_id: string;
+  type: string;
+  title: string;
+  content: string;
+  status: string;
+  metadata: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface NodeLink {
+  targetId: string;
+  description: string;
+  type: NodeType;
+}
+
+interface UnifiedNode {
+  id: string;
+  title: string;
+  type: NodeType;
+  content: string;
+  children?: UnifiedNode[];
+  leftLinks?: NodeLink[];
+  rightLinks?: NodeLink[];
+  status?: string;
+}
 
 export default function UnifiedPage() {
   // State for navigation
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-  const [navigationStack, setNavigationStack] = useState<any[]>([]);
-  const [breadcrumbs, setBreadcrumbs] = useState<any[]>([]);
+  const [navigationStack, setNavigationStack] = useState<string[]>([]);
+  const [breadcrumbs, setBreadcrumbs] = useState<Array<{id: string, title: string, type: NodeType}>>([]);
+  
+  // State for API data
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [nodes, setNodes] = useState<ApiNode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch projects and nodes on initial load
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch projects
+        const projectsResponse = await apiClient.getProjects(50);
+        if (!projectsResponse.ok) {
+          throw new Error(`Failed to fetch projects: ${projectsResponse.status}`);
+        }
+        const projectsData = await projectsResponse.json();
+        const projectsList = projectsData.success ? projectsData.data : projectsData;
+        setProjects(projectsList);
+
+        // Fetch nodes for each project
+        const allNodes: ApiNode[] = [];
+        for (const project of projectsList) {
+          try {
+            const nodesResponse = await apiClient.getNodesByProjectId(project.id);
+            if (nodesResponse.ok) {
+              const nodesData = await nodesResponse.json();
+              const nodesList = nodesData.success ? nodesData.data : nodesData;
+              allNodes.push(...nodesList);
+            }
+          } catch (err) {
+            console.error(`Error fetching nodes for project ${project.id}:`, err);
+          }
+        }
+        setNodes(allNodes);
+
+        // If we have projects, set the first project as current node
+        if (projectsList.length > 0 && !currentNodeId) {
+          const firstProject = projectsList[0];
+          setCurrentNodeId(firstProject.id);
+        }
+
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   // Get current node
   const currentNode = currentNodeId 
-    ? allNodes.find(node => node.id === currentNodeId)
+    ? nodes.find(node => node.id === currentNodeId) || projects.find(project => project.id === currentNodeId)
     : null;
 
-  // Get nodes to show in sidebar (children of current node or root projects)
-  const sidebarNodes = currentNode && currentNode.children 
-    ? currentNode.children
-    : mockProjects;
+  // Get nodes for the current project
+  const getProjectNodes = (projectId: string) => {
+    return nodes.filter(node => node.project_id === projectId);
+  };
 
-  // Get nodes to show in main content (children of current node)
-  const mainContentNodes = currentNode && currentNode.children
-    ? currentNode.children.map((child: any) => ({
-        id: child.id,
-        title: child.title,
-        content: child.content || '',
-        type: child.type,
-        commentCount: Math.floor(Math.random() * 5), // Random comment count for demo
-        leftLinks: child.leftLinks || [],
-        rightLinks: child.rightLinks || []
-      }))
-    : mockProjects.map(project => ({
-        id: project.id,
-        title: project.title,
-        content: project.children?.[0]?.content || 'Project with nested content',
-        type: project.type,
-        commentCount: Math.floor(Math.random() * 3), // Random comment count for demo
+  // Get nodes to show in sidebar
+  const sidebarNodes = (() => {
+    if (currentNode && 'name' in currentNode) {
+      // If current node is a project, show its nodes
+      const projectNodes = getProjectNodes(currentNode.id);
+      return projectNodes.map(node => ({
+        id: node.id,
+        title: node.title,
+        type: node.type as NodeType,
+        content: node.content,
+        status: node.status
+      }));
+    } else if (currentNode) {
+      // If current node is a regular node, show nodes from the same project
+      const projectNodes = getProjectNodes(currentNode.project_id);
+      return projectNodes.map(node => ({
+        id: node.id,
+        title: node.title,
+        type: node.type as NodeType,
+        content: node.content,
+        status: node.status
+      }));
+    }
+    
+    // Show projects as root nodes
+    return projects.map(project => ({
+      id: project.id,
+      title: project.name,
+      type: 'project' as NodeType,
+      content: `Project: ${project.status}`,
+      status: project.status
+    }));
+  })();
+
+  // Get nodes to show in main content
+  const mainContentNodes = (() => {
+    if (currentNode && 'name' in currentNode) {
+      // If current node is a project, show its nodes
+      const projectNodes = getProjectNodes(currentNode.id);
+      return projectNodes.map(node => ({
+        id: node.id,
+        title: node.title,
+        content: node.content || '',
+        type: node.type as NodeType,
         leftLinks: [],
         rightLinks: []
       }));
+    } else if (currentNode) {
+      // If current node is a regular node, show nodes from the same project
+      const projectNodes = getProjectNodes(currentNode.project_id);
+      return projectNodes.map(node => ({
+        id: node.id,
+        title: node.title,
+        content: node.content || '',
+        type: node.type as NodeType,
+        leftLinks: [],
+        rightLinks: []
+      }));
+    }
+    
+    // Show projects as main content when no node is selected
+    return projects.map(project => ({
+      id: project.id,
+      title: project.name,
+      content: `Project: ${project.status}`,
+      type: 'project' as NodeType,
+      leftLinks: [],
+      rightLinks: []
+    }));
+  })();
 
-  // Initialize breadcrumbs
+  // Build breadcrumbs
   useEffect(() => {
-    if (currentNode) {
-      // Build breadcrumb path by finding parent chain
-      const buildBreadcrumbs = (nodeId: string): any[] => {
-        const node = allNodes.find(n => n.id === nodeId);
-        if (!node) return [];
-        
-        // Find parent
-        const parent = allNodes.find(n => 
-          n.children && n.children.some((child: any) => child.id === nodeId)
-        );
-        
-        if (parent) {
-          return [...buildBreadcrumbs(parent.id), {
-            id: node.id,
-            title: node.title,
-            type: node.type
-          }];
-        }
-        
-        return [{
-          id: node.id,
-          title: node.title,
-          type: node.type
-        }];
-      };
-      
-      setBreadcrumbs(buildBreadcrumbs(currentNode.id));
+    if (!currentNodeId) {
+      setBreadcrumbs([]);
+      return;
+    }
+
+    const node = nodes.find(n => n.id === currentNodeId) || projects.find(p => p.id === currentNodeId);
+    if (node) {
+      setBreadcrumbs([{
+        id: node.id,
+        title: 'name' in node ? node.name : node.title,
+        type: 'name' in node ? 'project' : (node as ApiNode).type as NodeType
+      }]);
     } else {
       setBreadcrumbs([]);
     }
-  }, [currentNode]);
+  }, [currentNodeId, nodes, projects]);
 
   const handleSelectNode = (nodeId: string) => {
-    const node = allNodes.find(n => n.id === nodeId);
+    const node = nodes.find(n => n.id === nodeId) || projects.find(p => p.id === nodeId);
     if (node) {
       setNavigationStack(prev => [...prev, currentNodeId]);
       setCurrentNodeId(nodeId);
@@ -219,10 +251,34 @@ export default function UnifiedPage() {
   };
 
   const handleAddNewNode = () => {
-    const newNodeType = currentNode?.type || 'project';
+    const newNodeType = currentNode ? ('name' in currentNode ? 'project' : currentNode.type) : 'project';
     console.log(`Adding new ${newNodeType}`);
     alert(`Create new ${newNodeType} dialog`);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">Loading projects and nodes...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-red-600">Error: {error}</div>
+      </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">No projects found. Create a project to get started.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -246,7 +302,7 @@ export default function UnifiedPage() {
         {/* Main Content */}
         <UnifiedMainContent
           nodes={mainContentNodes}
-          currentNodeType={currentNode?.type || 'project'}
+          currentNodeType={currentNode ? ('name' in currentNode ? 'project' : currentNode.type as NodeType) : 'project'}
           onNavigateToNode={handleNavigateToNode}
           onAddComment={handleAddComment}
           onAddLink={handleAddLink}

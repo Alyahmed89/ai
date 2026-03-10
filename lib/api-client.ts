@@ -1,10 +1,10 @@
 /**
- * API Client for local backend
+ * API Client for external backend
  * 
- * This client uses local Next.js API routes for development.
+ * This client uses external API endpoints for production.
  */
 
-const API_BASE = typeof window !== 'undefined' ? '' : 'http://localhost:42452';
+const API_BASE = 'https://deepseek-agent.alghamdimo89.workers.dev';
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const url = `${API_BASE}${path}`;
@@ -224,26 +224,26 @@ export const apiClient = {
     const params = new URLSearchParams();
     if (limit) params.append('limit', limit.toString());
     const query = params.toString() ? `?${params.toString()}` : '';
-    return apiFetch(`/api/graph/projects${query}`);
+    return apiFetch(`/graph/projects${query}`);
   },
 
   getProject: (id: string) =>
-    apiFetch(`/api/graph/projects/${id}`),
+    apiFetch(`/graph/projects/${id}`),
 
   createProject: (data: { name: string; status: string; metadata: string }) =>
-    apiFetch('/api/graph/projects', {
+    apiFetch('/graph/projects', {
       method: 'POST',
       body: JSON.stringify(data)
     }),
 
   updateProject: (id: string, data: { status?: string; metadata?: string }) =>
-    apiFetch(`/api/graph/projects/${id}`, {
+    apiFetch(`/graph/projects/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data)
     }),
 
   deleteProject: (id: string) =>
-    apiFetch(`/api/graph/projects/${id}`, {
+    apiFetch(`/graph/projects/${id}`, {
       method: 'DELETE'
     }),
 
@@ -253,11 +253,15 @@ export const apiClient = {
     if (limit) params.append('limit', limit.toString());
     if (projectId) params.append('project_id', projectId);
     const query = params.toString() ? `?${params.toString()}` : '';
-    return apiFetch(`/api/graph/nodes${query}`);
+    return apiFetch(`/graph/nodes${query}`);
+  },
+
+  getNodesByProjectId: (projectId: string) => {
+    return apiFetch(`/graph/projects/${projectId}/nodes`);
   },
 
   getNode: (id: string) =>
-    apiFetch(`/api/graph/nodes/${id}`),
+    apiFetch(`/graph/nodes/${id}`),
 
   createNode: (data: {
     project_id: string;
@@ -267,7 +271,7 @@ export const apiClient = {
     status: string;
     metadata: string;
   }) =>
-    apiFetch('/api/graph/nodes', {
+    apiFetch('/graph/nodes', {
       method: 'POST',
       body: JSON.stringify(data)
     }),
@@ -279,38 +283,38 @@ export const apiClient = {
     status?: string;
     metadata?: string;
   }) =>
-    apiFetch(`/api/graph/nodes/${id}`, {
+    apiFetch(`/graph/nodes/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data)
     }),
 
   deleteNode: (id: string) =>
-    apiFetch(`/api/graph/nodes/${id}`, {
+    apiFetch(`/graph/nodes/${id}`, {
       method: 'DELETE'
     }),
 
   // Node Hierarchy Management
   getNodeChildren: (id: string) =>
-    apiFetch(`/api/graph/nodes/${id}/children`),
+    apiFetch(`/graph/nodes/${id}/children`),
 
   getNodeParent: (id: string) =>
-    apiFetch(`/api/graph/nodes/${id}/parent`),
+    apiFetch(`/graph/nodes/${id}/parent`),
 
   addNodeChild: (id: string, childId: string) =>
-    apiFetch(`/api/graph/nodes/${id}/children`, {
+    apiFetch(`/graph/nodes/${id}/children`, {
       method: 'POST',
       body: JSON.stringify({ child_id: childId })
     }),
 
   removeNodeChild: (id: string, childId: string) =>
-    apiFetch(`/api/graph/nodes/${id}/children/${childId}`, {
+    apiFetch(`/graph/nodes/${id}/children/${childId}`, {
       method: 'DELETE'
     }),
 
   // Project Hierarchy
   getProjectRootNodes: (projectId: string) =>
-    apiFetch(`/api/graph/projects/${projectId}/root-nodes`),
+    apiFetch(`/graph/projects/${projectId}/root-nodes`),
 
   getNodeBreadcrumbs: (id: string) =>
-    apiFetch(`/api/graph/nodes/${id}/breadcrumbs`)
+    apiFetch(`/graph/nodes/${id}/breadcrumbs`)
 };

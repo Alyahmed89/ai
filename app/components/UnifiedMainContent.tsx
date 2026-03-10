@@ -55,17 +55,6 @@ export default function UnifiedMainContent({
   return (
     <div className="flex-1 overflow-auto bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                {getTypeLabel(currentNodeType)}
-              </h1>
-            </div>
-          </div>
-        </div>
-
         {/* Content */}
         {nodes.length === 0 ? (
           <div className="bg-gray-100 rounded-lg p-8 text-center">
@@ -74,8 +63,8 @@ export default function UnifiedMainContent({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No {currentNodeType}s yet</h3>
-            <p className="text-gray-600 mb-4">No items found</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
+            <p className="text-gray-600 mb-4">No {currentNodeType}s available</p>
           </div>
         ) : (
           <div className="space-y-3">
