@@ -652,30 +652,31 @@ export default function UnifiedPage() {
                   <p className="text-gray-600">Create a task using the chat input below to start a flow run</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-4">
                   {flowRuns.map((flowRun) => (
-                    <NodeBox
-                      key={flowRun.id}
-                      node={{
-                        id: flowRun.id,
-                        name: flowRun.input_prompt || 'Untitled Flow Run',
-                        type: 'flowrun' as any,
-                        description: flowRun.output_response || 'No response yet',
-                        created_at: flowRun.created_at,
-                        updated_at: flowRun.updated_at,
-                        status: flowRun.status,
-                        flow_id: flowRun.flow_id,
-                        duration_ms: flowRun.duration_ms
-                      }}
-                      onNavigate={() => {
-                        // Navigate to flow run detail
-                        alert(`Viewing flow run: ${flowRun.id}`);
-                      }}
-                      onAddComment={() => {}}
-                      onAddLink={() => {}}
-                      dependencies={[]}
-                      relationships={[]}
-                    />
+                    <div key={flowRun.id}>
+                      <NodeBox
+                        node={{
+                          id: flowRun.id,
+                          name: flowRun.input_prompt || 'Untitled Flow Run',
+                          type: 'flowrun' as any,
+                          description: flowRun.output_response || 'No response yet',
+                          created_at: flowRun.created_at,
+                          updated_at: flowRun.updated_at,
+                          status: flowRun.status,
+                          flow_id: flowRun.flow_id,
+                          duration_ms: flowRun.duration_ms
+                        }}
+                        onNavigate={() => {
+                          // Navigate to flow run detail
+                          alert(`Viewing flow run: ${flowRun.id}`);
+                        }}
+                        onAddComment={() => {}}
+                        onAddLink={() => {}}
+                        dependencies={[]}
+                        relationships={[]}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
