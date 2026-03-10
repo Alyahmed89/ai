@@ -936,7 +936,7 @@ export class ConversationOrchestratorDO_2026A {
           } else {
             console.warn(`[DO:${this.state.id}] No flow definition found for ${flow_id} in database. Using placeholder values.`);
             console.warn(`[DO:${this.state.id}] To fix: Ensure 'flows' or 'flow_definitions' table exists with repository and branch columns.`);
-            this.conversation.agent = 'openhands'; // Default
+            // Note: agent will be set to 'openhands' as default when conversation object is created below
           }
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
@@ -977,8 +977,14 @@ export class ConversationOrchestratorDO_2026A {
         flow_id: flow_id,
         flow_steps: steps,
         current_step_index: 0,
-        agent: flowDefinition?.agent || 'openhands' // Set agent from flow definition
+        agent: flowDefinition?.agent || 'openhands', // Set agent from flow definition
+        flow_execution_mode: true // Enable flow execution mode for step-by-step execution
       };
+      
+      // Set current_step if we have steps
+      if (steps && steps.length > 0) {
+        this.conversation.current_step = steps[0];
+      }
       
       await this.state.storage.put('conversation', this.conversation);
       
