@@ -614,10 +614,21 @@ export default function ProjectsPage() {
                       }}>
                         <td style={{
                           padding: '1rem',
-                          fontSize: '0.875rem',
-                          color: '#111827'
+                          fontSize: '0.875rem'
                         }}>
-                          {project.name}
+                          <a
+                            href={`/projects/${project.id}`}
+                            style={{
+                              color: '#3b82f6',
+                              textDecoration: 'none',
+                              fontWeight: '500',
+                              cursor: 'pointer'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                            onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                          >
+                            {project.name}
+                          </a>
                         </td>
                         <td style={{
                           padding: '1rem'
