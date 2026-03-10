@@ -3280,11 +3280,33 @@ ${messageContent}`;
       return;
     }
     
-    // Check agent type - if deepseek, skip OpenHands and complete step
+    // Check agent type - if deepseek, call DeepSeek API instead of OpenHands
     if (this.conversation.agent === 'deepseek') {
-      console.log(`[DO:${this.state.id}] Agent is 'deepseek', skipping OpenHands for step execution`);
-      // For deepseek agent, we just complete the step without OpenHands
-      await this.completeCurrentStep('Step completed (deepseek agent)', 'success');
+      console.log(`[DO:${this.state.id}] Agent is 'deepseek', calling DeepSeek API instead of OpenHands`);
+      
+      // Build messages for DeepSeek
+      const messages = [
+        { role: 'user', content: prompt }
+      ];
+      
+      // Call DeepSeek API
+      const deepseekResult = await callDeepSeek(
+        this.env.DEEPSEEK_API_KEY,
+        messages
+      );
+      
+      if (!deepseekResult.success) {
+        console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
+        await this.completeCurrentStep(`DeepSeek API error: ${deepseekResult.error}`, 'error');
+        return;
+      }
+      
+      // Process DeepSeek response
+      const response = deepseekResult.response;
+      console.log(`[DO:${this.state.id}] DeepSeek response received (${response.length} chars)`);
+      
+      // Complete the step with DeepSeek response
+      await this.completeCurrentStep(response, 'success');
       return;
     }
     
