@@ -279,31 +279,31 @@ export const apiClient = {
     status?: string;
     metadata?: string;
   }) =>
-    apiFetch(`/graph/nodes/${id}`, {
+    apiFetch(`/api/graph/nodes/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data)
     }),
 
   deleteNode: (id: string) =>
-    apiFetch(`/graph/nodes/${id}`, {
+    apiFetch(`/api/graph/nodes/${id}`, {
       method: 'DELETE'
     }),
 
   // Node Hierarchy Management
   getNodeChildren: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/children`),
+    apiFetch(`/api/graph/nodes/${id}/children`),
 
   getNodeParent: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/parent`),
+    apiFetch(`/api/graph/nodes/${id}/parent`),
 
   addNodeChild: (id: string, childId: string) =>
-    apiFetch(`/graph/nodes/${id}/children`, {
+    apiFetch(`/api/graph/nodes/${id}/children`, {
       method: 'POST',
       body: JSON.stringify({ child_id: childId })
     }),
 
   removeNodeChild: (id: string, childId: string) =>
-    apiFetch(`/graph/nodes/${id}/children/${childId}`, {
+    apiFetch(`/api/graph/nodes/${id}/children/${childId}`, {
       method: 'DELETE'
     }),
 
