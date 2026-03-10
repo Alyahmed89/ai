@@ -17,3 +17,5 @@ export async function GET(
     data: projectNodes
   });
 }
+
+export const runtime = 'edge';

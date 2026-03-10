@@ -725,3 +725,5 @@ export default function ProjectDetailPage() {
     </Suspense>
   );
 }
+
+export const runtime = 'edge';

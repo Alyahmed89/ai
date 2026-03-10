@@ -33,3 +33,5 @@ export async function GET(
     data: project
   });
 }
+
+export const runtime = 'edge';

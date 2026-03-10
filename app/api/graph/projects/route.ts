@@ -29,3 +29,5 @@ export async function GET(request: NextRequest) {
     data: filteredProjects
   });
 }
+
+export const runtime = 'edge';
