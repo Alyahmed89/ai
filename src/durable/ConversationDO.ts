@@ -968,6 +968,10 @@ export class ConversationOrchestratorDO_2026A {
       
       if (firstStep && this.env.FLOW_RUNS_DB) {
         try {
+          console.log(`[DO:${this.state.id}] Attempting to resolve step instructions for step: ${firstStep.step_key}`);
+          console.log(`[DO:${this.state.id}] Step has input_keys: ${!!firstStep.input_keys}`);
+          console.log(`[DO:${this.state.id}] Step has task_id: ${firstStep.task_id}`);
+          
           // Import step resolver
           const { resolveStepInstructions } = await import('../services/stepResolver');
           
@@ -986,10 +990,12 @@ export class ConversationOrchestratorDO_2026A {
           // Use resolved instructions directly
           initialPrompt = resolvedStep.instructions;
           
-          console.log(`[DO:${this.state.id}] Resolved first step instructions with task data`);
+          console.log(`[DO:${this.state.id}] Successfully resolved step instructions with task data`);
           console.log(`[DO:${this.state.id}] Resolved instructions length: ${initialPrompt.length}`);
+          console.log(`[DO:${this.state.id}] First 200 chars of resolved instructions: ${initialPrompt.substring(0, 200)}`);
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
+          console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
           // Continue with default prompt if resolution fails
         }
       }
