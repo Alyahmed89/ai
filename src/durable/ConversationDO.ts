@@ -1042,6 +1042,14 @@ export class ConversationOrchestratorDO_2026A {
       
       await this.state.storage.put('conversation', this.conversation);
       
+      // Generate flow run ID and save to database
+      this.flowRunId = generateFlowRunId();
+      console.log(`[DO:${this.state.id}] Generated flow run ID: ${this.flowRunId}`);
+      console.log(`[DO:${this.state.id}] Database available: ${!!this.env.FLOW_RUNS_DB}`);
+      console.log(`[DO:${this.state.id}] Conversation flow_id: ${this.conversation?.flow_id}`);
+      console.log(`[DO:${this.state.id}] Conversation created_at: ${this.conversation?.created_at}`);
+      await this.createInitialFlowRun();
+      
       // Schedule alarm to send first step
       await this.state.storage.setAlarm(Date.now() + 1000);
       
@@ -4078,7 +4086,14 @@ ${messageContent}`;
    * Create initial flow run record when flow starts
    */
   private async createInitialFlowRun(): Promise<void> {
-    if (!this.conversation || !this.flowRunId) return;
+    console.log(`[DO:${this.state.id}] createInitialFlowRun called`);
+    console.log(`[DO:${this.state.id}] Has conversation: ${!!this.conversation}`);
+    console.log(`[DO:${this.state.id}] Has flowRunId: ${!!this.flowRunId}`);
+    
+    if (!this.conversation || !this.flowRunId) {
+      console.log(`[DO:${this.state.id}] Missing conversation or flowRunId, skipping`);
+      return;
+    }
     
     // Check if database is configured
     if (!this.env.FLOW_RUNS_DB) {
@@ -4086,6 +4101,8 @@ ${messageContent}`;
       return;
     }
 
+    console.log(`[DO:${this.state.id}] Preparing flow run data with flow_id: ${this.conversation.flow_id}`);
+    
     // Prepare initial flow run data
     const flowRunData = {
       id: this.flowRunId,
@@ -4100,6 +4117,8 @@ ${messageContent}`;
       next_flow_id: null
     };
 
+    console.log(`[DO:${this.state.id}] Calling saveFlowRun with ID: ${this.flowRunId}`);
+    
     // Save to database
     const result = await saveFlowRun(this.env.FLOW_RUNS_DB, flowRunData);
     if (!result.success) {
