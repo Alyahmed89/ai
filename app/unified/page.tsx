@@ -92,6 +92,10 @@ export default function UnifiedPage() {
   const [nodeRelationships, setNodeRelationships] = useState<Map<string, NodeRelationship[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // State for chat
+  const [chatMessage, setChatMessage] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   // Fetch projects on initial load
   useEffect(() => {
@@ -475,6 +479,34 @@ export default function UnifiedPage() {
     }
   };
 
+  // Handle chat message submission
+  const handleChatSubmit = async () => {
+    if (!chatMessage.trim()) return;
+    
+    setIsChatLoading(true);
+    try {
+      // For now, just show an alert with the message
+      // In a real implementation, this would call an AI API
+      alert(`Chat message: "${chatMessage}"\n\nThis would be sent to an AI assistant for processing.`);
+      
+      // Clear the input
+      setChatMessage('');
+    } catch (err) {
+      console.error('Error sending chat message:', err);
+      alert('Error sending chat message');
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  // Handle Enter key press in chat input
+  const handleChatKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleChatSubmit();
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -527,6 +559,33 @@ export default function UnifiedPage() {
           onAddLink={handleAddLink}
           onAddNewNode={handleAddNewNode}
         />
+      </div>
+
+      {/* Sticky Chat Interface */}
+      <div className="sticky bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              onKeyPress={handleChatKeyPress}
+              placeholder="Type your message here..."
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={isChatLoading}
+            />
+            <button
+              onClick={handleChatSubmit}
+              disabled={isChatLoading || !chatMessage.trim()}
+              className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isChatLoading ? 'Sending...' : 'Send'}
+            </button>
+          </div>
+          <div className="mt-2 text-xs text-gray-500 text-center">
+            Chat with AI assistant about your nodes and projects
+          </div>
+        </div>
       </div>
     </div>
   );
