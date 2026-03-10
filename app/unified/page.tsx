@@ -568,9 +568,7 @@ export default function UnifiedPage() {
   };
 
   // Navigate back to nodes view
-  const handleBackToNodes = () => {
-    setViewMode('nodes');
-  };
+
 
   if (loading) {
     return (
@@ -635,30 +633,11 @@ export default function UnifiedPage() {
             <div className="max-w-6xl mx-auto">
               {/* Flowruns Header */}
               <div className="mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Flow Runs</h1>
-                    <p className="text-gray-600 mt-1">
-                      {flowRunsLoading ? 'Loading flow runs...' : `${flowRuns.length} flow run${flowRuns.length !== 1 ? 's' : ''} found`}
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleBackToNodes}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    ← Back to Nodes
-                  </button>
-                </div>
-                
-                {/* Filter (optional) */}
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-sm text-gray-600">Filter by status:</span>
-                  <select className="px-3 py-1 border border-gray-300 rounded-md text-sm">
-                    <option value="all">All</option>
-                    <option value="completed">Completed</option>
-                    <option value="failed">Failed</option>
-                    <option value="pending">Pending</option>
-                  </select>
+                <div className="mb-4">
+                  <h1 className="text-2xl font-bold text-gray-900">Flow Runs</h1>
+                  <p className="text-gray-600 mt-1">
+                    {flowRunsLoading ? 'Loading flow runs...' : `${flowRuns.length} flow run${flowRuns.length !== 1 ? 's' : ''} found`}
+                  </p>
                 </div>
               </div>
 
