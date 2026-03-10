@@ -273,21 +273,18 @@ app.post('/start', async (c) => {
           const id = c.env.CONVERSATIONS.newUniqueId();
           const conversationDo = c.env.CONVERSATIONS.get(id);
           
-          // Initialize the Durable Object with flow context
-          const initResponse = await conversationDo.fetch('http://placeholder/initialize', {
+          // Use flow execution mode (start-flow endpoint) for proper step execution with task injection
+          const initResponse = await conversationDo.fetch('http://placeholder/start-flow', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              repository: targetRepository,
-              branch: targetBranch, // Don't provide default - let flow definition determine it
-              initial_user_prompt: targetInitialUserPrompt || `Execute flow: ${targetFlowId}`,
-              max_iterations: targetMaxIterations || 20
+              flow_id: targetFlowId
             })
           });
           
           if (!initResponse.ok) {
             const errorText = await initResponse.text();
-            console.error(`[HTTP:START:FLOW] Durable Object init failed: ${initResponse.status} - ${errorText}`);
+            console.error(`[HTTP:START:FLOW] Durable Object start-flow failed: ${initResponse.status} - ${errorText}`);
             return c.json(errorResponse(`Failed to start flow execution: ${initResponse.status}`, 500));
           }
           
