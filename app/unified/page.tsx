@@ -582,9 +582,7 @@ export default function UnifiedPage() {
               {isChatLoading ? 'Sending...' : 'Send'}
             </button>
           </div>
-          <div className="mt-2 text-xs text-gray-500 text-center">
-            Chat with AI assistant about your nodes and projects
-          </div>
+
         </div>
       </div>
     </div>
