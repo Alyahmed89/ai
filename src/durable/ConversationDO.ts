@@ -962,10 +962,59 @@ export class ConversationOrchestratorDO_2026A {
         effectiveMaxIterations = steps.length * 2; // Enough for all steps
       }
       
+      // Resolve first step instructions with task data if needed
+      let initialPrompt = `Execute flow: ${flow_id}`;
+      const firstStep = steps[0];
+      
+      if (firstStep && this.env.FLOW_RUNS_DB) {
+        try {
+          // Import step resolver
+          const { resolveStepInstructions } = await import('../services/stepResolver');
+          
+          // Resolve step instructions with task data
+          const resolvedStep = await resolveStepInstructions(
+            firstStep,
+            this.env.FLOW_RUNS_DB,
+            this.env as Record<string, string>,
+            {
+              flow_id: flow_id,
+              execution_id: `flow-${Date.now()}`,
+              step_id: firstStep.step_id
+            }
+          );
+          
+          // Build initial prompt with resolved instructions
+          initialPrompt = `Execute step: ${firstStep.title}`;
+          
+          // Add task data if available
+          if (resolvedStep.task_data) {
+            initialPrompt += `\n\n=== TASK ===`;
+            if (firstStep.task_id) {
+              initialPrompt += `\nTask ID: ${firstStep.task_id}`;
+            }
+            if (resolvedStep.task_data.title) {
+              initialPrompt += `\nTitle: ${resolvedStep.task_data.title}`;
+            }
+            if (resolvedStep.task_data.description) {
+              initialPrompt += `\nDescription: ${resolvedStep.task_data.description}`;
+            }
+            initialPrompt += `\n=== END TASK ===\n`;
+          }
+          
+          // Add the resolved instructions
+          initialPrompt += `\n${resolvedStep.instructions}`;
+          
+          console.log(`[DO:${this.state.id}] Resolved first step instructions with task data`);
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
+          // Continue with default prompt if resolution fails
+        }
+      }
+      
       // Create ultra-minimal conversation with values from flow definition
       this.conversation = {
         state: 'SENDING_STEP',
-        initial_user_prompt: `Execute flow: ${flow_id}`,
+        initial_user_prompt: initialPrompt,
         iteration: 0,
         repository: effectiveRepository,
         branch: effectiveBranch,
