@@ -236,6 +236,13 @@ export default function UnifiedPage() {
     fetchNodes();
   }, [currentNodeId, projects]);
 
+  // Fetch flow runs when view mode changes to 'flowruns'
+  useEffect(() => {
+    if (viewMode === 'flowruns') {
+      fetchFlowRuns();
+    }
+  }, [viewMode]);
+
   // Get current node
   const currentNode = currentNodeId 
     ? nodes.find(node => node.id === currentNodeId) || projects.find(project => project.id === currentNodeId)
@@ -544,7 +551,7 @@ export default function UnifiedPage() {
   const fetchFlowRuns = async () => {
     setFlowRunsLoading(true);
     try {
-      const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/flow-runs?limit=50');
+      const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/api/flow-runs?limit=50');
       if (!response.ok) {
         throw new Error(`Failed to fetch flow runs: ${response.status}`);
       }
