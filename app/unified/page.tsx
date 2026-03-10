@@ -32,11 +32,15 @@ interface ApiNode {
 
 interface NodeLink {
   id: string;
-  source_id: string;
-  target_id: string;
-  description: string;
-  type: string;
-  created_at: string;
+  source_node_id: string;
+  target_node_id: string;
+  relation_type: string;
+  weight: number;
+  created_at: number;
+  metadata: string | null;
+  target_title?: string;
+  target_type?: string;
+  direction?: 'outgoing' | 'incoming';
 }
 
 interface NodeRelationship {
@@ -119,17 +123,54 @@ export default function UnifiedPage() {
         // Check if current node is a project
         const currentProject = projects.find(p => p.id === currentNodeId);
         if (currentProject) {
-          // For now, just set empty nodes since node endpoints don't exist
-          setNodes([]);
+          // Fetch nodes for this project
+          const nodesResponse = await apiClient.getNodesByProjectId(currentProject.id);
+          if (!nodesResponse.ok) {
+            throw new Error(`Failed to fetch nodes: ${nodesResponse.status}`);
+          }
+          const nodesData = await nodesResponse.json();
+          const nodesList = nodesData.success ? nodesData.data : nodesData;
+          setNodes(nodesList);
+          
+          // Initialize empty maps for hierarchy and links
           setNodeHierarchy(new Map());
           setNodeLinks(new Map());
           
-          // Set breadcrumbs to just the project
-          setBreadcrumbs([{
-            id: currentProject.id,
-            title: currentProject.title || currentProject.name,
-            type: 'project' as NodeType
-          }]);
+          // Breadcrumbs will be set by the buildBreadcrumbs useEffect
+        } else {
+          // Current node is not a project, fetch node details
+          const nodeResponse = await apiClient.getNode(currentNodeId);
+          if (!nodeResponse.ok) {
+            throw new Error(`Failed to fetch node: ${nodeResponse.status}`);
+          }
+          const nodeData = await nodeResponse.json();
+          const node = nodeData.success ? nodeData.data : nodeData;
+          
+          // Fetch breadcrumbs for this node
+          const breadcrumbsResponse = await apiClient.getNodeBreadcrumbs(currentNodeId);
+          if (breadcrumbsResponse.ok) {
+            const breadcrumbsData = await breadcrumbsResponse.json();
+            const breadcrumbsList = breadcrumbsData.success ? breadcrumbsData.data.breadcrumbs : [];
+            setBreadcrumbs(breadcrumbsList.map((bc: any) => ({
+              id: bc.id,
+              title: bc.title,
+              type: bc.type as NodeType
+            })));
+          }
+          
+          // Fetch links for this node
+          const linksResponse = await apiClient.getNodeLinks(currentNodeId);
+          if (linksResponse.ok) {
+            const linksData = await linksResponse.json();
+            const links = linksData.success ? linksData.data : { outgoing: [], incoming: [] };
+            
+            // Update node links map
+            setNodeLinks(prevLinks => {
+              const newLinksMap = new Map(prevLinks);
+              newLinksMap.set(currentNodeId, [...links.outgoing, ...links.incoming]);
+              return newLinksMap;
+            });
+          }
         }
 
         setError(null);
@@ -162,9 +203,9 @@ export default function UnifiedPage() {
           const links = nodeLinks.get(node.id);
           const linkArray = Array.isArray(links) ? links : [];
           
-          // Separate left and right links based on type or direction
-          const leftLinks = linkArray.filter(link => link && link.type && (link.type === 'left' || link.type === 'dependency'));
-          const rightLinks = linkArray.filter(link => link && link.type && (link.type === 'right' || link.type === 'reference'));
+          // Separate left and right links based on relation_type
+          const leftLinks = linkArray.filter(link => link && link.relation_type && (link.relation_type === 'dependency' || link.relation_type === 'left'));
+          const rightLinks = linkArray.filter(link => link && link.relation_type && (link.relation_type === 'reference' || link.relation_type === 'right'));
           
           return {
             id: node.id,
@@ -186,42 +227,48 @@ export default function UnifiedPage() {
 
   // Get nodes to show in sidebar with hierarchy
   const sidebarNodes = (() => {
-    if (currentNode && 'name' in currentNode) {
+    if (!currentNode) {
+      // Show projects as root nodes
+      return projects.map(project => ({
+        id: project.id,
+        title: project.name,
+        type: 'project' as NodeType,
+        content: `Project: ${project.status}`,
+        status: project.status
+      }));
+    }
+    
+    // Check if current node is a project (has 'name' property)
+    if ('name' in currentNode) {
       // If current node is a project, show its hierarchical nodes
       return getProjectNodesWithHierarchy(currentNode.id);
-    } else if (currentNode) {
+    } else {
       // If current node is a regular node, show nodes from the same project with hierarchy
       return getProjectNodesWithHierarchy(currentNode.project_id);
     }
-    
-    // Show projects as root nodes
-    return projects.map(project => ({
-      id: project.id,
-      title: project.name,
-      type: 'project' as NodeType,
-      content: `Project: ${project.status}`,
-      status: project.status
-    }));
   })();
 
   // Get nodes to show in main content with hierarchy and links
   const mainContentNodes = (() => {
-    if (currentNode && 'name' in currentNode) {
+    if (!currentNode) {
+      // Show projects as main content when no node is selected
+      return projects.map(project => ({
+        id: project.id,
+        title: project.name,
+        content: `Project: ${project.status}`,
+        type: 'project' as NodeType,
+        status: project.status
+      }));
+    }
+    
+    // Check if current node is a project (has 'name' property)
+    if ('name' in currentNode) {
       // If current node is a project, show its hierarchical nodes
       return getProjectNodesWithHierarchy(currentNode.id);
-    } else if (currentNode) {
+    } else {
       // If current node is a regular node, show nodes from the same project with hierarchy
       return getProjectNodesWithHierarchy(currentNode.project_id);
     }
-    
-    // Show projects as main content when no node is selected
-    return projects.map(project => ({
-      id: project.id,
-      title: project.name,
-      content: `Project: ${project.status}`,
-      type: 'project' as NodeType,
-      status: project.status
-    }));
   })();
 
   // Build breadcrumbs - using API breadcrumbs when available, otherwise fallback
@@ -231,12 +278,13 @@ export default function UnifiedPage() {
       return;
     }
 
-    // If breadcrumbs are already set from API (for nodes), keep them
-    // Otherwise build simple breadcrumb for projects
+    // Only build breadcrumbs if they haven't been set by API
+    // The API sets breadcrumbs for nodes in fetchNodes function
     const node = nodes.find(n => n.id === currentNodeId);
     const project = projects.find(p => p.id === currentNodeId);
     
     if (project && breadcrumbs.length === 0) {
+      // For projects, set simple breadcrumb
       setBreadcrumbs([{
         id: project.id,
         title: project.name,
@@ -244,6 +292,7 @@ export default function UnifiedPage() {
       }]);
     } else if (node && breadcrumbs.length === 0) {
       // For nodes without API breadcrumbs, create simple breadcrumb
+      // This is a fallback in case API breadcrumbs fail
       setBreadcrumbs([{
         id: node.id,
         title: node.title,
@@ -345,8 +394,8 @@ export default function UnifiedPage() {
           status: 'active',
           metadata: JSON.stringify({ parent_id: parentId })
         });
-      } else if (currentNode) {
-        // Create new node in same project as current node
+      } else if (currentNode && !('name' in currentNode)) {
+        // Create new node in same project as current node (only if currentNode is a node, not a project)
         response = await apiClient.createNode({
           project_id: currentNode.project_id,
           type,
