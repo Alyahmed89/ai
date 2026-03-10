@@ -27,12 +27,25 @@ interface ApiNode {
   metadata: string;
   created_at: string;
   updated_at: string;
+  parent_id?: string;
 }
 
 interface NodeLink {
-  targetId: string;
+  id: string;
+  source_id: string;
+  target_id: string;
   description: string;
-  type: NodeType;
+  type: string;
+  created_at: string;
+}
+
+interface NodeRelationship {
+  id: string;
+  source_id: string;
+  target_id: string;
+  type: string;
+  metadata: string;
+  created_at: string;
 }
 
 interface UnifiedNode {
@@ -44,6 +57,8 @@ interface UnifiedNode {
   leftLinks?: NodeLink[];
   rightLinks?: NodeLink[];
   status?: string;
+  project_id?: string;
+  parent_id?: string;
 }
 
 export default function UnifiedPage() {
@@ -55,12 +70,14 @@ export default function UnifiedPage() {
   // State for API data
   const [projects, setProjects] = useState<Project[]>([]);
   const [nodes, setNodes] = useState<ApiNode[]>([]);
+  const [nodeHierarchy, setNodeHierarchy] = useState<Map<string, ApiNode[]>>(new Map());
+  const [nodeLinks, setNodeLinks] = useState<Map<string, NodeLink[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch projects and nodes on initial load
+  // Fetch projects on initial load
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchProjects = async () => {
       try {
         setLoading(true);
         
@@ -73,22 +90,6 @@ export default function UnifiedPage() {
         const projectsList = projectsData.success ? projectsData.data : projectsData;
         setProjects(projectsList);
 
-        // Fetch nodes for each project
-        const allNodes: ApiNode[] = [];
-        for (const project of projectsList) {
-          try {
-            const nodesResponse = await apiClient.getNodesByProjectId(project.id);
-            if (nodesResponse.ok) {
-              const nodesData = await nodesResponse.json();
-              const nodesList = nodesData.success ? nodesData.data : nodesData;
-              allNodes.push(...nodesList);
-            }
-          } catch (err) {
-            console.error(`Error fetching nodes for project ${project.id}:`, err);
-          }
-        }
-        setNodes(allNodes);
-
         // If we have projects, set the first project as current node
         if (projectsList.length > 0 && !currentNodeId) {
           const firstProject = projectsList[0];
@@ -97,48 +98,100 @@ export default function UnifiedPage() {
 
         setError(null);
       } catch (err) {
-        console.error('Error fetching data:', err);
+        console.error('Error fetching projects:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchProjects();
   }, []);
+
+  // Fetch nodes for current project or node
+  useEffect(() => {
+    const fetchNodes = async () => {
+      if (!currentNodeId) return;
+
+      try {
+        setLoading(true);
+        
+        // Check if current node is a project
+        const currentProject = projects.find(p => p.id === currentNodeId);
+        if (currentProject) {
+          // For now, just set empty nodes since node endpoints don't exist
+          setNodes([]);
+          setNodeHierarchy(new Map());
+          setNodeLinks(new Map());
+          
+          // Set breadcrumbs to just the project
+          setBreadcrumbs([{
+            id: currentProject.id,
+            title: currentProject.title || currentProject.name,
+            type: 'project' as NodeType
+          }]);
+        }
+
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching nodes:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchNodes();
+  }, [currentNodeId, projects]);
 
   // Get current node
   const currentNode = currentNodeId 
     ? nodes.find(node => node.id === currentNodeId) || projects.find(project => project.id === currentNodeId)
     : null;
 
-  // Get nodes for the current project
-  const getProjectNodes = (projectId: string) => {
-    return nodes.filter(node => node.project_id === projectId);
+  // Get nodes for the current project with hierarchy
+  const getProjectNodesWithHierarchy = (projectId: string): UnifiedNode[] => {
+    const projectNodes = nodes.filter(node => node.project_id === projectId);
+    
+    // Build tree structure
+    const buildTree = (parentId?: string): UnifiedNode[] => {
+      return projectNodes
+        .filter(node => node.parent_id === parentId)
+        .map(node => {
+          const children = buildTree(node.id);
+          const links = nodeLinks.get(node.id);
+          const linkArray = Array.isArray(links) ? links : [];
+          
+          // Separate left and right links based on type or direction
+          const leftLinks = linkArray.filter(link => link && link.type && (link.type === 'left' || link.type === 'dependency'));
+          const rightLinks = linkArray.filter(link => link && link.type && (link.type === 'right' || link.type === 'reference'));
+          
+          return {
+            id: node.id,
+            title: node.title,
+            type: node.type as NodeType,
+            content: node.content,
+            status: node.status,
+            project_id: node.project_id,
+            parent_id: node.parent_id,
+            children: children.length > 0 ? children : undefined,
+            leftLinks: leftLinks.length > 0 ? leftLinks : undefined,
+            rightLinks: rightLinks.length > 0 ? rightLinks : undefined
+          };
+        });
+    };
+    
+    return buildTree();
   };
 
-  // Get nodes to show in sidebar
+  // Get nodes to show in sidebar with hierarchy
   const sidebarNodes = (() => {
     if (currentNode && 'name' in currentNode) {
-      // If current node is a project, show its nodes
-      const projectNodes = getProjectNodes(currentNode.id);
-      return projectNodes.map(node => ({
-        id: node.id,
-        title: node.title,
-        type: node.type as NodeType,
-        content: node.content,
-        status: node.status
-      }));
+      // If current node is a project, show its hierarchical nodes
+      return getProjectNodesWithHierarchy(currentNode.id);
     } else if (currentNode) {
-      // If current node is a regular node, show nodes from the same project
-      const projectNodes = getProjectNodes(currentNode.project_id);
-      return projectNodes.map(node => ({
-        id: node.id,
-        title: node.title,
-        type: node.type as NodeType,
-        content: node.content,
-        status: node.status
-      }));
+      // If current node is a regular node, show nodes from the same project with hierarchy
+      return getProjectNodesWithHierarchy(currentNode.project_id);
     }
     
     // Show projects as root nodes
@@ -151,30 +204,14 @@ export default function UnifiedPage() {
     }));
   })();
 
-  // Get nodes to show in main content
+  // Get nodes to show in main content with hierarchy and links
   const mainContentNodes = (() => {
     if (currentNode && 'name' in currentNode) {
-      // If current node is a project, show its nodes
-      const projectNodes = getProjectNodes(currentNode.id);
-      return projectNodes.map(node => ({
-        id: node.id,
-        title: node.title,
-        content: node.content || '',
-        type: node.type as NodeType,
-        leftLinks: [],
-        rightLinks: []
-      }));
+      // If current node is a project, show its hierarchical nodes
+      return getProjectNodesWithHierarchy(currentNode.id);
     } else if (currentNode) {
-      // If current node is a regular node, show nodes from the same project
-      const projectNodes = getProjectNodes(currentNode.project_id);
-      return projectNodes.map(node => ({
-        id: node.id,
-        title: node.title,
-        content: node.content || '',
-        type: node.type as NodeType,
-        leftLinks: [],
-        rightLinks: []
-      }));
+      // If current node is a regular node, show nodes from the same project with hierarchy
+      return getProjectNodesWithHierarchy(currentNode.project_id);
     }
     
     // Show projects as main content when no node is selected
@@ -183,35 +220,48 @@ export default function UnifiedPage() {
       title: project.name,
       content: `Project: ${project.status}`,
       type: 'project' as NodeType,
-      leftLinks: [],
-      rightLinks: []
+      status: project.status
     }));
   })();
 
-  // Build breadcrumbs
+  // Build breadcrumbs - using API breadcrumbs when available, otherwise fallback
   useEffect(() => {
     if (!currentNodeId) {
       setBreadcrumbs([]);
       return;
     }
 
-    const node = nodes.find(n => n.id === currentNodeId) || projects.find(p => p.id === currentNodeId);
-    if (node) {
+    // If breadcrumbs are already set from API (for nodes), keep them
+    // Otherwise build simple breadcrumb for projects
+    const node = nodes.find(n => n.id === currentNodeId);
+    const project = projects.find(p => p.id === currentNodeId);
+    
+    if (project && breadcrumbs.length === 0) {
+      setBreadcrumbs([{
+        id: project.id,
+        title: project.name,
+        type: 'project' as NodeType
+      }]);
+    } else if (node && breadcrumbs.length === 0) {
+      // For nodes without API breadcrumbs, create simple breadcrumb
       setBreadcrumbs([{
         id: node.id,
-        title: 'name' in node ? node.name : node.title,
-        type: 'name' in node ? 'project' : (node as ApiNode).type as NodeType
+        title: node.title,
+        type: node.type as NodeType
       }]);
-    } else {
-      setBreadcrumbs([]);
     }
-  }, [currentNodeId, nodes, projects]);
+  }, [currentNodeId, nodes, projects, breadcrumbs.length]);
 
   const handleSelectNode = (nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId) || projects.find(p => p.id === nodeId);
     if (node) {
       setNavigationStack(prev => [...prev, currentNodeId]);
       setCurrentNodeId(nodeId);
+      
+      // Clear breadcrumbs when selecting a new node (they'll be fetched from API if available)
+      if (!projects.find(p => p.id === nodeId)) {
+        setBreadcrumbs([]);
+      }
     }
   };
 
@@ -245,15 +295,89 @@ export default function UnifiedPage() {
     handleSelectNode(nodeId);
   };
 
-  const handleAddLink = (nodeId: string) => {
-    console.log(`Adding link to node ${nodeId}`);
-    alert(`Add link dialog for node ${nodeId}`);
+  const handleAddLink = async (nodeId: string, targetId: string, description: string, linkType: string) => {
+    try {
+      const response = await apiClient.createNodeLink(nodeId, {
+        target_id: targetId,
+        description,
+        type: linkType
+      });
+      
+      if (response.ok) {
+        // Refresh links for this node
+        const linksResponse = await apiClient.getNodeLinks(nodeId);
+        if (linksResponse.ok) {
+          const linksData = await linksResponse.json();
+          const links = linksData.success ? linksData.data : linksData;
+          
+          const newLinks = new Map(nodeLinks);
+          newLinks.set(nodeId, links);
+          setNodeLinks(newLinks);
+        }
+        alert('Link created successfully!');
+      } else {
+        alert('Failed to create link');
+      }
+    } catch (err) {
+      console.error('Error creating link:', err);
+      alert('Error creating link');
+    }
   };
 
-  const handleAddNewNode = () => {
-    const newNodeType = currentNode ? ('name' in currentNode ? 'project' : currentNode.type) : 'project';
-    console.log(`Adding new ${newNodeType}`);
-    alert(`Create new ${newNodeType} dialog`);
+  const handleAddNewNode = async (title: string, content: string, type: string, parentId?: string) => {
+    try {
+      let response;
+      
+      if (type === 'project') {
+        // Create new project
+        response = await apiClient.createProject({
+          name: title,
+          status: 'active',
+          metadata: JSON.stringify({ description: content })
+        });
+      } else if (currentNode && 'name' in currentNode) {
+        // Create new node in current project
+        response = await apiClient.createNode({
+          project_id: currentNode.id,
+          type,
+          title,
+          content,
+          status: 'active',
+          metadata: JSON.stringify({ parent_id: parentId })
+        });
+      } else if (currentNode) {
+        // Create new node in same project as current node
+        response = await apiClient.createNode({
+          project_id: currentNode.project_id,
+          type,
+          title,
+          content,
+          status: 'active',
+          metadata: JSON.stringify({ parent_id: parentId || currentNode.id })
+        });
+      } else {
+        // Create new project as fallback
+        response = await apiClient.createProject({
+          name: title,
+          status: 'active',
+          metadata: JSON.stringify({ description: content })
+        });
+      }
+      
+      if (response.ok) {
+        // Refresh data
+        if (currentNodeId) {
+          // Trigger refetch of nodes
+          setCurrentNodeId(currentNodeId);
+        }
+        alert(`${type} created successfully!`);
+      } else {
+        alert(`Failed to create ${type}`);
+      }
+    } catch (err) {
+      console.error(`Error creating ${type}:`, err);
+      alert(`Error creating ${type}`);
+    }
   };
 
   if (loading) {

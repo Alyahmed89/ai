@@ -3,22 +3,27 @@
 import { useState } from 'react';
 import NodeBox from './NodeBox';
 
+interface NodeLink {
+  id: string;
+  source_id: string;
+  target_id: string;
+  description: string;
+  type: string;
+  created_at: string;
+}
+
 interface Node {
   id: string;
   title: string;
   content: string;
   type: 'project' | 'doc' | 'flow' | 'task' | 'step' | 'flow-run';
+  status?: string;
   commentCount?: number;
-  leftLinks?: Array<{
-    targetId: string;
-    description?: string;
-    type: 'doc' | 'flow' | 'task' | 'step' | 'flow-run';
-  }>;
-  rightLinks?: Array<{
-    targetId: string;
-    description?: string;
-    type: 'doc' | 'flow' | 'task' | 'step' | 'flow-run';
-  }>;
+  children?: Node[];
+  leftLinks?: NodeLink[];
+  rightLinks?: NodeLink[];
+  project_id?: string;
+  parent_id?: string;
 }
 
 interface UnifiedMainContentProps {
@@ -26,8 +31,8 @@ interface UnifiedMainContentProps {
   currentNodeType: string;
   onNavigateToNode: (nodeId: string) => void;
   onAddComment: (nodeId: string) => void;
-  onAddLink: (nodeId: string) => void;
-  onAddNewNode: () => void;
+  onAddLink: (nodeId: string, targetId: string, description: string, linkType: string) => void;
+  onAddNewNode: (title: string, content: string, type: string, parentId?: string) => void;
 }
 
 export default function UnifiedMainContent({
@@ -52,9 +57,54 @@ export default function UnifiedMainContent({
     }
   };
 
+  // Recursive function to render nodes with hierarchy
+  const renderNodeTree = (nodeList: Node[], level = 0) => {
+    return nodeList.map(node => (
+      <div key={node.id} className={level > 0 ? 'ml-6 border-l-2 border-gray-200 pl-4' : ''}>
+        <NodeBox
+          id={node.id}
+          title={node.title}
+          content={node.content}
+          type={node.type}
+          status={node.status}
+          commentCount={node.commentCount}
+          leftLinks={node.leftLinks}
+          rightLinks={node.rightLinks}
+          onNavigate={onNavigateToNode}
+          onAddComment={onAddComment}
+          onAddLink={(targetId, description, linkType) => onAddLink(node.id, targetId, description, linkType)}
+          level={level}
+        />
+        {node.children && node.children.length > 0 && (
+          <div className="mt-2">
+            {renderNodeTree(node.children, level + 1)}
+          </div>
+        )}
+      </div>
+    ));
+  };
+
   return (
     <div className="flex-1 overflow-auto bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{getTypeLabel(currentNodeType)}</h1>
+            <p className="text-gray-600 mt-1">
+              {nodes.length} {nodes.length === 1 ? 'item' : 'items'} total
+            </p>
+          </div>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => onAddNewNode('New ' + currentNodeType, '', currentNodeType)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              Add New {currentNodeType.charAt(0).toUpperCase() + currentNodeType.slice(1)}
+            </button>
+          </div>
+        </div>
+
         {/* Content */}
         {nodes.length === 0 ? (
           <div className="bg-gray-100 rounded-lg p-8 text-center">
@@ -65,24 +115,16 @@ export default function UnifiedMainContent({
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
             <p className="text-gray-600 mb-4">No {currentNodeType}s available</p>
+            <button
+              onClick={() => onAddNewNode('New ' + currentNodeType, '', currentNodeType)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              Create your first {currentNodeType}
+            </button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {nodes.map(node => (
-              <NodeBox
-                key={node.id}
-                id={node.id}
-                title={node.title}
-                content={node.content}
-                type={node.type}
-                commentCount={node.commentCount}
-                leftLinks={node.leftLinks}
-                rightLinks={node.rightLinks}
-                onNavigate={onNavigateToNode}
-                onAddComment={onAddComment}
-                onAddLink={() => onAddLink(node.id)}
-              />
-            ))}
+          <div className="space-y-4">
+            {renderNodeTree(nodes)}
           </div>
         )}
       </div>

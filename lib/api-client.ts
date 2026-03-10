@@ -316,5 +316,43 @@ export const apiClient = {
     apiFetch(`/graph/projects/${projectId}/root-nodes`),
 
   getNodeBreadcrumbs: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/breadcrumbs`)
+    apiFetch(`/graph/nodes/${id}/breadcrumbs`),
+
+  // Node Relationships & Links
+  getNodeLinks: (id: string) =>
+    apiFetch(`/graph/nodes/${id}/links`),
+
+  createNodeLink: (id: string, data: { target_id: string; description: string; type: string }) =>
+    apiFetch(`/graph/nodes/${id}/links`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  deleteNodeLink: (id: string, linkId: string) =>
+    apiFetch(`/graph/nodes/${id}/links/${linkId}`, {
+      method: 'DELETE'
+    }),
+
+  getNodeRelationships: (id: string) =>
+    apiFetch(`/graph/nodes/${id}/relationships`),
+
+  // Node Dependencies
+  getNodeDependencies: (id: string) =>
+    apiFetch(`/graph/nodes/${id}/dependencies`),
+
+  createRelationship: (data: { source_id: string; target_id: string; type: string; metadata?: string }) =>
+    apiFetch('/graph/relationships', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  // Project-based Nodes with filters
+  getProjectNodesWithFilters: (projectId: string, filters?: { type?: string; status?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.type) params.append('type', filters.type);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return apiFetch(`/graph/projects/${projectId}/nodes${query}`);
+  }
 };
