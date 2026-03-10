@@ -47,22 +47,49 @@ interface NodeBoxProps {
   onAddLink: (targetId: string, description: string, linkType: string) => void;
 }
 
-export default function NodeBox({ 
-  id, 
-  title, 
-  content, 
-  type,
-  status,
-  commentCount = 0,
-  leftLinks = [],
-  rightLinks = [],
-  dependencies = [],
-  relationships = [],
-  level = 0,
-  onNavigate,
-  onAddComment,
-  onAddLink
-}: NodeBoxProps) {
+// Alternative props for flowrun display
+interface FlowRunNodeBoxProps {
+  node: {
+    id: string;
+    name: string;
+    type: 'project' | 'doc' | 'flow' | 'task' | 'step' | 'flow-run';
+    description?: string;
+    status?: string;
+    created_at?: number;
+    updated_at?: number;
+    flow_id?: string;
+    duration_ms?: number;
+  };
+  onNavigate: (nodeId: string) => void;
+  onAddComment: (nodeId: string) => void;
+  onAddLink: (targetId: string, description: string, linkType: string) => void;
+  dependencies?: NodeDependency[];
+  relationships?: NodeRelationship[];
+}
+
+type Props = NodeBoxProps | FlowRunNodeBoxProps;
+
+export default function NodeBox(props: Props) {
+  // Extract props based on which interface is used
+  const isFlowRunProps = 'node' in props;
+  
+  const id = isFlowRunProps ? props.node.id : props.id;
+  const title = isFlowRunProps ? props.node.name : props.title;
+  const content = isFlowRunProps ? (props.node.description || '') : props.content;
+  const type = isFlowRunProps ? props.node.type : props.type;
+  const status = isFlowRunProps ? props.node.status : props.status;
+  const commentCount = isFlowRunProps ? 0 : props.commentCount || 0;
+  const leftLinks = isFlowRunProps ? [] : props.leftLinks || [];
+  const rightLinks = isFlowRunProps ? [] : props.rightLinks || [];
+  const dependencies = isFlowRunProps ? (props.dependencies || []) : (props.dependencies || []);
+  const relationships = isFlowRunProps ? (props.relationships || []) : (props.relationships || []);
+  const level = isFlowRunProps ? 0 : (props.level || 0);
+  const onNavigate = isFlowRunProps ? props.onNavigate : props.onNavigate;
+  const onAddComment = isFlowRunProps ? props.onAddComment : props.onAddComment;
+  const onAddLink = isFlowRunProps ? props.onAddLink : props.onAddLink;
+  
+  // Additional flowrun data
+  const flowRunData = isFlowRunProps ? props.node : null;
   const [showLinks, setShowLinks] = useState(false);
 
   const getTypeColor = () => {
@@ -150,8 +177,10 @@ export default function NodeBox({
             <h3 className="font-semibold text-gray-900">{title}</h3>
             {status && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${
-                status === 'active' ? 'bg-green-100 text-green-800' :
+                status === 'active' || status === 'running' ? 'bg-green-100 text-green-800' :
                 status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                status === 'failed' ? 'bg-red-100 text-red-800' :
+                status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                 'bg-gray-100 text-gray-800'
               }`}>
                 {status}
@@ -168,6 +197,34 @@ export default function NodeBox({
         <div className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
           {content || <span className="text-gray-400 italic">No content</span>}
         </div>
+        
+        {/* Flowrun-specific information */}
+        {type === 'flow-run' && flowRunData && (
+          <div className="mt-3 space-y-2 text-xs">
+            {flowRunData.flow_id && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Flow ID:</span>
+                <span className="font-mono text-gray-700">{flowRunData.flow_id}</span>
+              </div>
+            )}
+            {flowRunData.duration_ms !== undefined && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Duration:</span>
+                <span className="font-medium text-gray-700">
+                  {(flowRunData.duration_ms / 1000).toFixed(2)}s
+                </span>
+              </div>
+            )}
+            {flowRunData.created_at && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Created:</span>
+                <span className="text-gray-700">
+                  {new Date(flowRunData.created_at * 1000).toLocaleString()}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
 

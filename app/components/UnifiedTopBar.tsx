@@ -9,9 +9,16 @@ interface BreadcrumbItem {
 interface UnifiedTopBarProps {
   breadcrumbs: BreadcrumbItem[];
   onNavigateBreadcrumb: (nodeId: string) => void;
+  viewMode?: 'nodes' | 'flowruns';
+  onViewModeChange?: (mode: 'nodes' | 'flowruns') => void;
 }
 
-export default function UnifiedTopBar({ breadcrumbs, onNavigateBreadcrumb }: UnifiedTopBarProps) {
+export default function UnifiedTopBar({ 
+  breadcrumbs, 
+  onNavigateBreadcrumb,
+  viewMode = 'nodes',
+  onViewModeChange 
+}: UnifiedTopBarProps) {
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'project': return '📁';
@@ -32,6 +39,34 @@ export default function UnifiedTopBar({ breadcrumbs, onNavigateBreadcrumb }: Uni
           <div className="flex-shrink-0 mr-6">
             <h1 className="text-lg font-semibold text-gray-900">Flowruns</h1>
           </div>
+          
+          {/* View Mode Toggle */}
+          {onViewModeChange && (
+            <div className="flex items-center mr-6">
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => onViewModeChange('nodes')}
+                  className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                    viewMode === 'nodes' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Nodes
+                </button>
+                <button
+                  onClick={() => onViewModeChange('flowruns')}
+                  className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                    viewMode === 'flowruns' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Flow Runs
+                </button>
+              </div>
+            </div>
+          )}
           
           {/* Breadcrumbs */}
           <div className="flex items-center space-x-1">

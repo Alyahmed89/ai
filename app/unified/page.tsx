@@ -96,6 +96,11 @@ export default function UnifiedPage() {
   // State for chat
   const [chatMessage, setChatMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  
+  // State for view mode
+  const [viewMode, setViewMode] = useState<'nodes' | 'flowruns'>('nodes');
+  const [flowRuns, setFlowRuns] = useState<any[]>([]);
+  const [flowRunsLoading, setFlowRunsLoading] = useState(false);
 
   // Fetch projects on initial load
   useEffect(() => {
@@ -479,21 +484,44 @@ export default function UnifiedPage() {
     }
   };
 
-  // Handle chat message submission
+  // Handle chat message submission - creates a task and navigates to flowruns
   const handleChatSubmit = async () => {
     if (!chatMessage.trim()) return;
     
     setIsChatLoading(true);
     try {
-      // For now, just show an alert with the message
-      // In a real implementation, this would call an AI API
-      alert(`Chat message: "${chatMessage}"\n\nThis would be sent to an AI assistant for processing.`);
+      // Create a task by calling the /start endpoint
+      const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flow: 'doc-comment',
+          input: chatMessage
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('Task created:', result);
       
       // Clear the input
       setChatMessage('');
+      
+      // Navigate to flowruns view
+      setViewMode('flowruns');
+      await fetchFlowRuns();
+      
+      // Show success message
+      alert(`Task created successfully! Flow run ID: ${result.id || 'unknown'}\n\nViewing flowruns...`);
+      
     } catch (err) {
-      console.error('Error sending chat message:', err);
-      alert('Error sending chat message');
+      console.error('Error creating task:', err);
+      alert(`Error creating task: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsChatLoading(false);
     }
@@ -505,6 +533,30 @@ export default function UnifiedPage() {
       e.preventDefault();
       handleChatSubmit();
     }
+  };
+
+  // Fetch flow runs
+  const fetchFlowRuns = async () => {
+    setFlowRunsLoading(true);
+    try {
+      const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/flow-runs?limit=50');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch flow runs: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setFlowRuns(data.data || data);
+    } catch (err) {
+      console.error('Error fetching flow runs:', err);
+      alert(`Error fetching flow runs: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setFlowRunsLoading(false);
+    }
+  };
+
+  // Navigate back to nodes view
+  const handleBackToNodes = () => {
+    setViewMode('nodes');
   };
 
   if (loading) {
@@ -537,28 +589,107 @@ export default function UnifiedPage() {
       <UnifiedTopBar
         breadcrumbs={breadcrumbs}
         onNavigateBreadcrumb={handleNavigateBreadcrumb}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
       {/* Main Content Area */}
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
-        <UnifiedSidebar
-          nodes={sidebarNodes}
-          selectedNodeId={currentNodeId}
-          onSelectNode={handleSelectNode}
-          onBack={handleBack}
-          currentPath={breadcrumbs}
-        />
+        {/* Sidebar - only show in nodes view */}
+        {viewMode === 'nodes' && (
+          <UnifiedSidebar
+            nodes={sidebarNodes}
+            selectedNodeId={currentNodeId}
+            onSelectNode={handleSelectNode}
+            onBack={handleBack}
+            currentPath={breadcrumbs}
+          />
+        )}
 
-        {/* Main Content */}
-        <UnifiedMainContent
-          nodes={mainContentNodes}
-          currentNodeType={currentNode ? ('name' in currentNode ? 'project' : currentNode.type as NodeType) : 'project'}
-          onNavigateToNode={handleNavigateToNode}
-          onAddComment={handleAddComment}
-          onAddLink={handleAddLink}
-          onAddNewNode={handleAddNewNode}
-        />
+        {/* Main Content - show nodes or flowruns */}
+        {viewMode === 'nodes' ? (
+          <UnifiedMainContent
+            nodes={mainContentNodes}
+            currentNodeType={currentNode ? ('name' in currentNode ? 'project' : currentNode.type as NodeType) : 'project'}
+            onNavigateToNode={handleNavigateToNode}
+            onAddComment={handleAddComment}
+            onAddLink={handleAddLink}
+            onAddNewNode={handleAddNewNode}
+          />
+        ) : (
+          // Flowruns View
+          <div className="flex-1 overflow-auto p-6">
+            <div className="max-w-6xl mx-auto">
+              {/* Flowruns Header */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Flow Runs</h1>
+                    <p className="text-gray-600 mt-1">
+                      {flowRunsLoading ? 'Loading flow runs...' : `${flowRuns.length} flow run${flowRuns.length !== 1 ? 's' : ''} found`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleBackToNodes}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    ← Back to Nodes
+                  </button>
+                </div>
+                
+                {/* Filter (optional) */}
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-sm text-gray-600">Filter by status:</span>
+                  <select className="px-3 py-1 border border-gray-300 rounded-md text-sm">
+                    <option value="all">All</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Flowruns List */}
+              {flowRunsLoading ? (
+                <div className="flex justify-center items-center h-64">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : flowRuns.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 mb-2">No flow runs found</div>
+                  <p className="text-gray-600">Create a task using the chat input below to start a flow run</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {flowRuns.map((flowRun) => (
+                    <NodeBox
+                      key={flowRun.id}
+                      node={{
+                        id: flowRun.id,
+                        name: flowRun.input_prompt || 'Untitled Flow Run',
+                        type: 'flowrun' as any,
+                        description: flowRun.output_response || 'No response yet',
+                        created_at: flowRun.created_at,
+                        updated_at: flowRun.updated_at,
+                        status: flowRun.status,
+                        flow_id: flowRun.flow_id,
+                        duration_ms: flowRun.duration_ms
+                      }}
+                      onNavigate={() => {
+                        // Navigate to flow run detail
+                        alert(`Viewing flow run: ${flowRun.id}`);
+                      }}
+                      onAddComment={() => {}}
+                      onAddLink={() => {}}
+                      dependencies={[]}
+                      relationships={[]}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Sticky Chat Interface */}
