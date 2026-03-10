@@ -490,15 +490,20 @@ export default function UnifiedPage() {
     
     setIsChatLoading(true);
     try {
-      // Create a task by calling the /start endpoint
-      const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/start', {
+      // Create a task by calling the /api/tasks endpoint
+      const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          flow: 'doc-comment',
-          input: chatMessage
+          flow_id: 'doc-comment',
+          title: `Task: ${chatMessage.substring(0, 50)}${chatMessage.length > 50 ? '...' : ''}`,
+          description: chatMessage,
+          status: 'pending',
+          priority: '1',
+          numeric_priority: 1,
+          task_type: 'implementation'
         })
       });
       
@@ -517,7 +522,7 @@ export default function UnifiedPage() {
       await fetchFlowRuns();
       
       // Show success message
-      alert(`Task created successfully! Flow run ID: ${result.id || 'unknown'}\n\nViewing flowruns...`);
+      alert(`Task created successfully! Task ID: ${result.id || 'unknown'}\n\nViewing flowruns...`);
       
     } catch (err) {
       console.error('Error creating task:', err);
