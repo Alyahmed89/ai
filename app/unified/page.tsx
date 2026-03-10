@@ -102,6 +102,7 @@ export default function UnifiedPage() {
   const [viewMode, setViewMode] = useState<'nodes' | 'flowruns'>('nodes');
   const [flowRuns, setFlowRuns] = useState<any[]>([]);
   const [flowRunsLoading, setFlowRunsLoading] = useState(false);
+  const [selectedFlowRun, setSelectedFlowRun] = useState<any>(null);
 
   // Fetch projects on initial load
   useEffect(() => {
@@ -668,8 +669,8 @@ export default function UnifiedPage() {
                           duration_ms: flowRun.duration_ms
                         }}
                         onNavigate={() => {
-                          // Navigate to flow run detail
-                          alert(`Viewing flow run: ${flowRun.id}`);
+                          // Show flow run detail
+                          setSelectedFlowRun(flowRun);
                         }}
                         onAddComment={() => {}}
                         onAddLink={() => {}}
@@ -684,6 +685,84 @@ export default function UnifiedPage() {
           </div>
         )}
       </div>
+
+      {/* Flow Run Detail Modal */}
+      {selectedFlowRun && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Flow Run Details</h2>
+                <p className="text-gray-600 text-sm mt-1">
+                  ID: {selectedFlowRun.id} • Status: <span className={`font-medium ${selectedFlowRun.status === 'active' ? 'text-green-600' : 'text-gray-600'}`}>{selectedFlowRun.status}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedFlowRun(null)}
+                className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="overflow-y-auto p-6 space-y-6 max-h-[calc(80vh-80px)]">
+              {/* Prompt Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Prompt</h3>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <pre className="whitespace-pre-wrap text-gray-800 font-mono text-sm">
+                    {selectedFlowRun.input_prompt || 'No prompt provided'}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Response Section */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Response</h3>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  {selectedFlowRun.output_response ? (
+                    <pre className="whitespace-pre-wrap text-gray-800 font-mono text-sm">
+                      {selectedFlowRun.output_response}
+                    </pre>
+                  ) : (
+                    <div className="text-gray-500 italic">No response yet</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Metadata Section */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Flow ID</h4>
+                  <div className="text-gray-900 font-mono text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200">
+                    {selectedFlowRun.flow_id || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Duration</h4>
+                  <div className="text-gray-900 font-mono text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200">
+                    {selectedFlowRun.duration_ms ? `${selectedFlowRun.duration_ms}ms` : 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Created</h4>
+                  <div className="text-gray-900 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200">
+                    {selectedFlowRun.created_at ? new Date(selectedFlowRun.created_at).toLocaleString() : 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Updated</h4>
+                  <div className="text-gray-900 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200">
+                    {selectedFlowRun.updated_at ? new Date(selectedFlowRun.updated_at).toLocaleString() : 'N/A'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticky Chat Interface */}
       <div className="sticky bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
