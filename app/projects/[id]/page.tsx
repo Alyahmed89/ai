@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 import NodeHierarchy from '@/app/components/NodeHierarchy';
@@ -26,7 +26,8 @@ interface Node {
   updated_at: string;
 }
 
-export default function ProjectDetailPage() {
+// Inner component that uses useParams
+function ProjectDetailPageContent() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
@@ -684,5 +685,43 @@ export default function ProjectDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Main component with Suspense boundary
+export default function ProjectDetailPage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f9fafb'
+      }}>
+        <div style={{
+          textAlign: 'center',
+          padding: '2rem'
+        }}>
+          <div style={{
+            width: '3rem',
+            height: '3rem',
+            border: '4px solid #e5e7eb',
+            borderTop: '4px solid #3b82f6',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 1rem'
+          }}></div>
+          <p style={{
+            fontSize: '1.125rem',
+            color: '#6b7280'
+          }}>
+            Loading project...
+          </p>
+        </div>
+      </div>
+    }>
+      <ProjectDetailPageContent />
+    </Suspense>
   );
 }
