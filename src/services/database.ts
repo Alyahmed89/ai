@@ -1082,12 +1082,13 @@ export async function getFlowDefinition(
   max_iterations: number;
   repository: string;
   branch: string;
+  agent?: string;
 } | null> {
   try {
     // First try the flows table with repo column
     try {
       const result = await db.prepare(`
-        SELECT id, name, '' as description, max_iterations, repo as repository, branch
+        SELECT id, name, '' as description, max_iterations, repo as repository, branch, 'openhands' as agent
         FROM flows
         WHERE id = ?
       `).bind(flow_id).first();
@@ -1104,13 +1105,13 @@ export async function getFlowDefinition(
     // Note: This is a fallback in case the table name is different
     try {
       const result2 = await db.prepare(`
-        SELECT id, name, description, max_iterations, repository, branch
+        SELECT id, name, description, max_iterations, repository, branch, COALESCE(agent, 'openhands') as agent
         FROM flow_definitions
         WHERE id = ?
       `).bind(flow_id).first();
 
       if (result2) {
-        console.log(`[DATABASE] Found flow definition in flow_definitions table for ${flow_id}`);
+        console.log(`[DATABASE] Found flow definition in flow_definitions table for ${flow_id}, agent: ${(result2 as any).agent}`);
         return result2 as any;
       }
     } catch (innerError: any) {

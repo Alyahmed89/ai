@@ -124,27 +124,90 @@ curl -X POST "http://localhost:8787/api/tasks" \
 
 The application works with the following Cloudflare D1 tables:
 
-1. **flows** - Flow definitions
-   - `id`, `name`, `first_prompt`, `deepseek_system`, `repo`, `branch`, `max_iterations`, `steps`, `priority`, `created_at`
-   - Note: `priority` field (integer, default 0) determines execution priority. Higher number = higher priority.
+1. **flow_definitions** - Flow definitions (primary table)
+   - `id`, `name`, `description`, `max_iterations`, `repository`, `branch`, `priority`, `agent`, `created_at`, `updated_at`, `next_flow_id`
+   - `agent` field: Determines which agent to use for execution. Values: `'openhands'` (default) or `'deepseek'`
+   - When `agent = 'deepseek'`: Flow completes after DeepSeek response (skips OpenHands)
+   - When `agent = 'openhands'`: Normal flow (DeepSeek → OpenHands)
+   - `priority` field (integer, default 0) determines execution priority. Higher number = higher priority.
 
-2. **flow_steps** - Steps within flows
+2. **flows** - Legacy flow definitions (deprecated, use flow_definitions)
+   - `id`, `name`, `first_prompt`, `deepseek_system`, `repo`, `branch`, `max_iterations`, `steps`, `priority`, `created_at`
+
+3. **flow_steps** - Steps within flows
    - `id`, `flow_id`, `step_number`, `prompt`, `created_at`
 
-3. **flow_conditions** - Conditions for flow steps
+4. **flow_conditions** - Conditions for flow steps
    - `id`, `flow_id`, `step_id`, `condition_type`, `condition_value`, `created_at`
 
-4. **tasks** - Task management
+5. **tasks** - Task management
    - `id`, `flow_id`, `title`, `description`, `status`, `order_index`, `created_at`
 
-5. **flow_runs** - Flow execution history with prompts and responses
+6. **flow_runs** - Flow execution history with prompts and responses
    - `id`, `flow_id`, `conversation_id`, `step_id`, `input_prompt`, `output_response`, `status`, `duration_ms`, `created_at`, `next_flow_id`
 
-6. **iterations** - Iteration tracking (table exists in schema but may not be populated)
+7. **iterations** - Iteration tracking (table exists in schema but may not be populated)
    - `id`, `flow_run_id`, `iteration_number`, `prompt`, `response`, `openhands_response`, `status`, `created_at`
    
-7. **flow_execution_data** - Flow execution metadata
+8. **flow_execution_data** - Flow execution metadata
    - `id`, `flow_id`, `conversation_id`, `key`, `value`, `created_at`, `updated_at`
+
+## Agent Field Configuration
+
+The `agent` field in the `flow_definitions` table controls which agent executes the flow:
+
+### Agent Types
+1. **`openhands`** (default): Full execution flow
+   - DeepSeek processes the request
+   - Response is sent to OpenHands for execution
+   - OpenHands performs actions and returns results
+   - Suitable for flows requiring code execution, file operations, etc.
+
+2. **`deepseek`**: DeepSeek-only execution
+   - DeepSeek processes the request
+   - Flow completes immediately after DeepSeek response
+   - OpenHands is skipped entirely
+   - Suitable for documentation generation, code analysis, planning flows
+
+### Example Flow Definitions
+
+```sql
+-- DeepSeek-only flow (e.g., documentation generation)
+INSERT INTO flow_definitions (id, name, description, agent, repository, branch, priority) 
+VALUES ('doc-comment', 'Documentation Comment Generator', 'Generate documentation comments for code', 'deepseek', '[MANUAL]', '[MANUAL]', 0);
+
+-- OpenHands flow (e.g., code execution flow)
+INSERT INTO flow_definitions (id, name, description, agent, repository, branch, priority) 
+VALUES ('code-refactor', 'Code Refactoring', 'Refactor and improve code quality', 'openhands', 'my-org/my-repo', 'main', 1);
+
+-- Default agent (openhands) - agent field can be omitted
+INSERT INTO flow_definitions (id, name, description, repository, branch, priority) 
+VALUES ('test-flow', 'Test Flow', 'Test execution flow', 'test-org/test-repo', 'develop', 2);
+```
+
+### Adding Agent Column to Existing Database
+
+If the `agent` column doesn't exist in your `flow_definitions` table, add it with:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer H9uhqAdjj9dgk20BvV48mwRZ6tKflo4kiqaEQYNL" \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "ALTER TABLE flow_definitions ADD COLUMN agent TEXT DEFAULT \"openhands\""}' \
+  "https://api.cloudflare.com/client/v4/accounts/e39371fc55a5c9ef7ed83e16660bd7bb/d1/database/ce8f2a2c-6e4b-4398-b73e-ba8f204f609a/query"
+```
+
+### Updating Existing Flows
+
+To update an existing flow to use DeepSeek agent:
+```sql
+UPDATE flow_definitions SET agent = 'deepseek' WHERE id = 'doc-comment';
+```
+
+To update an existing flow to use OpenHands agent:
+```sql
+UPDATE flow_definitions SET agent = 'openhands' WHERE id = 'etaflow';
+```
 
 ## Cloudflare D1 Configuration
 

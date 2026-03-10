@@ -923,6 +923,15 @@ export class ConversationOrchestratorDO_2026A {
               effectiveMaxIterations = flowDefinition.max_iterations;
             }
             
+            // Store agent type if specified
+            if (flowDefinition.agent) {
+              this.conversation.agent = flowDefinition.agent;
+              console.log(`[DO:${this.state.id}] Using agent from flow definition: ${flowDefinition.agent}`);
+            } else {
+              this.conversation.agent = 'openhands'; // Default
+              console.log(`[DO:${this.state.id}] No agent specified in flow definition, using default: openhands`);
+            }
+            
             console.log(`[DO:${this.state.id}] Using repository from database: ${effectiveRepository}, branch: ${effectiveBranch}`);
             
             // Warn if repository is placeholder
@@ -932,6 +941,7 @@ export class ConversationOrchestratorDO_2026A {
           } else {
             console.warn(`[DO:${this.state.id}] No flow definition found for ${flow_id} in database. Using placeholder values.`);
             console.warn(`[DO:${this.state.id}] To fix: Ensure 'flows' or 'flow_definitions' table exists with repository and branch columns.`);
+            this.conversation.agent = 'openhands'; // Default
           }
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
@@ -1800,6 +1810,14 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText ? validationResult.resolvedText.substring(0, 100) + "..." : "EMPTY"}...`);
+    
+    // Check agent type - if deepseek, skip OpenHands and complete
+    if (this.conversation.agent === 'deepseek') {
+      console.log(`[DO:${this.state.id}] Agent is 'deepseek', skipping OpenHands and completing flow`);
+      await this.handleDoneResponse(validationResult.resolvedText || deepseekResult.response!, 'deepseek_only_complete');
+      await this.stopConversation('deepseek_only_complete');
+      return;
+    }
     
     // TEST: Simulate OpenHands API failure
     const TEST_OPENHANDS_FAILURE = false; // Set to true to test failure
@@ -3218,6 +3236,14 @@ ${messageContent}`;
     if (step.step_type === 'hello') {
       console.log(`[DO:${this.state.id}] 'hello' step type detected, completing immediately`);
       await this.handleStepCompletion(step, "Hello step completed successfully");
+      return;
+    }
+    
+    // Check agent type - if deepseek, skip OpenHands and complete step
+    if (this.conversation.agent === 'deepseek') {
+      console.log(`[DO:${this.state.id}] Agent is 'deepseek', skipping OpenHands for step execution`);
+      // For deepseek agent, we just complete the step without OpenHands
+      await this.completeCurrentStep('Step completed (deepseek agent)', 'success');
       return;
     }
     

@@ -27,6 +27,7 @@ export interface ConversationData {
   repository: string;
   branch?: string;
   max_iterations: number;
+  agent?: string; // Agent type: 'openhands' (default) or 'deepseek'
   
   // Current status
   status: 'active' | 'stopped' | 'error';
