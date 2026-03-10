@@ -3319,7 +3319,8 @@ ${messageContent}`;
       
       if (!deepseekResult.success) {
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
-        await this.completeCurrentStep(`DeepSeek API error: ${deepseekResult.error}`, 'error');
+        // For errors, we still need to complete the step to move forward
+        await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
         return;
       }
       
@@ -3328,7 +3329,7 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] DeepSeek response received (${response.length} chars)`);
       
       // Complete the step with DeepSeek response
-      await this.completeCurrentStep(response, 'success');
+      await this.handleStepCompletion(step, response);
       return;
     }
     
