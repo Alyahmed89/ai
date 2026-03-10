@@ -52,6 +52,16 @@ interface NodeRelationship {
   created_at: string;
 }
 
+interface NodeDependency {
+  id: string;
+  node_id: string;
+  depends_on_id: string;
+  type: string;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
 interface UnifiedNode {
   id: string;
   title: string;
@@ -60,6 +70,8 @@ interface UnifiedNode {
   children?: UnifiedNode[];
   leftLinks?: NodeLink[];
   rightLinks?: NodeLink[];
+  dependencies?: NodeDependency[];
+  relationships?: NodeRelationship[];
   status?: string;
   project_id?: string;
   parent_id?: string;
@@ -76,6 +88,8 @@ export default function UnifiedPage() {
   const [nodes, setNodes] = useState<ApiNode[]>([]);
   const [nodeHierarchy, setNodeHierarchy] = useState<Map<string, ApiNode[]>>(new Map());
   const [nodeLinks, setNodeLinks] = useState<Map<string, NodeLink[]>>(new Map());
+  const [nodeDependencies, setNodeDependencies] = useState<Map<string, NodeDependency[]>>(new Map());
+  const [nodeRelationships, setNodeRelationships] = useState<Map<string, NodeRelationship[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -171,6 +185,34 @@ export default function UnifiedPage() {
               return newLinksMap;
             });
           }
+          
+          // Fetch dependencies for this node
+          const dependenciesResponse = await apiClient.getNodeDependencies(currentNodeId);
+          if (dependenciesResponse.ok) {
+            const dependenciesData = await dependenciesResponse.json();
+            const dependencies = dependenciesData.success ? dependenciesData.data : [];
+            
+            // Update node dependencies map
+            setNodeDependencies(prevDeps => {
+              const newDepsMap = new Map(prevDeps);
+              newDepsMap.set(currentNodeId, dependencies);
+              return newDepsMap;
+            });
+          }
+          
+          // Fetch relationships for this node
+          const relationshipsResponse = await apiClient.getNodeRelationships(currentNodeId);
+          if (relationshipsResponse.ok) {
+            const relationshipsData = await relationshipsResponse.json();
+            const relationships = relationshipsData.success ? relationshipsData.data : [];
+            
+            // Update node relationships map
+            setNodeRelationships(prevRels => {
+              const newRelsMap = new Map(prevRels);
+              newRelsMap.set(currentNodeId, relationships);
+              return newRelsMap;
+            });
+          }
         }
 
         setError(null);
@@ -202,6 +244,8 @@ export default function UnifiedPage() {
           const children = buildTree(node.id);
           const links = nodeLinks.get(node.id);
           const linkArray = Array.isArray(links) ? links : [];
+          const dependencies = nodeDependencies.get(node.id) || [];
+          const relationships = nodeRelationships.get(node.id) || [];
           
           // Separate left and right links based on relation_type
           const leftLinks = linkArray.filter(link => link && link.relation_type && (link.relation_type === 'dependency' || link.relation_type === 'left'));
@@ -217,7 +261,9 @@ export default function UnifiedPage() {
             parent_id: node.parent_id,
             children: children.length > 0 ? children : undefined,
             leftLinks: leftLinks.length > 0 ? leftLinks : undefined,
-            rightLinks: rightLinks.length > 0 ? rightLinks : undefined
+            rightLinks: rightLinks.length > 0 ? rightLinks : undefined,
+            dependencies: dependencies.length > 0 ? dependencies : undefined,
+            relationships: relationships.length > 0 ? relationships : undefined
           };
         });
     };

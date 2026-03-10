@@ -22,6 +22,8 @@ interface Node {
   children?: Node[];
   leftLinks?: NodeLink[];
   rightLinks?: NodeLink[];
+  dependencies?: any[];
+  relationships?: any[];
   project_id?: string;
   parent_id?: string;
 }
@@ -70,6 +72,8 @@ export default function UnifiedMainContent({
           commentCount={node.commentCount}
           leftLinks={node.leftLinks}
           rightLinks={node.rightLinks}
+          dependencies={node.dependencies}
+          relationships={node.relationships}
           onNavigate={onNavigateToNode}
           onAddComment={onAddComment}
           onAddLink={(targetId, description, linkType) => onAddLink(node.id, targetId, description, linkType)}
@@ -95,14 +99,6 @@ export default function UnifiedMainContent({
               {nodes.length} {nodes.length === 1 ? 'item' : 'items'} total
             </p>
           </div>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => onAddNewNode('New ' + currentNodeType, '', currentNodeType)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              Add New {currentNodeType.charAt(0).toUpperCase() + currentNodeType.slice(1)}
-            </button>
-          </div>
         </div>
 
         {/* Content */}
@@ -115,12 +111,6 @@ export default function UnifiedMainContent({
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
             <p className="text-gray-600 mb-4">No {currentNodeType}s available</p>
-            <button
-              onClick={() => onAddNewNode('New ' + currentNodeType, '', currentNodeType)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              Create your first {currentNodeType}
-            </button>
           </div>
         ) : (
           <div className="space-y-4">

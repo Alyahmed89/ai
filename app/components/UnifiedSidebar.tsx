@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-
 interface Node {
   id: string;
   title: string;
@@ -25,21 +23,8 @@ export default function UnifiedSidebar({
   onBack,
   currentPath 
 }: UnifiedSidebarProps) {
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-
-  const toggleExpand = (nodeId: string) => {
-    const newExpanded = new Set(expandedNodes);
-    if (newExpanded.has(nodeId)) {
-      newExpanded.delete(nodeId);
-    } else {
-      newExpanded.add(nodeId);
-    }
-    setExpandedNodes(newExpanded);
-  };
-
   const renderNode = (node: Node, depth: number = 0) => {
     const hasChildren = node.children && node.children.length > 0;
-    const isExpanded = expandedNodes.has(node.id);
     const isSelected = selectedNodeId === node.id;
 
     return (
@@ -54,19 +39,8 @@ export default function UnifiedSidebar({
           <span className="text-sm font-medium text-gray-900 truncate">
             {node.title}
           </span>
-          {hasChildren && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpand(node.id);
-              }}
-              className="ml-2 text-gray-500 hover:text-gray-700"
-            >
-              {isExpanded ? '−' : '›'}
-            </button>
-          )}
         </div>
-        {hasChildren && isExpanded && (
+        {hasChildren && (
           <div>
             {node.children!.map(child => renderNode(child, depth + 1))}
           </div>

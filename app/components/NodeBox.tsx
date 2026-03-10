@@ -11,6 +11,25 @@ interface NodeLink {
   created_at: string;
 }
 
+interface NodeDependency {
+  id: string;
+  node_id: string;
+  depends_on_id: string;
+  type: string;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+interface NodeRelationship {
+  id: string;
+  source_id: string;
+  target_id: string;
+  type: string;
+  metadata: string;
+  created_at: string;
+}
+
 interface NodeBoxProps {
   id: string;
   title: string;
@@ -20,6 +39,8 @@ interface NodeBoxProps {
   commentCount?: number;
   leftLinks?: NodeLink[];
   rightLinks?: NodeLink[];
+  dependencies?: NodeDependency[];
+  relationships?: NodeRelationship[];
   level?: number;
   onNavigate: (nodeId: string) => void;
   onAddComment: (nodeId: string) => void;
@@ -35,6 +56,8 @@ export default function NodeBox({
   commentCount = 0,
   leftLinks = [],
   rightLinks = [],
+  dependencies = [],
+  relationships = [],
   level = 0,
   onNavigate,
   onAddComment,
@@ -58,21 +81,7 @@ export default function NodeBox({
     }
   };
 
-  const [showAddLinkForm, setShowAddLinkForm] = useState(false);
-  const [linkTargetId, setLinkTargetId] = useState('');
-  const [linkDescription, setLinkDescription] = useState('');
-  const [linkType, setLinkType] = useState('reference');
 
-  const handleAddLinkSubmit = (e: React.FormEvent) => {
-    e.stopPropagation();
-    if (linkTargetId.trim()) {
-      onAddLink(linkTargetId, linkDescription, linkType);
-      setShowAddLinkForm(false);
-      setLinkTargetId('');
-      setLinkDescription('');
-      setLinkType('reference');
-    }
-  };
 
   const renderLink = (link: NodeLink, direction: 'left' | 'right') => (
     <button
@@ -89,6 +98,40 @@ export default function NodeBox({
       <div className="text-left">
         <div className="font-medium text-gray-900">{link.description || 'Link'}</div>
         <div className="text-xs text-gray-500">{link.type} • Click to navigate</div>
+      </div>
+    </button>
+  );
+
+  const renderDependency = (dependency: NodeDependency) => (
+    <button
+      key={dependency.id}
+      onClick={(e) => {
+        e.stopPropagation();
+        onNavigate(dependency.depends_on_id);
+      }}
+      className="flex items-center gap-2 px-3 py-1.5 text-sm rounded bg-white hover:bg-gray-100 transition-colors border border-gray-200"
+    >
+      <span className="text-xs opacity-60">📋</span>
+      <div className="text-left">
+        <div className="font-medium text-gray-900">Depends on</div>
+        <div className="text-xs text-gray-500">{dependency.type} • Click to navigate</div>
+      </div>
+    </button>
+  );
+
+  const renderRelationship = (relationship: NodeRelationship) => (
+    <button
+      key={relationship.id}
+      onClick={(e) => {
+        e.stopPropagation();
+        onNavigate(relationship.target_id);
+      }}
+      className="flex items-center gap-2 px-3 py-1.5 text-sm rounded bg-white hover:bg-gray-100 transition-colors border border-gray-200"
+    >
+      <span className="text-xs opacity-60">🔗</span>
+      <div className="text-left">
+        <div className="font-medium text-gray-900">{relationship.type}</div>
+        <div className="text-xs text-gray-500">Relationship • Click to navigate</div>
       </div>
     </button>
   );
@@ -117,28 +160,7 @@ export default function NodeBox({
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddComment(id);
-            }}
-            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-200 flex items-center gap-1"
-            title="Add comment"
-          >
-            💬
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAddLinkForm(!showAddLinkForm);
-            }}
-            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-200 flex items-center gap-1"
-            title="Add link"
-          >
-            🔗
-          </button>
-        </div>
+
       </div>
 
       {/* Content */}
@@ -148,96 +170,50 @@ export default function NodeBox({
         </div>
       </div>
 
-      {/* Add Link Form */}
-      {showAddLinkForm && (
-        <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200" onClick={e => e.stopPropagation()}>
-          <h4 className="text-sm font-medium text-gray-900 mb-2">Add Link</h4>
-          <div className="space-y-2">
-            <input
-              type="text"
-              placeholder="Target Node ID"
-              value={linkTargetId}
-              onChange={(e) => setLinkTargetId(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              onClick={e => e.stopPropagation()}
-            />
-            <input
-              type="text"
-              placeholder="Description (optional)"
-              value={linkDescription}
-              onChange={(e) => setLinkDescription(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              onClick={e => e.stopPropagation()}
-            />
-            <select
-              value={linkType}
-              onChange={(e) => setLinkType(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              onClick={e => e.stopPropagation()}
-            >
-              <option value="reference">Reference</option>
-              <option value="dependency">Dependency</option>
-              <option value="related">Related</option>
-              <option value="parent">Parent</option>
-              <option value="child">Child</option>
-            </select>
-            <div className="flex gap-2">
-              <button
-                onClick={handleAddLinkSubmit}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                Add Link
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowAddLinkForm(false);
-                }}
-                className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-500"
-              >
-                Cancel
-              </button>
-            </div>
+
+
+      {/* Links - Always visible */}
+      {(leftLinks.length > 0 || rightLinks.length > 0) && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="text-xs font-medium text-gray-500 mb-2">Links</div>
+          <div className="grid grid-cols-2 gap-2">
+            {leftLinks.length > 0 && (
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Incoming Links</div>
+                <div className="space-y-1">
+                  {leftLinks.map(link => renderLink(link, 'left'))}
+                </div>
+              </div>
+            )}
+            {rightLinks.length > 0 && (
+              <div>
+                <div className="text-xs text-gray-500 mb-1">Outgoing Links</div>
+                <div className="space-y-1">
+                  {rightLinks.map(link => renderLink(link, 'right'))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Links */}
-      {(leftLinks.length > 0 || rightLinks.length > 0) && (
+      {/* Dependencies - Always visible */}
+      {dependencies.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="flex justify-between items-center mb-2">
-            <div className="text-xs font-medium text-gray-500">Links</div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowLinks(!showLinks);
-              }}
-              className="text-xs text-gray-500 hover:text-gray-700"
-            >
-              {showLinks ? 'Hide' : 'Show'} links
-            </button>
+          <div className="text-xs font-medium text-gray-500 mb-2">Dependencies</div>
+          <div className="space-y-1">
+            {dependencies.map(dep => renderDependency(dep))}
           </div>
-          
-          {showLinks && (
-            <div className="grid grid-cols-2 gap-2">
-              {leftLinks.length > 0 && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Incoming Links</div>
-                  <div className="space-y-1">
-                    {leftLinks.map(link => renderLink(link, 'left'))}
-                  </div>
-                </div>
-              )}
-              {rightLinks.length > 0 && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Outgoing Links</div>
-                  <div className="space-y-1">
-                    {rightLinks.map(link => renderLink(link, 'right'))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        </div>
+      )}
+
+      {/* Relationships - Always visible */}
+      {relationships.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="text-xs font-medium text-gray-500 mb-2">Relationships</div>
+          <div className="space-y-1">
+            {relationships.map(rel => renderRelationship(rel))}
+          </div>
         </div>
       )}
     </div>

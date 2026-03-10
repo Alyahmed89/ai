@@ -25,9 +25,14 @@ export default function UnifiedTopBar({ breadcrumbs, onNavigateBreadcrumb }: Uni
   };
 
   return (
-    <div className="bg-gray-50">
+    <div className="bg-gray-50 border-b border-gray-200">
       <div className="px-6">
         <div className="flex items-center h-12">
+          {/* App Name */}
+          <div className="flex-shrink-0 mr-6">
+            <h1 className="text-lg font-semibold text-gray-900">Flowruns</h1>
+          </div>
+          
           {/* Breadcrumbs */}
           <div className="flex items-center space-x-1">
             {breadcrumbs.length === 0 ? (
