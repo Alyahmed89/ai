@@ -983,28 +983,11 @@ export class ConversationOrchestratorDO_2026A {
             }
           );
           
-          // Build initial prompt with resolved instructions
-          initialPrompt = `Execute step: ${firstStep.title}`;
-          
-          // Add task data if available
-          if (resolvedStep.task_data) {
-            initialPrompt += `\n\n=== TASK ===`;
-            if (firstStep.task_id) {
-              initialPrompt += `\nTask ID: ${firstStep.task_id}`;
-            }
-            if (resolvedStep.task_data.title) {
-              initialPrompt += `\nTitle: ${resolvedStep.task_data.title}`;
-            }
-            if (resolvedStep.task_data.description) {
-              initialPrompt += `\nDescription: ${resolvedStep.task_data.description}`;
-            }
-            initialPrompt += `\n=== END TASK ===\n`;
-          }
-          
-          // Add the resolved instructions
-          initialPrompt += `\n${resolvedStep.instructions}`;
+          // Use resolved instructions directly
+          initialPrompt = resolvedStep.instructions;
           
           console.log(`[DO:${this.state.id}] Resolved first step instructions with task data`);
+          console.log(`[DO:${this.state.id}] Resolved instructions length: ${initialPrompt.length}`);
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
           // Continue with default prompt if resolution fails
