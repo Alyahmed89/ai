@@ -3333,7 +3333,8 @@ ${messageContent}`;
         // For errors, we still need to complete the step to move forward
         await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
         // Check if conversation is still active before scheduling next alarm
-        if (this.conversation && this.conversation.state === 'SENDING_STEP') {
+        // Check for any active state, not just SENDING_STEP
+        if (this.conversation && this.conversation.state !== 'DONE') {
           await this.scheduleNextAlarm(1000); // Schedule immediately for next step
         }
         return;
@@ -3346,7 +3347,8 @@ ${messageContent}`;
       // Complete the step with DeepSeek response
       await this.handleStepCompletion(step, response);
       // Check if conversation is still active before scheduling next alarm
-      if (this.conversation && this.conversation.state === 'SENDING_STEP') {
+      // Check for any active state, not just SENDING_STEP
+      if (this.conversation && this.conversation.state !== 'DONE') {
         await this.scheduleNextAlarm(1000); // Schedule immediately for next step
       }
       return;
@@ -4046,13 +4048,17 @@ ${messageContent}`;
   private async moveToNextStep(): Promise<void> {
     if (!this.conversation) return;
     
-    // Increment step number
+    // Increment step index (used for step selection)
+    const currentIndex = this.conversation.current_step_index || 0;
+    this.conversation.current_step_index = currentIndex + 1;
+    
+    // Also increment flow step counter for logging
     this.conversation.current_flow_step = (this.conversation.current_flow_step || 0) + 1;
     
     // Save updated conversation state
     await this.state.storage.put('conversation', this.conversation);
     
-    console.log(`[DO:${this.state.id}] Moved to step ${this.conversation.current_flow_step}`);
+    console.log(`[DO:${this.state.id}] Moved to step ${this.conversation.current_flow_step} (index: ${this.conversation.current_step_index})`);
   }
 
   /**
