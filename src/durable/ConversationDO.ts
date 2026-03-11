@@ -1416,16 +1416,15 @@ export class ConversationOrchestratorDO_2026A {
         // NO MORE STEPS - FLOW TERMINATION
         console.log(`[DO:${this.state.id}] No more steps for flow ${flowId}, terminating flow`);
         
+        // Save flow run to database with completed status
+        try {
+          await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error saving flow run to database: ${error.message}`);
+        }
+        
         // Restart the flow with same payload before stopping
         await this.restartFlow();
-        
-        // Mark flow as completed in database
-        try {
-          const { updateFlowRunStatus } = await import('../services/database');
-          await updateFlowRunStatus(this.env.FLOW_RUNS_DB, this.flowRunId!, 'completed');
-        } catch (error: any) {
-          console.error(`[DO:${this.state.id}] Error updating flow run status: ${error.message}`);
-        }
         
         // Cancel alarms
         try {
@@ -2412,6 +2411,12 @@ export class ConversationOrchestratorDO_2026A {
       
       if (!nextStep) {
         console.log(`[DO:${this.state.id}] No more steps in flow, completing flow execution`);
+        // Save flow run to database with completed status
+        try {
+          await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error saving flow run to database: ${error.message}`);
+        }
         // Restart the flow with same payload before stopping
         await this.restartFlow();
         await this.stopConversation('flow_completed');
@@ -2817,6 +2822,21 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     if (this.conversation) {
+      // Save flow run to database if this is a flow execution
+      try {
+        // Determine status based on reason
+        let flowStatus: 'completed' | 'stopped' | 'new_flow_started' = 'stopped';
+        if (reason.includes('flow_completed') || reason.includes('max_iterations_reached') || reason.includes('END_FLOW')) {
+          flowStatus = 'completed';
+        } else if (reason.includes('new_flow_started') || reason.includes('end_flow_with_new_prompt')) {
+          flowStatus = 'new_flow_started';
+        }
+        
+        await this.saveFlowRunToDatabase(reason, flowStatus);
+      } catch (error: any) {
+        console.error(`[DO:${this.state.id}] Error saving flow run in stopConversation: ${error.message}`);
+      }
+      
       this.conversation.state = 'DONE';
       this.conversation.status = 'stopped';
       this.conversation.error_message = reason;
@@ -3574,6 +3594,10 @@ ${messageContent}`;
     
     // 0. Update execution data based on step results
     await this.updateExecutionData(step, response);
+    
+    // Store the response for database persistence (same as OpenHands responses)
+    this.conversation.last_step_response = response;
+    console.log(`[DO:${this.state.id}] Stored DeepSeek response (${response.length} chars) for database persistence`);
     
     // 1. Check step conditions (flow transitions removed)
     const stepEvaluation = await this.shouldExecuteStep(step);
