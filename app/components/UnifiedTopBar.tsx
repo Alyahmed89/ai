@@ -71,7 +71,7 @@ export default function UnifiedTopBar({
           {/* Breadcrumbs */}
           <div className="flex items-center space-x-1">
             {breadcrumbs.length === 0 ? (
-              <span className="text-sm text-gray-500">Select a project</span>
+              <span className="text-sm text-gray-500"></span>
             ) : (
               breadcrumbs.map((item, index) => (
                 <div key={item.id} className="flex items-center">

@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Flowruns - Projects Dashboard",
-  description: "A project management and flow execution system",
+  title: "Flowruns",
+  description: "",
 };
 
 export default function RootLayout({

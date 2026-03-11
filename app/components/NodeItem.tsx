@@ -70,7 +70,7 @@ export default function NodeItem({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                placeholder="Enter node title"
+                placeholder=""
                 autoFocus
               />
             </div>
@@ -80,7 +80,7 @@ export default function NodeItem({
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                placeholder="Enter node content"
+                placeholder=""
                 rows={4}
               />
             </div>
@@ -89,13 +89,13 @@ export default function NodeItem({
                 onClick={handleCancel}
                 className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-all duration-200"
               >
-                Cancel
+                
               </button>
               <button
                 onClick={handleSave}
                 className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg shadow-sm hover:shadow transition-all duration-200"
               >
-                Save Changes
+                
               </button>
             </div>
           </div>
@@ -107,16 +107,16 @@ export default function NodeItem({
                 <button
                   onClick={() => setIsEditing(true)}
                   className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5 font-medium"
-                  title="Edit"
+                  title=""
                 >
-                  Edit
+                  
                 </button>
                 <button
                   onClick={() => onDelete(node.id)}
                   className="text-xs text-red-600 hover:text-red-800 px-3 py-1.5 font-medium"
-                  title="Delete"
+                  title=""
                 >
-                  Delete
+                  
                 </button>
               </div>
             </div>
@@ -125,7 +125,6 @@ export default function NodeItem({
             {/* Child nodes with conditions */}
             {childNodes.length > 0 && (
               <div className="mb-4">
-                <div className="text-xs font-medium text-gray-500 mb-2">Child Nodes:</div>
                 <div className="flex flex-wrap gap-2">
                   {childNodes.map((child, index) => (
                     <div key={index} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg">

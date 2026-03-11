@@ -45,6 +45,7 @@ interface NodeBoxProps {
   onNavigate: (nodeId: string) => void;
   onAddComment: (nodeId: string) => void;
   onAddLink: (targetId: string, description: string, linkType: string) => void;
+  hasChildren?: boolean; // Optional: indicates if this node has children for leveling feature
 }
 
 // Alternative props for flowrun display
@@ -87,6 +88,7 @@ export default function NodeBox(props: Props) {
   const onNavigate = isFlowRunProps ? props.onNavigate : props.onNavigate;
   const onAddComment = isFlowRunProps ? props.onAddComment : props.onAddComment;
   const onAddLink = isFlowRunProps ? props.onAddLink : props.onAddLink;
+  const hasChildren = isFlowRunProps ? false : (props.hasChildren || false);
   
   // Additional flowrun data
   const flowRunData = isFlowRunProps ? props.node : null;
@@ -123,8 +125,8 @@ export default function NodeBox(props: Props) {
         {direction === 'left' ? '←' : '→'}
       </span>
       <div className="text-left">
-        <div className="font-medium text-gray-900">{link.description || 'Link'}</div>
-        <div className="text-xs text-gray-500">{link.type} • Click to navigate</div>
+        <div className="font-medium text-gray-900">{link.description || ''}</div>
+        <div className="text-xs text-gray-500">{link.type}</div>
       </div>
     </button>
   );
@@ -140,8 +142,8 @@ export default function NodeBox(props: Props) {
     >
       <span className="text-xs opacity-60">📋</span>
       <div className="text-left">
-        <div className="font-medium text-gray-900">Depends on</div>
-        <div className="text-xs text-gray-500">{dependency.type} • Click to navigate</div>
+        <div className="font-medium text-gray-900">{dependency.type}</div>
+        <div className="text-xs text-gray-500">{dependency.metadata || ''}</div>
       </div>
     </button>
   );
@@ -158,7 +160,7 @@ export default function NodeBox(props: Props) {
       <span className="text-xs opacity-60">🔗</span>
       <div className="text-left">
         <div className="font-medium text-gray-900">{relationship.type}</div>
-        <div className="text-xs text-gray-500">Relationship • Click to navigate</div>
+        <div className="text-xs text-gray-500">{relationship.metadata || ''}</div>
       </div>
     </button>
   );
@@ -189,7 +191,14 @@ export default function NodeBox(props: Props) {
           </div>
         </div>
         
-
+        {/* Chevron for nodes with children */}
+        {hasChildren && (
+          <div className="text-gray-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -232,11 +241,9 @@ export default function NodeBox(props: Props) {
       {/* Links - Always visible */}
       {(leftLinks.length > 0 || rightLinks.length > 0) && (
         <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-xs font-medium text-gray-500 mb-2">Links</div>
           <div className="grid grid-cols-2 gap-2">
             {leftLinks.length > 0 && (
               <div>
-                <div className="text-xs text-gray-500 mb-1">Incoming Links</div>
                 <div className="space-y-1">
                   {leftLinks.map(link => renderLink(link, 'left'))}
                 </div>
@@ -244,7 +251,6 @@ export default function NodeBox(props: Props) {
             )}
             {rightLinks.length > 0 && (
               <div>
-                <div className="text-xs text-gray-500 mb-1">Outgoing Links</div>
                 <div className="space-y-1">
                   {rightLinks.map(link => renderLink(link, 'right'))}
                 </div>
@@ -257,7 +263,6 @@ export default function NodeBox(props: Props) {
       {/* Dependencies - Always visible */}
       {dependencies.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-xs font-medium text-gray-500 mb-2">Dependencies</div>
           <div className="space-y-1">
             {dependencies.map(dep => renderDependency(dep))}
           </div>
@@ -267,7 +272,6 @@ export default function NodeBox(props: Props) {
       {/* Relationships - Always visible */}
       {relationships.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-xs font-medium text-gray-500 mb-2">Relationships</div>
           <div className="space-y-1">
             {relationships.map(rel => renderRelationship(rel))}
           </div>

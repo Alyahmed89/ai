@@ -35,6 +35,7 @@ interface UnifiedMainContentProps {
   onAddComment: (nodeId: string) => void;
   onAddLink: (nodeId: string, targetId: string, description: string, linkType: string) => void;
   onAddNewNode: (title: string, content: string, type: string, parentId?: string) => void;
+  nodesWithChildren?: Set<string>; // Optional: set of node IDs that have children
 }
 
 export default function UnifiedMainContent({
@@ -43,19 +44,20 @@ export default function UnifiedMainContent({
   onNavigateToNode,
   onAddComment,
   onAddLink,
-  onAddNewNode
+  onAddNewNode,
+  nodesWithChildren
 }: UnifiedMainContentProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'project': return 'Projects';
-      case 'doc': return 'Documents';
-      case 'flow': return 'Flows';
-      case 'task': return 'Tasks';
-      case 'step': return 'Steps';
-      case 'flow-run': return 'Flow Runs';
-      default: return 'Items';
+      case 'project': return '';
+      case 'doc': return '';
+      case 'flow': return '';
+      case 'task': return '';
+      case 'step': return '';
+      case 'flow-run': return 'Flowruns';
+      default: return '';
     }
   };
 
@@ -78,6 +80,7 @@ export default function UnifiedMainContent({
           onAddComment={onAddComment}
           onAddLink={(targetId, description, linkType) => onAddLink(node.id, targetId, description, linkType)}
           level={level}
+          hasChildren={nodesWithChildren ? nodesWithChildren.has(node.id) : false}
         />
         {node.children && node.children.length > 0 && (
           <div className="mt-2">
@@ -95,9 +98,6 @@ export default function UnifiedMainContent({
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{getTypeLabel(currentNodeType)}</h1>
-            <p className="text-gray-600 mt-1">
-              {nodes.length} {nodes.length === 1 ? 'item' : 'items'} total
-            </p>
           </div>
         </div>
 
@@ -109,8 +109,6 @@ export default function UnifiedMainContent({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
-            <p className="text-gray-600 mb-4">No {currentNodeType}s available</p>
           </div>
         ) : (
           <div className="space-y-4">

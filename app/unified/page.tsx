@@ -31,7 +31,7 @@ interface ApiNode {
   parent_id?: string;
 }
 
-interface NodeLink {
+interface ApiNodeLink {
   id: string;
   source_node_id: string;
   target_node_id: string;
@@ -42,6 +42,15 @@ interface NodeLink {
   target_title?: string;
   target_type?: string;
   direction?: 'outgoing' | 'incoming';
+}
+
+interface NodeLink {
+  id: string;
+  source_id: string;
+  target_id: string;
+  description: string;
+  type: string;
+  created_at: string;
 }
 
 interface NodeRelationship {
@@ -88,11 +97,15 @@ export default function UnifiedPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [nodes, setNodes] = useState<ApiNode[]>([]);
   const [nodeHierarchy, setNodeHierarchy] = useState<Map<string, ApiNode[]>>(new Map());
-  const [nodeLinks, setNodeLinks] = useState<Map<string, NodeLink[]>>(new Map());
+  const [nodeLinks, setNodeLinks] = useState<Map<string, ApiNodeLink[]>>(new Map());
   const [nodeDependencies, setNodeDependencies] = useState<Map<string, NodeDependency[]>>(new Map());
   const [nodeRelationships, setNodeRelationships] = useState<Map<string, NodeRelationship[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // State for node leveling
+  const [allNodes, setAllNodes] = useState<ApiNode[]>([]); // Store all nodes for filtering
+  const [currentParentId, setCurrentParentId] = useState<string | null>(null); // Track current parent node
   
   // State for chat
   const [chatMessage, setChatMessage] = useState('');
@@ -148,14 +161,29 @@ export default function UnifiedPage() {
         // Check if current node is a project
         const currentProject = projects.find(p => p.id === currentNodeId);
         if (currentProject) {
-          // Fetch nodes for this project
+          // Fetch all nodes for this project
           const nodesResponse = await apiClient.getNodesByProjectId(currentProject.id);
           if (!nodesResponse.ok) {
             throw new Error(`Failed to fetch nodes: ${nodesResponse.status}`);
           }
           const nodesData = await nodesResponse.json();
-          const nodesList = nodesData.success ? nodesData.data : nodesData;
-          setNodes(nodesList);
+          const allNodesList = nodesData.success ? nodesData.data : nodesData;
+          setAllNodes(allNodesList);
+          
+          // Log which nodes have children for debugging
+          console.log('All nodes loaded:', allNodesList.length);
+          allNodesList.forEach((node: ApiNode) => {
+            try {
+              const metadata = node.metadata ? JSON.parse(node.metadata) : {};
+              if (metadata.parent_id) {
+                console.log('Node has parent:', node.title, node.id, 'parent:', metadata.parent_id);
+              }
+            } catch {}
+          });
+          
+          // Set all nodes for the project
+          setNodes(allNodesList);
+          setCurrentParentId(null); // Reset parent when viewing project (show level 1 nodes)
           
           // Initialize empty maps for hierarchy and links
           setNodeHierarchy(new Map());
@@ -170,6 +198,26 @@ export default function UnifiedPage() {
           }
           const nodeData = await nodeResponse.json();
           const node = nodeData.success ? nodeData.data : nodeData;
+          
+          // Also fetch all nodes for this node's project to support leveling
+          if (node.project_id) {
+            const nodesResponse = await apiClient.getNodesByProjectId(node.project_id);
+            if (nodesResponse.ok) {
+              const nodesData = await nodesResponse.json();
+              const allNodesList = nodesData.success ? nodesData.data : nodesData;
+              setAllNodes(allNodesList);
+              console.log('All nodes loaded for node view:', allNodesList.length);
+              // Log parent-child relationships
+              allNodesList.forEach((childNode: ApiNode) => {
+                try {
+                  const metadata = childNode.metadata ? JSON.parse(childNode.metadata) : {};
+                  if (metadata.parent_id) {
+                    console.log('Child node:', childNode.title, childNode.id, 'parent:', metadata.parent_id);
+                  }
+                } catch {}
+              });
+            }
+          }
           
           // Fetch breadcrumbs for this node
           const breadcrumbsResponse = await apiClient.getNodeBreadcrumbs(currentNodeId);
@@ -251,13 +299,22 @@ export default function UnifiedPage() {
     : null;
 
   // Get nodes for the current project with hierarchy
-  const getProjectNodesWithHierarchy = (projectId: string): UnifiedNode[] => {
+  const getProjectNodesWithHierarchy = (projectId: string, parentId?: string | null): UnifiedNode[] => {
     const projectNodes = nodes.filter(node => node.project_id === projectId);
     
     // Build tree structure
-    const buildTree = (parentId?: string): UnifiedNode[] => {
+    const buildTree = (currentParentId?: string): UnifiedNode[] => {
       return projectNodes
-        .filter(node => node.parent_id === parentId)
+        .filter(node => {
+          // Check if node has parent_id in metadata
+          try {
+            const metadata = node.metadata ? JSON.parse(node.metadata) : {};
+            const nodeParentId = metadata.parent_id || node.parent_id;
+            return nodeParentId === currentParentId;
+          } catch {
+            return node.parent_id === currentParentId;
+          }
+        })
         .map(node => {
           const children = buildTree(node.id);
           const links = nodeLinks.get(node.id);
@@ -269,6 +326,16 @@ export default function UnifiedPage() {
           const leftLinks = linkArray.filter(link => link && link.relation_type && (link.relation_type === 'dependency' || link.relation_type === 'left'));
           const rightLinks = linkArray.filter(link => link && link.relation_type && (link.relation_type === 'reference' || link.relation_type === 'right'));
           
+          // Convert links to component format
+          const convertLink = (link: ApiNodeLink) => ({
+            id: link.id,
+            source_id: link.source_node_id,
+            target_id: link.target_node_id,
+            description: link.relation_type || '',
+            type: link.relation_type || '',
+            created_at: link.created_at.toString()
+          });
+          
           return {
             id: node.id,
             title: node.title,
@@ -278,15 +345,15 @@ export default function UnifiedPage() {
             project_id: node.project_id,
             parent_id: node.parent_id,
             children: children.length > 0 ? children : undefined,
-            leftLinks: leftLinks.length > 0 ? leftLinks : undefined,
-            rightLinks: rightLinks.length > 0 ? rightLinks : undefined,
+            leftLinks: leftLinks.length > 0 ? leftLinks.map(convertLink) : undefined,
+            rightLinks: rightLinks.length > 0 ? rightLinks.map(convertLink) : undefined,
             dependencies: dependencies.length > 0 ? dependencies : undefined,
             relationships: relationships.length > 0 ? relationships : undefined
           };
         });
     };
     
-    return buildTree();
+    return buildTree(parentId || undefined);
   };
 
   // Get nodes to show in sidebar with hierarchy
@@ -305,10 +372,10 @@ export default function UnifiedPage() {
     // Check if current node is a project (has 'name' property)
     if ('name' in currentNode) {
       // If current node is a project, show its hierarchical nodes
-      return getProjectNodesWithHierarchy(currentNode.id);
+      return getProjectNodesWithHierarchy(currentNode.id, currentParentId);
     } else {
       // If current node is a regular node, show nodes from the same project with hierarchy
-      return getProjectNodesWithHierarchy(currentNode.project_id);
+      return getProjectNodesWithHierarchy(currentNode.project_id, currentParentId);
     }
   })();
 
@@ -328,10 +395,10 @@ export default function UnifiedPage() {
     // Check if current node is a project (has 'name' property)
     if ('name' in currentNode) {
       // If current node is a project, show its hierarchical nodes
-      return getProjectNodesWithHierarchy(currentNode.id);
+      return getProjectNodesWithHierarchy(currentNode.id, currentParentId);
     } else {
       // If current node is a regular node, show nodes from the same project with hierarchy
-      return getProjectNodesWithHierarchy(currentNode.project_id);
+      return getProjectNodesWithHierarchy(currentNode.project_id, currentParentId);
     }
   })();
 
@@ -368,8 +435,55 @@ export default function UnifiedPage() {
   const handleSelectNode = (nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId) || projects.find(p => p.id === nodeId);
     if (node) {
-      setNavigationStack(prev => [...prev, currentNodeId]);
-      setCurrentNodeId(nodeId);
+      console.log('handleSelectNode called:', { 
+        nodeId, 
+        viewMode, 
+        allNodesLength: allNodes.length,
+        currentNodeId,
+        isProject: !!projects.find(p => p.id === nodeId)
+      });
+      
+      // For leveling feature: filter to show children instead of navigating to node details
+      if (viewMode === 'nodes' && allNodes.length > 0) {
+        const children = allNodes.filter(childNode => {
+          try {
+            const metadata = childNode.metadata ? JSON.parse(childNode.metadata) : {};
+            const hasParent = metadata.parent_id === nodeId;
+            if (hasParent) {
+              console.log('Found child:', childNode.title, childNode.id, 'of parent:', nodeId);
+            }
+            return hasParent;
+          } catch {
+            return false;
+          }
+        });
+        
+        console.log('Found children:', children.length, 'for node:', nodeId, 'node title:', 'title' in node ? node.title : node.name);
+        
+        if (children.length > 0) {
+          // Show children nodes (leveling feature)
+          console.log('Setting currentParentId to:', nodeId);
+          setCurrentParentId(nodeId);
+          if (currentNodeId) {
+            setNavigationStack(prev => [...prev, currentNodeId]);
+          }
+          // Don't change currentNodeId - we're staying in the same project view
+        } else {
+          // No children, navigate to node details (existing behavior)
+          console.log('No children, navigating to node details');
+          if (currentNodeId) {
+            setNavigationStack(prev => [...prev, currentNodeId]);
+          }
+          setCurrentNodeId(nodeId);
+        }
+      } else {
+        // Existing behavior for non-nodes view or when allNodes not loaded
+        console.log('Using existing behavior, viewMode:', viewMode, 'allNodes:', allNodes.length);
+        if (currentNodeId) {
+          setNavigationStack(prev => [...prev, currentNodeId]);
+        }
+        setCurrentNodeId(nodeId);
+      }
       
       // Clear breadcrumbs when selecting a new node (they'll be fetched from API if available)
       if (!projects.find(p => p.id === nodeId)) {
@@ -382,7 +496,45 @@ export default function UnifiedPage() {
     if (navigationStack.length > 0) {
       const previousNodeId = navigationStack[navigationStack.length - 1];
       setNavigationStack(prev => prev.slice(0, -1));
-      setCurrentNodeId(previousNodeId);
+      
+      // Update nodes view based on the parent (leveling feature)
+      if (allNodes.length > 0) {
+        if (previousNodeId) {
+          // Check if previous node is a project
+          const previousProject = projects.find(p => p.id === previousNodeId);
+          if (previousProject) {
+            // Show level 1 nodes for this project
+            setCurrentParentId(null);
+            setCurrentNodeId(previousNodeId); // Navigate to project
+          } else {
+            // Check if previous node has children
+            const children = allNodes.filter(childNode => {
+              try {
+                const metadata = childNode.metadata ? JSON.parse(childNode.metadata) : {};
+                return metadata.parent_id === previousNodeId;
+              } catch {
+                return false;
+              }
+            });
+            if (children.length > 0) {
+              // Show children of the previous node
+              setCurrentParentId(previousNodeId);
+              // Don't change currentNodeId - we're staying in the same project view
+            } else {
+              // No children, navigate to node details
+              setCurrentNodeId(previousNodeId);
+              setCurrentParentId(null);
+            }
+          }
+        } else {
+          // No previous node, show level 1 nodes
+          setCurrentParentId(null);
+          setCurrentNodeId(null); // Go back to project list
+        }
+      } else {
+        // Fallback to existing behavior
+        setCurrentNodeId(previousNodeId);
+      }
     } else {
       setCurrentNodeId(null);
     }
@@ -401,7 +553,7 @@ export default function UnifiedPage() {
 
   const handleAddComment = (nodeId: string) => {
     console.log(`Adding comment to node ${nodeId}`);
-    alert(`Comment dialog for node ${nodeId}`);
+    // Comment dialog for node
   };
 
   const handleNavigateToNode = (nodeId: string) => {
@@ -427,13 +579,13 @@ export default function UnifiedPage() {
           newLinks.set(nodeId, links);
           setNodeLinks(newLinks);
         }
-        alert('Link created successfully!');
+        // Link created
       } else {
-        alert('Failed to create link');
+        // Failed to create link
       }
     } catch (err) {
       console.error('Error creating link:', err);
-      alert('Error creating link');
+      // Error creating link
     }
   };
 
@@ -483,13 +635,13 @@ export default function UnifiedPage() {
           // Trigger refetch of nodes
           setCurrentNodeId(currentNodeId);
         }
-        alert(`${type} created successfully!`);
+        // Created
       } else {
-        alert(`Failed to create ${type}`);
+        // Failed to create
       }
     } catch (err) {
       console.error(`Error creating ${type}:`, err);
-      alert(`Error creating ${type}`);
+      // Error creating
     }
   };
 
@@ -531,11 +683,11 @@ export default function UnifiedPage() {
       await fetchFlowRuns();
       
       // Show success message
-      alert(`Task created successfully! Task ID: ${result.id || 'unknown'}\n\nViewing flowruns...`);
+      // Task created
       
     } catch (err) {
       console.error('Error creating task:', err);
-      alert(`Error creating task: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // Error creating task
     } finally {
       setIsChatLoading(false);
     }
@@ -562,7 +714,7 @@ export default function UnifiedPage() {
       setFlowRuns(data.data || data);
     } catch (err) {
       console.error('Error fetching flow runs:', err);
-      alert(`Error fetching flow runs: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      // Error fetching flow runs
     } finally {
       setFlowRunsLoading(false);
     }
@@ -582,7 +734,7 @@ export default function UnifiedPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-red-600">Error: {error}</div>
+        <div className="text-red-600">{error}</div>
       </div>
     );
   }
@@ -590,9 +742,23 @@ export default function UnifiedPage() {
   if (projects.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">No projects found. Create a project to get started.</div>
+        <div className="text-gray-600"></div>
       </div>
     );
+  }
+
+  // Compute which nodes have children for the leveling feature
+  const nodesWithChildren = new Set<string>();
+  if (allNodes.length > 0) {
+    allNodes.forEach(node => {
+      try {
+        const metadata = node.metadata ? JSON.parse(node.metadata) : {};
+        if (metadata.parent_id) {
+          // This node has a parent, so the parent has children
+          nodesWithChildren.add(metadata.parent_id);
+        }
+      } catch {}
+    });
   }
 
   return (
@@ -627,6 +793,7 @@ export default function UnifiedPage() {
             onAddComment={handleAddComment}
             onAddLink={handleAddLink}
             onAddNewNode={handleAddNewNode}
+            nodesWithChildren={nodesWithChildren}
           />
         ) : (
           // Flowruns View
@@ -635,10 +802,7 @@ export default function UnifiedPage() {
               {/* Flowruns Header */}
               <div className="mb-6">
                 <div className="mb-4">
-                  <h1 className="text-2xl font-bold text-gray-900">Flow Runs</h1>
-                  <p className="text-gray-600 mt-1">
-                    {flowRunsLoading ? 'Loading flow runs...' : `${flowRuns.length} flow run${flowRuns.length !== 1 ? 's' : ''} found`}
-                  </p>
+                  <h1 className="text-2xl font-bold text-gray-900">Flowruns</h1>
                 </div>
               </div>
 
@@ -649,8 +813,6 @@ export default function UnifiedPage() {
                 </div>
               ) : flowRuns.length === 0 ? (
                 <div className="text-center py-12">
-                  <div className="text-gray-400 mb-2">No flow runs found</div>
-                  <p className="text-gray-600">Create a task using the chat input below to start a flow run</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -692,10 +854,7 @@ export default function UnifiedPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-gray-200">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Flow Run Details</h2>
-                <p className="text-gray-600 text-sm mt-1">
-                  ID: {selectedFlowRun.id} • Status: <span className={`font-medium ${selectedFlowRun.status === 'active' ? 'text-green-600' : 'text-gray-600'}`}>{selectedFlowRun.status}</span>
-                </p>
+                <h2 className="text-xl font-bold text-gray-900"></h2>
               </div>
               <button
                 onClick={() => setSelectedFlowRun(null)}
@@ -773,7 +932,7 @@ export default function UnifiedPage() {
               value={chatMessage}
               onChange={(e) => setChatMessage(e.target.value)}
               onKeyPress={handleChatKeyPress}
-              placeholder="Type your message here..."
+              placeholder=""
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               disabled={isChatLoading}
             />

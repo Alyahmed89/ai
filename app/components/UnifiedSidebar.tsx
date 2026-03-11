@@ -61,7 +61,7 @@ export default function UnifiedSidebar({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Back
+            
           </button>
         </div>
       )}
@@ -70,8 +70,6 @@ export default function UnifiedSidebar({
       <div className="flex-1 overflow-y-auto py-2 bg-gray-50">
         {nodes.length === 0 ? (
           <div className="px-4 py-8 text-center bg-gray-50">
-            <div className="text-gray-400 mb-2">No items found</div>
-            <div className="text-xs text-gray-500">Select a project to get started</div>
           </div>
         ) : (
           nodes.map(node => renderNode(node))
