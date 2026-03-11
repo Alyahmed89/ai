@@ -3313,6 +3313,8 @@ ${messageContent}`;
     // Check agent type - if deepseek, call DeepSeek API instead of OpenHands
     if (this.conversation.agent === 'deepseek') {
       console.log(`[DO:${this.state.id}] Agent is 'deepseek', calling DeepSeek API instead of OpenHands`);
+      console.log(`[DO:${this.state.id}] Flow ID: ${this.conversation.flow_id}, Step: ${this.conversation.current_flow_step}`);
+      console.log(`[DO:${this.state.id}] Prompt preview: ${prompt.substring(0, 200)}...`);
       
       // Build messages for DeepSeek
       const messages = [
@@ -3320,6 +3322,7 @@ ${messageContent}`;
       ];
       
       // Call DeepSeek API
+      console.log(`[DO:${this.state.id}] Calling callDeepSeek() with API key present: ${!!this.env.DEEPSEEK_API_KEY}`);
       const deepseekResult = await callDeepSeek(
         this.env.DEEPSEEK_API_KEY,
         messages
@@ -3329,6 +3332,10 @@ ${messageContent}`;
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
         // For errors, we still need to complete the step to move forward
         await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
+        // Check if conversation is still active before scheduling next alarm
+        if (this.conversation && this.conversation.state === 'SENDING_STEP') {
+          await this.scheduleNextAlarm(1000); // Schedule immediately for next step
+        }
         return;
       }
       
@@ -3338,6 +3345,10 @@ ${messageContent}`;
       
       // Complete the step with DeepSeek response
       await this.handleStepCompletion(step, response);
+      // Check if conversation is still active before scheduling next alarm
+      if (this.conversation && this.conversation.state === 'SENDING_STEP') {
+        await this.scheduleNextAlarm(1000); // Schedule immediately for next step
+      }
       return;
     }
     
@@ -3433,6 +3444,9 @@ ${messageContent}`;
 
     // Save the current flow run to database with appropriate status
     await this.saveFlowRunToDatabase(finalStopReason, flowStatus);
+
+    // Stop the conversation since END_FLOW was detected
+    await this.stopConversation(`end_flow_detected: ${finalStopReason}`);
 
     // DISABLED: [END_FLOW] tokens should not trigger new flows
     // Flow transitions only happen via flow_definitions.next_flow_id
@@ -3590,7 +3604,10 @@ ${messageContent}`;
       return;
     }
     
-    // 4. Continue with next step in current flow
+    // 4. Send output if enabled for this step
+    await this.sendStepOutputIfEnabled(step, response);
+    
+    // 5. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
     // Flow transitions only happen via flow_definitions.next_flow_id
     // when flow completes (next_step == -1)

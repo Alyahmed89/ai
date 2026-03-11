@@ -13,9 +13,14 @@ export async function callDeepSeek(
   apiKey: string,
   messages: Array<{role: string; content: string}>
 ): Promise<DeepSeekResult> {
+  console.log(`[DeepSeek] Starting API call with ${messages.length} messages`);
+  console.log(`[DeepSeek] First message preview: ${messages[0]?.content?.substring(0, 100)}...`);
+  
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), DEEPSEEK_TIMEOUT);
+    
+    console.log(`[DeepSeek] Making fetch request to DeepSeek API with timeout: ${DEEPSEEK_TIMEOUT}ms`);
 
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
@@ -33,14 +38,20 @@ export async function callDeepSeek(
     });
 
     clearTimeout(timeoutId);
+    
+    console.log(`[DeepSeek] Response status: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[DeepSeek] API error ${response.status}: ${errorText}`);
       throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json() as any;
     const result = data.choices[0].message.content;
+    
+    console.log(`[DeepSeek] Success! Response length: ${result.length} chars`);
+    console.log(`[DeepSeek] Response preview: ${result.substring(0, 100)}...`);
 
     return {
       success: true,
@@ -48,6 +59,8 @@ export async function callDeepSeek(
     };
 
   } catch (error: any) {
+    console.error(`[DeepSeek] Exception: ${error.message}`);
+    console.error(`[DeepSeek] Stack: ${error.stack}`);
     return {
       success: false,
       error: error.message || 'Unknown DeepSeek API error'
