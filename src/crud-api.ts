@@ -57,14 +57,7 @@ function apiResponse(success: boolean, data?: any, error?: string, statusCode: n
 // Create CRUD API router
 export const crudApi = new Hono<{ Bindings: CloudflareBindings }>();
 
-// Health check endpoint
-crudApi.get('/health', (c) => {
-  return c.json({ 
-    status: 'ok', 
-    message: 'Cloudflare D1 CRUD API is running',
-    timestamp: new Date().toISOString()
-  });
-});
+
 
 // Test request endpoint (for API testing from frontend)
 crudApi.post('/test-request', async (c) => {
@@ -867,41 +860,7 @@ crudApi.get('/flows/:flowId/steps/:stepId/conditions', async (c) => {
   }
 });
 
-// Get all flow runs
-crudApi.get('/flow-runs', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
 
-    const result = await db.prepare('SELECT * FROM flow_runs ORDER BY created_at DESC').all();
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get flow run by ID
-crudApi.get('/flow-runs/:id', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const id = c.req.param('id');
-    const result = await db.prepare('SELECT * FROM flow_runs WHERE id = ?').bind(id).first();
-
-    if (!result) {
-      return c.json({ error: 'Flow run not found' }, 404);
-    }
-
-    return c.json(result);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
 
 // Create flow run
 crudApi.post('/flow-runs', async (c) => {
@@ -1041,26 +1000,81 @@ crudApi.post('/flow-runs/:flowRunId/iterations', async (c) => {
 });
 
 // ==========================================================================
-// Step Runs Endpoints
+
+// ==========================================================================
+// Core Observability Endpoints (5 endpoints only)
 // ==========================================================================
 
-// Get all step runs
-crudApi.get('/step-runs', async (c) => {
+// 1️⃣ Health check endpoint
+crudApi.get('/health', (c) => {
+  return c.json({ 
+    status: 'ok', 
+    message: 'Cloudflare D1 CRUD API is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 2️⃣ List flow runs with filtering
+crudApi.get('/flow-runs', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
-    const result = await db.prepare('SELECT * FROM step_runs ORDER BY created_at DESC').all();
+    // Get query parameters
+    const status = c.req.query('status');
+    const flowId = c.req.query('flow_id');
+    const limit = parseInt(c.req.query('limit') || '100');
+    const offset = parseInt(c.req.query('offset') || '0');
+    
+    // Build query with filters
+    let whereClauses = [];
+    let params = [];
+    
+    if (status) {
+      whereClauses.push('fr.status = ?');
+      params.push(status);
+    }
+    
+    if (flowId) {
+      whereClauses.push('fr.flow_id = ?');
+      params.push(flowId);
+    }
+    
+    const whereClause = whereClauses.length > 0 
+      ? 'WHERE ' + whereClauses.join(' AND ')
+      : '';
+    
+    const sql = `
+      SELECT 
+        fr.id,
+        fr.flow_id,
+        fr.status,
+        fr.created_at,
+        fr.completed_at,
+        fr.output_response,
+        COUNT(sr.id) as step_count,
+        MAX(sr.created_at) as last_step_at
+      FROM flow_runs fr
+      LEFT JOIN step_runs sr ON fr.id = sr.flow_run_id
+      ${whereClause}
+      GROUP BY fr.id
+      ORDER BY fr.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    params.push(limit, offset);
+    
+    const result = await db.prepare(sql).bind(...params).all();
     return c.json(result.results || []);
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
 });
 
-// Get step run by ID
-crudApi.get('/step-runs/:id', async (c) => {
+// 3️⃣ Get flow run with conversation (replaces /conversation, /step-runs, /detailed)
+crudApi.get('/flow-runs/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
@@ -1068,93 +1082,11 @@ crudApi.get('/step-runs/:id', async (c) => {
     }
 
     const id = c.req.param('id');
-    const result = await db.prepare('SELECT * FROM step_runs WHERE id = ?').bind(id).first();
-
-    if (!result) {
-      return c.json({ error: 'Step run not found' }, 404);
-    }
-
-    return c.json(result);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all step runs for a specific flow run, ordered by iteration and attempt
-crudApi.get('/flow-runs/:flowRunId/step-runs', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const flowRunId = c.req.param('flowRunId');
-    const result = await db.prepare(
-      'SELECT * FROM step_runs WHERE flow_run_id = ? ORDER BY iteration, attempt, created_at'
-    ).bind(flowRunId).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all step runs for a specific step in a flow run
-crudApi.get('/flow-runs/:flowRunId/step-runs/:stepId', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const flowRunId = c.req.param('flowRunId');
-    const stepId = c.req.param('stepId');
-    const result = await db.prepare(
-      'SELECT * FROM step_runs WHERE flow_run_id = ? AND step_id = ? ORDER BY iteration, attempt, created_at'
-    ).bind(flowRunId, stepId).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all step runs for a specific step in a flow run with pagination
-crudApi.get('/flow-runs/:flowRunId/step-runs/:stepId/iterations/:iteration', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const flowRunId = c.req.param('flowRunId');
-    const stepId = c.req.param('stepId');
-    const iteration = parseInt(c.req.param('iteration'));
-    
-    const result = await db.prepare(
-      'SELECT * FROM step_runs WHERE flow_run_id = ? AND step_id = ? AND iteration = ? ORDER BY attempt, created_at'
-    ).bind(flowRunId, stepId, iteration).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all step runs with prompts and responses for a flow run (complete conversation view)
-crudApi.get('/flow-runs/:flowRunId/conversation', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const flowRunId = c.req.param('flowRunId');
     
     // Get flow run details
     const flowRunResult = await db.prepare(
       'SELECT * FROM flow_runs WHERE id = ?'
-    ).bind(flowRunId).first();
+    ).bind(id).first();
     
     if (!flowRunResult) {
       return c.json({ error: 'Flow run not found' }, 404);
@@ -1170,7 +1102,7 @@ crudApi.get('/flow-runs/:flowRunId/conversation', async (c) => {
        FROM step_runs 
        WHERE flow_run_id = ? 
        ORDER BY iteration, attempt, created_at`
-    ).bind(flowRunId).all();
+    ).bind(id).all();
     
     return c.json({
       flow_run: flowRunResult,
@@ -1182,108 +1114,68 @@ crudApi.get('/flow-runs/:flowRunId/conversation', async (c) => {
   }
 });
 
-// Get all flow runs with their step counts
-crudApi.get('/flow-runs-with-steps', async (c) => {
+// 4️⃣ Step runs only (with optional flow_run_id filter)
+crudApi.get('/step-runs', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
-    const result = await db.prepare(`
-      SELECT 
-        fr.*,
-        COUNT(sr.id) as step_count,
-        MAX(sr.created_at) as last_step_at
-      FROM flow_runs fr
-      LEFT JOIN step_runs sr ON fr.id = sr.flow_run_id
-      GROUP BY fr.id
-      ORDER BY fr.created_at DESC
-    `).all();
+    // Get query parameters
+    const flowRunId = c.req.query('flow_run_id');
+    const limit = parseInt(c.req.query('limit') || '100');
+    const offset = parseInt(c.req.query('offset') || '0');
     
+    let sql = '';
+    let params = [];
+    
+    if (flowRunId) {
+      sql = `
+        SELECT * FROM step_runs 
+        WHERE flow_run_id = ? 
+        ORDER BY iteration, attempt, created_at
+        LIMIT ? OFFSET ?
+      `;
+      params = [flowRunId, limit, offset];
+    } else {
+      sql = `
+        SELECT * FROM step_runs 
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      params = [limit, offset];
+    }
+    
+    const result = await db.prepare(sql).bind(...params).all();
     return c.json(result.results || []);
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
 });
 
-// Get all flow runs with step summaries (prompts and responses preview)
-crudApi.get('/flow-runs-with-summaries', async (c) => {
+// 5️⃣ All conversations (export) - flat dataset for analytics/CSV export
+crudApi.get('/conversations', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
-    const result = await db.prepare(`
-      SELECT 
-        fr.id,
-        fr.flow_id,
-        fr.status,
-        fr.created_at,
-        fr.completed_at,
-        fr.output_response,
-        GROUP_CONCAT(
-          sr.step_id || ':' || sr.iteration || ':' || sr.attempt || ':' || 
-          SUBSTR(sr.prompt, 1, 100) || '...' || ':' || 
-          SUBSTR(sr.response, 1, 100) || '...'
-        ) as step_summaries
-      FROM flow_runs fr
-      LEFT JOIN step_runs sr ON fr.id = sr.flow_run_id
-      GROUP BY fr.id
-      ORDER BY fr.created_at DESC
-    `).all();
+    // Get query parameters
+    const flowId = c.req.query('flow_id');
+    const limit = parseInt(c.req.query('limit') || '1000');
+    const offset = parseInt(c.req.query('offset') || '0');
     
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all flow runs with detailed step information
-crudApi.get('/flow-runs-detailed', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    // First get all flow runs
-    const flowRunsResult = await db.prepare(
-      'SELECT * FROM flow_runs ORDER BY created_at DESC'
-    ).all();
+    let whereClause = '';
+    let params = [];
     
-    const flowRuns = flowRunsResult.results || [];
-    const detailedFlowRuns = [];
-    
-    // For each flow run, get its step runs
-    for (const flowRun of flowRuns) {
-      const stepRunsResult = await db.prepare(
-        'SELECT step_id, iteration, attempt, prompt, response, status, created_at FROM step_runs WHERE flow_run_id = ? ORDER BY iteration, attempt'
-      ).bind(flowRun.id).all();
-      
-      detailedFlowRuns.push({
-        ...flowRun,
-        steps: stepRunsResult.results || [],
-        step_count: stepRunsResult.results?.length || 0
-      });
+    if (flowId) {
+      whereClause = 'WHERE fr.flow_id = ?';
+      params.push(flowId);
     }
     
-    return c.json(detailedFlowRuns);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all flow runs with conversation view (prompts and responses in order)
-crudApi.get('/flow-runs-conversations', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const result = await db.prepare(`
+    const sql = `
       SELECT 
         fr.id as flow_run_id,
         fr.flow_id,
@@ -1298,168 +1190,20 @@ crudApi.get('/flow-runs-conversations', async (c) => {
         sr.status as step_status,
         sr.created_at as step_created_at
       FROM flow_runs fr
-      LEFT JOIN step_runs sr ON fr.id = sr.flow_run_id
-      ORDER BY fr.created_at DESC, sr.iteration, sr.attempt
-    `).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all flow runs with full conversation (grouped by flow run)
-crudApi.get('/flow-runs-full-conversations', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    // Get all flow runs
-    const flowRunsResult = await db.prepare(
-      'SELECT * FROM flow_runs ORDER BY created_at DESC'
-    ).all();
-    
-    const flowRuns = flowRunsResult.results || [];
-    const conversations = [];
-    
-    for (const flowRun of flowRuns) {
-      // Get step runs for this flow run
-      const stepRunsResult = await db.prepare(`
-        SELECT 
-          step_id,
-          iteration,
-          attempt,
-          prompt,
-          response,
-          status,
-          created_at
-        FROM step_runs 
-        WHERE flow_run_id = ? 
-        ORDER BY iteration, attempt, created_at
-      `).bind(flowRun.id).all();
-      
-      conversations.push({
-        flow_run: {
-          id: flowRun.id,
-          flow_id: flowRun.flow_id,
-          status: flowRun.status,
-          created_at: flowRun.created_at,
-          completed_at: flowRun.completed_at,
-          output_response: flowRun.output_response
-        },
-        conversation: stepRunsResult.results || []
-      });
-    }
-    
-    return c.json(conversations);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all flow runs with prompts and responses (flat view)
-crudApi.get('/flow-runs-flat-conversations', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const result = await db.prepare(`
-      SELECT 
-        fr.id as flow_run_id,
-        fr.flow_id,
-        fr.status as flow_status,
-        DATE(fr.created_at, 'unixepoch') as flow_date,
-        sr.step_id,
-        sr.iteration,
-        sr.attempt,
-        sr.prompt,
-        sr.response,
-        sr.status as step_status,
-        DATE(sr.created_at, 'unixepoch') as step_date
-      FROM flow_runs fr
       INNER JOIN step_runs sr ON fr.id = sr.flow_run_id
+      ${whereClause}
       ORDER BY fr.created_at DESC, sr.iteration, sr.attempt
-    `).all();
+      LIMIT ? OFFSET ?
+    `;
     
+    params.push(limit, offset);
+    
+    const result = await db.prepare(sql).bind(...params).all();
     return c.json(result.results || []);
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
 });
-
-// Get all flow runs with step previews (truncated prompts and responses)
-crudApi.get('/flow-runs-preview', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const result = await db.prepare(`
-      SELECT 
-        fr.id,
-        fr.flow_id,
-        fr.status,
-        fr.created_at,
-        fr.completed_at,
-        (
-          SELECT GROUP_CONCAT(
-            sr.step_id || '|' || 
-            sr.iteration || '|' || 
-            sr.attempt || '|' || 
-            SUBSTR(sr.prompt, 1, 50) || '|' || 
-            SUBSTR(sr.response, 1, 50)
-          )
-          FROM step_runs sr
-          WHERE sr.flow_run_id = fr.id
-          ORDER BY sr.iteration, sr.attempt
-        ) as steps_preview
-      FROM flow_runs fr
-      ORDER BY fr.created_at DESC
-    `).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
-// Get all flow runs with latest step
-crudApi.get('/flow-runs-latest-step', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const result = await db.prepare(`
-      SELECT 
-        fr.*,
-        sr.step_id as latest_step,
-        sr.iteration as latest_iteration,
-        sr.attempt as latest_attempt,
-        sr.status as latest_step_status,
-        sr.created_at as latest_step_at
-      FROM flow_runs fr
-      LEFT JOIN step_runs sr ON fr.id = sr.flow_run_id
-      WHERE sr.created_at = (
-        SELECT MAX(created_at) 
-        FROM step_runs 
-        WHERE flow_run_id = fr.id
-      ) OR sr.created_at IS NULL
-      ORDER BY fr.created_at DESC
-    `).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
-
 // Get all flow definitions
 crudApi.get('/flow-definitions', async (c) => {
   try {
