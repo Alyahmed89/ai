@@ -1,5 +1,5 @@
 // Database service for flow runs tracking
-import { FlowRunData, IterationData, ProjectFact, StepData } from '../types';
+import { FlowRunData, IterationData, ProjectFact, StepData, StepRunData } from '../types';
 
 /**
  * Save a flow run to the database
@@ -125,6 +125,49 @@ export async function saveIteration(db: D1Database, iteration: IterationData): P
 }
 
 /**
+ * Save a step run to the database
+ * @param db D1Database instance
+ * @param stepRun Step run data to save
+ * @returns Promise with success status
+ */
+export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise<{success: boolean; error?: string}> {
+  try {
+    await db.prepare(`
+      INSERT INTO step_runs (
+        id, flow_run_id, step_id, iteration, attempt, prompt, response,
+        input_payload, output_payload, status, created_at, duration_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(flow_run_id, step_id, iteration, attempt) 
+      DO UPDATE SET
+        prompt = excluded.prompt,
+        response = excluded.response,
+        input_payload = excluded.input_payload,
+        output_payload = excluded.output_payload,
+        status = excluded.status,
+        duration_ms = excluded.duration_ms
+    `).bind(
+      stepRun.id,
+      stepRun.flow_run_id,
+      stepRun.step_id,
+      stepRun.iteration,
+      stepRun.attempt,
+      stepRun.prompt,
+      stepRun.response,
+      stepRun.input_payload || null,
+      stepRun.output_payload || null,
+      stepRun.status,
+      stepRun.created_at,
+      stepRun.duration_ms
+    ).run();
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error saving step run: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Get a flow run by ID
  * @param db D1Database instance
  * @param flowRunId Flow run ID
@@ -197,6 +240,14 @@ export async function getIterationsForFlowRun(db: D1Database, flowRunId: string)
  */
 export function generateFlowRunId(): string {
   return `flow_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Generate a unique step run ID
+ * @returns Unique step run ID
+ */
+export function generateStepRunId(): string {
+  return `step_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
 /**

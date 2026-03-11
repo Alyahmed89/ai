@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, generateFlowRunId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
@@ -282,8 +282,19 @@ export class ConversationOrchestratorDO_2026A {
       this.conversation.last_step_response = body.response;
       console.log(`[DO:${this.state.id}] Stored response (${body.response.length} chars) for conditional branching`);
       
-      // Send output if enabled for current step
+      // Save OpenHands step run to database
       if (this.conversation.current_step) {
+        // Get the prompt that was sent to OpenHands (from conversation history or step data)
+        const prompt = this.conversation.current_step.description || this.conversation.current_step.title || "OpenHands step";
+        
+        await this.saveStepRunToDatabase(
+          this.conversation.current_step,
+          prompt,
+          body.response,
+          'completed'
+        );
+        
+        // Send output if enabled for current step
         await this.sendStepOutputIfEnabled(this.conversation.current_step, body.response);
       }
       
@@ -3326,6 +3337,13 @@ ${messageContent}`;
     // SPECIAL HANDLING: For 'hello' step type, complete immediately without OpenHands
     if (step.step_type === 'hello') {
       console.log(`[DO:${this.state.id}] 'hello' step type detected, completing immediately`);
+      // Save hello step run to database
+      await this.saveStepRunToDatabase(
+        step,
+        "Hello step (auto-completed)",
+        "Hello step completed successfully",
+        'completed'
+      );
       await this.handleStepCompletion(step, "Hello step completed successfully");
       return;
     }
@@ -3350,6 +3368,13 @@ ${messageContent}`;
       
       if (!deepseekResult.success) {
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
+        // Save failed step run to database
+        await this.saveStepRunToDatabase(
+          step,
+          prompt,
+          `DeepSeek API error: ${deepseekResult.error}`,
+          'failed'
+        );
         // For errors, we still need to complete the step to move forward
         await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
         // Check if conversation is still active before scheduling next alarm
@@ -3363,6 +3388,14 @@ ${messageContent}`;
       // Process DeepSeek response
       const response = deepseekResult.response;
       console.log(`[DO:${this.state.id}] DeepSeek response received (${response.length} chars)`);
+      
+      // Save successful step run to database
+      await this.saveStepRunToDatabase(
+        step,
+        prompt,
+        response,
+        'completed'
+      );
       
       // Complete the step with DeepSeek response
       await this.handleStepCompletion(step, response);
@@ -4266,6 +4299,63 @@ ${messageContent}`;
       console.error(`[DO:${this.state.id}] Failed to save iteration to database: ${result.error}`);
     } else {
       console.log(`[DO:${this.state.id}] Iteration ${this.conversation.iteration} saved to database`);
+    }
+  }
+
+  /**
+   * Save a step run to the database
+   * @param step Step data
+   * @param prompt Prompt sent to DeepSeek
+   * @param response DeepSeek response
+   * @param status Step status
+   * @param attempt Attempt number (default: 1)
+   */
+  private async saveStepRunToDatabase(
+    step: StepData,
+    prompt: string,
+    response: string,
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' = 'completed',
+    attempt: number = 1
+  ): Promise<void> {
+    if (!this.conversation || !this.flowRunId) return;
+    
+    // Check if database is configured
+    if (!this.env.FLOW_RUNS_DB) {
+      console.log(`[DO:${this.state.id}] Database not configured, skipping step run save`);
+      return;
+    }
+
+    // Get current iteration (step index)
+    const iteration = this.conversation.current_step_index || 0;
+    
+    // Prepare step run data
+    const stepRunData = {
+      id: generateStepRunId(),
+      flow_run_id: this.flowRunId,
+      step_id: step.step_id,
+      iteration,
+      attempt,
+      prompt,
+      response,
+      input_payload: JSON.stringify({
+        step_key: step.step_key,
+        step_type: step.step_type,
+        requires_task: step.requires_task,
+        task_id: step.task_id,
+        output_enabled: step.output
+      }),
+      output_payload: undefined, // Can be populated later if needed
+      status,
+      created_at: Math.floor(Date.now() / 1000),
+      duration_ms: 0 // TODO: Calculate actual duration
+    };
+
+    // Save to database
+    const result = await saveStepRun(this.env.FLOW_RUNS_DB, stepRunData);
+    if (!result.success) {
+      console.error(`[DO:${this.state.id}] Failed to save step run to database: ${result.error}`);
+    } else {
+      console.log(`[DO:${this.state.id}] Step run saved to database: ${step.step_id}, iteration ${iteration}, attempt ${attempt}`);
     }
   }
 }

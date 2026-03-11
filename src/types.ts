@@ -231,6 +231,21 @@ export interface IterationData {
   metadata?: string; // JSON string
 }
 
+export interface StepRunData {
+  id: string;
+  flow_run_id: string;
+  step_id: string;
+  iteration: number;
+  attempt: number;
+  prompt: string;
+  response: string;
+  input_payload?: string;
+  output_payload?: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  created_at: number;
+  duration_ms: number;
+}
+
 export interface DoneResponseData {
   done: boolean;
   new_prompt?: string;
