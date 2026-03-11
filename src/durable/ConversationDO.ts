@@ -3862,7 +3862,14 @@ ${messageContent}`;
       
       // Update current flow run with next_flow_id (new conversation ID)
       if (this.flowRunId) {
-        await updateFlowRunStatus(this.env.FLOW_RUNS_DB, this.flowRunId, 'new_flow_started', 'next_flow_triggered', newConversationIdObj.toString());
+        await updateFlowRunStatus(
+          this.env.FLOW_RUNS_DB, 
+          this.flowRunId, 
+          'new_flow_started', 
+          'next_flow_triggered', 
+          newConversationIdObj.toString(),
+          undefined // outputResponse - not needed for flow chaining
+        );
       }
     } catch (error) {
       console.error(`[DO:${this.state.id}] Failed to start specific flow:`, error);
@@ -4202,12 +4209,19 @@ ${messageContent}`;
       next_flow_id: null // Will be set by startSpecificFlow if chaining occurs
     };
 
-    // Update flow run in database
-    const result = await updateFlowRunStatus(this.env.FLOW_RUNS_DB, this.flowRunId, status, stopReason, null);
+    // Update flow run in database with output_response
+    const result = await updateFlowRunStatus(
+      this.env.FLOW_RUNS_DB, 
+      this.flowRunId, 
+      status, 
+      stopReason, 
+      null, // nextFlowId
+      this.conversation.last_step_response // outputResponse
+    );
     if (!result.success) {
       console.error(`[DO:${this.state.id}] Failed to update flow run: ${result.error}`);
     } else {
-      console.log(`[DO:${this.state.id}] Flow run updated: ${this.flowRunId} with status: ${status}`);
+      console.log(`[DO:${this.state.id}] Flow run updated: ${this.flowRunId} with status: ${status}, output_response: ${this.conversation.last_step_response ? 'saved' : 'null'}`);
     }
   }
 

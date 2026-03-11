@@ -55,7 +55,8 @@ export async function updateFlowRunStatus(
   flowRunId: string,
   status: FlowRunData['status'],
   stopReason?: string,
-  nextFlowId?: string
+  nextFlowId?: string,
+  outputResponse?: string
 ): Promise<{success: boolean; error?: string}> {
   try {
     // Set completed_at for terminal states
@@ -63,17 +64,29 @@ export async function updateFlowRunStatus(
       ? Math.floor(Date.now() / 1000) 
       : null;
     
-    await db.prepare(`
-      UPDATE flow_runs 
-      SET status = ?, next_flow_id = ?, stop_reason = ?, completed_at = ?
-      WHERE id = ?
-    `).bind(
-      status,
-      nextFlowId || null,
-      stopReason || null,
-      completed_at,
-      flowRunId
-    ).run();
+    // Build the update query dynamically based on what fields are provided
+    let query = `UPDATE flow_runs SET status = ?, completed_at = ?`;
+    const bindings: any[] = [status, completed_at];
+    
+    if (nextFlowId !== undefined) {
+      query += `, next_flow_id = ?`;
+      bindings.push(nextFlowId || null);
+    }
+    
+    if (stopReason !== undefined) {
+      query += `, stop_reason = ?`;
+      bindings.push(stopReason || null);
+    }
+    
+    if (outputResponse !== undefined) {
+      query += `, output_response = ?`;
+      bindings.push(outputResponse || null);
+    }
+    
+    query += ` WHERE id = ?`;
+    bindings.push(flowRunId);
+    
+    await db.prepare(query).bind(...bindings).run();
 
     return { success: true };
   } catch (error: any) {
