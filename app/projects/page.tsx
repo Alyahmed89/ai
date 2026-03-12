@@ -15,10 +15,11 @@ interface Project {
 
 function ProjectsContent() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Only fetch on client side
     fetchProjects();
   }, []);
 
@@ -41,6 +42,36 @@ function ProjectsContent() {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startDocCommentFlow = async () => {
+    try {
+      const response = await fetch('/api/start-flow', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flowType: 'doc-comment',
+          projectId: projects.length > 0 ? projects[0].id : 'default',
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start flow');
+      }
+      
+      const result = await response.json();
+      if (result.success && result.flowRunId) {
+        // Redirect to flow run details
+        window.location.href = `/flow-runs/${result.flowRunId}`;
+      } else {
+        throw new Error(result.error || 'Failed to start flow');
+      }
+    } catch (err) {
+      console.error('Error starting flow:', err);
+      alert(`Failed to start flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
