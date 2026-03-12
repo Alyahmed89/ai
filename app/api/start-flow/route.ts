@@ -1,6 +1,7 @@
 import { startFlow } from '@/lib/api-client';
-export const runtime = "edge";
 import { NextRequest } from 'next/server';
+
+export const runtime = 'edge';
 
 export async function POST(request: NextRequest) {
   try {

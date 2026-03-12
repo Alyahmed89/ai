@@ -1,5 +1,4 @@
 import { getProjects } from '@/lib/api-client';
-export const runtime = "edge";
 
 export const runtime = 'edge';
 

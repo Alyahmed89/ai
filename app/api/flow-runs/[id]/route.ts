@@ -1,6 +1,7 @@
 import { getFlowRun, getStepRuns } from '@/lib/api-client';
-export const runtime = "edge";
 import { NextRequest } from 'next/server';
+
+export const runtime = 'edge';
 
 export async function GET(
   request: NextRequest,
