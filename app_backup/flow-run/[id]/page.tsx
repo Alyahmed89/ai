@@ -22,22 +22,45 @@ export default function FlowRunPage() {
       try {
         setLoading(true);
         
-        // First try to get all flow runs and filter
+        // Use the direct flow run endpoint
         console.log('Fetching flow run:', flowRunId);
-        const allResponse = await apiClient.getFlowRuns();
+        const flowRunResponse = await apiClient.getFlowRun(flowRunId);
         
-        if (!allResponse.ok) {
-          throw new Error(`API error: ${allResponse.status}`);
+        if (!flowRunResponse.ok) {
+          throw new Error(`API error: ${flowRunResponse.status}`);
         }
         
-        const allData = await allResponse.json();
-        const foundFlowRun = allData.find((run: any) => run.id === flowRunId);
+        const flowRunData = await flowRunResponse.json();
         
-        if (!foundFlowRun) {
+        // Check if the response has the new structure (flow_run + step_runs)
+        // or the old structure (just the flow run object)
+        let flowRun, stepRuns;
+        
+        if (flowRunData.flow_run && flowRunData.step_runs) {
+          // New structure: { flow_run: {...}, step_runs: [...] }
+          flowRun = flowRunData.flow_run;
+          stepRuns = flowRunData.step_runs;
+        } else if (flowRunData.id) {
+          // Old structure: just the flow run object
+          flowRun = flowRunData;
+          // Try to fetch step runs separately
+          try {
+            const stepRunsResponse = await apiClient.getStepRunsByFlowRunId(flowRunId);
+            if (stepRunsResponse.ok) {
+              stepRuns = await stepRunsResponse.json();
+            }
+          } catch (stepErr) {
+            console.warn('Could not fetch step runs:', stepErr);
+          }
+        } else {
+          throw new Error('Invalid flow run data structure');
+        }
+        
+        if (!flowRun) {
           throw new Error('Flow run not found');
         }
         
-        setFlowRun(foundFlowRun);
+        setFlowRun({ ...flowRun, stepRuns });
       } catch (err) {
         console.error('Error fetching flow run:', err);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -981,6 +1004,256 @@ export default function FlowRunPage() {
                 </div>
               </div>
             </div>
+
+            {/* Step Runs Section */}
+            {flowRun.stepRuns && flowRun.stepRuns.length > 0 && (
+              <div style={{
+                marginTop: '3rem',
+                paddingTop: '2rem',
+                borderTop: '2px solid #e5e7eb'
+              }}>
+                <h3 style={{
+                  fontSize: '1.5rem',
+                  fontWeight: '600',
+                  color: '#111827',
+                  marginBottom: '1.5rem'
+                }}>
+                  Step Execution Details ({flowRun.stepRuns.length} steps)
+                </h3>
+                
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2rem'
+                }}>
+                  {flowRun.stepRuns.map((stepRun: any, index: number) => (
+                    <div key={stepRun.id} style={{
+                      backgroundColor: 'white',
+                      borderRadius: '0.75rem',
+                      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+                      padding: '1.5rem',
+                      border: '1px solid #e5e7eb'
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        marginBottom: '1rem',
+                        flexWrap: 'wrap',
+                        gap: '1rem'
+                      }}>
+                        <div>
+                          <h4 style={{
+                            fontSize: '1.125rem',
+                            fontWeight: '600',
+                            color: '#111827',
+                            marginBottom: '0.25rem'
+                          }}>
+                            Step {index + 1}: {stepRun.step_id || `Step ${stepRun.id.substring(0, 8)}...`}
+                          </h4>
+                          <div style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                            flexWrap: 'wrap'
+                          }}>
+                            <span style={{
+                              padding: '0.25rem 0.75rem',
+                              backgroundColor: stepRun.status === 'completed' ? '#d1fae5' : 
+                                              stepRun.status === 'failed' ? '#fee2e2' : '#fef3c7',
+                              color: stepRun.status === 'completed' ? '#065f46' : 
+                                    stepRun.status === 'failed' ? '#991b1b' : '#92400e',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: '500',
+                              textTransform: 'capitalize'
+                            }}>
+                              {stepRun.status || 'pending'}
+                            </span>
+                            <span style={{
+                              fontSize: '0.75rem',
+                              color: '#6b7280'
+                            }}>
+                              Iteration: {stepRun.iteration || 0}, Attempt: {stepRun.attempt || 1}
+                            </span>
+                            {stepRun.duration_ms > 0 && (
+                              <span style={{
+                                fontSize: '0.75rem',
+                                color: '#6b7280'
+                              }}>
+                                Duration: {formatDuration(stepRun.duration_ms)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div style={{
+                          fontSize: '0.75rem',
+                          color: '#6b7280'
+                        }}>
+                          {stepRun.created_at ? formatDate(stepRun.created_at) : 'N/A'}
+                        </div>
+                      </div>
+                      
+                      {/* Step Prompt */}
+                      {stepRun.prompt && (
+                        <div style={{
+                          marginBottom: '1rem'
+                        }}>
+                          <div style={{
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            color: '#6b7280',
+                            marginBottom: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                          }}>
+                            <span style={{
+                              width: '1rem',
+                              height: '1rem',
+                              backgroundColor: '#3b82f6',
+                              borderRadius: '50%',
+                              display: 'inline-block'
+                            }}></span>
+                            Prompt
+                          </div>
+                          <div style={{
+                            backgroundColor: '#f3f4f6',
+                            borderRadius: '0.5rem',
+                            padding: '1rem',
+                            fontFamily: 'monospace',
+                            fontSize: '0.875rem',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            color: '#374151',
+                            maxHeight: '200px',
+                            overflowY: 'auto'
+                          }}>
+                            {stepRun.prompt}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Step Response */}
+                      {stepRun.response && (
+                        <div>
+                          <div style={{
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            color: '#6b7280',
+                            marginBottom: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                          }}>
+                            <span style={{
+                              width: '1rem',
+                              height: '1rem',
+                              backgroundColor: '#10b981',
+                              borderRadius: '50%',
+                              display: 'inline-block'
+                            }}></span>
+                            Response
+                          </div>
+                          <div style={{
+                            backgroundColor: '#d1fae5',
+                            borderRadius: '0.5rem',
+                            padding: '1rem',
+                            fontFamily: 'monospace',
+                            fontSize: '0.875rem',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            color: '#065f46',
+                            maxHeight: '300px',
+                            overflowY: 'auto'
+                          }}>
+                            {stepRun.response}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Input/Output Payloads */}
+                      {(stepRun.input_payload || stepRun.output_payload) && (
+                        <div style={{
+                          marginTop: '1rem',
+                          paddingTop: '1rem',
+                          borderTop: '1px solid #e5e7eb'
+                        }}>
+                          <div style={{
+                            fontSize: '0.75rem',
+                            fontWeight: '500',
+                            color: '#6b7280',
+                            marginBottom: '0.5rem'
+                          }}>
+                            Technical Details
+                          </div>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                            gap: '1rem'
+                          }}>
+                            {stepRun.input_payload && (
+                              <div>
+                                <div style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: '500',
+                                  color: '#6b7280',
+                                  marginBottom: '0.25rem'
+                                }}>
+                                  Input Payload
+                                </div>
+                                <div style={{
+                                  backgroundColor: '#f9fafb',
+                                  borderRadius: '0.375rem',
+                                  padding: '0.75rem',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.75rem',
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-all',
+                                  color: '#6b7280',
+                                  maxHeight: '100px',
+                                  overflowY: 'auto'
+                                }}>
+                                  {stepRun.input_payload}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {stepRun.output_payload && (
+                              <div>
+                                <div style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: '500',
+                                  color: '#6b7280',
+                                  marginBottom: '0.25rem'
+                                }}>
+                                  Output Payload
+                                </div>
+                                <div style={{
+                                  backgroundColor: '#f9fafb',
+                                  borderRadius: '0.375rem',
+                                  padding: '0.75rem',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.75rem',
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-all',
+                                  color: '#6b7280',
+                                  maxHeight: '100px',
+                                  overflowY: 'auto'
+                                }}>
+                                  {stepRun.output_payload}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Condition Section */}
             {flowRun.condition && (

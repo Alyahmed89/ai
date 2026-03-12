@@ -1,763 +1,148 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiClient } from '@/lib/api-client';
+
+interface Task {
+  id: string;
+  description: string;
+  status: string;
+  flow_id: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
-  const [createSuccess, setCreateSuccess] = useState('');
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    status: 'pending',
-    priority: 'medium',
-    task_type: 'Task',
-    flow_id: ''
-  });
-
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.getTasks(50);
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setTasks(data);
-      }
-    } catch (err) {
-      console.error('Error fetching tasks:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Failed to load tasks: ${errorMessage}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTasks();
   }, []);
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    setCreateError('');
-    setCreateSuccess('');
-
+  const fetchTasks = async () => {
     try {
-      const response = await apiClient.createTask(formData);
-      
+      setLoading(true);
+      const response = await fetch('/api/tasks');
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `API error: ${response.status}`);
+        throw new Error('Failed to fetch tasks');
       }
-      
       const data = await response.json();
-      
-      if (data.error) {
-        setCreateError(data.error);
-      } else {
-        setCreateSuccess(`Task created successfully! ID: ${data.id || 'N/A'}`);
-        setShowCreateForm(false);
-        setFormData({
-          title: '',
-          description: '',
-          status: 'pending',
-          priority: 'medium',
-          task_type: 'Task',
-          flow_id: ''
-        });
-        // Refresh the tasks list
-        fetchTasks();
-      }
+      setTasks(data);
     } catch (err) {
-      console.error('Error creating task:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setCreateError(`Failed to create task: ${errorMessage}`);
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
-      setCreating(false);
+      setLoading(false);
     }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
   };
 
   if (loading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f9fafb'
-      }}>
-        <div style={{
-          textAlign: 'center',
-          padding: '2rem'
-        }}>
-          <div style={{
-            width: '3rem',
-            height: '3rem',
-            border: '4px solid #e5e7eb',
-            borderTop: '4px solid #3b82f6',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 1rem'
-          }}></div>
-          <p style={{
-            fontSize: '1.125rem',
-            color: '#6b7280'
-          }}>
-            Loading tasks...
-          </p>
-        </div>
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f9fafb'
-      }}>
-        <div style={{
-          textAlign: 'center',
-          padding: '2rem',
-          backgroundColor: 'white',
-          borderRadius: '0.75rem',
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-          maxWidth: '500px',
-          width: '100%'
-        }}>
-          <div style={{
-            width: '3rem',
-            height: '3rem',
-            backgroundColor: '#fee2e2',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 1rem'
-          }}>
-            <span style={{
-              fontSize: '1.5rem',
-              color: '#dc2626'
-            }}>
-              !
-            </span>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
           </div>
-          <h2 style={{
-            fontSize: '1.5rem',
-            fontWeight: 'bold',
-            color: '#111827',
-            marginBottom: '0.5rem'
-          }}>
-            Error Loading Tasks
-          </h2>
-          <p style={{
-            color: '#6b7280',
-            marginBottom: '1.5rem'
-          }}>
-            {error}
-          </p>
-          <a
-            href="/"
-            style={{
-              display: 'inline-block',
-              padding: '0.75rem 1.5rem',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              borderRadius: '0.5rem',
-              textDecoration: 'none',
-              fontWeight: '500',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
-          >
-            Go back home
-          </a>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-red-800">Error loading tasks</h3>
+            <div className="mt-2 text-sm text-red-700">
+              <p>{error}</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      backgroundColor: '#f9fafb',
-      padding: '2rem'
-    }}>
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto'
-      }}>
-        {/* Header */}
-        <div style={{
-          marginBottom: '2rem'
-        }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            marginBottom: '1rem'
-          }}>
-            <a
-              href="/"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                color: '#6b7280',
-                textDecoration: 'none',
-                transition: 'color 0.2s'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.color = '#374151'}
-              onMouseOut={(e) => e.currentTarget.style.color = '#6b7280'}
-            >
-              <span style={{ marginRight: '0.5rem' }}>←</span>
-              Back to home
-            </a>
-            
-            <button
-              onClick={() => setShowCreateForm(true)}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#10b981',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '0.875rem'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
-            >
-              + Create New Task
-            </button>
-          </div>
-          
-          <h1 style={{
-            fontSize: '2.25rem',
-            fontWeight: 'bold',
-            color: '#111827',
-            marginBottom: '0.5rem'
-          }}>
-            All Tasks
-          </h1>
-          <p style={{
-            fontSize: '1.125rem',
-            color: '#6b7280'
-          }}>
-            {tasks.length} task{tasks.length !== 1 ? 's' : ''} found
-          </p>
-        </div>
-
-        {/* Tasks List */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '0.75rem',
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-          overflow: 'hidden'
-        }}>
-          {tasks.length === 0 ? (
-            <div style={{
-              padding: '3rem',
-              textAlign: 'center'
-            }}>
-              <p style={{
-                fontSize: '1.125rem',
-                color: '#6b7280'
-              }}>
-                No tasks found in the database.
-              </p>
-            </div>
-          ) : (
-            <div style={{
-              overflowX: 'auto'
-            }}>
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse'
-              }}>
-                <thead>
-                  <tr style={{
-                    backgroundColor: '#f9fafb',
-                    borderBottom: '1px solid #e5e7eb'
-                  }}>
-                    <th style={{
-                      padding: '1rem',
-                      textAlign: 'left',
-                      fontSize: '0.875rem',
-                      fontWeight: '500',
-                      color: '#374151',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      Title
-                    </th>
-                    <th style={{
-                      padding: '1rem',
-                      textAlign: 'left',
-                      fontSize: '0.875rem',
-                      fontWeight: '500',
-                      color: '#374151',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      Status
-                    </th>
-                    <th style={{
-                      padding: '1rem',
-                      textAlign: 'left',
-                      fontSize: '0.875rem',
-                      fontWeight: '500',
-                      color: '#374151',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      Priority
-                    </th>
-                    <th style={{
-                      padding: '1rem',
-                      textAlign: 'left',
-                      fontSize: '0.875rem',
-                      fontWeight: '500',
-                      color: '#374151',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      Type
-                    </th>
-                    <th style={{
-                      padding: '1rem',
-                      textAlign: 'left',
-                      fontSize: '0.875rem',
-                      fontWeight: '500',
-                      color: '#374151',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      Created
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tasks.map((task) => (
-                    <tr 
-                      key={task.id}
-                      style={{
-                        borderBottom: '1px solid #e5e7eb',
-                        transition: 'background-color 0.2s',
-                        cursor: 'pointer'
-                      }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      onClick={() => window.location.href = `/task/${task.id}`}
-                    >
-                      <td style={{
-                        padding: '1rem',
-                        fontSize: '0.875rem',
-                        color: '#111827'
-                      }}>
-                        <div style={{
-                          fontWeight: '500',
-                          marginBottom: '0.25rem'
-                        }}>
-                          {task.title || 'Untitled Task'}
-                        </div>
-                        <div style={{
-                          fontSize: '0.75rem',
-                          color: '#6b7280',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          maxWidth: '300px'
-                        }}>
-                          {task.description ? task.description.substring(0, 100) : 'No description'}
-                          {task.description && task.description.length > 100 ? '...' : ''}
-                        </div>
-                      </td>
-                      <td style={{
-                        padding: '1rem',
-                        fontSize: '0.875rem'
-                      }}>
-                        <span style={{
-                          padding: '0.25rem 0.75rem',
-                          backgroundColor: task.status === 'done' ? '#d1fae5' : 
-                                          task.status === 'in_progress' ? '#fef3c7' : '#f3f4f6',
-                          color: task.status === 'done' ? '#065f46' : 
-                                task.status === 'in_progress' ? '#92400e' : '#374151',
-                          borderRadius: '9999px',
-                          fontSize: '0.75rem',
-                          fontWeight: '500',
-                          display: 'inline-block'
-                        }}>
-                          {task.status || 'pending'}
-                        </span>
-                      </td>
-                      <td style={{
-                        padding: '1rem',
-                        fontSize: '0.875rem'
-                      }}>
-                        <span style={{
-                          padding: '0.25rem 0.75rem',
-                          backgroundColor: task.priority === 'high' ? '#fee2e2' : 
-                                          task.priority === 'medium' ? '#fef3c7' : '#d1fae5',
-                          color: task.priority === 'high' ? '#991b1b' : 
-                                task.priority === 'medium' ? '#92400e' : '#065f46',
-                          borderRadius: '9999px',
-                          fontSize: '0.75rem',
-                          fontWeight: '500',
-                          display: 'inline-block'
-                        }}>
-                          {task.priority || 'medium'}
-                        </span>
-                      </td>
-                      <td style={{
-                        padding: '1rem',
-                        fontSize: '0.875rem',
-                        color: '#6b7280'
-                      }}>
-                        {task.task_type || 'Task'}
-                      </td>
-                      <td style={{
-                        padding: '1rem',
-                        fontSize: '0.875rem',
-                        color: '#6b7280',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {task.created_at ? new Date(task.created_at).toLocaleDateString() : 'N/A'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          marginTop: '2rem',
-          paddingTop: '1rem',
-          borderTop: '1px solid #e5e7eb',
-          color: '#6b7280',
-          fontSize: '0.875rem',
-          textAlign: 'center'
-        }}>
-          <p>
-            Showing {tasks.length} task{tasks.length !== 1 ? 's' : ''}
-          </p>
-        </div>
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
+        <button
+          onClick={fetchTasks}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Refresh
+        </button>
       </div>
 
-      {/* Create Task Modal */}
-      {showCreateForm && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 50,
-          padding: '1rem'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '0.75rem',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            maxWidth: '600px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto'
-          }}>
-            <div style={{
-              padding: '1.5rem',
-              borderBottom: '1px solid #e5e7eb'
-            }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '1rem'
-              }}>
-                <h2 style={{
-                  fontSize: '1.5rem',
-                  fontWeight: '600',
-                  color: '#111827'
-                }}>
-                  Create New Task
-                </h2>
-                <button
-                  onClick={() => setShowCreateForm(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '1.5rem',
-                    color: '#6b7280',
-                    cursor: 'pointer',
-                    padding: '0.25rem'
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-              
-              {createError && (
-                <div style={{
-                  backgroundColor: '#fee2e2',
-                  border: '1px solid #fca5a5',
-                  color: '#dc2626',
-                  padding: '0.75rem',
-                  borderRadius: '0.5rem',
-                  marginBottom: '1rem',
-                  fontSize: '0.875rem'
-                }}>
-                  {createError}
+      {tasks.length === 0 ? (
+        <div className="text-center py-12">
+          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No tasks</h3>
+          <p className="mt-1 text-sm text-gray-500">Get started by creating a new task.</p>
+        </div>
+      ) : (
+        <div className="bg-white shadow overflow-hidden sm:rounded-md">
+          <ul className="divide-y divide-gray-200">
+            {tasks.map((task) => (
+              <li key={task.id}>
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                          task.status === 'completed' ? 'bg-green-100' :
+                          task.status === 'failed' ? 'bg-red-100' :
+                          task.status === 'running' ? 'bg-blue-100' :
+                          'bg-yellow-100'
+                        }`}>
+                          <span className={`text-sm font-medium ${
+                            task.status === 'completed' ? 'text-green-800' :
+                            task.status === 'failed' ? 'text-red-800' :
+                            task.status === 'running' ? 'text-blue-800' :
+                            'text-yellow-800'
+                          }`}>
+                            {task.status.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">{task.description}</div>
+                        <div className="text-sm text-gray-500">ID: {task.id}</div>
+                      </div>
+                    </div>
+                    <div className="ml-2 flex-shrink-0 flex">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        task.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        task.status === 'failed' ? 'bg-red-100 text-red-800' :
+                        task.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {task.status}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-sm text-gray-600">Flow: {task.flow_id}</div>
+                  </div>
+                  <div className="mt-2 flex justify-between text-sm text-gray-500">
+                    <span>Created: {new Date(task.created_at).toLocaleDateString()}</span>
+                    <span>Updated: {new Date(task.updated_at).toLocaleDateString()}</span>
+                  </div>
+                  <div className="mt-2">
+                    <a href={`/tasks/${task.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                      View details →
+                    </a>
+                  </div>
                 </div>
-              )}
-              
-              {createSuccess && (
-                <div style={{
-                  backgroundColor: '#d1fae5',
-                  border: '1px solid #86efac',
-                  color: '#065f46',
-                  padding: '0.75rem',
-                  borderRadius: '0.5rem',
-                  marginBottom: '1rem',
-                  fontSize: '0.875rem'
-                }}>
-                  {createSuccess}
-                </div>
-              )}
-              
-              <form onSubmit={handleCreateTask}>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Title *
-                  </label>
-                  <input
-                    type="text"
-                    name="title"
-                    value={formData.title}
-                    onChange={handleInputChange}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                </div>
-                
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Description
-                  </label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    rows={3}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      resize: 'vertical'
-                    }}
-                  />
-                </div>
-                
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Status
-                  </label>
-                  <select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem'
-                    }}
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="done">Done</option>
-                  </select>
-                </div>
-                
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Priority
-                  </label>
-                  <select
-                    name="priority"
-                    value={formData.priority}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem'
-                    }}
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-                
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Task Type
-                  </label>
-                  <input
-                    type="text"
-                    name="task_type"
-                    value={formData.task_type}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                </div>
-                
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Flow ID (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    name="flow_id"
-                    value={formData.flow_id}
-                    onChange={handleInputChange}
-                    placeholder="Enter flow ID if associated with a flow"
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem 0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                </div>
-                
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '0.75rem'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      backgroundColor: '#f3f4f6',
-                      color: '#374151',
-                      border: 'none',
-                      borderRadius: '0.375rem',
-                      cursor: 'pointer',
-                      fontWeight: '500',
-                      fontSize: '0.875rem'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.375rem',
-                      cursor: creating ? 'not-allowed' : 'pointer',
-                      fontWeight: '500',
-                      fontSize: '0.875rem',
-                      opacity: creating ? 0.7 : 1
-                    }}
-                  >
-                    {creating ? 'Creating...' : 'Create Task'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
   );
 }
-

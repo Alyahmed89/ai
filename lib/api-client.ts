@@ -1,358 +1,64 @@
-/**
- * API Client for external backend
- * 
- * This client uses external API endpoints for production.
- */
+const BACKEND_URL = process.env.BACKEND_URL || 'https://deepseek-agent.alghamdimo89.workers.dev';
 
-const API_BASE = 'https://deepseek-agent.alghamdimo89.workers.dev';
-
-export async function apiFetch(path: string, options: RequestInit = {}) {
-  const url = `${API_BASE}${path}`;
-  
-  console.log(`API Call: ${options.method || 'GET'} ${url}`);
-  
+export async function fetchFromBackend(endpoint: string, options?: RequestInit) {
+  const url = `${BACKEND_URL}${endpoint}`;
   const response = await fetch(url, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    }
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
   });
-  
-  // Log response for debugging
-  console.log(`API Response: ${response.status} ${response.statusText}`);
-  
-  return response;
+
+  if (!response.ok) {
+    throw new Error(`Backend request failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
 }
 
-// Helper functions for common API operations
-export const apiClient = {
-  // Tasks
-  getTasks: (limit?: number) => 
-    apiFetch(`/api/tasks${limit ? `?limit=${limit}` : ''}`),
-  
-  getTasksByFlowId: (flowId: string) => 
-    apiFetch(`/api/tasks?flowId=${flowId}`),
-  
-  getTask: (id: string) => 
-    apiFetch(`/api/tasks/${id}`),
-  
-  createTask: (data: any) => 
-    apiFetch('/api/tasks', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-  
-  updateTask: (id: string, data: any) => 
-    apiFetch(`/api/tasks/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }),
-  
-  deleteTask: (id: string) => 
-    apiFetch(`/api/tasks/${id}`, {
-      method: 'DELETE'
-    }),
-  
-  // Flow Definitions
-  getFlowDefinitions: (limit?: number) => 
-    apiFetch(`/api/flow-definitions${limit ? `?limit=${limit}` : ''}`),
-  
-  getFlowDefinition: (id: string) => 
-    apiFetch(`/api/flow-definitions/${id}`),
-  
-  createFlowDefinition: (data: any) => 
-    apiFetch('/api/flow-definitions', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-  
-  updateFlowDefinition: (id: string, data: any) => 
-    apiFetch(`/api/flow-definitions/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }),
-  
-  deleteFlowDefinition: (id: string) => 
-    apiFetch(`/api/flow-definitions/${id}`, {
-      method: 'DELETE'
-    }),
-  
-  getFlowSteps: (flowId: string) => 
-    apiFetch(`/api/flow-definitions/${flowId}/steps`),
-  
-  // Flow Steps
-  getFlowStepsList: (limit?: number) => 
-    apiFetch(`/api/flow-steps${limit ? `?limit=${limit}` : ''}`),
-  
-  getFlowStep: (id: string) => 
-    apiFetch(`/api/flow-steps/${id}`),
-  
-  // New endpoint for flow-specific steps
-  getFlowSpecificSteps: (flowId: string) => 
-    apiFetch(`/api/flows/${flowId}/steps`),
-  
-  createFlowStep: (data: any) => 
-    apiFetch('/api/flow-steps', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-  
-  updateFlowStep: (id: string, data: any) => 
-    apiFetch(`/api/flow-steps/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }),
-  
-  deleteFlowStep: (id: string) => 
-    apiFetch(`/api/flow-steps/${id}`, {
-      method: 'DELETE'
-    }),
-  
-  getStepConditions: (stepId: string) => 
-    apiFetch(`/api/flow-steps/${stepId}/conditions`),
-  
-  getStepInput: (stepId: string) => 
-    apiFetch(`/api/flow-steps/${stepId}/input`),
-  
-  // D1 Items
-  getD1Items: () => 
-    apiFetch('/api/d1/items'),
-  
-  createD1Item: (data: { name: string; description: string }) => 
-    apiFetch('/api/d1/items', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-  
-  initializeDatabase: () => 
-    apiFetch('/api/d1/init'),
-  
-  // Test Request Proxy
-  testRequest: (data: { method: string; url: string; requestBody: any; apiKey?: string }) => 
-    apiFetch('/api/test-request', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-  
-  // Flow Runs
-  getFlowRuns: (limit?: number, flowId?: string) => {
-    const params = new URLSearchParams();
-    if (limit) params.append('limit', limit.toString());
-    if (flowId) params.append('flowId', flowId);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return apiFetch(`/api/flow-runs${query}`);
-  },
-  
-  getFlowRun: (id: string) => 
-    apiFetch(`/api/flow-runs/${id}`),
-  
-  createFlowRun: (data: any) => 
-    apiFetch('/api/flow-runs', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-  
-  updateFlowRun: (id: string, data: any) => 
-    apiFetch(`/api/flow-runs/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }),
-  
-  deleteFlowRun: (id: string) => 
-    apiFetch(`/api/flow-runs/${id}`, {
-      method: 'DELETE'
-    }),
-  
-  getFlowRunIterations: (flowRunId: string) => 
-    apiFetch(`/api/flow-runs/${flowRunId}/iterations`),
-  
-  // New endpoints from user requirements
-  startFlow: () =>
-    apiFetch('/start', {
-      method: 'GET'
-    }),
-  
-  getConversationStatus: (conversationId: string) =>
-    apiFetch(`/status/${conversationId}`),
-  
-  // Flow endpoints (different from flow-definitions)
-  getFlows: (limit?: number) =>
-    apiFetch(`/api/flows${limit ? `?limit=${limit}` : ''}`),
-  
-  getFlow: (id: string) =>
-    apiFetch(`/api/flows/${id}`),
-  
-  // Note: getFlowSteps already exists for flow-definitions
-  // This is for the new /api/flows/{id}/steps endpoint
-  getFlowStepsByFlowId: (flowId: string) =>
-    apiFetch(`/api/flows/${flowId}/steps`),
-  
-  // Flow steps list - alias for getFlowStepsList
-  getAllFlowSteps: (limit?: number) =>
-    apiFetch(`/api/flow-steps${limit ? `?limit=${limit}` : ''}`),
-  
-  // Stop flow endpoints
-  stopFlow: (conversationId: string) => {
-    // Note: This would need to be implemented differently for Durable Object
-    // For now, we'll provide a placeholder
-    console.warn('Stopping flow via Durable Object requires direct Durable Object fetch');
-    return apiFetch(`/api/stop/${conversationId}`, {
-      method: 'POST'
-    });
-  },
-  
-  updateFlowRunStatus: (flowRunId: string, data: { status: string; completed_at?: number }) =>
-    apiFetch(`/api/flow-runs/${flowRunId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }),
-  
-  deleteFlowRunRecord: (flowRunId: string) =>
-    apiFetch(`/api/flow-runs/${flowRunId}`, {
-      method: 'DELETE'
-    }),
-  
-  createFlowRunManual: (data: any) =>
-    apiFetch('/api/flow-runs', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
+// Projects API
+export async function getProjects() {
+  return fetchFromBackend('/graph/projects');
+}
 
-  // Project Management
-  getProjects: (limit?: number) => {
-    const params = new URLSearchParams();
-    if (limit) params.append('limit', limit.toString());
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return apiFetch(`/graph/projects${query}`);
-  },
+// Nodes API
+export async function getNodes() {
+  return fetchFromBackend('/graph/nodes');
+}
 
-  getProject: (id: string) =>
-    apiFetch(`/graph/projects/${id}`),
+// Tasks API
+export async function getTasks() {
+  return fetchFromBackend('/api/tasks');
+}
 
-  createProject: (data: { name: string; status: string; metadata: string }) =>
-    apiFetch('/graph/projects', {
-      method: 'POST',
-      body: JSON.stringify(data)
+// Flows API
+export async function getFlows() {
+  return fetchFromBackend('/api/graph/flows');
+}
+
+// Flow Runs API
+export async function getFlowRuns() {
+  return fetchFromBackend('/api/flow-runs');
+}
+
+export async function getFlowRun(id: string) {
+  return fetchFromBackend(`/api/flow-runs/${id}`);
+}
+
+// Step Runs API
+export async function getStepRuns(flowRunId?: string) {
+  const endpoint = flowRunId ? `/api/step-runs?flow_run_id=${flowRunId}` : '/api/step-runs';
+  return fetchFromBackend(endpoint);
+}
+
+// Start Flow API
+export async function startFlow(flowId: string, data: any) {
+  return fetchFromBackend('/start', {
+    method: 'POST',
+    body: JSON.stringify({
+      flow_id: flowId,
+      ...data
     }),
-
-  updateProject: (id: string, data: { status?: string; metadata?: string }) =>
-    apiFetch(`/graph/projects/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data)
-    }),
-
-  deleteProject: (id: string) =>
-    apiFetch(`/graph/projects/${id}`, {
-      method: 'DELETE'
-    }),
-
-  // Node Management
-  getNodes: (limit?: number, projectId?: string) => {
-    const params = new URLSearchParams();
-    if (limit) params.append('limit', limit.toString());
-    if (projectId) params.append('project_id', projectId);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return apiFetch(`/graph/nodes${query}`);
-  },
-
-  getNodesByProjectId: (projectId: string) => {
-    return apiFetch(`/graph/projects/${projectId}/nodes`);
-  },
-
-  getNode: (id: string) =>
-    apiFetch(`/graph/nodes/${id}`),
-
-  createNode: (data: {
-    project_id: string;
-    type: string;
-    title: string;
-    content: string;
-    status: string;
-    metadata: string;
-  }) =>
-    apiFetch('/graph/nodes', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-
-  updateNode: (id: string, data: {
-    type?: string;
-    title?: string;
-    content?: string;
-    status?: string;
-    metadata?: string;
-  }) =>
-    apiFetch(`/graph/nodes/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data)
-    }),
-
-  deleteNode: (id: string) =>
-    apiFetch(`/graph/nodes/${id}`, {
-      method: 'DELETE'
-    }),
-
-  // Node Hierarchy Management
-  getNodeChildren: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/children`),
-
-  getNodeParent: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/parent`),
-
-  addNodeChild: (id: string, childId: string) =>
-    apiFetch(`/graph/nodes/${id}/children`, {
-      method: 'POST',
-      body: JSON.stringify({ child_id: childId })
-    }),
-
-  removeNodeChild: (id: string, childId: string) =>
-    apiFetch(`/graph/nodes/${id}/children/${childId}`, {
-      method: 'DELETE'
-    }),
-
-  // Project Hierarchy
-  getProjectRootNodes: (projectId: string) =>
-    apiFetch(`/graph/projects/${projectId}/root-nodes`),
-
-  getNodeBreadcrumbs: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/breadcrumbs`),
-
-  // Node Relationships & Links
-  getNodeLinks: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/links`),
-
-  createNodeLink: (id: string, data: { target_id: string; description: string; type: string }) =>
-    apiFetch(`/graph/nodes/${id}/links`, {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-
-  deleteNodeLink: (id: string, linkId: string) =>
-    apiFetch(`/graph/nodes/${id}/links/${linkId}`, {
-      method: 'DELETE'
-    }),
-
-  getNodeRelationships: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/relationships`),
-
-  // Node Dependencies
-  getNodeDependencies: (id: string) =>
-    apiFetch(`/graph/nodes/${id}/dependencies`),
-
-  createRelationship: (data: { source_id: string; target_id: string; type: string; metadata?: string }) =>
-    apiFetch('/graph/relationships', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }),
-
-  // Project-based Nodes with filters
-  getProjectNodesWithFilters: (projectId: string, filters?: { type?: string; status?: string; limit?: number }) => {
-    const params = new URLSearchParams();
-    if (filters?.type) params.append('type', filters.type);
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return apiFetch(`/graph/projects/${projectId}/nodes${query}`);
-  }
-};
+  });
+}
