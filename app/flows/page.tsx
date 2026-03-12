@@ -3,6 +3,18 @@
 import { useState, useEffect } from 'react';
 import { parseApiResponse } from '@/lib/api-utils';
 
+interface ApiFlow {
+  id: string;
+  name: string;
+  first_prompt: string;
+  deepseek_system: string | null;
+  repo: string | null;
+  branch: string | null;
+  max_iterations: number;
+  steps: string | null; // JSON string or null
+  created_at: string;
+}
+
 interface Flow {
   id: string;
   name: string;
@@ -29,8 +41,19 @@ export default function FlowsPage() {
         throw new Error('Failed to fetch flows');
       }
       const data = await response.json();
-      const parsedData = parseApiResponse<Flow>(data);
-      setFlows(parsedData);
+      const apiFlows = parseApiResponse<ApiFlow>(data);
+      
+      // Transform API data to match Flow interface
+      const transformedFlows: Flow[] = apiFlows.map(apiFlow => ({
+        id: apiFlow.id,
+        name: apiFlow.name,
+        description: apiFlow.first_prompt || 'No description',
+        steps: apiFlow.steps ? JSON.parse(apiFlow.steps).length : 0,
+        created_at: apiFlow.created_at,
+        updated_at: apiFlow.created_at // Use created_at since updated_at is not provided
+      }));
+      
+      setFlows(transformedFlows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {

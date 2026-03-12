@@ -24,7 +24,9 @@ export async function getProjects() {
 
 // Nodes API
 export async function getNodes() {
-  return fetchFromBackend('/graph/nodes');
+  // TODO: This endpoint doesn't exist yet in the backend
+  // Return empty array for now
+  return [];
 }
 
 // Tasks API
@@ -34,7 +36,7 @@ export async function getTasks() {
 
 // Flows API
 export async function getFlows() {
-  return fetchFromBackend('/api/graph/flows');
+  return fetchFromBackend('/api/flows');
 }
 
 // Flow Runs API
