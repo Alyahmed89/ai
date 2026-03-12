@@ -1,11 +1,12 @@
 import { getFlowRun, getStepRuns } from '@/lib/api-client';
+import { NextRequest } from 'next/server';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     const [flowRun, stepRuns] = await Promise.all([
       getFlowRun(id),
       getStepRuns(id)

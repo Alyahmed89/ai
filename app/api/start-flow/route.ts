@@ -1,6 +1,7 @@
 import { startFlow } from '@/lib/api-client';
+import { NextRequest } from 'next/server';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { flow_id, ...data } = body;
