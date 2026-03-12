@@ -75,6 +75,37 @@ function ProjectsContent() {
     }
   };
 
+  const startDocCommentFlowWithForm = async () => {
+    try {
+      const comment = (document.getElementById('comment') as HTMLTextAreaElement)?.value;
+      const scope = (document.getElementById('scope') as HTMLInputElement)?.value;
+      const tags = (document.getElementById('tags') as HTMLInputElement)?.value.split(',').map(t => t.trim()).filter(t => t);
+      
+      const response = await fetch('/api/start-flow', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flow_id: 'doc-comment',
+          comment: {
+            text: comment,
+            scope: scope,
+            tags: tags
+          }
+        }),
+      });
+      
+      if (response.ok) {
+        alert('Flow started successfully! Check Flow Runs for progress.');
+      } else {
+        throw new Error('Failed to start flow');
+      }
+    } catch (err) {
+      alert('Error starting flow: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -214,36 +245,7 @@ function ProjectsContent() {
             <button
               type="button"
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              onClick={async () => {
-                const comment = (document.getElementById('comment') as HTMLTextAreaElement).value;
-                const scope = (document.getElementById('scope') as HTMLInputElement).value;
-                const tags = (document.getElementById('tags') as HTMLInputElement).value.split(',').map(t => t.trim()).filter(t => t);
-                
-                try {
-                  const response = await fetch('/api/start-flow', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      flow_id: 'doc-comment',
-                      comment: {
-                        text: comment,
-                        scope: scope,
-                        tags: tags
-                      }
-                    }),
-                  });
-                  
-                  if (response.ok) {
-                    alert('Flow started successfully! Check Flow Runs for progress.');
-                  } else {
-                    throw new Error('Failed to start flow');
-                  }
-                } catch (err) {
-                  alert('Error starting flow: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                }
-              }}
+              onClick={startDocCommentFlowWithForm}
             >
               Start doc-comment Flow
             </button>
