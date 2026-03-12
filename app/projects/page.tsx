@@ -257,9 +257,5 @@ function ProjectsContent() {
 }
 
 export default function ProjectsPage() {
-  return (
-    <ErrorBoundary>
-      <ProjectsContent />
-    </ErrorBoundary>
-  );
+  return <ProjectsContent />;
 }
