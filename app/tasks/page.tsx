@@ -32,7 +32,7 @@ export default function TasksPage() {
         throw new Error('Failed to fetch tasks');
       }
       const data = await response.json();
-      const parsedData = parseApiResponse(data);
+      const parsedData = parseApiResponse<Task>(data);
       setTasks(parsedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');

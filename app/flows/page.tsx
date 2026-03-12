@@ -29,7 +29,7 @@ export default function FlowsPage() {
         throw new Error('Failed to fetch flows');
       }
       const data = await response.json();
-      const parsedData = parseApiResponse(data);
+      const parsedData = parseApiResponse<Flow>(data);
       setFlows(parsedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');

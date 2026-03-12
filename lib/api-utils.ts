@@ -5,24 +5,24 @@
  * - Some return array directly [...]
  */
 
-export function parseApiResponse<T>(response: any): T[] {
+export function parseApiResponse<T = any>(response: any): T[] {
   // If response is an array, return it directly
   if (Array.isArray(response)) {
-    return response;
+    return response as T[];
   }
   
   // If response has success and data fields
   if (response && typeof response === 'object' && 'success' in response && 'data' in response) {
     if (response.success && Array.isArray(response.data)) {
-      return response.data;
+      return response.data as T[];
     }
   }
   
   // If response has data field (even without success)
   if (response && typeof response === 'object' && 'data' in response && Array.isArray(response.data)) {
-    return response.data;
+    return response.data as T[];
   }
   
   // Default: try to return as array or empty array
-  return Array.isArray(response) ? response : [];
+  return (Array.isArray(response) ? response : []) as T[];
 }
