@@ -26,7 +26,7 @@ export default function ProjectsPage() {
       setLoading(true);
       const response = await fetch('/api/projects');
       if (!response.ok) {
-        throw new Error('Failed to fetch projects');
+        throw new Error(`Failed to fetch projects: ${response.status} ${response.statusText}`);
       }
       const result = await response.json();
       // The API returns {success: true, data: [...], error: null, statusCode: 200}
@@ -36,6 +36,7 @@ export default function ProjectsPage() {
         throw new Error(result.error || 'Invalid response format');
       }
     } catch (err) {
+      console.error('Error fetching projects:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
