@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface Project {
   id: string;
@@ -12,7 +13,7 @@ interface Project {
   deleted_at: number | null;
 }
 
-export default function ProjectsPage() {
+function ProjectsContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -219,5 +220,13 @@ export default function ProjectsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ProjectsPage() {
+  return (
+    <ErrorBoundary>
+      <ProjectsContent />
+    </ErrorBoundary>
   );
 }
