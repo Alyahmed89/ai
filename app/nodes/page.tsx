@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { parseApiResponse } from '@/lib/api-utils';
 
 interface Node {
   id: string;

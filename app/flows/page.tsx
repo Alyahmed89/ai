@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { parseApiResponse } from '@/lib/api-utils';
 
 interface Flow {
   id: string;
@@ -28,7 +29,8 @@ export default function FlowsPage() {
         throw new Error('Failed to fetch flows');
       }
       const data = await response.json();
-      setFlows(data);
+      const parsedData = parseApiResponse(data);
+      setFlows(parsedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {

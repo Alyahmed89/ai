@@ -1,12 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { parseApiResponse } from '@/lib/api-utils';
 
 interface Task {
   id: string;
-  description: string;
+  title: string | null;
+  description: string | null;
+  task_type: string | null;
+  priority: string | null;
   status: string;
-  flow_id: string;
+  flow_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,7 +32,8 @@ export default function TasksPage() {
         throw new Error('Failed to fetch tasks');
       }
       const data = await response.json();
-      setTasks(data);
+      const parsedData = parseApiResponse(data);
+      setTasks(parsedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -110,7 +115,7 @@ export default function TasksPage() {
                         </div>
                       </div>
                       <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{task.description}</div>
+                        <div className="text-sm font-medium text-gray-900">{task.title || task.description || 'Untitled Task'}</div>
                         <div className="text-sm text-gray-500">ID: {task.id}</div>
                       </div>
                     </div>
