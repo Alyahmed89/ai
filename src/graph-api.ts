@@ -730,6 +730,61 @@ graphApi.delete('/nodes/:id', async (c) => {
   }
 });
 
+// GET /nodes - List nodes with filters (supports project_id query parameter)
+graphApi.get('/nodes', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const projectId = c.req.query('project_id');
+    const type = c.req.query('type');
+    const tag = c.req.query('tag');
+    const status = c.req.query('status');
+    const search = c.req.query('search');
+    
+    // Build query
+    let query = 'SELECT n.* FROM nodes n WHERE n.deleted_at IS NULL';
+    const bindings: any[] = [];
+    
+    // Apply project filter if provided
+    if (projectId) {
+      query += ' AND n.project_id = ?';
+      bindings.push(projectId);
+    }
+    
+    // Apply filters
+    if (type) {
+      query += ' AND n.type = ?';
+      bindings.push(type);
+    }
+    
+    if (status) {
+      query += ' AND n.status = ?';
+      bindings.push(status);
+    }
+    
+    if (search) {
+      query += ' AND (n.title LIKE ? OR n.content LIKE ?)';
+      const searchTerm = `%${search}%`;
+      bindings.push(searchTerm, searchTerm);
+    }
+    
+    if (tag) {
+      query += ' AND EXISTS (SELECT 1 FROM node_tags nt JOIN tags t ON nt.tag_id = t.id WHERE nt.node_id = n.id AND t.name = ?)';
+      bindings.push(tag);
+    }
+    
+    query += ' ORDER BY n.updated_at DESC';
+    
+    const result = await db.prepare(query).bind(...bindings).all();
+    return c.json(successResponse(result.results || []));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
 // ============================================================================
 // 3. NODE HIERARCHY (Parent/Children Relationships)
 // ============================================================================
