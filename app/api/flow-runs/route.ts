@@ -1,4 +1,5 @@
 import { getFlowRuns } from '@/lib/api-client';
+export const runtime = "edge";
 
 export async function GET() {
   try {

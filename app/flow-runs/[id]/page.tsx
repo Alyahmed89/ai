@@ -4,6 +4,8 @@ import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+export const runtime = 'edge';
+
 interface FlowRun {
   id: string;
   flow_id: string;
