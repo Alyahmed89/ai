@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiClient } from '@/lib/api-client';
+import { localApiClient } from '@/lib/local-api-client';
 
 interface Project {
   id: string;
@@ -66,7 +66,7 @@ export default function MinimalUnifiedPage() {
     const loadProjects = async () => {
       try {
         setLoading(true);
-        const response = await apiClient.getProjects();
+        const response = await localApiClient.getProjects();
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
@@ -107,7 +107,7 @@ export default function MinimalUnifiedPage() {
       try {
         setNodesLoading(true);
         // Get all nodes for the project
-        const response = await apiClient.getNodesByProjectId(selectedProjectId);
+        const response = await localApiClient.getNodesByProjectId(selectedProjectId);
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
@@ -150,7 +150,7 @@ export default function MinimalUnifiedPage() {
     const loadFlowRuns = async () => {
       try {
         setFlowRunsLoading(true);
-        const response = await apiClient.getFlowRuns();
+        const response = await localApiClient.getFlowRuns();
         
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
@@ -200,7 +200,7 @@ export default function MinimalUnifiedPage() {
       
       // Try to load children from API first
       try {
-        const response = await apiClient.getNodeChildren(nodeId);
+        const response = await localApiClient.getNodeChildren(nodeId);
         
         if (response.ok) {
           const data = await response.json();
@@ -268,7 +268,7 @@ export default function MinimalUnifiedPage() {
       try {
         // Load links
         setLinksLoading(true);
-        const linksResponse = await apiClient.getNodeLinks(selectedNodeId);
+        const linksResponse = await localApiClient.getNodeLinks(selectedNodeId);
         if (linksResponse.ok) {
           const linksData = await linksResponse.json();
           // Handle different response formats
@@ -297,7 +297,7 @@ export default function MinimalUnifiedPage() {
       try {
         // Load dependencies
         setDependenciesLoading(true);
-        const depsResponse = await apiClient.getNodeDependencies(selectedNodeId);
+        const depsResponse = await localApiClient.getNodeDependencies(selectedNodeId);
         if (depsResponse.ok) {
           const depsData = await depsResponse.json();
           // Handle different response formats
@@ -326,7 +326,7 @@ export default function MinimalUnifiedPage() {
       try {
         // Load relationships
         setRelationshipsLoading(true);
-        const relsResponse = await apiClient.getNodeRelationships(selectedNodeId);
+        const relsResponse = await localApiClient.getNodeRelationships(selectedNodeId);
         if (relsResponse.ok) {
           const relsData = await relsResponse.json();
           // Handle different response formats
@@ -362,7 +362,7 @@ export default function MinimalUnifiedPage() {
     
     try {
       setFlowsLoading(true);
-      const response = await apiClient.getFlowsByProjectId(selectedProjectId);
+      const response = await localApiClient.getFlowsByProjectId(selectedProjectId);
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -396,7 +396,7 @@ export default function MinimalUnifiedPage() {
     
     try {
       setTasksLoading(true);
-      const response = await apiClient.getTasksByProjectId(selectedProjectId);
+      const response = await localApiClient.getTasksByProjectId(selectedProjectId);
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);

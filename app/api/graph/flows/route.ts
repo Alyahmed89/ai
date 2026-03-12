@@ -1,28 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProjects } from '@/lib/cloudflare-d1';
+import { getFlows } from '@/lib/cloudflare-d1';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const limit = searchParams.get('limit');
 
-    let projects = await getProjects();
+    let flows = await getFlows();
 
     // Apply limit if provided
     if (limit) {
       const limitNum = parseInt(limit, 10);
-      projects = projects.slice(0, limitNum);
+      flows = flows.slice(0, limitNum);
     }
 
     return NextResponse.json({
       success: true,
-      data: projects
+      data: flows
     });
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    console.error('Error fetching flows:', error);
     return NextResponse.json({
       success: false,
-      error: 'Failed to fetch projects'
+      error: 'Failed to fetch flows'
     }, { status: 500 });
   }
 }

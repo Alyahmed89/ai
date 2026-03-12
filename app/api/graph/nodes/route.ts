@@ -1,28 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { nodes, addNode, getNodesByProjectId } from '../shared-data';
+import { getNodes } from '@/lib/cloudflare-d1';
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const projectId = searchParams.get('project_id');
-  const limit = searchParams.get('limit');
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const projectId = searchParams.get('project_id');
+    const limit = searchParams.get('limit');
 
-  let filteredNodes = nodes;
+    let nodes = await getNodes(projectId || undefined);
 
-  // Filter by project ID if provided
-  if (projectId) {
-    filteredNodes = getNodesByProjectId(projectId);
+    // Apply limit if provided
+    if (limit) {
+      const limitNum = parseInt(limit, 10);
+      nodes = nodes.slice(0, limitNum);
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: nodes
+    });
+  } catch (error) {
+    console.error('Error fetching nodes:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to fetch nodes'
+    }, { status: 500 });
   }
-
-  // Apply limit if provided
-  if (limit) {
-    const limitNum = parseInt(limit, 10);
-    filteredNodes = filteredNodes.slice(0, limitNum);
-  }
-
-  return NextResponse.json({
-    success: true,
-    data: filteredNodes
-  });
 }
 
 export async function POST(request: NextRequest) {
