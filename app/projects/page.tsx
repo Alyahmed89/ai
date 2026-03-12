@@ -5,9 +5,11 @@ import { useState, useEffect } from 'react';
 interface Project {
   id: string;
   name: string;
-  description: string;
-  created_at: string;
-  updated_at: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  metadata: string;
+  deleted_at: number | null;
 }
 
 export default function ProjectsPage() {
@@ -26,8 +28,13 @@ export default function ProjectsPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch projects');
       }
-      const data = await response.json();
-      setProjects(data);
+      const result = await response.json();
+      // The API returns {success: true, data: [...], error: null, statusCode: 200}
+      if (result.success && result.data) {
+        setProjects(result.data);
+      } else {
+        throw new Error(result.error || 'Invalid response format');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -100,11 +107,19 @@ export default function ProjectsPage() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <p className="text-sm text-gray-600">{project.description}</p>
+                  <div className="flex items-center">
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                      project.status === 'active' ? 'bg-green-100 text-green-800' :
+                      project.status === 'inactive' ? 'bg-gray-100 text-gray-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {project.status}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-4 flex justify-between text-sm text-gray-500">
-                  <span>Created: {new Date(project.created_at).toLocaleDateString()}</span>
-                  <span>Updated: {new Date(project.updated_at).toLocaleDateString()}</span>
+                  <span>Created: {new Date(project.created_at * 1000).toLocaleDateString()}</span>
+                  <span>Updated: {new Date(project.updated_at * 1000).toLocaleDateString()}</span>
                 </div>
               </div>
               <div className="bg-gray-50 px-5 py-3">
