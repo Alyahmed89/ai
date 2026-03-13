@@ -1,8 +1,9 @@
 import { getFlowStepInput } from '@/lib/api-client';
+import { NextRequest } from 'next/server';
 export const runtime = 'edge';
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
