@@ -3,10 +3,10 @@ export const runtime = 'edge';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const flowStepInput = await getFlowStepInput(id);
     return Response.json(flowStepInput);
   } catch (error) {

@@ -34,11 +34,20 @@ interface StepRun {
 
 export default function FlowRunDetailsPage() {
   const params = useParams();
-  const id = params?.id as string;
+  const [id, setId] = useState<string | null>(null);
   
   const [flowRun, setFlowRun] = useState<FlowRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchParams = async () => {
+      const resolvedParams = await params;
+      const flowRunId = resolvedParams?.id as string;
+      setId(flowRunId);
+    };
+    fetchParams();
+  }, [params]);
 
   useEffect(() => {
     if (id) {

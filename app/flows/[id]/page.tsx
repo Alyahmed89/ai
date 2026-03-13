@@ -49,12 +49,21 @@ interface FlowStep {
 export default function FlowDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const flowId = params.id as string;
+  const [flowId, setFlowId] = useState<string | null>(null);
   
   const [flow, setFlow] = useState<FlowDefinition | null>(null);
   const [steps, setSteps] = useState<FlowStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchParams = async () => {
+      const resolvedParams = await params;
+      const id = resolvedParams?.id as string;
+      setFlowId(id);
+    };
+    fetchParams();
+  }, [params]);
 
   useEffect(() => {
     if (flowId) {
