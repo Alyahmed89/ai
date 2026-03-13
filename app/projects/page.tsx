@@ -45,38 +45,14 @@ function ProjectsContent() {
     }
   };
 
-  const startDocCommentFlow = async () => {
-    try {
-      const response = await fetch('/api/start-flow', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          flowType: 'doc-comment',
-          projectId: projects.length > 0 ? projects[0].id : 'default',
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start flow');
-      }
-      
-      const result = await response.json();
-      if (result.success && result.flowRunId) {
-        // Redirect to flow run details
-        window.location.href = `/flow-runs/${result.flowRunId}`;
-      } else {
-        throw new Error(result.error || 'Failed to start flow');
-      }
-    } catch (err) {
-      console.error('Error starting flow:', err);
-      alert(`Failed to start flow: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  };
-
   const startDocCommentFlowWithForm = async () => {
     try {
+      const button = document.getElementById('start-doc-comment-flow-btn') as HTMLButtonElement;
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Starting Flow...';
+      }
+      
       const comment = (document.getElementById('comment') as HTMLTextAreaElement)?.value;
       const scope = (document.getElementById('scope') as HTMLInputElement)?.value;
       const tags = (document.getElementById('tags') as HTMLInputElement)?.value.split(',').map(t => t.trim()).filter(t => t);
@@ -103,6 +79,12 @@ function ProjectsContent() {
       }
     } catch (err) {
       alert('Error starting flow: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      const button = document.getElementById('start-doc-comment-flow-btn') as HTMLButtonElement;
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Start doc-comment Flow';
+      }
     }
   };
 
@@ -243,8 +225,9 @@ function ProjectsContent() {
           </div>
           <div className="flex justify-end">
             <button
+              id="start-doc-comment-flow-btn"
               type="button"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={startDocCommentFlowWithForm}
             >
               Start doc-comment Flow
