@@ -23,8 +23,33 @@ export async function getProjects() {
 }
 
 // Nodes API
-export async function getNodes() {
-  return fetchFromBackend('/graph/nodes');
+export async function getNodes(projectId?: string) {
+  const endpoint = projectId ? `/graph/nodes?project_id=${projectId}` : '/graph/nodes';
+  return fetchFromBackend(endpoint);
+}
+
+export async function getNode(id: string) {
+  return fetchFromBackend(`/graph/nodes/${id}`);
+}
+
+export async function getNodeChildren(id: string) {
+  return fetchFromBackend(`/graph/nodes/${id}/children`);
+}
+
+export async function getNodeParent(id: string) {
+  return fetchFromBackend(`/graph/nodes/${id}/parent`);
+}
+
+export async function getNodeLinks(id: string) {
+  return fetchFromBackend(`/graph/nodes/${id}/links`);
+}
+
+export async function getNodeRelationships(id: string) {
+  return fetchFromBackend(`/graph/nodes/${id}/relationships`);
+}
+
+export async function getNodeDependencies(id: string) {
+  return fetchFromBackend(`/graph/nodes/${id}/dependencies`);
 }
 
 // Tasks API
