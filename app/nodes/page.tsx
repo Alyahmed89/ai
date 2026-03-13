@@ -19,6 +19,9 @@ export default function NodesPage() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
     fetchNodes();
@@ -27,7 +30,18 @@ export default function NodesPage() {
   const fetchNodes = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/nodes');
+      let url = '/api/nodes';
+      const params = new URLSearchParams();
+      
+      if (projectFilter.trim()) {
+        params.append('project_id', projectFilter.trim());
+      }
+      
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch nodes');
       }
@@ -70,8 +84,30 @@ export default function NodesPage() {
     );
   }
 
+  // Filter nodes based on type and status filters
+  const filteredNodes = nodes.filter(node => {
+    if (typeFilter !== 'all' && node.type !== typeFilter) return false;
+    if (statusFilter !== 'all' && node.status !== statusFilter) return false;
+    return true;
+  });
+
+  // Get unique types and statuses for filter dropdowns
+  const uniqueTypes = Array.from(new Set(nodes.map(node => node.type)));
+  const uniqueStatuses = Array.from(new Set(nodes.map(node => node.status)));
+
+  const handleApplyFilters = () => {
+    fetchNodes();
+  };
+
+  const handleClearFilters = () => {
+    setProjectFilter('');
+    setTypeFilter('all');
+    setStatusFilter('all');
+    fetchNodes();
+  };
+
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Nodes</h1>
         <button
@@ -82,18 +118,93 @@ export default function NodesPage() {
         </button>
       </div>
 
-      {nodes.length === 0 ? (
+      {/* Filters */}
+      <div className="bg-white shadow rounded-lg p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label htmlFor="project-filter" className="block text-sm font-medium text-gray-700 mb-1">
+              Project ID
+            </label>
+            <input
+              type="text"
+              id="project-filter"
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              placeholder="Enter project ID"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700 mb-1">
+              Type
+            </label>
+            <select
+              id="type-filter"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            >
+              <option value="all">All Types</option>
+              {uniqueTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            >
+              <option value="all">All Statuses</option>
+              {uniqueStatuses.map(status => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex items-end space-x-2">
+            <button
+              onClick={handleApplyFilters}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Apply Filters
+            </button>
+            <button
+              onClick={handleClearFilters}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        
+        <div className="mt-4 text-sm text-gray-500">
+          Showing {filteredNodes.length} of {nodes.length} nodes
+          {projectFilter && ` (filtered by project: ${projectFilter})`}
+        </div>
+      </div>
+
+      {filteredNodes.length === 0 ? (
         <div className="text-center py-12">
           <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No nodes</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by creating a new node.</p>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No nodes found</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {nodes.length === 0 ? 'Get started by creating a new node.' : 'Try adjusting your filters.'}
+          </p>
         </div>
       ) : (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul className="divide-y divide-gray-200">
-            {nodes.map((node) => (
+            {filteredNodes.map((node) => (
               <li key={node.id}>
                 <div className="px-4 py-4 sm:px-6">
                   <div className="flex items-center justify-between">
