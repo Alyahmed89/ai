@@ -42,6 +42,23 @@ export async function getFlowDefinitions() {
   return fetchFromBackend('/api/flow-definitions');
 }
 
+// Flow Steps API
+export async function getFlowSteps() {
+  return fetchFromBackend('/api/flow-steps');
+}
+
+export async function getFlowStep(id: string) {
+  return fetchFromBackend(`/api/flow-steps/${id}`);
+}
+
+export async function getFlowStepInput(id: string) {
+  return fetchFromBackend(`/api/flow-steps/${id}/input`);
+}
+
+export async function getFlowStepConditions(id: string) {
+  return fetchFromBackend(`/api/flow-steps/${id}/conditions`);
+}
+
 // Flow Runs API
 export async function getFlowRuns() {
   return fetchFromBackend('/api/flow-runs');

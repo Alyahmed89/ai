@@ -40,19 +40,35 @@ export default function FlowsPage() {
   const fetchFlows = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/flow-definitions');
-      if (!response.ok) {
-        throw new Error('Failed to fetch flows');
+      
+      // Fetch flow definitions
+      const flowDefResponse = await fetch('/api/flow-definitions');
+      if (!flowDefResponse.ok) {
+        throw new Error('Failed to fetch flow definitions');
       }
-      const data = await response.json();
-      const apiFlowDefinitions = parseApiResponse<ApiFlowDefinition>(data);
+      const flowDefData = await flowDefResponse.json();
+      const apiFlowDefinitions = parseApiResponse<ApiFlowDefinition>(flowDefData);
+      
+      // Fetch flow steps to count steps per flow
+      const flowStepsResponse = await fetch('/api/flow-steps');
+      let stepCounts: Record<string, number> = {};
+      
+      if (flowStepsResponse.ok) {
+        const flowStepsData = await flowStepsResponse.json();
+        if (flowStepsData.success && flowStepsData.data) {
+          // Count steps per flow_id
+          flowStepsData.data.forEach((step: any) => {
+            stepCounts[step.flow_id] = (stepCounts[step.flow_id] || 0) + 1;
+          });
+        }
+      }
       
       // Transform API data to match Flow interface
       const transformedFlows: Flow[] = apiFlowDefinitions.map(flowDef => ({
         id: flowDef.id,
         name: flowDef.name,
         description: flowDef.description || 'No description',
-        steps: 0, // flow_definitions table doesn't have steps field
+        steps: stepCounts[flowDef.id] || 0,
         created_at: flowDef.created_at,
         updated_at: flowDef.updated_at,
         priority: flowDef.priority,
