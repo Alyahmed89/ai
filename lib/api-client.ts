@@ -37,6 +37,11 @@ export async function getFlows() {
   return fetchFromBackend('/api/flows');
 }
 
+// Flow Definitions API
+export async function getFlowDefinitions() {
+  return fetchFromBackend('/api/flow-definitions');
+}
+
 // Flow Runs API
 export async function getFlowRuns() {
   return fetchFromBackend('/api/flow-runs');

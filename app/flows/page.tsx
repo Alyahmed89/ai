@@ -3,16 +3,18 @@
 import { useState, useEffect } from 'react';
 import { parseApiResponse } from '@/lib/api-utils';
 
-interface ApiFlow {
+interface ApiFlowDefinition {
   id: string;
   name: string;
-  first_prompt: string;
-  deepseek_system: string | null;
-  repo: string | null;
-  branch: string | null;
+  description: string | null;
   max_iterations: number;
-  steps: string | null; // JSON string or null
+  repository: string | null;
+  branch: string | null;
   created_at: string;
+  updated_at: string;
+  next_flow_id: string | null;
+  priority: number;
+  agent: string;
 }
 
 interface Flow {
@@ -22,6 +24,8 @@ interface Flow {
   steps: number;
   created_at: string;
   updated_at: string;
+  priority: number;
+  agent: string;
 }
 
 export default function FlowsPage() {
@@ -36,21 +40,23 @@ export default function FlowsPage() {
   const fetchFlows = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/flows');
+      const response = await fetch('/api/flow-definitions');
       if (!response.ok) {
         throw new Error('Failed to fetch flows');
       }
       const data = await response.json();
-      const apiFlows = parseApiResponse<ApiFlow>(data);
+      const apiFlowDefinitions = parseApiResponse<ApiFlowDefinition>(data);
       
       // Transform API data to match Flow interface
-      const transformedFlows: Flow[] = apiFlows.map(apiFlow => ({
-        id: apiFlow.id,
-        name: apiFlow.name,
-        description: apiFlow.first_prompt || 'No description',
-        steps: apiFlow.steps ? JSON.parse(apiFlow.steps).length : 0,
-        created_at: apiFlow.created_at,
-        updated_at: apiFlow.created_at // Use created_at since updated_at is not provided
+      const transformedFlows: Flow[] = apiFlowDefinitions.map(flowDef => ({
+        id: flowDef.id,
+        name: flowDef.name,
+        description: flowDef.description || 'No description',
+        steps: 0, // flow_definitions table doesn't have steps field
+        created_at: flowDef.created_at,
+        updated_at: flowDef.updated_at,
+        priority: flowDef.priority,
+        agent: flowDef.agent
       }));
       
       setFlows(transformedFlows);
