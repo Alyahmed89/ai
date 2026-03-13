@@ -4,8 +4,6 @@ import { CloudflareBindings } from './types';
 import { 
   flowStepCreateSchema, 
   flowStepUpdateSchema,
-  flowCreateSchema,
-  flowUpdateSchema,
   flowDefinitionCreateSchema,
   flowDefinitionUpdateSchema,
   taskCreateSchema,
@@ -143,174 +141,9 @@ crudApi.post('/test-request', async (c) => {
   }
 });
 
-// Get all flows
-crudApi.get('/flows', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
 
-    const result = await db.prepare('SELECT * FROM flows ORDER BY created_at DESC').all();
-    return c.json(result.results || []);
-  } catch (error) {
-    console.error('Error fetching flows:', error);
-    return c.json({ error: 'Internal server error' }, 500);
-  }
-});
 
-// Get flow by ID
-crudApi.get('/flows/:id', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
 
-    const id = c.req.param('id');
-    const result = await db.prepare('SELECT * FROM flows WHERE id = ?').bind(id).first();
-
-    if (!result) {
-      return c.json({ error: 'Flow not found' }, 404);
-    }
-
-    return c.json(result);
-  } catch (error) {
-    console.error('Error fetching flow:', error);
-    return c.json({ error: 'Internal server error' }, 500);
-  }
-});
-
-// Create new flow
-crudApi.post('/flows', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
-    }
-
-    // Ensure tables exist before inserting
-
-    const body = await c.req.json();
-    
-    // Validate with Zod
-    const validation = validateSchema(flowCreateSchema, body);
-    if (!validation.success) {
-      return c.json(apiResponse(false, undefined, validation.error, 400));
-    }
-    
-    const validatedData = validation.data!;
-    const { id, name, repo, branch, max_iterations, steps } = validatedData;
-    
-    // Generate ID if not provided
-    const flowId = id || `flow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    const sql = `
-      INSERT INTO flows (id, name, repo, branch, max_iterations, steps, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `;
-
-    await db.prepare(sql).bind(
-      flowId,
-      name,
-      dbValue(repo),
-      dbValue(branch),
-      max_iterations || 5,
-      dbValue(steps)
-    ).run();
-    
-    return c.json(apiResponse(true, { id: flowId, message: 'Flow created successfully' }, undefined, 201));
-  } catch (error) {
-    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
-  }
-});
-
-// Update flow
-crudApi.put('/flows/:id', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
-    }
-
-    // Ensure tables exist before updating
-
-    const id = c.req.param('id');
-    const body = await c.req.json();
-    
-    // Validate with Zod
-    const validation = validateSchema(flowUpdateSchema, { ...body, id });
-    if (!validation.success) {
-      return c.json(apiResponse(false, undefined, validation.error, 400));
-    }
-    
-    const validatedData = validation.data!;
-    const { name, repo, branch, max_iterations, steps } = validatedData;
-
-    const sql = `
-      UPDATE flows 
-      SET name = ?, repo = ?, branch = ?, max_iterations = ?, steps = ?
-      WHERE id = ?
-    `;
-
-    const result = await db.prepare(sql).bind(
-      name,
-      dbValue(repo),
-      dbValue(branch),
-      max_iterations,
-      dbValue(steps),
-      id
-    ).run();
-
-    if (result.meta.changes === 0) {
-      return c.json(apiResponse(false, undefined, 'Flow not found', 404));
-    }
-
-    return c.json(apiResponse(true, { message: 'Flow updated successfully' }));
-  } catch (error) {
-    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
-  }
-});
-
-// Delete flow
-crudApi.delete('/flows/:id', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
-    }
-
-    // Ensure tables exist before deleting
-
-    const id = c.req.param('id');
-    const result = await db.prepare('DELETE FROM flows WHERE id = ?').bind(id).run();
-
-    if (result.meta.changes === 0) {
-      return c.json(apiResponse(false, undefined, 'Flow not found', 404));
-    }
-
-    return c.json(apiResponse(true, { message: 'Flow deleted successfully' }));
-  } catch (error) {
-    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
-  }
-});
-
-// Get all flow steps for a flow
-crudApi.get('/flows/:flowId/steps', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const flowId = c.req.param('flowId');
-    const result = await db.prepare('SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
 
 // Get all tasks
 crudApi.get('/tasks', async (c) => {
@@ -837,28 +670,7 @@ crudApi.get('/flow-conditions', async (c) => {
   }
 });
 
-// Get flow conditions for a specific flow and step
-crudApi.get('/flows/:flowId/steps/:stepId/conditions', async (c) => {
-  try {
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      return c.json({ error: 'Database not configured' }, 500);
-    }
 
-    // Ensure tables exist before querying
-
-    const flowId = c.req.param('flowId');
-    const stepId = c.req.param('stepId');
-    
-    const result = await db.prepare(
-      'SELECT * FROM flow_conditions WHERE flow_id = ? AND step_id = ? ORDER BY condition_type'
-    ).bind(flowId, stepId).all();
-    
-    return c.json(result.results || []);
-  } catch (error) {
-    return c.json(handleDbError(error), 500);
-  }
-});
 
 
 

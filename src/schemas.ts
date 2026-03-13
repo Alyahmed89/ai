@@ -45,25 +45,7 @@ export const flowStepUpdateSchema = flowStepCreateSchema.partial().extend({
 });
 
 // Flow Schema
-export const flowSchema = z.object({
-  id: idSchema,
-  name: z.string().min(1, 'name is required'),
-  repo: z.string().optional().nullable(),
-  branch: z.string().optional().nullable(),
-  max_iterations: z.number().int().positive().default(5),
-  steps: z.string().optional().nullable(), // JSON string
-  created_at: timestampSchema,
-});
 
-// Flow Create Schema
-export const flowCreateSchema = flowSchema.omit({ created_at: true }).extend({
-  id: idSchema,
-});
-
-// Flow Update Schema
-export const flowUpdateSchema = flowCreateSchema.partial().extend({
-  id: z.string().min(1, 'id is required for update'),
-});
 
 // Flow Definition Schema
 export const flowDefinitionSchema = z.object({
