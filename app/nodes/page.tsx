@@ -4,11 +4,15 @@ import { useState, useEffect } from 'react';
 
 interface Node {
   id: string;
+  project_id: string;
   title: string;
   content: string;
   type: string;
-  created_at: string;
-  updated_at: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  metadata: string | null;
+  deleted_at: number | null;
 }
 
 export default function NodesPage() {
@@ -27,8 +31,10 @@ export default function NodesPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch nodes');
       }
-      const data = await response.json();
-      setNodes(data);
+      const result = await response.json();
+      // Backend returns {success: true, data: [...], error: null, statusCode: 200}
+      const nodes = result.success ? result.data : [];
+      setNodes(nodes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -129,8 +135,8 @@ export default function NodesPage() {
                     <div className="text-sm text-gray-600 line-clamp-2">{node.content}</div>
                   </div>
                   <div className="mt-2 flex justify-between text-sm text-gray-500">
-                    <span>Created: {new Date(node.created_at).toLocaleDateString()}</span>
-                    <span>Updated: {new Date(node.updated_at).toLocaleDateString()}</span>
+                    <span>Created: {new Date(node.created_at * 1000).toLocaleDateString()}</span>
+                    <span>Updated: {new Date(node.updated_at * 1000).toLocaleDateString()}</span>
                   </div>
                   <div className="mt-2">
                     <a href={`/nodes/${node.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-500">
