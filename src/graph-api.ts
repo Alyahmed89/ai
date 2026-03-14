@@ -557,12 +557,12 @@ graphApi.get('/nodes/:id', async (c) => {
       WHERE r.source_node_id = ? AND n2.deleted_at IS NULL
     `).bind(id).all();
     
-    // Get dependencies where this node depends on others
+    // Get dependencies where this node depends on others (using relationships table with relation_type='depends_on')
     const dependencies = await db.prepare(`
-      SELECT d.*, n2.title as depends_on_title, n2.type as depends_on_type
-      FROM dependencies d
-      JOIN nodes n2 ON d.depends_on_node_id = n2.id
-      WHERE d.node_id = ? AND n2.deleted_at IS NULL
+      SELECT r.*, n2.title as depends_on_title, n2.type as depends_on_type
+      FROM relationships r
+      JOIN nodes n2 ON r.target_node_id = n2.id
+      WHERE r.source_node_id = ? AND r.relation_type = 'depends_on' AND n2.deleted_at IS NULL
     `).bind(id).all();
     
     // Get children (nodes where this node is parent)
