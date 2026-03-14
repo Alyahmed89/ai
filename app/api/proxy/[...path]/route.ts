@@ -76,3 +76,66 @@ export async function GET(
     );
   }
 }
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> }
+) {
+  try {
+    const params = await context.params;
+    const { path } = params;
+    
+    // Construct the backend URL
+    const backendPath = `/${path.join('/')}`;
+    const backendUrl = `${BACKEND_URL}${backendPath}`;
+    
+    // Get the request body
+    const body = await request.json();
+    
+    // Forward the request to the backend
+    const response = await fetch(backendUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      // Return the error response with proper CORS headers
+      return Response.json(
+        { error: `Backend request failed: ${response.status} ${response.statusText}` },
+        { 
+          status: response.status,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
+      );
+    }
+    
+    const data = await response.json();
+    return Response.json(data, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      }
+    });
+  } catch (error) {
+    console.error('Error in proxy API POST:', error);
+    return Response.json(
+      { error: 'Failed to send data to backend' },
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
+      }
+    );
+  }
+}

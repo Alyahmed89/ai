@@ -46,17 +46,27 @@ function ProjectsContent() {
     }
   };
 
+  const [isStartingFlow, setIsStartingFlow] = useState(false);
+  const [flowStartError, setFlowStartError] = useState<string | null>(null);
+  const [flowStartSuccess, setFlowStartSuccess] = useState(false);
+
   const startDocCommentFlowWithForm = async () => {
     try {
-      const button = document.getElementById('start-doc-comment-flow-btn') as HTMLButtonElement;
-      if (button) {
-        button.disabled = true;
-        button.textContent = 'Starting Flow...';
-      }
+      setIsStartingFlow(true);
+      setFlowStartError(null);
+      setFlowStartSuccess(false);
       
       const comment = (document.getElementById('comment') as HTMLTextAreaElement)?.value;
       const scope = (document.getElementById('scope') as HTMLInputElement)?.value;
       const tags = (document.getElementById('tags') as HTMLInputElement)?.value.split(',').map(t => t.trim()).filter(t => t);
+      
+      // Validate inputs
+      if (!comment?.trim()) {
+        throw new Error('Comment is required');
+      }
+      if (!scope?.trim()) {
+        throw new Error('Scope is required');
+      }
       
       const response = await fetch('/api/proxy/start', {
         method: 'POST',
@@ -73,19 +83,23 @@ function ProjectsContent() {
         }),
       });
       
-      if (response.ok) {
-        alert('Flow started successfully! Check Flow Runs for progress.');
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to start flow: ${response.status} ${response.statusText}`);
+      }
+      
+      if (data.success) {
+        setFlowStartSuccess(true);
+        // Auto-hide success message after 5 seconds
+        setTimeout(() => setFlowStartSuccess(false), 5000);
       } else {
-        throw new Error('Failed to start flow');
+        throw new Error(data.error || 'Flow start returned unsuccessful');
       }
     } catch (err) {
-      alert('Error starting flow: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      setFlowStartError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
-      const button = document.getElementById('start-doc-comment-flow-btn') as HTMLButtonElement;
-      if (button) {
-        button.disabled = false;
-        button.textContent = 'Start doc-comment Flow';
-      }
+      setIsStartingFlow(false);
     }
   };
 
@@ -226,14 +240,59 @@ function ProjectsContent() {
           </div>
           <div className="flex justify-end">
             <button
-              id="start-doc-comment-flow-btn"
               type="button"
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={startDocCommentFlowWithForm}
+              disabled={isStartingFlow}
             >
-              Start doc-comment Flow
+              {isStartingFlow ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Starting Flow...
+                </>
+              ) : (
+                'Start doc-comment Flow'
+              )}
             </button>
           </div>
+          
+          {/* Success/Error Messages */}
+          {flowStartSuccess && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">
+                    Flow started successfully! Check Flow Runs for progress.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {flowStartError && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-red-800">
+                    Error starting flow: {flowStartError}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
