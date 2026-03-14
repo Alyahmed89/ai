@@ -27,7 +27,7 @@ export default function NodeLinks({ nodeId }: NodeLinksProps) {
   const fetchLinks = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/nodes/${nodeId}/links`);
+      const response = await fetch(`/api/proxy/graph/nodes/${nodeId}/links`);
       if (!response.ok) {
         throw new Error('Failed to fetch links');
       }

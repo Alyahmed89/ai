@@ -26,7 +26,7 @@ export default function NodeChildren({ nodeId }: NodeChildrenProps) {
   const fetchChildren = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/nodes/${nodeId}/children`);
+      const response = await fetch(`/api/proxy/graph/nodes/${nodeId}/children`);
       if (!response.ok) {
         throw new Error('Failed to fetch children');
       }

@@ -27,7 +27,7 @@ export default function NodeDependencies({ nodeId }: NodeDependenciesProps) {
   const fetchDependencies = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/nodes/${nodeId}/dependencies`);
+      const response = await fetch(`/api/proxy/graph/nodes/${nodeId}/dependencies`);
       if (!response.ok) {
         throw new Error('Failed to fetch dependencies');
       }

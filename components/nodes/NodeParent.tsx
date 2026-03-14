@@ -26,7 +26,7 @@ export default function NodeParent({ nodeId }: NodeParentProps) {
   const fetchParent = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/nodes/${nodeId}/parent`);
+      const response = await fetch(`/api/proxy/graph/nodes/${nodeId}/parent`);
       if (!response.ok) {
         throw new Error('Failed to fetch parent');
       }

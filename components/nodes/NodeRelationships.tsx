@@ -27,7 +27,7 @@ export default function NodeRelationships({ nodeId }: NodeRelationshipsProps) {
   const fetchRelationships = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/nodes/${nodeId}/relationships`);
+      const response = await fetch(`/api/proxy/graph/nodes/${nodeId}/relationships`);
       if (!response.ok) {
         throw new Error('Failed to fetch relationships');
       }
