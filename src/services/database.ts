@@ -614,6 +614,58 @@ export async function getFirstPendingTask(
 }
 
 /**
+ * Get latest task for a flow (most recently created)
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with task data or null
+ */
+export async function getLatestTaskForFlow(
+  db: D1Database,
+  flow_id: string
+): Promise<{ id: string; title: string; description: string | null; payload: string | null } | null> {
+  try {
+    // Query tasks table for the most recently created task for this flow
+    const query = `
+      SELECT 
+        id,
+        title,
+        description,
+        payload
+      FROM tasks
+      WHERE flow_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    
+    console.log(`[getLatestTaskForFlow] Querying latest task for flow: ${flow_id}`);
+    const result = await db.prepare(query).bind(flow_id).first();
+    
+    if (!result) {
+      console.log(`[getLatestTaskForFlow] No tasks found for flow ${flow_id}`);
+      return null;
+    }
+    
+    const resultObj = result as unknown as { 
+      id: string; 
+      title: string; 
+      description: string | null;
+      payload: string | null;
+    };
+    
+    console.log(`[getLatestTaskForFlow] Found task: ${resultObj.title} (ID: ${resultObj.id})`);
+    return { 
+      id: resultObj.id, 
+      title: resultObj.title, 
+      description: resultObj.description, 
+      payload: resultObj.payload 
+    };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting latest task for flow: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Get next step for a flow from flow_steps table
  * @param db D1Database instance
  * @param flow_id Flow ID

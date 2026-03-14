@@ -44,6 +44,24 @@ export async function resolveStepInstructions(
     }
   }
   
+  // If no task_id but we have flow_id and db, try to get latest task for this flow
+  if (!taskData && context.flow_id && db) {
+    try {
+      const { getLatestTaskForFlow } = await import('./database');
+      const latestTask = await getLatestTaskForFlow(db, context.flow_id);
+      if (latestTask) {
+        taskData = {
+          title: latestTask.title,
+          description: latestTask.description,
+          payload: latestTask.payload ? JSON.parse(latestTask.payload) : null
+        };
+        console.log(`[StepResolver] Loaded latest task for flow ${context.flow_id}: ${latestTask.title}`);
+      }
+    } catch (error) {
+      console.error(`[StepResolver] Error loading latest task for flow ${context.flow_id}:`, error);
+    }
+  }
+  
   // New system: input_keys for dynamic API data fetching
   if (step.input_keys) {
     try {
