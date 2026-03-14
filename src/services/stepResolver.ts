@@ -26,47 +26,7 @@ export async function resolveStepInstructions(
   };
 }> {
   
-  // New system: input_keys for dynamic API data fetching
-  if (step.input_keys) {
-    try {
-      const resolver = new SecureVariableResolver(env);
-      const resolved = await resolver.resolveStepVariables(
-        {
-          step_id: step.step_id,
-          instructions: step.instructions || step.description || step.title || '',
-          input_keys: step.input_keys,
-          auto_fail_on_error: step.auto_fail_on_error || false
-        },
-        {
-          env,
-          step: {
-            step_id: step.step_id,
-            instructions: step.instructions || step.description || step.title || '',
-            input_keys: step.input_keys,
-            auto_fail_on_error: step.auto_fail_on_error || false
-          },
-          flow_id: context.flow_id,
-          execution_id: context.execution_id
-        }
-      );
-      
-      return {
-        instructions: resolved.instructions,
-        variables: resolved.variables,
-        api_responses: resolved.api_responses
-      };
-      
-    } catch (error) {
-      console.error(`[StepResolver] Error resolving input_keys for step ${step.step_id}:`, error);
-      
-      // Fall back to old system if new system fails
-      if (step.auto_fail_on_error) {
-        throw error;
-      }
-    }
-  }
-  
-  // Old system: requires_task with task_id
+  // Load task data if task_id is provided (for both old and new systems)
   let taskData = null;
   
   if (step.task_id && db) {
@@ -84,6 +44,65 @@ export async function resolveStepInstructions(
     }
   }
   
+  // New system: input_keys for dynamic API data fetching
+  if (step.input_keys) {
+    try {
+      const resolver = new SecureVariableResolver(env);
+      
+      // Create initial variables with task data if available
+      const initialVariables: Record<string, any> = {};
+      if (taskData) {
+        initialVariables.task_data = taskData;
+      }
+      
+      // We need to modify SecureVariableResolver to accept initial variables
+      // For now, we'll use a workaround by injecting task data into the instructions
+      let instructionsWithTaskData = step.instructions || step.description || step.title || '';
+      
+      if (taskData) {
+        instructionsWithTaskData = injectTaskData(instructionsWithTaskData, taskData, step.task_id);
+      }
+      
+      const resolved = await resolver.resolveStepVariables(
+        {
+          step_id: step.step_id,
+          instructions: instructionsWithTaskData,
+          input_keys: step.input_keys,
+          auto_fail_on_error: step.auto_fail_on_error || false
+        },
+        {
+          env,
+          step: {
+            step_id: step.step_id,
+            instructions: instructionsWithTaskData,
+            input_keys: step.input_keys,
+            auto_fail_on_error: step.auto_fail_on_error || false
+          },
+          flow_id: context.flow_id,
+          execution_id: context.execution_id,
+          // Pass task data in context for SecureVariableResolver to use
+          task_data: taskData
+        }
+      );
+      
+      return {
+        instructions: resolved.instructions,
+        variables: resolved.variables,
+        api_responses: resolved.api_responses,
+        task_data: taskData
+      };
+      
+    } catch (error) {
+      console.error(`[StepResolver] Error resolving input_keys for step ${step.step_id}:`, error);
+      
+      // Fall back to old system if new system fails
+      if (step.auto_fail_on_error) {
+        throw error;
+      }
+    }
+  }
+  
+  // Old system: requires_task with task_id (no input_keys)
   // Build instructions with task data if available
   let instructions = step.instructions || step.description || step.title || '';
   

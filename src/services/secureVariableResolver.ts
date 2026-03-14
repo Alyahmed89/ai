@@ -57,6 +57,7 @@ interface ExecutionContext {
   step: StepData;
   flow_id?: string;
   execution_id?: string;
+  task_data?: any;
 }
 
 export class SecureVariableResolver {
@@ -93,11 +94,18 @@ export class SecureVariableResolver {
       // 1. Validate and parse input_keys
       const apiConfigs = this.validateAndParseInputKeys(step.input_keys);
       
+      // Start with initial variables from context (e.g., task_data)
+      const initialVariables: Record<string, any> = {};
+      if (context.task_data) {
+        initialVariables.task_data = context.task_data;
+        this.log('debug', `Added task_data from context to initial variables`);
+      }
+      
       if (apiConfigs.length === 0) {
         this.log('info', `No input_keys found for step ${step.step_id}`);
         return {
           instructions: step.instructions,
-          variables: {},
+          variables: initialVariables,
           api_responses: {}
         };
       }
@@ -108,11 +116,12 @@ export class SecureVariableResolver {
       // 3. Resolve environment variables (securely)
       const resolvedConfigs = this.resolveEnvironmentVariables(apiConfigs);
       
-      // 4. Execute API calls with security controls
+      // 4. Execute API calls with security controls, starting with initial variables
       const { variables, apiResponses } = await this.executeApiCalls(
         resolvedConfigs,
         step,
-        context
+        context,
+        initialVariables
       );
       
       // 5. Sanitize variables before substitution
@@ -365,9 +374,11 @@ export class SecureVariableResolver {
   private async executeApiCalls(
     configs: SecureApiConfig[],
     step: StepData,
-    context: ExecutionContext
+    context: ExecutionContext,
+    initialVariables: Record<string, any> = {}
   ): Promise<{ variables: Record<string, any>; apiResponses: ResolvedStep['api_responses'] }> {
-    const variables: Record<string, any> = {};
+    // Start with initial variables (e.g., task_data from context)
+    const variables: Record<string, any> = { ...initialVariables };
     const apiResponses: ResolvedStep['api_responses'] = {};
     const errors: Record<string, Error> = {};
     
