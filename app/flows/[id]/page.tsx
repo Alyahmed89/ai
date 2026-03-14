@@ -78,7 +78,7 @@ export default function FlowDetailPage() {
       setLoading(true);
       
       // Fetch flow definition
-      const flowResponse = await fetch(`/api/flow-definitions`);
+      const flowResponse = await fetch(`/api/proxy/api/flow-definitions`);
       if (!flowResponse.ok) {
         throw new Error('Failed to fetch flow definition');
       }
@@ -92,7 +92,7 @@ export default function FlowDetailPage() {
       setFlow(currentFlow);
       
       // Fetch flow steps
-      const stepsResponse = await fetch(`/api/flow-steps?flow_id=${flowId}`);
+      const stepsResponse = await fetch(`/api/proxy/api/flow-steps?flow_id=${flowId}`);
       if (!stepsResponse.ok) {
         throw new Error('Failed to fetch flow steps');
       }
