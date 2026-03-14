@@ -8,6 +8,8 @@ import NodeLinks from '@/components/nodes/NodeLinks';
 import NodeRelationships from '@/components/nodes/NodeRelationships';
 import NodeDependencies from '@/components/nodes/NodeDependencies';
 
+export const runtime = 'edge';
+
 interface Node {
   id: string;
   project_id: string;

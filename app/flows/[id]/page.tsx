@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { parseApiResponse } from '@/lib/api-utils';
 
+export const runtime = 'edge';
+
 interface FlowDefinition {
   id: string;
   name: string;

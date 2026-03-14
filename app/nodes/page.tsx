@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 
+export const runtime = 'edge';
+
 interface Node {
   id: string;
   project_id: string;

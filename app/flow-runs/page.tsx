@@ -1,5 +1,6 @@
 'use client';
 
+export const runtime = 'edge';
 import { useState, useEffect } from 'react';
 import { parseApiResponse } from '@/lib/api-utils';
 import Link from 'next/link';
