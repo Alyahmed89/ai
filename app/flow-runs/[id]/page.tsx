@@ -63,7 +63,30 @@ export default function FlowRunDetailsPage() {
         throw new Error('Failed to fetch flow run');
       }
       const data = await response.json();
-      setFlowRun(data);
+      
+      // Extract flow_run and step_runs from the response
+      const flowRunData = data.flow_run || data;
+      const stepRuns = data.step_runs || data.stepRuns || [];
+      
+      // Map step_runs to stepRuns (camelCase) and ensure proper structure
+      const formattedFlowRun = {
+        ...flowRunData,
+        stepRuns: stepRuns.map((step: any) => ({
+          id: step.id,
+          step_id: step.step_id,
+          prompt: step.prompt,
+          response: step.response,
+          status: step.status,
+          iteration: step.iteration,
+          attempt: step.attempt,
+          duration_ms: step.duration_ms,
+          created_at: step.created_at,
+          input_payload: step.input_payload,
+          output_payload: step.output_payload
+        }))
+      };
+      
+      setFlowRun(formattedFlowRun);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
