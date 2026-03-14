@@ -43,7 +43,7 @@ export default function FlowsPage() {
       setLoading(true);
       
       // Fetch flow definitions
-      const flowDefResponse = await fetch('/api/flow-definitions');
+      const flowDefResponse = await fetch('/api/proxy/api/flow-definitions');
       if (!flowDefResponse.ok) {
         throw new Error('Failed to fetch flow definitions');
       }
@@ -51,7 +51,7 @@ export default function FlowsPage() {
       const apiFlowDefinitions = parseApiResponse<ApiFlowDefinition>(flowDefData);
       
       // Fetch flow steps to count steps per flow
-      const flowStepsResponse = await fetch('/api/flow-steps');
+      const flowStepsResponse = await fetch('/api/proxy/api/flow-steps');
       let stepCounts: Record<string, number> = {};
       
       if (flowStepsResponse.ok) {

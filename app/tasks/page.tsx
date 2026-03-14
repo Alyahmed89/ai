@@ -28,7 +28,7 @@ export default function TasksPage() {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/tasks');
+      const response = await fetch('/api/proxy/api/tasks');
       if (!response.ok) {
         throw new Error('Failed to fetch tasks');
       }

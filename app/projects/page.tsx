@@ -27,7 +27,7 @@ function ProjectsContent() {
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/projects');
+      const response = await fetch('/api/proxy/graph/projects');
       if (!response.ok) {
         throw new Error(`Failed to fetch projects: ${response.status} ${response.statusText}`);
       }
@@ -58,7 +58,7 @@ function ProjectsContent() {
       const scope = (document.getElementById('scope') as HTMLInputElement)?.value;
       const tags = (document.getElementById('tags') as HTMLInputElement)?.value.split(',').map(t => t.trim()).filter(t => t);
       
-      const response = await fetch('/api/start-flow', {
+      const response = await fetch('/api/proxy/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

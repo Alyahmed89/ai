@@ -28,7 +28,7 @@ export default function FlowRunsPage() {
   const fetchFlowRuns = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/flow-runs');
+      const response = await fetch('/api/proxy/api/flow-runs');
       if (!response.ok) {
         throw new Error('Failed to fetch flow runs');
       }
