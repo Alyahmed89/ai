@@ -9,6 +9,8 @@ import {
   validationErrorResponse
 } from './response';
 import { z } from 'zod';
+import { computeNodeHash, extractHashData } from './utils/nodeHash';
+import { createBackfillEndpoint } from './utils/backfillNodeHashes';
 
 // Helper function to handle database errors
 function handleDbError(error: any) {
@@ -498,10 +500,14 @@ graphApi.post('/nodes', async (c) => {
     // Generate ID if not provided
     const nodeId = id || `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const now = Math.floor(Date.now() / 1000);
+    
+    // Compute hash for node content
+    const hashData = extractHashData({ title, content, metadata });
+    const hash = await computeNodeHash(hashData);
 
     const sql = `
-      INSERT INTO nodes (id, project_id, type, title, content, status, created_at, updated_at, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO nodes (id, project_id, type, title, content, status, created_at, updated_at, metadata, hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await db.prepare(sql).bind(
@@ -513,7 +519,8 @@ graphApi.post('/nodes', async (c) => {
       status,
       now,
       now,
-      dbValue(metadata)
+      dbValue(metadata),
+      hash
     ).run();
     
     // Update project node count
@@ -616,12 +623,14 @@ graphApi.patch('/nodes/:id', async (c) => {
     const { project_id, type, title, content, status, metadata } = validatedData;
     
     // Get current node to know old project_id if project_id is being updated
+    // Also get current values for hash computation
+    const currentNode = await db.prepare('SELECT * FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(id).first();
+    if (!currentNode) {
+      return c.json(apiResponse(false, undefined, 'Node not found', 404));
+    }
+    
     let oldProjectId: string | undefined;
     if (project_id !== undefined) {
-      const currentNode = await db.prepare('SELECT project_id FROM nodes WHERE id = ? AND deleted_at IS NULL').bind(id).first();
-      if (!currentNode) {
-        return c.json(apiResponse(false, undefined, 'Node not found', 404));
-      }
       oldProjectId = (currentNode as any).project_id;
     }
     
@@ -639,14 +648,22 @@ graphApi.patch('/nodes/:id', async (c) => {
       bindings.push(type);
     }
     
+    // Track if hash needs to be recomputed
+    let needsHashUpdate = false;
+    let newTitle = title !== undefined ? title : (currentNode as any).title;
+    let newContent = content !== undefined ? content : (currentNode as any).content;
+    let newMetadata = metadata !== undefined ? metadata : (currentNode as any).metadata;
+    
     if (title !== undefined) {
       updates.push('title = ?');
       bindings.push(title);
+      needsHashUpdate = true;
     }
     
     if (content !== undefined) {
       updates.push('content = ?');
       bindings.push(dbValue(content));
+      needsHashUpdate = true;
     }
     
     if (status !== undefined) {
@@ -657,12 +674,25 @@ graphApi.patch('/nodes/:id', async (c) => {
     if (metadata !== undefined) {
       updates.push('metadata = ?');
       bindings.push(dbValue(metadata));
+      needsHashUpdate = true;
     }
     
     // Always update updated_at
     const now = Math.floor(Date.now() / 1000);
     updates.push('updated_at = ?');
     bindings.push(now);
+    
+    // Recompute hash if title, content, or metadata changed
+    if (needsHashUpdate) {
+      const hashData = extractHashData({ 
+        title: newTitle, 
+        content: newContent, 
+        metadata: newMetadata 
+      });
+      const hash = await computeNodeHash(hashData);
+      updates.push('hash = ?');
+      bindings.push(hash);
+    }
     
     if (updates.length === 1) { // Only updated_at was added
       return c.json(apiResponse(false, undefined, 'No fields to update', 400));
@@ -1337,3 +1367,7 @@ graphApi.get('/nodes/:id/breadcrumbs', async (c) => {
     return c.json(errorResponse(handleDbError(error).error, 500));
   }
 });
+
+// POST /admin/backfill-node-hashes - Backfill hashes for existing nodes
+// Requires admin_key query parameter if ADMIN_KEY environment variable is set
+graphApi.post('/admin/backfill-node-hashes', createBackfillEndpoint());
