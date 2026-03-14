@@ -1,7 +1,16 @@
-const BACKEND_URL = process.env.BACKEND_URL || 'https://deepseek-agent.alghamdimo89.workers.dev';
+// Use proxy API instead of direct backend calls to reduce bundle size
+// const BACKEND_URL = process.env.BACKEND_URL || 'https://deepseek-agent.alghamdimo89.workers.dev';
+const USE_PROXY = true;
 
 export async function fetchFromBackend(endpoint: string, options?: RequestInit) {
-  const url = `${BACKEND_URL}${endpoint}`;
+  // Remove leading slash if present
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  
+  // Use proxy API to reduce bundle size
+  const url = USE_PROXY 
+    ? `/api/proxy/${cleanEndpoint}`
+    : `${process.env.BACKEND_URL || 'https://deepseek-agent.alghamdimo89.workers.dev'}${endpoint}`;
+  
   const response = await fetch(url, {
     ...options,
     headers: {
