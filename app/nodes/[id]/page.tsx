@@ -41,7 +41,7 @@ export default function NodeDetailPage() {
   const fetchNode = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/nodes/${nodeId}`);
+      const response = await fetch(`/api/proxy/graph/nodes/${nodeId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch node');
       }

@@ -32,7 +32,7 @@ export default function NodesPage() {
   const fetchNodes = async () => {
     try {
       setLoading(true);
-      let url = '/api/nodes';
+      let url = '/api/proxy/graph/nodes';
       const params = new URLSearchParams();
       
       if (projectFilter.trim()) {
