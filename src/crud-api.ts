@@ -8,6 +8,8 @@ import {
   flowDefinitionUpdateSchema,
   taskCreateSchema,
   taskUpdateSchema,
+  flowStepConditionCreateSchema,
+  flowStepConditionUpdateSchema,
   validateSchema 
 } from './schemas';
 import {
@@ -624,6 +626,73 @@ crudApi.get('/flow-steps/:id/conditions', async (c) => {
   } catch (error) {
     console.error('Error fetching flow step conditions:', error);
     return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Create new flow step condition
+crudApi.post('/flow-step-conditions', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(flowStepConditionCreateSchema, body);
+    if (!validation.success) {
+      return c.json(validationErrorResponse(validation.error));
+    }
+    
+    const validatedData = validation.data!;
+    const { 
+      flow_step_id, condition_type, condition_value, condition_operator,
+      next_step, next_step_id, next_flow_id 
+    } = validatedData;
+    
+    // Generate ID if not provided
+    const conditionId = validatedData.id || `cond-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Validate that we have at least one transition target
+    if (!next_step && !next_step_id && !next_flow_id) {
+      return c.json(errorResponse('At least one of next_step, next_step_id, or next_flow_id must be provided', 400));
+    }
+    
+    // For next_flow_id conditions, set next_step to -1 (terminate current flow)
+    let finalNextStep = next_step;
+    let finalNextStepId = next_step_id;
+    
+    if (next_flow_id) {
+      // When transitioning to another flow, we terminate the current flow
+      finalNextStep = -1;
+      finalNextStepId = 'TERMINATE_FLOW';
+    }
+    
+    const sql = `
+      INSERT INTO flow_step_conditions (
+        id, flow_step_id, condition_type, condition_value, condition_operator,
+        next_step, next_step_id, next_flow_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `;
+
+    await db.prepare(sql).bind(
+      conditionId,
+      flow_step_id,
+      condition_type,
+      condition_value,
+      condition_operator || 'equals',
+      dbValue(finalNextStep),
+      dbValue(finalNextStepId),
+      dbValue(next_flow_id)
+    ).run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow step condition created successfully', 
+      id: conditionId 
+    }, 201));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
   }
 });
 

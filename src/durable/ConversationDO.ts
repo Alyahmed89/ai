@@ -3706,7 +3706,8 @@ ${messageContent}`;
         NULL as condition_key,
         fsc.condition_value,
         NULL as condition_query,
-        fd.next_flow_id, -- Get from flow_definitions table
+        fd.next_flow_id as flow_def_next_flow_id, -- Get from flow_definitions table
+        fsc.next_flow_id as step_condition_next_flow_id, -- Get from flow_step_conditions table
         fsc.condition_operator -- Include operator for evaluation
       FROM flow_step_conditions fsc
       JOIN flow_steps fs ON fsc.flow_step_id = fs.id
@@ -3728,7 +3729,8 @@ ${messageContent}`;
         condition_key: conditionRow.condition_key,
         condition_value: conditionRow.condition_value,
         condition_query: conditionRow.condition_query,
-        next_flow_id: conditionRow.next_flow_id
+        // Use step condition's next_flow_id if available, otherwise fall back to flow definition's
+        next_flow_id: conditionRow.step_condition_next_flow_id || conditionRow.flow_def_next_flow_id
       };
       
       // Simple evaluation for flow_step_conditions

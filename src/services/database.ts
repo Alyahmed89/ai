@@ -1412,8 +1412,8 @@ export async function getNextFlowBasedOnConditions(
   try {
     console.log(`[DATABASE] Getting next flow based on conditions for flow ${flow_id}, last response: ${last_response.substring(0, 100)}...`);
     
-    // Check if current flow has conditions
-    const conditionsQuery = `
+    // Check if current flow has conditions (from flow_flow_conditions table)
+    const flowConditionsQuery = `
       SELECT ffc.condition_type, ffc.condition_value, ffc.condition_operator, 
              ffc.next_flow_id
       FROM flow_flow_conditions ffc
@@ -1421,13 +1421,13 @@ export async function getNextFlowBasedOnConditions(
       ORDER BY ffc.created_at
     `;
     
-    const conditionsResult = await db.prepare(conditionsQuery).bind(flow_id).all();
+    const flowConditionsResult = await db.prepare(flowConditionsQuery).bind(flow_id).all();
     
-    if (conditionsResult.results && conditionsResult.results.length > 0) {
-      console.log(`[DATABASE] Found ${conditionsResult.results.length} flow conditions for flow ${flow_id}`);
+    if (flowConditionsResult.results && flowConditionsResult.results.length > 0) {
+      console.log(`[DATABASE] Found ${flowConditionsResult.results.length} flow conditions for flow ${flow_id}`);
       
       // Check each condition against the response
-      for (const condition of conditionsResult.results) {
+      for (const condition of flowConditionsResult.results) {
         const { condition_type, condition_value, condition_operator, next_flow_id } = condition;
         let conditionMet = false;
         
@@ -1459,6 +1459,56 @@ export async function getNextFlowBasedOnConditions(
       console.log(`[DATABASE] No flow conditions matched for flow ${flow_id}`);
     } else {
       console.log(`[DATABASE] No flow conditions found for flow ${flow_id}`);
+    }
+    
+    // Also check flow_step_conditions with next_flow_id for the last step of the flow
+    const stepConditionsQuery = `
+      SELECT fsc.condition_type, fsc.condition_value, fsc.condition_operator, 
+             fsc.next_flow_id
+      FROM flow_step_conditions fsc
+      JOIN flow_steps fs ON fsc.flow_step_id = fs.id
+      WHERE fs.flow_id = ? AND fsc.next_flow_id IS NOT NULL
+      ORDER BY fs.order_index DESC, fsc.created_at
+    `;
+    
+    const stepConditionsResult = await db.prepare(stepConditionsQuery).bind(flow_id).all();
+    
+    if (stepConditionsResult.results && stepConditionsResult.results.length > 0) {
+      console.log(`[DATABASE] Found ${stepConditionsResult.results.length} step conditions with next_flow_id for flow ${flow_id}`);
+      
+      // Check each condition against the response
+      for (const condition of stepConditionsResult.results) {
+        const { condition_type, condition_value, condition_operator, next_flow_id } = condition;
+        let conditionMet = false;
+        
+        switch (condition_type) {
+          case 'response_contains':
+            conditionMet = last_response.toLowerCase().includes(condition_value.toLowerCase());
+            break;
+          case 'response_matches':
+            // Simple exact match (case-insensitive)
+            conditionMet = last_response.toLowerCase() === condition_value.toLowerCase();
+            break;
+          case 'response_starts_with':
+            conditionMet = last_response.toLowerCase().startsWith(condition_value.toLowerCase());
+            break;
+          case 'response_ends_with':
+            conditionMet = last_response.toLowerCase().endsWith(condition_value.toLowerCase());
+            break;
+          default:
+            console.warn(`[DATABASE] Unknown step condition type: ${condition_type}`);
+            continue;
+        }
+        
+        if (conditionMet) {
+          console.log(`[DATABASE] Step condition met: ${condition_type} "${condition_value}" -> next_flow_id: ${next_flow_id}`);
+          return next_flow_id;
+        }
+      }
+      
+      console.log(`[DATABASE] No step conditions with next_flow_id matched for flow ${flow_id}`);
+    } else {
+      console.log(`[DATABASE] No step conditions with next_flow_id found for flow ${flow_id}`);
     }
     
     return null;
