@@ -312,7 +312,18 @@ crudApi.get('/flow-steps', async (c) => {
       return c.json(errorResponse('Database not configured', 500));
     }
 
-    const result = await db.prepare('SELECT * FROM flow_steps ORDER BY flow_id, order_index').all();
+    const flowId = c.req.query('flow_id');
+    let query = 'SELECT * FROM flow_steps';
+    const params: any[] = [];
+    
+    if (flowId) {
+      query += ' WHERE flow_id = ?';
+      params.push(flowId);
+    }
+    
+    query += ' ORDER BY order_index';
+    
+    const result = await db.prepare(query).bind(...params).all();
     return c.json(successResponse(result.results || []));
   } catch (error) {
     return c.json(errorResponse(handleDbError(error).error, 500));
@@ -1261,6 +1272,90 @@ crudApi.delete('/flow-definitions/:id', async (c) => {
     return c.json(apiResponse(true, { id, message: 'Flow definition deleted successfully' }));
   } catch (error) {
     return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// Execute a step with optional user prompt (for chat mode)
+crudApi.post('/execute-step', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const { flow_id, step_id, user_prompt, include_step_instructions = true } = await c.req.json();
+    
+    if (!user_prompt) {
+      return c.json(errorResponse('user_prompt is required', 400));
+    }
+
+    let prompt = user_prompt;
+    let stepInfo = null;
+
+    // If step_id provided, fetch step instructions
+    if (step_id) {
+      if (!flow_id) {
+        return c.json(errorResponse('flow_id is required when step_id is provided', 400));
+      }
+      
+      const step = await db.prepare(
+        'SELECT * FROM flow_steps WHERE id = ? AND flow_id = ?'
+      ).bind(step_id, flow_id).first();
+
+      if (!step) {
+        return c.json(errorResponse('Step not found for this flow', 404));
+      }
+
+      stepInfo = {
+        id: step.id,
+        title: step.title,
+        instructions: step.instructions,
+        step_type: step.step_type,
+        order_index: step.order_index
+      };
+
+      if (include_step_instructions && step.instructions) {
+        // Format similar to handleSendingStepState: user prompt + step instructions
+        prompt = `${user_prompt}\n\n=== STEP: ${step.title} ===\n${step.instructions}`;
+      }
+    }
+
+    // Call DeepSeek
+    const { callDeepSeek } = await import('./services/deepseek');
+    const messages = [{ role: 'user', content: prompt }];
+    
+    const deepseekResult = await callDeepSeek(c.env.DEEPSEEK_API_KEY, messages);
+    
+    if (!deepseekResult.success) {
+      return c.json(errorResponse(`DeepSeek failed: ${deepseekResult.error}`, 500));
+    }
+
+    // Optionally call OpenHands (could make configurable)
+    let openhandsResponse = null;
+    if (c.env.OPENHANDS_API_URL) {
+      const { createOpenHandsConversation } = await import('./services/openhands');
+      const openhandsResult = await createOpenHandsConversation(
+        c.env.OPENHANDS_API_URL,
+        deepseekResult.response
+      );
+      
+      if (openhandsResult.success) {
+        openhandsResponse = openhandsResult;
+      }
+    }
+
+    return c.json(successResponse({
+      step: stepInfo,
+      user_prompt,
+      prompt_sent: prompt,
+      deepseek_response: deepseekResult.response,
+      openhands_response: openhandsResponse,
+      timestamp: new Date().toISOString()
+    }));
+
+  } catch (error) {
+    console.error('Error executing step:', error);
+    return c.json(errorResponse('Internal server error', 500));
   }
 });
 

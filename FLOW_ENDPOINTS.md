@@ -252,12 +252,80 @@ curl -X POST "https://deepseek-agent.alghamdimo89.workers.dev/api/flow-step-cond
   }'
 ```
 
+## Chat Mode Endpoints (NEW)
+
+### 1. GET `/api/flow-steps` with flow_id filter
+**Get steps for a specific flow**
+
+```bash
+# Get all steps for flow "security-audit"
+curl "https://deepseek-agent.alghamdimo89.workers.dev/api/flow-steps?flow_id=security-audit"
+```
+
+### 2. POST `/api/execute-step`
+**Execute a step with optional user prompt (for chat mode)**
+
+#### Request Body:
+```json
+{
+  "flow_id": "security-audit",           // Required when step_id provided
+  "step_id": "step-analyze",             // Optional
+  "user_prompt": "Check for SQL injection vulnerabilities",
+  "include_step_instructions": true      // Default: true
+}
+```
+
+#### Response:
+```json
+{
+  "success": true,
+  "data": {
+    "step": {
+      "id": "step-analyze",
+      "title": "Analyze Security",
+      "instructions": "Check for common vulnerabilities...",
+      "step_type": "analysis",
+      "order_index": 1
+    },
+    "user_prompt": "Check for SQL injection vulnerabilities",
+    "prompt_sent": "Check for SQL injection vulnerabilities\n\n=== STEP: Analyze Security ===\nCheck for common vulnerabilities...",
+    "deepseek_response": "I've analyzed the code and found potential SQL injection issues...",
+    "openhands_response": {
+      "conversation_id": "conv-abc123",
+      "status": "created"
+    },
+    "timestamp": "2026-03-15T18:00:00.000Z"
+  }
+}
+```
+
+#### Example Usage:
+```bash
+# Execute step with prompt
+curl -X POST "https://deepseek-agent.alghamdimo89.workers.dev/api/execute-step" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flow_id": "security-audit",
+    "step_id": "step-analyze",
+    "user_prompt": "Check for SQL injection vulnerabilities"
+  }'
+
+# Send prompt without step
+curl -X POST "https://deepseek-agent.alghamdimo89.workers.dev/api/execute-step" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_prompt": "What is the current deployment status?"
+  }'
+```
+
 ## Summary
 
 ✅ **NEW**: `POST /api/flow-step-conditions` endpoint created
 ✅ **NEW**: `next_flow_id` support in step conditions
 ✅ **NEW**: Conditional flow transitions at step level
+✅ **NEW**: `GET /api/flow-steps?flow_id={id}` filter support
+✅ **NEW**: `POST /api/execute-step` for chat mode
 ✅ **EXISTING**: Full CRUD API for flows and steps
 ✅ **EXISTING**: Flow chaining via `flow_definitions.next_flow_id`
 
-Now you can create complete flow chains programmatically using the API endpoints!
+Now you can create complete flow chains programmatically using the API endpoints AND use chat mode for manual flow control!
