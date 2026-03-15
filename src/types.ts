@@ -111,6 +111,23 @@ export interface ConversationData {
     prompt_length: number;
     timestamp: number;
   };
+
+  // Dual-agent conversation state
+  dual_agent_state?: {
+    step_id: string;
+    ruler_agent: string;
+    goal_criteria: string;
+    max_iterations: number;
+    current_iteration: number;
+    conversation_history: Array<{
+      iteration: number;
+      agent: string;
+      message: string;
+      timestamp: number;
+    }>;
+    is_complete: boolean;
+    completion_reason: string;
+  };
 }
 
 // OpenHands event types
@@ -287,6 +304,12 @@ export interface StepData {
   output?: boolean;
   output_url?: string;
   output_auth_token?: string;
+  // NEW: Dual-agent mode fields
+  dual_agent?: boolean;
+  ruler_agent?: 'deepseek' | 'openhands';
+  goal_criteria?: string;
+  max_iterations_per_step?: number;
+  expected_response?: string; // Expected response that goes after instructions in prompt
 }
 
 // AI token parsing types

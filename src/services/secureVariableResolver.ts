@@ -49,6 +49,12 @@ interface StepData {
   instructions: string;
   input_keys?: string;
   auto_fail_on_error?: boolean;
+  // Additional fields for dual-agent mode
+  dual_agent?: boolean;
+  ruler_agent?: 'deepseek' | 'openhands';
+  goal_criteria?: string;
+  max_iterations_per_step?: number;
+  expected_response?: string;
 }
 
 // Execution context
@@ -58,6 +64,8 @@ interface ExecutionContext {
   flow_id?: string;
   execution_id?: string;
   task_data?: any;
+  previous_step_responses?: Record<string, any>; // NEW: Previous step responses for variable substitution
+  db?: D1Database; // NEW: Database for endpoint registry lookups
 }
 
 export class SecureVariableResolver {
@@ -92,13 +100,19 @@ export class SecureVariableResolver {
     
     try {
       // 1. Validate and parse input_keys
-      const apiConfigs = this.validateAndParseInputKeys(step.input_keys);
+      const apiConfigs = await this.validateAndParseInputKeys(step.input_keys, context);
       
       // Start with initial variables from context (e.g., task_data)
       const initialVariables: Record<string, any> = {};
       if (context.task_data) {
         initialVariables.task_data = context.task_data;
         this.log('debug', `Added task_data from context to initial variables`);
+      }
+      
+      // Add previous step responses to initial variables
+      if (context.previous_step_responses) {
+        initialVariables.previous_step_responses = context.previous_step_responses;
+        this.log('debug', `Added previous_step_responses to initial variables with ${Object.keys(context.previous_step_responses).length} steps`);
       }
       
       if (apiConfigs.length === 0) {
@@ -175,7 +189,10 @@ export class SecureVariableResolver {
   /**
    * Validate and parse input_keys JSON
    */
-  private validateAndParseInputKeys(inputKeys?: string): SecureApiConfig[] {
+  private async validateAndParseInputKeys(
+    inputKeys?: string, 
+    context?: ExecutionContext
+  ): Promise<SecureApiConfig[]> {
     if (!inputKeys || inputKeys.trim() === '') {
       return [];
     }
@@ -188,35 +205,114 @@ export class SecureVariableResolver {
       }
       
       // Validate each config
-      return parsed.map((config, index) => {
+      const configs: SecureApiConfig[] = [];
+      for (const config of parsed) {
         if (!config.key || typeof config.key !== 'string') {
-          throw new SecurityError(`Config at index ${index} missing or invalid 'key' property`);
+          throw new SecurityError(`Config missing or invalid 'key' property`);
         }
         
-        if (!config.url || typeof config.url !== 'string') {
-          throw new SecurityError(`Config at index ${index} missing or invalid 'url' property`);
+        // Check if this is an endpoint reference
+        if (config.endpoint_ref) {
+          // Resolve endpoint reference
+          const endpointConfig = await this.resolveEndpointReference(config.endpoint_ref, context);
+          if (!endpointConfig) {
+            throw new SecurityError(`Endpoint reference not found: ${config.endpoint_ref}`);
+          }
+          
+          // Merge endpoint config with overrides
+          const mergedConfig = {
+            ...endpointConfig,
+            ...config.endpoint_overrides,
+            key: config.key, // Keep the key from the step config
+            depends_on: config.depends_on // Keep dependencies from step config
+          };
+          
+          configs.push(mergedConfig);
+        } else {
+          // Traditional config with direct URL
+          if (!config.url || typeof config.url !== 'string') {
+            throw new SecurityError(`Config for key '${config.key}' missing or invalid 'url' property`);
+          }
+          
+          if (!config.method || !['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD'].includes(config.method)) {
+            throw new SecurityError(`Config for key '${config.key}' missing or invalid 'method' property`);
+          }
+          
+          // Set defaults
+          configs.push({
+            timeout_ms: this.securityConfig.timeout_default_ms,
+            max_retries: 3,
+            retry_delay_ms: 1000,
+            max_response_size_kb: this.securityConfig.max_request_size_kb,
+            require_https: this.securityConfig.require_https,
+            ...config
+          });
         }
-        
-        if (!config.method || !['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD'].includes(config.method)) {
-          throw new SecurityError(`Config at index ${index} missing or invalid 'method' property`);
-        }
-        
-        // Set defaults
-        return {
-          timeout_ms: this.securityConfig.timeout_default_ms,
-          max_retries: 3,
-          retry_delay_ms: 1000,
-          max_response_size_kb: this.securityConfig.max_request_size_kb,
-          require_https: this.securityConfig.require_https,
-          ...config
-        };
-      });
+      }
+      
+      return configs;
       
     } catch (error) {
       if (error instanceof SecurityError) {
         throw error;
       }
       throw new SecurityError(`Invalid input_keys JSON: ${error.message}`);
+    }
+  }
+
+  /**
+   * Resolve endpoint reference from endpoint_registry
+   */
+  private async resolveEndpointReference(
+    endpointName: string, 
+    context?: ExecutionContext
+  ): Promise<SecureApiConfig | null> {
+    if (!context?.db) {
+      this.log('warn', `Database not available for endpoint reference lookup: ${endpointName}`);
+      return null;
+    }
+
+    try {
+      const result = await context.db.prepare(`
+        SELECT url, method, auth_type, auth_value, headers, body_template, 
+               query_params, response_path, timeout_ms, max_retries, retry_delay_ms,
+               cache_key, cache_ttl_seconds, encrypt_cache, response_validator,
+               allowed_domains, require_https, log_level
+        FROM endpoint_registry
+        WHERE name = ?
+      `).bind(endpointName).first();
+
+      if (!result) {
+        return null;
+      }
+
+      // Parse JSON fields
+      const headers = result.headers ? JSON.parse(result.headers as string) : undefined;
+      const queryParams = result.query_params ? JSON.parse(result.query_params as string) : undefined;
+      const allowedDomains = result.allowed_domains ? JSON.parse(result.allowed_domains as string) : undefined;
+
+      return {
+        key: endpointName, // Temporary key, will be replaced by step config key
+        url: result.url as string,
+        method: result.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD',
+        auth_type: result.auth_type as any,
+        auth_value: result.auth_value as string,
+        headers,
+        body: result.body_template as string,
+        query_params: queryParams,
+        response_path: result.response_path as string,
+        timeout_ms: result.timeout_ms as number || this.securityConfig.timeout_default_ms,
+        max_retries: result.max_retries as number || 3,
+        retry_delay_ms: result.retry_delay_ms as number || 1000,
+        cache_key: result.cache_key as string,
+        cache_ttl_seconds: result.cache_ttl_seconds as number,
+        encrypt_cache: result.encrypt_cache as boolean || false,
+        require_https: result.require_https as boolean || true,
+        // Note: response_validator and allowed_domains need special handling
+      };
+    } catch (error) {
+      this.log('error', `Error resolving endpoint reference ${endpointName}:`, error);
+      return null;
     }
   }
   

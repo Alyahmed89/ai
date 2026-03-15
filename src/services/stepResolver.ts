@@ -14,6 +14,7 @@ export async function resolveStepInstructions(
     flow_id?: string;
     execution_id?: string;
     step_id?: string;
+    previous_step_responses?: Record<string, any>; // NEW: Previous step responses for variable substitution
   }
 ): Promise<{
   instructions: string;
@@ -99,7 +100,11 @@ export async function resolveStepInstructions(
           flow_id: context.flow_id,
           execution_id: context.execution_id,
           // Pass task data in context for SecureVariableResolver to use
-          task_data: taskData
+          task_data: taskData,
+          // Pass previous step responses for variable substitution
+          previous_step_responses: context.previous_step_responses,
+          // Pass database for endpoint registry lookups
+          db: db
         }
       );
       

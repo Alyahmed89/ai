@@ -22,6 +22,9 @@ export interface SecureApiConfig {
   cache_ttl_seconds?: number;
   encrypt_cache?: boolean;
   redact_fields?: string[];
+  // NEW: Support for endpoint references
+  endpoint_ref?: string; // Reference to endpoint_registry.name
+  endpoint_overrides?: Partial<SecureApiConfig>; // Overrides for referenced endpoint
 }
 
 export class SecurityError extends Error {

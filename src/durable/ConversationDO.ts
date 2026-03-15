@@ -716,6 +716,9 @@ export class ConversationOrchestratorDO_2026A {
             // Use the new step resolver for dynamic API data fetching
             // This handles both new input_keys system and backward compatibility
             try {
+              // Get previous step responses for variable substitution
+              const previousStepResponses = await this.getPreviousStepResponses();
+              
               const resolvedStep = await resolveStepInstructions(
                 currentStep,
                 this.env.FLOW_RUNS_DB,
@@ -723,7 +726,8 @@ export class ConversationOrchestratorDO_2026A {
                 {
                   flow_id: flow_id,
                   execution_id: this.flowRunId,
-                  step_id: currentStep.step_id
+                  step_id: currentStep.step_id,
+                  previous_step_responses: previousStepResponses
                 }
               );
               
@@ -753,6 +757,11 @@ export class ConversationOrchestratorDO_2026A {
               
               // Add the resolved instructions
               taskPrompt += `\n${resolvedStep.instructions}`;
+              
+              // Add expected_response after instructions if provided
+              if (currentStep.expected_response) {
+                taskPrompt += `\n\nExpected response format:\n${currentStep.expected_response}`;
+              }
               
               // Log API responses if any (for debugging)
               if (resolvedStep.api_responses && Object.keys(resolvedStep.api_responses).length > 0) {
@@ -1010,12 +1019,18 @@ export class ConversationOrchestratorDO_2026A {
             {
               flow_id: flow_id,
               execution_id: `flow-${Date.now()}`,
-              step_id: firstStep.step_id
+              step_id: firstStep.step_id,
+              previous_step_responses: {} // First step has no previous responses
             }
           );
           
           // Use resolved instructions directly
           initialPrompt = resolvedStep.instructions;
+          
+          // Add expected_response after instructions if provided
+          if (firstStep.expected_response) {
+            initialPrompt += `\n\nExpected response format:\n${firstStep.expected_response}`;
+          }
           
           console.log(`[DO:${this.state.id}] Successfully resolved step instructions with task data`);
           console.log(`[DO:${this.state.id}] Resolved instructions length: ${initialPrompt.length}`);
@@ -1114,6 +1129,223 @@ export class ConversationOrchestratorDO_2026A {
       return true;
     }
     return false; // Handles false, 0, "0", "false", null, undefined, etc.
+  }
+
+  /**
+   * Check if step is in dual-agent mode
+   */
+  private isDualAgentStep(step: StepData): boolean {
+    return step.dual_agent === true || step.dual_agent === 'true' || step.dual_agent === 1;
+  }
+
+  /**
+   * Handle dual-agent conversation loop
+   */
+  private async handleDualAgentConversation(step: StepData): Promise<void> {
+    if (!this.isDualAgentStep(step)) {
+      return;
+    }
+
+    console.log(`[DO:${this.state.id}] Starting dual-agent conversation for step: ${step.title}`);
+    
+    const rulerAgent = step.ruler_agent || 'openhands';
+    const goalCriteria = step.goal_criteria || 'Complete the task according to instructions';
+    const maxIterations = step.max_iterations_per_step || 5;
+    const expectedResponse = step.expected_response || '';
+    
+    console.log(`[DO:${this.state.id}] Dual-agent config: ruler=${rulerAgent}, max_iterations=${maxIterations}, goal=${goalCriteria.substring(0, 100)}...`);
+    
+    // Initialize dual-agent state
+    this.conversation.dual_agent_state = {
+      step_id: step.step_id,
+      ruler_agent: rulerAgent,
+      goal_criteria: goalCriteria,
+      max_iterations: maxIterations,
+      current_iteration: 0,
+      conversation_history: [],
+      is_complete: false,
+      completion_reason: ''
+    };
+    
+    await this.state.storage.put('conversation', this.conversation);
+    
+    // Start the dual-agent conversation
+    await this.startDualAgentIteration();
+  }
+
+  /**
+   * Start a dual-agent iteration
+   */
+  private async startDualAgentIteration(): Promise<void> {
+    if (!this.conversation.dual_agent_state) {
+      return;
+    }
+    
+    const dualState = this.conversation.dual_agent_state;
+    dualState.current_iteration++;
+    
+    console.log(`[DO:${this.state.id}] Starting dual-agent iteration ${dualState.current_iteration}/${dualState.max_iterations}`);
+    
+    if (dualState.current_iteration > dualState.max_iterations) {
+      console.log(`[DO:${this.state.id}] Dual-agent max iterations reached (${dualState.max_iterations})`);
+      dualState.is_complete = true;
+      dualState.completion_reason = 'max_iterations_reached';
+      await this.state.storage.put('conversation', this.conversation);
+      await this.completeDualAgentStep();
+      return;
+    }
+    
+    // Determine which agent should speak this iteration
+    const isRulerTurn = dualState.current_iteration % 2 === 1; // Ruler speaks on odd iterations
+    const currentAgent = isRulerTurn ? dualState.ruler_agent : 'deepseek';
+    
+    console.log(`[DO:${this.state.id}] Dual-agent iteration ${dualState.current_iteration}: ${currentAgent}'s turn`);
+    
+    // Build the conversation context
+    let prompt = '';
+    
+    if (dualState.current_iteration === 1) {
+      // First iteration: Start with the step instructions
+      const currentStep = this.conversation.flow_steps.find(s => s.step_id === dualState.step_id);
+      if (currentStep) {
+        prompt = `Dual-Agent Conversation: ${currentStep.title}\n\n`;
+        prompt += `Goal: ${dualState.goal_criteria}\n\n`;
+        prompt += `Instructions: ${currentStep.description || currentStep.instructions || ''}\n\n`;
+        
+        if (currentStep.expected_response) {
+          prompt += `Expected Response Format:\n${currentStep.expected_response}\n\n`;
+        }
+        
+        prompt += `Ruler Agent (${dualState.ruler_agent}): Please start the conversation to achieve the goal.`;
+      }
+    } else {
+      // Subsequent iterations: Continue the conversation
+      prompt = `Dual-Agent Conversation - Iteration ${dualState.current_iteration}/${dualState.max_iterations}\n\n`;
+      prompt += `Goal: ${dualState.goal_criteria}\n\n`;
+      prompt += `Conversation History:\n`;
+      
+      dualState.conversation_history.forEach((entry, index) => {
+        prompt += `${index + 1}. ${entry.agent}: ${entry.message.substring(0, 200)}...\n`;
+      });
+      
+      prompt += `\n${currentAgent}: Please continue the conversation to achieve the goal.`;
+    }
+    
+    // Store the prompt in conversation state
+    this.conversation.current_prompt = prompt;
+    await this.state.storage.put('conversation', this.conversation);
+    
+    // Send to the appropriate agent
+    if (currentAgent === 'deepseek') {
+      await this.sendToDeepSeek(prompt);
+    } else {
+      // For other agents (openhands), we would need to implement agent-specific handling
+      console.log(`[DO:${this.state.id}] Would send to ${currentAgent}: ${prompt.substring(0, 100)}...`);
+      // For now, treat as deepseek
+      await this.sendToDeepSeek(prompt);
+    }
+  }
+
+  /**
+   * Handle dual-agent response
+   */
+  private async handleDualAgentResponse(response: string): Promise<void> {
+    if (!this.conversation.dual_agent_state) {
+      return;
+    }
+    
+    const dualState = this.conversation.dual_agent_state;
+    const isRulerTurn = dualState.current_iteration % 2 === 1;
+    const currentAgent = isRulerTurn ? dualState.ruler_agent : 'deepseek';
+    
+    // Add to conversation history
+    dualState.conversation_history.push({
+      iteration: dualState.current_iteration,
+      agent: currentAgent,
+      message: response,
+      timestamp: Date.now()
+    });
+    
+    console.log(`[DO:${this.state.id}] Dual-agent response from ${currentAgent} (iteration ${dualState.current_iteration}): ${response.substring(0, 100)}...`);
+    
+    // Check if goal is achieved
+    const goalAchieved = await this.checkDualAgentGoal(response);
+    
+    if (goalAchieved) {
+      console.log(`[DO:${this.state.id}] Dual-agent goal achieved!`);
+      dualState.is_complete = true;
+      dualState.completion_reason = 'goal_achieved';
+      await this.state.storage.put('conversation', this.conversation);
+      await this.completeDualAgentStep();
+      return;
+    }
+    
+    // Save updated state
+    await this.state.storage.put('conversation', this.conversation);
+    
+    // Continue to next iteration
+    await this.startDualAgentIteration();
+  }
+
+  /**
+   * Check if dual-agent goal is achieved
+   */
+  private async checkDualAgentGoal(response: string): Promise<boolean> {
+    if (!this.conversation.dual_agent_state) {
+      return false;
+    }
+    
+    const dualState = this.conversation.dual_agent_state;
+    const goalCriteria = dualState.goal_criteria.toLowerCase();
+    const responseLower = response.toLowerCase();
+    
+    // Simple keyword matching for now
+    // In a real implementation, this would use more sophisticated NLP
+    const completionKeywords = ['completed', 'finished', 'done', 'achieved', 'success', 'ready', 'final'];
+    const goalKeywords = goalCriteria.split(' ').filter(word => word.length > 3);
+    
+    // Check for completion keywords
+    const hasCompletion = completionKeywords.some(keyword => responseLower.includes(keyword));
+    
+    // Check for goal keywords
+    const hasGoalKeywords = goalKeywords.every(keyword => 
+      responseLower.includes(keyword.toLowerCase()) || keyword.length < 4
+    );
+    
+    // Also check if this looks like a final answer
+    const isFinalAnswer = responseLower.includes('final answer') || 
+                         responseLower.includes('conclusion') ||
+                         responseLower.includes('summary');
+    
+    return hasCompletion && (hasGoalKeywords || isFinalAnswer);
+  }
+
+  /**
+   * Complete dual-agent step
+   */
+  private async completeDualAgentStep(): Promise<void> {
+    if (!this.conversation.dual_agent_state) {
+      return;
+    }
+    
+    const dualState = this.conversation.dual_agent_state;
+    console.log(`[DO:${this.state.id}] Completing dual-agent step: ${dualState.completion_reason}`);
+    
+    // Get the last response as the step output
+    const lastResponse = dualState.conversation_history.length > 0 
+      ? dualState.conversation_history[dualState.conversation_history.length - 1].message
+      : 'Dual-agent conversation completed';
+    
+    // Find the current step
+    const currentStep = this.conversation.flow_steps.find(s => s.step_id === dualState.step_id);
+    if (currentStep) {
+      // Handle step completion with the final response
+      await this.handleStepCompletion(currentStep, lastResponse);
+    }
+    
+    // Clear dual-agent state
+    this.conversation.dual_agent_state = undefined;
+    await this.state.storage.put('conversation', this.conversation);
   }
 
   // Helper to send step response to output_url if output is enabled
@@ -1873,6 +2105,13 @@ export class ConversationOrchestratorDO_2026A {
     
     // Clear DeepSeek response pending flag since we got a response
     this.conversation.deepseek_response_pending = false;
+    
+    // Check if we're in dual-agent mode
+    if (this.conversation.dual_agent_state && !this.conversation.dual_agent_state.is_complete) {
+      console.log(`[DO:${this.state.id}] Handling dual-agent response`);
+      await this.handleDualAgentResponse(deepseekResult.response!);
+      return;
+    }
     
     // Save initial iteration (iteration 0) - DISABLED to avoid database writes
     // await this.saveIterationToDatabase(
@@ -3008,6 +3247,13 @@ ${messageContent}`;
     // Clear DeepSeek response pending flag since we got a response
     this.conversation.deepseek_response_pending = false;
     
+    // Check if we're in dual-agent mode
+    if (this.conversation.dual_agent_state && !this.conversation.dual_agent_state.is_complete) {
+      console.log(`[DO:${this.state.id}] Handling dual-agent response`);
+      await this.handleDualAgentResponse(deepseekResult.response!);
+      return;
+    }
+    
     // Save iteration with OpenHands response as prompt and DeepSeek response - DISABLED to avoid database writes
     // await this.saveIterationToDatabase(
     //   messageContent, // Original OpenHands response (without iteration context)
@@ -3152,6 +3398,13 @@ ${messageContent}`;
     // Update current_step to track which step is being executed
     this.conversation.current_step = step;
     
+    // Check if this is a dual-agent step
+    if (this.isDualAgentStep(step)) {
+      console.log(`[DO:${this.state.id}] Step is in dual-agent mode, starting dual-agent conversation`);
+      await this.handleDualAgentConversation(step);
+      return;
+    }
+    
     // Build the prompt with step instructions
     let prompt = `Execute step: ${step.title}`;
     
@@ -3281,6 +3534,9 @@ ${messageContent}`;
     
     // Add step instructions - USE RESOLVED INSTRUCTIONS
     try {
+      // Get previous step responses for variable substitution
+      const previousStepResponses = await this.getPreviousStepResponses();
+      
       const resolvedStep = await resolveStepInstructions(
         step,
         this.env.FLOW_RUNS_DB,
@@ -3288,7 +3544,8 @@ ${messageContent}`;
         {
           flow_id: this.conversation.flow_id,
           execution_id: this.flowRunId,
-          step_id: step.step_id
+          step_id: step.step_id,
+          previous_step_responses: previousStepResponses
         }
       );
       
@@ -3297,8 +3554,16 @@ ${messageContent}`;
       
       if (resolvedStep.instructions) {
         prompt += `\n\n${resolvedStep.instructions}`;
+        // Add expected_response after instructions if provided
+        if (step.expected_response) {
+          prompt += `\n\nExpected response format:\n${step.expected_response}`;
+        }
       } else if (step.description) {
         prompt += `\n\n${step.description}`;
+        // Add expected_response after description if provided
+        if (step.expected_response) {
+          prompt += `\n\nExpected response format:\n${step.expected_response}`;
+        }
       }
       
       // Log if variables were resolved
@@ -4358,6 +4623,40 @@ ${messageContent}`;
       console.error(`[DO:${this.state.id}] Failed to save step run to database: ${result.error}`);
     } else {
       console.log(`[DO:${this.state.id}] Step run saved to database: ${step.step_id}, iteration ${iteration}, attempt ${attempt}`);
+    }
+  }
+
+  /**
+   * Get previous step responses for variable substitution
+   */
+  private async getPreviousStepResponses(): Promise<Record<string, any>> {
+    if (!this.conversation?.flow_id || !this.env.FLOW_RUNS_DB) {
+      return {};
+    }
+
+    try {
+      // Get all completed steps for this flow run
+      const result = await this.env.FLOW_RUNS_DB.prepare(`
+        SELECT step_id, response 
+        FROM flow_step_runs 
+        WHERE flow_run_id = ? AND status = 'completed'
+        ORDER BY created_at ASC
+      `).bind(this.flowRunId).all();
+
+      const responses: Record<string, any> = {};
+      if (result.results) {
+        for (const row of result.results) {
+          const stepId = row.step_id as string;
+          const response = row.response as string;
+          responses[stepId] = response;
+        }
+      }
+
+      console.log(`[DO:${this.state.id}] Retrieved ${Object.keys(responses).length} previous step responses`);
+      return responses;
+    } catch (error) {
+      console.error(`[DO:${this.state.id}] Error getting previous step responses:`, error);
+      return {};
     }
   }
 }
