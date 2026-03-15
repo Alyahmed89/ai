@@ -10,6 +10,8 @@ import {
   taskUpdateSchema,
   flowStepConditionCreateSchema,
   flowStepConditionUpdateSchema,
+  flowConditionCreateSchema,
+  flowConditionUpdateSchema,
   validateSchema 
 } from './schemas';
 import {
@@ -558,6 +560,148 @@ crudApi.get('/flow-steps/:id/input', async (c) => {
   }
 });
 
+// Update flow step input schema
+crudApi.put('/flow-steps/:id/input', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const stepId = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate that input_keys is provided
+    if (!body.input_keys) {
+      return c.json(errorResponse('input_keys is required', 400));
+    }
+    
+    // Check if step exists
+    const existing = await db.prepare('SELECT id FROM flow_steps WHERE id = ?').bind(stepId).first();
+    if (!existing) {
+      return c.json(errorResponse('Flow step not found', 404));
+    }
+    
+    // Convert input_keys to JSON string if it's an object/array
+    const inputKeys = typeof body.input_keys === 'string' ? body.input_keys : JSON.stringify(body.input_keys);
+    
+    await db.prepare('UPDATE flow_steps SET input_keys = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .bind(inputKeys, stepId)
+      .run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow step input schema updated successfully' 
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// Get flow step output schema
+crudApi.get('/flow-steps/:id/output', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('SELECT output_keys, output_url, output_payload_template, output_auth_token, output FROM flow_steps WHERE id = ?').bind(id).first();
+
+    if (!result) {
+      return c.json({ error: 'Flow step not found' }, 404);
+    }
+
+    // Parse output_keys JSON if it exists
+    let output_schema = null;
+    if (result.output_keys) {
+      try {
+        output_schema = JSON.parse(result.output_keys);
+      } catch (e) {
+        // If output_keys is not valid JSON, return it as-is
+        output_schema = result.output_keys;
+      }
+    }
+
+    return c.json({ 
+      output_schema,
+      output_url: result.output_url,
+      output_payload_template: result.output_payload_template,
+      output_auth_token: result.output_auth_token,
+      output: result.output
+    });
+  } catch (error) {
+    console.error('Error fetching flow step output:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Update flow step output schema
+crudApi.put('/flow-steps/:id/output', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const stepId = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Check if step exists
+    const existing = await db.prepare('SELECT id FROM flow_steps WHERE id = ?').bind(stepId).first();
+    if (!existing) {
+      return c.json(errorResponse('Flow step not found', 404));
+    }
+    
+    // Prepare update fields
+    const updates: { [key: string]: any } = {};
+    const params: any[] = [];
+    
+    if (body.output_keys !== undefined) {
+      updates.output_keys = typeof body.output_keys === 'string' ? body.output_keys : JSON.stringify(body.output_keys);
+      params.push(updates.output_keys);
+    }
+    
+    if (body.output_url !== undefined) {
+      updates.output_url = body.output_url;
+      params.push(updates.output_url);
+    }
+    
+    if (body.output_payload_template !== undefined) {
+      updates.output_payload_template = body.output_payload_template;
+      params.push(updates.output_payload_template);
+    }
+    
+    if (body.output_auth_token !== undefined) {
+      updates.output_auth_token = body.output_auth_token;
+      params.push(updates.output_auth_token);
+    }
+    
+    if (body.output !== undefined) {
+      updates.output = body.output;
+      params.push(updates.output);
+    }
+    
+    // If no output fields provided, return error
+    if (Object.keys(updates).length === 0) {
+      return c.json(errorResponse('At least one output field must be provided', 400));
+    }
+    
+    // Build SQL query
+    const setClause = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+    const sql = `UPDATE flow_steps SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+    
+    params.push(stepId);
+    await db.prepare(sql).bind(...params).run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow step output schema updated successfully' 
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
 // Get flow step conditions
 crudApi.get('/flow-steps/:id/conditions', async (c) => {
   try {
@@ -707,6 +851,110 @@ crudApi.post('/flow-step-conditions', async (c) => {
   }
 });
 
+// Update flow step condition
+crudApi.put('/flow-step-conditions/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const conditionId = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(flowStepConditionUpdateSchema, { ...body, id: conditionId });
+    if (!validation.success) {
+      return c.json(validationErrorResponse(validation.error));
+    }
+    
+    const validatedData = validation.data!;
+    const { 
+      flow_step_id, condition_type, condition_value, condition_operator,
+      next_step, next_step_id, next_flow_id 
+    } = validatedData;
+    
+    // Validate that we have at least one transition target if any transition fields are provided
+    if ((next_step !== undefined || next_step_id !== undefined || next_flow_id !== undefined) && 
+        !next_step && !next_step_id && !next_flow_id) {
+      return c.json(errorResponse('At least one of next_step, next_step_id, or next_flow_id must be provided', 400));
+    }
+    
+    // For next_flow_id conditions, set next_step to -1 (terminate current flow)
+    let finalNextStep = next_step;
+    let finalNextStepId = next_step_id;
+    
+    if (next_flow_id) {
+      // When transitioning to another flow, we terminate the current flow
+      finalNextStep = -1;
+      finalNextStepId = 'TERMINATE_FLOW';
+    }
+    
+    // Check if condition exists
+    const existing = await db.prepare('SELECT id FROM flow_step_conditions WHERE id = ?').bind(conditionId).first();
+    if (!existing) {
+      return c.json(errorResponse('Flow step condition not found', 404));
+    }
+    
+    const sql = `
+      UPDATE flow_step_conditions SET
+        flow_step_id = COALESCE(?, flow_step_id),
+        condition_type = COALESCE(?, condition_type),
+        condition_value = COALESCE(?, condition_value),
+        condition_operator = COALESCE(?, condition_operator),
+        next_step = COALESCE(?, next_step),
+        next_step_id = COALESCE(?, next_step_id),
+        next_flow_id = COALESCE(?, next_flow_id),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+
+    await db.prepare(sql).bind(
+      dbValue(flow_step_id),
+      dbValue(condition_type),
+      dbValue(condition_value),
+      dbValue(condition_operator),
+      dbValue(finalNextStep),
+      dbValue(finalNextStepId),
+      dbValue(next_flow_id),
+      conditionId
+    ).run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow step condition updated successfully', 
+      id: conditionId 
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// Delete flow step condition
+crudApi.delete('/flow-step-conditions/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const conditionId = c.req.param('id');
+    
+    // Check if condition exists
+    const existing = await db.prepare('SELECT id FROM flow_step_conditions WHERE id = ?').bind(conditionId).first();
+    if (!existing) {
+      return c.json(errorResponse('Flow step condition not found', 404));
+    }
+    
+    await db.prepare('DELETE FROM flow_step_conditions WHERE id = ?').bind(conditionId).run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow step condition deleted successfully' 
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
 // Alias endpoints for backward compatibility: /api/steps -> /api/flow-steps
 crudApi.get('/steps', async (c) => {
   // Forward to /api/flow-steps handler
@@ -750,9 +998,168 @@ crudApi.get('/flow-conditions', async (c) => {
   }
 });
 
+// Get specific flow condition
+crudApi.get('/flow-conditions/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
 
+    const conditionId = c.req.param('id');
+    const result = await db.prepare('SELECT * FROM flow_conditions WHERE id = ?').bind(conditionId).first();
+    
+    if (!result) {
+      return c.json({ error: 'Flow condition not found' }, 404);
+    }
+    
+    return c.json(result);
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
 
+// Create flow condition
+crudApi.post('/flow-conditions', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
 
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(flowConditionCreateSchema, body);
+    if (!validation.success) {
+      return c.json(validationErrorResponse(validation.error));
+    }
+    
+    const validatedData = validation.data!;
+    const { 
+      id, flow_id, step_id, condition_type, condition_engine,
+      condition_key, condition_value, condition_query, next_flow_id
+    } = validatedData;
+    
+    // Generate ID if not provided
+    const conditionId = id || `flow-cond-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const sql = `
+      INSERT INTO flow_conditions (
+        id, flow_id, step_id, condition_type, condition_engine,
+        condition_key, condition_value, condition_query, next_flow_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `;
+
+    await db.prepare(sql).bind(
+      conditionId,
+      flow_id,
+      step_id,
+      condition_type,
+      condition_engine || 'static',
+      dbValue(condition_key),
+      dbValue(condition_value),
+      dbValue(condition_query),
+      dbValue(next_flow_id)
+    ).run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow condition created successfully', 
+      id: conditionId 
+    }, 201));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// Update flow condition
+crudApi.put('/flow-conditions/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const conditionId = c.req.param('id');
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(flowConditionUpdateSchema, { ...body, id: conditionId });
+    if (!validation.success) {
+      return c.json(validationErrorResponse(validation.error));
+    }
+    
+    const validatedData = validation.data!;
+    const { 
+      flow_id, step_id, condition_type, condition_engine,
+      condition_key, condition_value, condition_query, next_flow_id
+    } = validatedData;
+    
+    // Check if condition exists
+    const existing = await db.prepare('SELECT id FROM flow_conditions WHERE id = ?').bind(conditionId).first();
+    if (!existing) {
+      return c.json(errorResponse('Flow condition not found', 404));
+    }
+    
+    const sql = `
+      UPDATE flow_conditions SET
+        flow_id = COALESCE(?, flow_id),
+        step_id = COALESCE(?, step_id),
+        condition_type = COALESCE(?, condition_type),
+        condition_engine = COALESCE(?, condition_engine),
+        condition_key = COALESCE(?, condition_key),
+        condition_value = COALESCE(?, condition_value),
+        condition_query = COALESCE(?, condition_query),
+        next_flow_id = COALESCE(?, next_flow_id)
+      WHERE id = ?
+    `;
+
+    await db.prepare(sql).bind(
+      dbValue(flow_id),
+      dbValue(step_id),
+      dbValue(condition_type),
+      dbValue(condition_engine),
+      dbValue(condition_key),
+      dbValue(condition_value),
+      dbValue(condition_query),
+      dbValue(next_flow_id),
+      conditionId
+    ).run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow condition updated successfully', 
+      id: conditionId 
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
+
+// Delete flow condition
+crudApi.delete('/flow-conditions/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const conditionId = c.req.param('id');
+    
+    // Check if condition exists
+    const existing = await db.prepare('SELECT id FROM flow_conditions WHERE id = ?').bind(conditionId).first();
+    if (!existing) {
+      return c.json(errorResponse('Flow condition not found', 404));
+    }
+    
+    await db.prepare('DELETE FROM flow_conditions WHERE id = ?').bind(conditionId).run();
+    
+    return c.json(successResponse({ 
+      message: 'Flow condition deleted successfully' 
+    }));
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
+  }
+});
 
 // Create flow run
 crudApi.post('/flow-runs', async (c) => {

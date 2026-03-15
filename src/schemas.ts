@@ -146,6 +146,32 @@ export const flowStepConditionUpdateSchema = flowStepConditionCreateSchema.parti
   id: z.string().min(1, 'id is required for update'),
 });
 
+// Flow Condition Schema
+export const flowConditionSchema = z.object({
+  id: z.string().min(1, 'id is required').optional(),
+  flow_id: z.string().min(1, 'flow_id is required'),
+  step_id: z.string().min(1, 'step_id is required'),
+  condition_type: z.enum(['prerequisite', 'skip_if', 'execute_if', 'next_flow']),
+  condition_engine: z.enum(['sql', 'state', 'static']).default('static'),
+  condition_key: z.string().optional().nullable().default(null),
+  condition_value: z.string().optional().nullable().default(null),
+  condition_query: z.string().optional().nullable().default(null),
+  next_flow_id: z.string().optional().nullable().default(null),
+  created_at: timestampSchema,
+});
+
+// Flow Condition Create Schema
+export const flowConditionCreateSchema = flowConditionSchema.omit({ 
+  created_at: true 
+}).extend({
+  id: idSchema,
+});
+
+// Flow Condition Update Schema
+export const flowConditionUpdateSchema = flowConditionCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update'),
+});
+
 // API Response Schema
 export const apiResponseSchema = z.object({
   success: z.boolean(),
