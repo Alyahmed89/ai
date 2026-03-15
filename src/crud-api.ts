@@ -897,6 +897,308 @@ crudApi.post('/flow-runs/:flowRunId/iterations', async (c) => {
 // Core Observability Endpoints (5 endpoints only)
 // ==========================================================================
 
+// ============================================
+// Endpoint Registry Management
+// ============================================
+
+// 1️⃣ Get all endpoints
+crudApi.get('/endpoints', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const limit = parseInt(c.req.query('limit') || '100');
+    const offset = parseInt(c.req.query('offset') || '0');
+    const tag = c.req.query('tag');
+
+    let whereClause = '';
+    let params: any[] = [];
+
+    if (tag) {
+      whereClause = 'WHERE tags LIKE ?';
+      params.push(`%${tag}%`);
+    }
+
+    const sql = `
+      SELECT 
+        id, name, description, url, method, auth_type, auth_value,
+        headers, body_template, query_params, response_path,
+        timeout_ms, max_retries, retry_delay_ms, cache_key,
+        cache_ttl_seconds, encrypt_cache, response_validator,
+        allowed_domains, require_https, log_level,
+        created_at, updated_at, created_by, tags
+      FROM endpoint_registry
+      ${whereClause}
+      ORDER BY name ASC
+      LIMIT ? OFFSET ?
+    `;
+
+    params.push(limit, offset);
+
+    const endpoints = await db.prepare(sql).bind(...params).all();
+
+    return c.json(successResponse({
+      endpoints: endpoints.results,
+      total: endpoints.results.length,
+      limit,
+      offset
+    }));
+
+  } catch (error) {
+    console.error('Error fetching endpoints:', error);
+    return c.json(errorResponse('Internal server error', 500));
+  }
+});
+
+// 2️⃣ Get endpoint by name
+crudApi.get('/endpoints/:name', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const name = c.req.param('name');
+
+    const sql = `
+      SELECT 
+        id, name, description, url, method, auth_type, auth_value,
+        headers, body_template, query_params, response_path,
+        timeout_ms, max_retries, retry_delay_ms, cache_key,
+        cache_ttl_seconds, encrypt_cache, response_validator,
+        allowed_domains, require_https, log_level,
+        created_at, updated_at, created_by, tags
+      FROM endpoint_registry
+      WHERE name = ?
+    `;
+
+    const endpoint = await db.prepare(sql).bind(name).first();
+
+    if (!endpoint) {
+      return c.json(notFoundResponse('Endpoint not found'));
+    }
+
+    return c.json(successResponse(endpoint));
+
+  } catch (error) {
+    console.error('Error fetching endpoint:', error);
+    return c.json(errorResponse('Internal server error', 500));
+  }
+});
+
+// 3️⃣ Create new endpoint
+crudApi.post('/endpoints', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const endpointData = await c.req.json();
+    
+    // Validate required fields
+    if (!endpointData.name || !endpointData.url || !endpointData.method) {
+      return c.json({ error: 'Missing required fields: name, url, method' }, 400);
+    }
+
+    // Generate ID if not provided
+    const id = endpointData.id || `endpoint_${Date.now()}`;
+    const now = Math.floor(Date.now() / 1000);
+
+    const sql = `
+      INSERT INTO endpoint_registry (
+        id, name, description, url, method, auth_type, auth_value,
+        headers, body_template, query_params, response_path,
+        timeout_ms, max_retries, retry_delay_ms, cache_key,
+        cache_ttl_seconds, encrypt_cache, response_validator,
+        allowed_domains, require_https, log_level,
+        created_at, updated_at, created_by, tags
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?
+      )
+    `;
+
+    const params = [
+      id,
+      endpointData.name,
+      endpointData.description || null,
+      endpointData.url,
+      endpointData.method.toUpperCase(),
+      endpointData.auth_type || 'none',
+      endpointData.auth_value || null,
+      endpointData.headers ? JSON.stringify(endpointData.headers) : null,
+      endpointData.body_template || null,
+      endpointData.query_params ? JSON.stringify(endpointData.query_params) : null,
+      endpointData.response_path || null,
+      endpointData.timeout_ms || 10000,
+      endpointData.max_retries || 3,
+      endpointData.retry_delay_ms || 1000,
+      endpointData.cache_key || null,
+      endpointData.cache_ttl_seconds || null,
+      endpointData.encrypt_cache ? 1 : 0,
+      endpointData.response_validator || null,
+      endpointData.allowed_domains ? JSON.stringify(endpointData.allowed_domains) : null,
+      endpointData.require_https !== false ? 1 : 0,
+      endpointData.log_level || 'info',
+      now,
+      now,
+      endpointData.created_by || 'api',
+      endpointData.tags ? JSON.stringify(endpointData.tags) : null
+    ];
+
+    await db.prepare(sql).bind(...params).run();
+
+    return c.json(successResponse({
+      id,
+      name: endpointData.name,
+      message: 'Endpoint created successfully'
+    }), 201);
+
+  } catch (error: any) {
+    console.error('Error creating endpoint:', error);
+    
+    // Check for unique constraint violation
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+      return c.json({ error: 'Endpoint with this name already exists' }, 409);
+    }
+    
+    return c.json(errorResponse('Internal server error', 500));
+  }
+});
+
+// 4️⃣ Update endpoint
+crudApi.put('/endpoints/:name', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const name = c.req.param('name');
+    const endpointData = await c.req.json();
+    const now = Math.floor(Date.now() / 1000);
+
+    // Check if endpoint exists
+    const checkSql = 'SELECT id FROM endpoint_registry WHERE name = ?';
+    const existing = await db.prepare(checkSql).bind(name).first();
+    
+    if (!existing) {
+      return c.json(notFoundResponse('Endpoint not found'));
+    }
+
+    // Build update query dynamically
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    // Fields that can be updated
+    const fields = [
+      'description', 'url', 'method', 'auth_type', 'auth_value',
+      'headers', 'body_template', 'query_params', 'response_path',
+      'timeout_ms', 'max_retries', 'retry_delay_ms', 'cache_key',
+      'cache_ttl_seconds', 'encrypt_cache', 'response_validator',
+      'allowed_domains', 'require_https', 'log_level', 'tags'
+    ];
+
+    fields.forEach(field => {
+      if (field in endpointData) {
+        let value = endpointData[field];
+        
+        // Handle JSON fields
+        if (['headers', 'query_params', 'allowed_domains', 'tags'].includes(field) && value) {
+          value = JSON.stringify(value);
+        }
+        
+        // Handle boolean field
+        if (field === 'encrypt_cache') {
+          value = value ? 1 : 0;
+        }
+        
+        // Handle boolean field
+        if (field === 'require_https') {
+          value = value !== false ? 1 : 0;
+        }
+        
+        // Handle method case
+        if (field === 'method' && value) {
+          value = value.toUpperCase();
+        }
+        
+        updates.push(`${field} = ?`);
+        params.push(value);
+      }
+    });
+
+    // Always update updated_at
+    updates.push('updated_at = ?');
+    params.push(now);
+
+    if (updates.length === 1) { // Only updated_at was added
+      return c.json({ error: 'No fields to update' }, 400);
+    }
+
+    const updateSql = `
+      UPDATE endpoint_registry
+      SET ${updates.join(', ')}
+      WHERE name = ?
+    `;
+
+    params.push(name);
+
+    await db.prepare(updateSql).bind(...params).run();
+
+    return c.json(successResponse({
+      name,
+      message: 'Endpoint updated successfully'
+    }));
+
+  } catch (error) {
+    console.error('Error updating endpoint:', error);
+    return c.json(errorResponse('Internal server error', 500));
+  }
+});
+
+// 5️⃣ Delete endpoint
+crudApi.delete('/endpoints/:name', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const name = c.req.param('name');
+
+    // Check if endpoint exists
+    const checkSql = 'SELECT id FROM endpoint_registry WHERE name = ?';
+    const existing = await db.prepare(checkSql).bind(name).first();
+    
+    if (!existing) {
+      return c.json(notFoundResponse('Endpoint not found'));
+    }
+
+    const deleteSql = 'DELETE FROM endpoint_registry WHERE name = ?';
+    await db.prepare(deleteSql).bind(name).run();
+
+    return c.json(successResponse({
+      name,
+      message: 'Endpoint deleted successfully'
+    }));
+
+  } catch (error) {
+    console.error('Error deleting endpoint:', error);
+    return c.json(errorResponse('Internal server error', 500));
+  }
+});
+
+// ============================================
+// Core Observability Endpoints
+// ============================================
+
 // 1️⃣ Health check endpoint
 crudApi.get('/health', (c) => {
   return c.json({ 
