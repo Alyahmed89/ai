@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 import EditFlowModal from '@/components/EditFlowModal';
+import HierarchicalNav from '@/components/HierarchicalNav';
 
 interface ChatMessage {
   id: string;
@@ -61,10 +62,14 @@ export default function ChatPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showCreateFlowModal, setShowCreateFlowModal] = useState<boolean>(false);
   const [showEditFlowModal, setShowEditFlowModal] = useState<boolean>(false);
-  const [sidebarView, setSidebarView] = useState<'flowRuns' | 'tasks'>('flowRuns');
   const [selectedFlowRun, setSelectedFlowRun] = useState<FlowRun | null>(null);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Fetch flow runs and tasks on component mount
   useEffect(() => {
@@ -86,6 +91,14 @@ export default function ChatPage() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatMessages]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [inputPrompt]);
 
   const fetchFlowRuns = async () => {
     try {
@@ -250,7 +263,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleFlowBoxClick = (flowId: string) => {
+  const handleEditFlow = (flowId: string) => {
     setEditingFlowId(flowId);
     setShowEditFlowModal(true);
   };
@@ -270,15 +283,11 @@ export default function ChatPage() {
     const diffMin = Math.floor(diffSec / 60);
     const diffHour = Math.floor(diffMin / 60);
     const diffDay = Math.floor(diffHour / 24);
-    const diffMonth = Math.floor(diffDay / 30);
-    const diffYear = Math.floor(diffDay / 365);
-    
-    if (diffYear > 0) return `${diffYear} year${diffYear > 1 ? 's' : ''}`;
-    if (diffMonth > 0) return `${diffMonth} month${diffMonth > 1 ? 's' : ''}`;
-    if (diffDay > 0) return `${diffDay} day${diffDay > 1 ? 's' : ''}`;
-    if (diffHour > 0) return `${diffHour} hour${diffHour > 1 ? 's' : ''}`;
-    if (diffMin > 0) return `${diffMin} min${diffMin > 1 ? 's' : ''}`;
-    return 'just now';
+
+    if (diffDay > 0) return `${diffDay}d ago`;
+    if (diffHour > 0) return `${diffHour}h ago`;
+    if (diffMin > 0) return `${diffMin}m ago`;
+    return `${diffSec}s ago`;
   };
 
   const getStatusColor = (status: string): string => {
@@ -300,7 +309,7 @@ export default function ChatPage() {
           <span className="text-xs text-green-400">Completed</span>
         </div>
       );
-    } else if (statusLower === 'running') {
+    } else if (statusLower === 'running' || statusLower === 'active') {
       return (
         <div className="flex items-center space-x-1">
           <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
@@ -332,137 +341,31 @@ export default function ChatPage() {
     <div className="min-h-screen bg-black text-gray-100 font-sans">
       {/* Full screen layout */}
       <div className="flex h-screen">
-        {/* Left sidebar */}
-        <div className="w-80 border-r border-gray-900 bg-black overflow-y-auto">
-          <div className="p-6">
-            {/* Sidebar header with icons */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setSidebarView('flowRuns')}
-                  className={`p-2 rounded-lg transition-colors ${sidebarView === 'flowRuns' ? 'text-green-400 bg-green-500/10' : 'text-gray-400 hover:text-white hover:bg-gray-900'}`}
-                  title="Flow Runs"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setSidebarView('tasks')}
-                  className={`p-2 rounded-lg transition-colors ${sidebarView === 'tasks' ? 'text-yellow-400 bg-yellow-500/10' : 'text-gray-400 hover:text-white hover:bg-gray-900'}`}
-                  title="Tasks"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Content based on sidebar view */}
-            <div className="space-y-3">
-              {sidebarView === 'flowRuns' && (
-                <>
-                  {flowRuns.slice(0, 20).map(run => (
-                    <div 
-                      key={run.id} 
-                      className="p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 border border-gray-800 hover:border-gray-700 cursor-pointer transition-all"
-                      onClick={() => handleFlowBoxClick(run.flow_id)}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-200 truncate">
-                            {run.flow_id}
-                          </div>
-                          {run.input_prompt && (
-                            <div className="text-xs text-gray-400 mt-1 line-clamp-2">
-                              {run.input_prompt}
-                            </div>
-                          )}
-                        </div>
-                        {renderStatusIndicator(run.status)}
-                      </div>
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-xs text-gray-500">
-                          {formatRelativeTime(run.started_at)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  {flowRuns.length === 0 && (
-                    <div className="text-center py-4 text-gray-500 text-sm">
-                      No flow runs yet
-                    </div>
-                  )}
-                </>
-              )}
-
-              {sidebarView === 'tasks' && (
-                <>
-                  {tasks.slice(0, 20).map(task => (
-                    <div 
-                      key={task.id} 
-                      className="p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 border border-gray-800 hover:border-gray-700 cursor-pointer transition-all"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-200 truncate">
-                            {task.title || task.description || 'Untitled Task'}
-                          </div>
-                          <div className="text-xs text-gray-400 mt-1">
-                            {task.task_type && (
-                              <span className="mr-2">Type: {task.task_type}</span>
-                            )}
-                            {task.priority && (
-                              <span>Priority: {task.priority}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          {task.status === 'completed' ? (
-                            <span className="text-green-400">✓</span>
-                          ) : task.status === 'failed' ? (
-                            <span className="text-red-400">✗</span>
-                          ) : task.status === 'running' ? (
-                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
-                          ) : (
-                            <span className="text-gray-400">○</span>
-                          )}
-                          <span className="text-xs text-gray-400">{task.status}</span>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-xs text-gray-500">
-                          {formatRelativeTime(task.created_at)}
-                        </span>
-                        {task.flow_id && (
-                          <span className="text-xs text-blue-400">
-                            Flow: {task.flow_id}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {tasks.length === 0 && (
-                    <div className="text-center py-4 text-gray-500 text-sm">
-                      No tasks available
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+        {/* Left sidebar - Hierarchical Navigation */}
+        <div className="w-64 flex-shrink-0">
+          <HierarchicalNav
+            onSelectProject={setSelectedProjectId}
+            onSelectFlow={setSelectedFlowId}
+            onSelectTask={setSelectedTaskId}
+            onSelectFlowRun={setSelectedFlowRunId}
+          />
         </div>
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col">
-          {/* Chat header with minimal controls */}
-          <div className="border-b border-gray-900 bg-black p-4">
+          {/* Chat header */}
+          <div className="border-b border-gray-800 bg-gray-900 p-4">
             <div className="flex justify-between items-center">
-              <div className="flex items-center space-x-3">
-                <span className="px-3 py-1 bg-blue-500/20 text-blue-400 text-sm rounded-full">
-                  rules_are_rules
-                </span>
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+                <h2 className="text-lg font-semibold text-gray-200">Chat</h2>
+                {selectedFlowId && (
+                  <span className="ml-3 px-2 py-1 text-xs bg-blue-900/30 text-blue-300 rounded">
+                    Flow: {selectedFlowId.substring(0, 8)}...
+                  </span>
+                )}
               </div>
               <div className="flex items-center space-x-3">
                 {isRunning && (
@@ -473,10 +376,24 @@ export default function ChatPage() {
                 )}
                 <button
                   onClick={() => setShowCreateFlowModal(true)}
-                  className="px-3 py-1.5 text-sm bg-green-900 text-green-300 hover:bg-green-800 rounded-lg transition-colors border border-green-800"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center"
                 >
-                  Create Flow
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Flow
                 </button>
+                {selectedFlowId && (
+                  <button
+                    onClick={() => handleEditFlow(selectedFlowId)}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium rounded-lg transition-colors flex items-center"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit Flow
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -529,24 +446,50 @@ export default function ChatPage() {
                 </div>
 
                 {/* Chat input */}
-                <div className="border-t border-gray-900 p-4">
-                  <div className="flex space-x-4">
-                    <textarea
-                      value={inputPrompt}
-                      onChange={(e) => setInputPrompt(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Type your prompt here... (Will create task for 'rules_are_rules' flow)"
-                      className="flex-1 px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-100 placeholder-gray-500"
-                      rows={3}
-                    />
-                    <button
-                      onClick={handleSend}
-                      disabled={isRunning || !inputPrompt.trim()}
-                      className="self-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isRunning ? '...' : 'Send'}
-                    </button>
-                  </div>
+                <div className="border-t border-gray-800 p-4">
+                  <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="space-y-3">
+                    <div className="relative">
+                      <textarea
+                        ref={textareaRef}
+                        value={inputPrompt}
+                        onChange={(e) => setInputPrompt(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Type your prompt here... (Shift+Enter for new line)"
+                        className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-12 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        rows={1}
+                        disabled={isRunning}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!inputPrompt.trim() || isRunning}
+                        className="absolute right-3 bottom-3 p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Send message"
+                      >
+                        {isRunning ? (
+                          <svg className="w-5 h-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center space-x-4">
+                        <span>Press Enter to send</span>
+                        {isRunning && (
+                          <span className="flex items-center">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500 mr-1"></div>
+                            Processing...
+                          </span>
+                        )}
+                      </div>
+                      <span>{inputPrompt.length}/2000</span>
+                    </div>
+                  </form>
                 </div>
               </div>
             </div>
