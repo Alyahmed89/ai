@@ -414,10 +414,12 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="h-screen bg-black text-gray-100 font-sans overflow-hidden">
-      {/* Main layout */}
-      <div className="flex h-full">
-        {/* Left sidebar - Hierarchical Navigation */}
+    <div className="min-h-screen bg-black text-gray-100 font-sans">
+      {/* Adjust for navigation bar */}
+      <div className="pt-16">
+        {/* Main layout */}
+        <div className="flex min-h-[calc(100vh-4rem)]">
+          {/* Left sidebar - Hierarchical Navigation */}
         <div className="w-80 border-r border-gray-900 bg-black overflow-y-auto custom-scrollbar">
           <div className="p-6">
             {/* Navigation header with icons */}
@@ -1054,6 +1056,7 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
