@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 import EditFlowModal from '@/components/EditFlowModal';
+import CreateProjectModal from '@/components/CreateProjectModal';
 import HierarchicalNav from '@/components/HierarchicalNav';
 
 interface ChatMessage {
@@ -62,6 +63,7 @@ export default function ChatPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showCreateFlowModal, setShowCreateFlowModal] = useState<boolean>(false);
   const [showEditFlowModal, setShowEditFlowModal] = useState<boolean>(false);
+  const [showCreateProjectModal, setShowCreateProjectModal] = useState<boolean>(false);
   const [selectedFlowRun, setSelectedFlowRun] = useState<FlowRun | null>(null);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -349,6 +351,7 @@ export default function ChatPage() {
             onSelectTask={setSelectedTaskId}
             onSelectFlowRun={setSelectedFlowRunId}
             onSelectStep={() => {}} // TODO: Implement step selection
+            onCreateProject={() => setShowCreateProjectModal(true)}
             onCreateFlow={() => setShowCreateFlowModal(true)}
             onCreateStep={() => {}} // TODO: Implement create step
           />
@@ -499,6 +502,24 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* Create Project Modal */}
+      {showCreateProjectModal && (
+        <CreateProjectModal
+          onClose={() => setShowCreateProjectModal(false)}
+          onProjectCreated={(projectId) => {
+            setShowCreateProjectModal(false);
+            // Add success message to chat
+            const message: ChatMessage = {
+              id: Date.now().toString(),
+              type: 'assistant',
+              content: `Project created successfully! Project ID: ${projectId}`,
+              timestamp: new Date()
+            };
+            setChatMessages(prev => [...prev, message]);
+          }}
+        />
+      )}
 
       {showCreateFlowModal && (
         <SimpleFlowCreator

@@ -82,6 +82,7 @@ interface HierarchicalNavProps {
   onSelectTask?: (taskId: string | null) => void;
   onSelectFlowRun?: (flowRunId: string | null) => void;
   onSelectStep?: (stepId: string | null) => void;
+  onCreateProject?: () => void;
   onCreateFlow?: () => void;
   onCreateStep?: () => void;
 }
@@ -92,6 +93,7 @@ export default function HierarchicalNav({
   onSelectTask,
   onSelectFlowRun,
   onSelectStep,
+  onCreateProject,
   onCreateFlow,
   onCreateStep
 }: HierarchicalNavProps) {
@@ -332,9 +334,22 @@ export default function HierarchicalNav({
               </svg>
               <span className="text-sm font-medium text-gray-300">Projects</span>
             </div>
-            {loading.projects && (
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-            )}
+            <div className="flex items-center space-x-2">
+              {onCreateProject && (
+                <button
+                  onClick={onCreateProject}
+                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                  title="Create New Project"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              )}
+              {loading.projects && (
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+              )}
+            </div>
           </div>
           <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto">
             {projects.map(project => (
