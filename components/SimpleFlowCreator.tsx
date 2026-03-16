@@ -27,6 +27,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
   const [step, setStep] = useState<'flow' | 'steps'>('flow');
   const [flowName, setFlowName] = useState('');
   const [agent, setAgent] = useState<'openhands' | 'deepseek'>('deepseek');
+  const [systemMessage, setSystemMessage] = useState('');
   const [steps, setSteps] = useState<FlowStep[]>([
     { id: '1', instructions: '', inputEndpointId: '', outputEndpointId: '', condition: '', order: 1 }
   ]);
@@ -65,18 +66,25 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
 
     try {
       // Create flow definition
+      const flowPayload: any = {
+        name: flowName,
+        description: `Flow created via chat UI with ${agent} agent`,
+        max_iterations: 10,
+        repository: '[MANUAL]',
+        branch: '[MANUAL]',
+        priority: 10,
+        agent: agent
+      };
+      
+      // Include system message only when agent is deepseek
+      if (agent === 'deepseek' && systemMessage.trim()) {
+        flowPayload.system_message = systemMessage.trim();
+      }
+      
       const flowResponse = await fetch('/api/proxy/api/flow-definitions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: flowName,
-          description: `Flow created via chat UI with ${agent} agent`,
-          max_iterations: 10,
-          repository: '[MANUAL]',
-          branch: '[MANUAL]',
-          priority: 10,
-          agent: agent
-        }),
+        body: JSON.stringify(flowPayload),
       });
 
       const flowResult = await flowResponse.json();
@@ -253,6 +261,24 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                   </label>
                 </div>
               </div>
+
+              {agent === 'deepseek' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">
+                    System Message (DeepSeek only)
+                  </label>
+                  <textarea
+                    value={systemMessage}
+                    onChange={(e) => setSystemMessage(e.target.value)}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                    rows={3}
+                    placeholder="You are an expert software developer..."
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Optional system message for DeepSeek agent. This will be included in the flow definition.
+                  </p>
+                </div>
+              )}
 
               <div className="pt-4 border-t border-gray-800">
                 <button

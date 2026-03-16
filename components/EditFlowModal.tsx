@@ -14,6 +14,7 @@ interface FlowDefinition {
   next_flow_id: string | null;
   priority: number;
   agent: string;
+  system_message?: string;
 }
 
 interface FlowStep {
@@ -59,7 +60,8 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
     description: '',
     max_iterations: 10,
     priority: 10,
-    agent: 'deepseek' as 'deepseek' | 'openhands'
+    agent: 'deepseek' as 'deepseek' | 'openhands',
+    system_message: ''
   });
 
   // Fetch flow definition and steps
@@ -87,7 +89,8 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
           description: flowData.data.description,
           max_iterations: flowData.data.max_iterations,
           priority: flowData.data.priority,
-          agent: flowData.data.agent
+          agent: flowData.data.agent,
+          system_message: flowData.data.system_message || ''
         });
       } else {
         // Direct flow definition object
@@ -97,7 +100,8 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
           description: flowData.description,
           max_iterations: flowData.max_iterations,
           priority: flowData.priority,
-          agent: flowData.agent
+          agent: flowData.agent,
+          system_message: flowData.system_message || ''
         });
       }
 
@@ -149,13 +153,27 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
     setError(null);
     
     try {
+      // Prepare payload - include system_message only when agent is deepseek
+      const payload: any = {
+        name: formData.name,
+        description: formData.description,
+        max_iterations: formData.max_iterations,
+        priority: formData.priority,
+        agent: formData.agent
+      };
+      
+      // Include system message only when agent is deepseek
+      if (formData.agent === 'deepseek' && formData.system_message.trim()) {
+        payload.system_message = formData.system_message.trim();
+      }
+      
       // Update flow definition
       const response = await fetch(`/api/proxy/api/flow-definitions/${flowId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
       
       if (!response.ok) throw new Error('Failed to update flow');
@@ -317,6 +335,25 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                 </label>
               </div>
             </div>
+
+            {formData.agent === 'deepseek' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">
+                  System Message (DeepSeek only)
+                </label>
+                <textarea
+                  name="system_message"
+                  value={formData.system_message}
+                  onChange={handleInputChange}
+                  rows={3}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 resize-none"
+                  placeholder="You are an expert software developer..."
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Optional system message for DeepSeek agent. This will be included in the flow definition.
+                </p>
+              </div>
+            )}
 
             {/* Flow Steps Section */}
             <div>
