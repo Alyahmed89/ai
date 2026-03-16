@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import SimpleFlowCreator from '@/components/SimpleFlowCreator';
+import EditFlowModal from '@/components/EditFlowModal';
 
 interface ChatMessage {
   id: string;
@@ -62,6 +63,7 @@ export default function ChatPage() {
   const [showEditFlowModal, setShowEditFlowModal] = useState<boolean>(false);
   const [sidebarView, setSidebarView] = useState<'flowRuns' | 'tasks'>('flowRuns');
   const [selectedFlowRun, setSelectedFlowRun] = useState<FlowRun | null>(null);
+  const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch flow runs and tasks on component mount
@@ -248,6 +250,11 @@ export default function ChatPage() {
     }
   };
 
+  const handleFlowBoxClick = (flowId: string) => {
+    setEditingFlowId(flowId);
+    setShowEditFlowModal(true);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -360,17 +367,11 @@ export default function ChatPage() {
                     <div 
                       key={run.id} 
                       className="p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 border border-gray-800 hover:border-gray-700 cursor-pointer transition-all"
-                      onClick={() => setSelectedFlowRun(run)}
+                      onClick={() => handleFlowBoxClick(run.flow_id)}
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex-1">
-                          <div 
-                            className="text-sm font-medium text-gray-200 truncate hover:text-blue-400"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowEditFlowModal(true);
-                            }}
-                          >
+                          <div className="text-sm font-medium text-gray-200 truncate">
                             {run.flow_id}
                           </div>
                           {run.input_prompt && (
@@ -571,112 +572,27 @@ export default function ChatPage() {
       )}
 
       {/* Edit Flow Modal */}
-      {showEditFlowModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-gray-800">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-gray-100">Edit Flow: rules_are_rules</h3>
-                <button
-                  onClick={() => setShowEditFlowModal(false)}
-                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Flow Name</label>
-                  <input
-                    type="text"
-                    defaultValue="rules_are_rules"
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
-                  <textarea
-                    defaultValue="Flow for processing chat prompts and creating tasks"
-                    rows={3}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 resize-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Flow Steps</label>
-                  <div className="space-y-4">
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-medium text-gray-300">Step 1: Task Creation</h4>
-                        <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded">task_creation</span>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs text-gray-400 mb-1">Flow ID</label>
-                          <input
-                            type="text"
-                            defaultValue="rules_are_rules"
-                            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-400 mb-1">Task Title Template</label>
-                          <input
-                            type="text"
-                            defaultValue="Chat: {prompt}"
-                            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-400 mb-1">Task Description</label>
-                          <textarea
-                            defaultValue="User prompt from chat"
-                            rows={2}
-                            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent resize-none"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <button
-                      type="button"
-                      className="w-full py-2 border border-dashed border-gray-700 rounded-lg text-gray-400 hover:text-gray-300 hover:border-gray-600 transition-colors text-sm"
-                    >
-                      + Add Another Step
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="p-6 border-t border-gray-800 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowEditFlowModal(false)}
-                className="px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setShowEditFlowModal(false);
-                  // Add success message to chat
-                  const message: ChatMessage = {
-                    id: Date.now().toString(),
-                    type: 'assistant',
-                    content: 'Flow updated successfully!',
-                    timestamp: new Date()
-                  };
-                  setChatMessages(prev => [...prev, message]);
-                }}
-                className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
+      {showEditFlowModal && editingFlowId && (
+        <EditFlowModal
+          flowId={editingFlowId}
+          onClose={() => {
+            setShowEditFlowModal(false);
+            setEditingFlowId(null);
+          }}
+          onFlowUpdated={(updatedFlowId) => {
+            // Add success message to chat
+            const message: ChatMessage = {
+              id: Date.now().toString(),
+              type: 'assistant',
+              content: `Flow "${updatedFlowId}" updated successfully!`,
+              timestamp: new Date()
+            };
+            setChatMessages(prev => [...prev, message]);
+            
+            // Refresh flow runs to show any updates
+            fetchFlowRuns();
+          }}
+        />
       )}
 
       {/* Flow Run Details Modal */}
