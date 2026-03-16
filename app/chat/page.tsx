@@ -354,7 +354,7 @@ export default function ChatPage() {
         {/* Main content area */}
         <div className="flex-1 flex flex-col">
           {/* Chat header */}
-          <div className="border-b border-gray-800 bg-gray-900 p-4">
+          <div className="bg-gray-900 p-4">
             <div className="flex justify-between items-center">
               <div className="flex items-center">
                 <svg className="w-5 h-5 text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -446,7 +446,7 @@ export default function ChatPage() {
                 </div>
 
                 {/* Chat input */}
-                <div className="border-t border-gray-800 p-4">
+                <div className="p-4">
                   <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="space-y-3">
                     <div className="relative">
                       <textarea
@@ -454,7 +454,7 @@ export default function ChatPage() {
                         value={inputPrompt}
                         onChange={(e) => setInputPrompt(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Type your prompt here... (Shift+Enter for new line)"
+                        placeholder="tell me what you are thinking .."
                         className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-12 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         rows={1}
                         disabled={isRunning}
