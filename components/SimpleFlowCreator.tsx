@@ -177,25 +177,26 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-medium text-gray-900">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-gray-800">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-gray-100">
               {step === 'flow' ? 'Create New Flow' : 'Add Steps'}
             </h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-500"
+              className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors"
             >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-
+        </div>
+        <div className="flex-1 overflow-y-auto p-6">
           {error && (
-            <div className="mb-4 bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="mb-4 bg-red-900/30 border border-red-800 rounded-lg p-4">
               <div className="flex">
                 <div className="flex-shrink-0">
                   <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
@@ -203,8 +204,8 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Error</h3>
-                  <div className="mt-2 text-sm text-red-700">
+                  <h3 className="text-sm font-medium text-red-400">Error</h3>
+                  <div className="mt-2 text-sm text-red-300">
                     <p>{error}</p>
                   </div>
                 </div>
@@ -215,20 +216,20 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
           {step === 'flow' ? (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-400 mb-2">
                   Flow Name
                 </label>
                 <input
                   type="text"
                   value={flowName}
                   onChange={(e) => setFlowName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
                   placeholder="Enter flow name"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-400 mb-2">
                   Agent
                 </label>
                 <div className="flex space-x-4">
@@ -237,26 +238,26 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                       type="radio"
                       checked={agent === 'deepseek'}
                       onChange={() => setAgent('deepseek')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                      className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800"
                     />
-                    <span className="ml-2 text-sm text-gray-700">DeepSeek</span>
+                    <span className="ml-2 text-sm text-gray-300">DeepSeek</span>
                   </label>
                   <label className="inline-flex items-center">
                     <input
                       type="radio"
                       checked={agent === 'openhands'}
                       onChange={() => setAgent('openhands')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                      className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800"
                     />
-                    <span className="ml-2 text-sm text-gray-700">OpenHands</span>
+                    <span className="ml-2 text-sm text-gray-300">OpenHands</span>
                   </label>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-gray-200">
+              <div className="pt-4 border-t border-gray-800">
                 <button
                   onClick={() => setStep('steps')}
-                  className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="w-full inline-flex justify-center items-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                 >
                   Next: Add Steps
                   <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -269,13 +270,13 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
             <div className="space-y-6">
               <div className="space-y-4">
                 {steps.map((stepItem) => (
-                  <div key={stepItem.id} className="border border-gray-200 rounded-lg p-4">
+                  <div key={stepItem.id} className="border border-gray-800 rounded-lg p-4 bg-gray-900/50">
                     <div className="flex justify-between items-center mb-3">
-                      <h4 className="text-sm font-medium text-gray-900">Step {stepItem.order}</h4>
+                      <h4 className="text-sm font-medium text-gray-200">Step {stepItem.order}</h4>
                       {steps.length > 1 && (
                         <button
                           onClick={() => removeStep(stepItem.id)}
-                          className="text-red-600 hover:text-red-800 text-sm"
+                          className="text-red-400 hover:text-red-300 text-sm"
                         >
                           Remove
                         </button>
@@ -284,13 +285,13 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
 
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-xs font-medium text-gray-400 mb-1">
                           Instructions
                         </label>
                         <textarea
                           value={stepItem.instructions}
                           onChange={(e) => updateStep(stepItem.id, 'instructions', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 text-sm"
                           rows={2}
                           placeholder="What should this step do?"
                         />
@@ -298,13 +299,13 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
                             Input Endpoint
                           </label>
                           <select
                             value={stepItem.inputEndpointId}
                             onChange={(e) => updateStep(stepItem.id, 'inputEndpointId', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 text-sm"
                           >
                             <option value="">Select input endpoint</option>
                             {endpoints.map(endpoint => (
@@ -316,13 +317,13 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                         </div>
 
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
                             Output Endpoint
                           </label>
                           <select
                             value={stepItem.outputEndpointId}
                             onChange={(e) => updateStep(stepItem.id, 'outputEndpointId', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 text-sm"
                           >
                             <option value="">Select output endpoint</option>
                             {endpoints.map(endpoint => (
@@ -335,14 +336,14 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-xs font-medium text-gray-400 mb-1">
                           Condition (Optional)
                         </label>
                         <input
                           type="text"
                           value={stepItem.condition}
                           onChange={(e) => updateStep(stepItem.id, 'condition', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 text-sm"
                           placeholder="e.g., response.status === 'success'"
                         />
                       </div>
@@ -353,7 +354,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
 
               <button
                 onClick={addStep}
-                className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-700 text-sm font-medium rounded-lg text-gray-300 bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
               >
                 <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -361,10 +362,10 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                 Add Another Step
               </button>
 
-              <div className="pt-4 border-t border-gray-200 flex justify-between">
+              <div className="pt-4 border-t border-gray-800 flex justify-between">
                 <button
                   onClick={() => setStep('flow')}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-4 py-2 border border-gray-700 text-sm font-medium rounded-lg text-gray-300 bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                 >
                   <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -374,7 +375,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                 <button
                   onClick={createFlow}
                   disabled={creatingFlow || !flowName.trim()}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {creatingFlow ? (
                     <>
