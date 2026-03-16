@@ -2,6 +2,7 @@
 
 // export const runtime = 'edge';
 import { useState, useEffect, useRef } from 'react';
+import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 
 interface ChatMessage {
   id: string;
@@ -48,6 +49,7 @@ export default function ChatPage() {
   const [editingStep, setEditingStep] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [editStepId, setEditStepId] = useState<string>('');
+  const [showCreateFlowModal, setShowCreateFlowModal] = useState<boolean>(false);
   const [editStepPrompt, setEditStepPrompt] = useState<string>('');
   const [sidebarView, setSidebarView] = useState<'flows' | 'flowRuns' | 'steps' | 'tasks'>('flows');
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -171,6 +173,45 @@ export default function ChatPage() {
     setInputPrompt('');
     setIsRunning(true);
     
+    let createdTaskId: string | null = null;
+    
+    // Create a task if a flow is selected
+    if (selectedFlow) {
+      try {
+        const taskTitle = prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt;
+        const taskResponse = await fetch('/api/proxy/api/tasks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: `Chat: ${taskTitle}`,
+            description: prompt,
+            flow_id: selectedFlow,
+            status: 'pending'
+          }),
+        });
+        
+        if (taskResponse.ok) {
+          const taskResult = await taskResponse.json();
+          createdTaskId = taskResult.id;
+          
+          // Add task creation message to chat
+          const taskMessage: ChatMessage = {
+            id: (Date.now() + 0.5).toString(),
+            type: 'api_call',
+            content: `Created task: ${taskResult.id}`,
+            timestamp: new Date(),
+            endpoint: '/api/tasks'
+          };
+          setChatMessages(prev => [...prev, taskMessage]);
+        }
+      } catch (taskError) {
+        console.error('Error creating task:', taskError);
+        // Don't fail the whole operation if task creation fails
+      }
+    }
+    
     try {
       // Add API call message
       const apiCallMessage: ChatMessage = {
@@ -247,8 +288,49 @@ export default function ChatPage() {
       // Refresh flow runs to show new run
       fetchFlowRuns();
       
+      // Update task status if we created one
+      if (createdTaskId) {
+        try {
+          // Update task to completed status
+          await fetch(`/api/proxy/api/tasks/${createdTaskId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              status: 'completed'
+            }),
+          });
+          
+          // Refresh tasks list
+          fetchTasks();
+        } catch (updateError) {
+          console.error('Error updating task status:', updateError);
+        }
+      }
+      
     } catch (error) {
       console.error('Error executing request:', error);
+      
+      // Update task status to failed if we created one
+      if (createdTaskId) {
+        try {
+          await fetch(`/api/proxy/api/tasks/${createdTaskId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              status: 'failed'
+            }),
+          });
+          
+          // Refresh tasks list
+          fetchTasks();
+        } catch (updateError) {
+          console.error('Error updating task status to failed:', updateError);
+        }
+      }
       
       // Add error message to chat
       const errorMessage: ChatMessage = {
@@ -806,6 +888,12 @@ export default function ChatPage() {
                 >
                   Flows
                 </button>
+                <button
+                  onClick={() => setShowCreateFlowModal(true)}
+                  className="px-3 py-1.5 text-sm bg-green-900 text-green-300 hover:bg-green-800 rounded-lg transition-colors border border-green-800"
+                >
+                  Create Flow
+                </button>
               </div>
             </div>
           </div>
@@ -1055,6 +1143,25 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showCreateFlowModal && (
+        <SimpleFlowCreator
+          onClose={() => setShowCreateFlowModal(false)}
+          onFlowCreated={(flowId) => {
+            setShowCreateFlowModal(false);
+            // Add success message to chat
+            const message: ChatMessage = {
+              id: Date.now().toString(),
+              type: 'assistant',
+              content: `Flow created successfully! Flow ID: ${flowId}`,
+              timestamp: new Date()
+            };
+            setChatMessages(prev => [...prev, message]);
+            // Refresh flows list
+            fetchFlows();
+          }}
+        />
       )}
       </div>
     </div>

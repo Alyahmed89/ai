@@ -263,11 +263,22 @@ export default function FlowDetailPage() {
       </div>
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Flow Steps ({steps.length})</h3>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">
-            Steps are executed in order from top to bottom
-          </p>
+        <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
+          <div>
+            <h3 className="text-lg leading-6 font-medium text-gray-900">Flow Steps ({steps.length})</h3>
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              Steps are executed in order from top to bottom
+            </p>
+          </div>
+          <button
+            onClick={() => window.location.href = `/flows/${flowId}/steps/create`}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Step
+          </button>
         </div>
         
         {steps.length === 0 ? (

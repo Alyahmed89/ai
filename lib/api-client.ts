@@ -76,6 +76,13 @@ export async function getFlowDefinitions() {
   return fetchFromBackend('/api/flow-definitions');
 }
 
+export async function createFlowDefinition(data: any) {
+  return fetchFromBackend('/api/flow-definitions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // Flow Steps API
 export async function getFlowSteps() {
   return fetchFromBackend('/api/flow-steps');
@@ -85,12 +92,36 @@ export async function getFlowStep(id: string) {
   return fetchFromBackend(`/api/flow-steps/${id}`);
 }
 
+export async function createFlowStep(data: any) {
+  return fetchFromBackend('/api/flow-steps', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function getFlowStepInput(id: string) {
   return fetchFromBackend(`/api/flow-steps/${id}/input`);
 }
 
 export async function getFlowStepConditions(id: string) {
   return fetchFromBackend(`/api/flow-steps/${id}/conditions`);
+}
+
+// Flow Step Conditions API
+export async function createFlowStepCondition(data: any) {
+  return fetchFromBackend('/api/flow-step-conditions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// Endpoints API (for selecting input/output endpoints)
+export async function getEndpoints() {
+  return fetchFromBackend('/api/endpoints');
+}
+
+export async function getEndpoint(id: string) {
+  return fetchFromBackend(`/api/endpoints/${id}`);
 }
 
 // Flow Runs API
