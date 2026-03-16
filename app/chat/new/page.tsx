@@ -215,7 +215,7 @@ export default function NewChatPage() {
       {showCreateFlowModal && (
         <SimpleFlowCreator
           onClose={() => setShowCreateFlowModal(false)}
-          onSuccess={() => {
+          onFlowCreated={() => {
             setShowCreateFlowModal(false);
             // Refresh flows list
             window.location.reload();
@@ -230,7 +230,7 @@ export default function NewChatPage() {
             setShowEditFlowModal(false);
             setEditingFlowId(null);
           }}
-          onSuccess={() => {
+          onFlowUpdated={() => {
             setShowEditFlowModal(false);
             setEditingFlowId(null);
             // Refresh flows list
