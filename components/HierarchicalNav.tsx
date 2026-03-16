@@ -50,12 +50,40 @@ interface FlowRun {
   last_step_at: number | null;
 }
 
+interface FlowStep {
+  id: string;
+  flow_id: string;
+  step_key: string;
+  title: string;
+  instructions: string;
+  step_type: string;
+  order_index: number;
+  blocking: number;
+  auto_fail_on_error: number;
+  retryable: number;
+  created_at: string;
+  updated_at: string;
+  task_id: string | null;
+  output_keys: string;
+  output_url: string | null;
+  output_payload_template: string | null;
+  default_next_step: string | null;
+  output_auth_token: string | null;
+  input_keys: string;
+  output: number;
+  default_next_step_id: string | null;
+  step_number: number;
+  requires_task: number;
+}
+
 interface HierarchicalNavProps {
   onSelectProject?: (projectId: string | null) => void;
   onSelectFlow?: (flowId: string | null) => void;
   onSelectTask?: (taskId: string | null) => void;
   onSelectFlowRun?: (flowRunId: string | null) => void;
+  onSelectStep?: (stepId: string | null) => void;
   onCreateFlow?: () => void;
+  onCreateStep?: () => void;
 }
 
 export default function HierarchicalNav({
@@ -63,23 +91,29 @@ export default function HierarchicalNav({
   onSelectFlow,
   onSelectTask,
   onSelectFlowRun,
-  onCreateFlow
+  onSelectStep,
+  onCreateFlow,
+  onCreateStep
 }: HierarchicalNavProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [flows, setFlows] = useState<FlowDefinition[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
+  const [flowSteps, setFlowSteps] = useState<FlowStep[]>([]);
   
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [showTasks, setShowTasks] = useState(true); // Toggle between tasks and flow runs
   
   const [loading, setLoading] = useState({
     projects: false,
     flows: false,
     tasks: false,
-    flowRuns: false
+    flowRuns: false,
+    steps: false
   });
 
   // Fetch projects on mount
@@ -98,11 +132,15 @@ export default function HierarchicalNav({
     }
   }, [selectedProjectId]);
 
-  // Fetch tasks when flow changes
+  // Fetch tasks, flow runs, and steps when flow changes
   useEffect(() => {
     if (selectedFlowId) {
       fetchTasks();
       fetchFlowRuns();
+      fetchFlowSteps();
+    } else {
+      setFlowSteps([]);
+      setSelectedStepId(null);
     }
   }, [selectedFlowId]);
 
@@ -168,6 +206,38 @@ export default function HierarchicalNav({
     }
   };
 
+  const fetchFlowSteps = async () => {
+    if (!selectedFlowId) return;
+    
+    setLoading(prev => ({ ...prev, steps: true }));
+    try {
+      const response = await fetch(`/api/proxy/api/flow-steps?flow_id=${selectedFlowId}`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Handle different response formats for steps
+        let stepsArray = [];
+        if (data.success !== undefined && data.data) {
+          stepsArray = data.data;
+        } else if (Array.isArray(data)) {
+          stepsArray = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          stepsArray = data.data;
+        }
+        
+        // Filter steps for this flow and sort by order_index
+        const filteredSteps = stepsArray
+          .filter((step: any) => step.flow_id === selectedFlowId)
+          .sort((a: any, b: any) => a.order_index - b.order_index);
+        setFlowSteps(filteredSteps);
+      }
+    } catch (error) {
+      console.error('Error fetching flow steps:', error);
+    } finally {
+      setLoading(prev => ({ ...prev, steps: false }));
+    }
+  };
+
   const handleProjectSelect = (projectId: string | null) => {
     setSelectedProjectId(projectId);
     setSelectedFlowId(null);
@@ -193,6 +263,11 @@ export default function HierarchicalNav({
     onSelectFlowRun?.(flowRunId);
   };
 
+  const handleStepSelect = (stepId: string | null) => {
+    setSelectedStepId(stepId);
+    onSelectStep?.(stepId);
+  };
+
   // Filter tasks by selected flow
   const filteredTasks = selectedFlowId 
     ? tasks.filter(task => task.flow_id === selectedFlowId)
@@ -201,6 +276,11 @@ export default function HierarchicalNav({
   // Filter flow runs by selected flow
   const filteredFlowRuns = selectedFlowId
     ? flowRuns.filter(run => run.flow_id === selectedFlowId)
+    : [];
+
+  // Filter steps by selected flow (already filtered in fetch, but keep for consistency)
+  const filteredSteps = selectedFlowId
+    ? flowSteps.filter(step => step.flow_id === selectedFlowId)
     : [];
 
   // Format time ago
@@ -359,7 +439,7 @@ export default function HierarchicalNav({
                   <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-                  <span>0</span>
+                  <span>{filteredSteps.length}</span>
                 </div>
                 {/* Task icon */}
                 <div className="flex items-center text-xs text-gray-500">
@@ -372,77 +452,148 @@ export default function HierarchicalNav({
             </div>
           </div>
 
-          {/* Tasks Section */}
+          {/* Steps Section */}
           <div className="p-4 border-b border-gray-800">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center">
                 <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
-                <span className="text-sm font-medium text-gray-300">Tasks</span>
+                <span className="text-sm font-medium text-gray-300">Steps</span>
               </div>
-              {loading.tasks && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-              )}
+              <div className="flex items-center space-x-2">
+                {onCreateStep && (
+                  <button
+                    onClick={onCreateStep}
+                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                    title="Create New Step"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                )}
+                {loading.steps && (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                )}
+              </div>
             </div>
             <div className="space-y-1 max-h-40 overflow-y-auto">
-              {filteredTasks.map(task => (
+              {filteredSteps.map(step => (
                 <button
-                  key={task.id}
-                  onClick={() => handleTaskSelect(task.id)}
+                  key={step.id}
+                  onClick={() => handleStepSelect(step.id)}
                   className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                    selectedTaskId === task.id 
+                    selectedStepId === step.id 
                       ? 'bg-blue-900/30 text-blue-300' 
                       : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                   }`}
                 >
-                  <span className="truncate">{task.title || 'Untitled Task'}</span>
+                  <div className="flex items-center">
+                    <span className="truncate">Step {step.order_index}: {step.title}</span>
+                    <div className="ml-2 flex space-x-1">
+                      {step.blocking === 1 && (
+                        <span className="text-xs px-1 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">B</span>
+                      )}
+                      {step.retryable === 1 && (
+                        <span className="text-xs px-1 py-0.5 bg-green-500/20 text-green-400 rounded">R</span>
+                      )}
+                    </div>
+                  </div>
                   <span className="text-xs text-gray-500 ml-2">
-                    {formatTimeAgo(task.created_at)}
+                    {formatTimeAgo(step.created_at)}
                   </span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Flow Runs Section */}
-          <div className="p-4">
+          {/* Tasks/Flow Runs Toggle */}
+          <div className="p-4 border-b border-gray-800">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span className="text-sm font-medium text-gray-300">Flow Runs</span>
-              </div>
-              {loading.flowRuns && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-              )}
-            </div>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {filteredFlowRuns.map(run => (
+              <div className="flex items-center space-x-2">
                 <button
-                  key={run.id}
-                  onClick={() => handleFlowRunSelect(run.id)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                    selectedFlowRunId === run.id 
+                  onClick={() => setShowTasks(true)}
+                  className={`text-sm font-medium px-3 py-1 rounded ${
+                    showTasks 
                       ? 'bg-blue-900/30 text-blue-300' 
-                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                      : 'text-gray-400 hover:text-gray-300'
                   }`}
                 >
-                  <div className="flex items-center">
-                    <span className="truncate">{run.id.substring(0, 8)}...</span>
-                    <div className={`ml-2 w-2 h-2 rounded-full ${
-                      run.status === 'active' ? 'bg-green-500' :
-                      run.status === 'completed' ? 'bg-blue-500' :
-                      'bg-gray-500'
-                    }`} />
-                  </div>
-                  <span className="text-xs text-gray-500 ml-2">
-                    {formatTimeAgo(run.created_at)}
-                  </span>
+                  Tasks ({filteredTasks.length})
                 </button>
-              ))}
+                <button
+                  onClick={() => setShowTasks(false)}
+                  className={`text-sm font-medium px-3 py-1 rounded ${
+                    !showTasks 
+                      ? 'bg-blue-900/30 text-blue-300' 
+                      : 'text-gray-400 hover:text-gray-300'
+                  }`}
+                >
+                  Flow Runs ({filteredFlowRuns.length})
+                </button>
+              </div>
+              {showTasks ? (
+                loading.tasks && (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                )
+              ) : (
+                loading.flowRuns && (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                )
+              )}
             </div>
+            
+            {/* Tasks List (shown when toggle is on Tasks) */}
+            {showTasks && (
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {filteredTasks.map(task => (
+                  <button
+                    key={task.id}
+                    onClick={() => handleTaskSelect(task.id)}
+                    className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                      selectedTaskId === task.id 
+                        ? 'bg-blue-900/30 text-blue-300' 
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                    }`}
+                  >
+                    <span className="truncate">{task.title || 'Untitled Task'}</span>
+                    <span className="text-xs text-gray-500 ml-2">
+                      {formatTimeAgo(task.created_at)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            {/* Flow Runs List (shown when toggle is on Flow Runs) */}
+            {!showTasks && (
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {filteredFlowRuns.map(run => (
+                  <button
+                    key={run.id}
+                    onClick={() => handleFlowRunSelect(run.id)}
+                    className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                      selectedFlowRunId === run.id 
+                        ? 'bg-blue-900/30 text-blue-300' 
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center">
+                      <span className="truncate">{run.id.substring(0, 8)}...</span>
+                      <div className={`ml-2 w-2 h-2 rounded-full ${
+                        run.status === 'active' ? 'bg-green-500' :
+                        run.status === 'completed' ? 'bg-blue-500' :
+                        'bg-gray-500'
+                      }`} />
+                    </div>
+                    <span className="text-xs text-gray-500 ml-2">
+                      {formatTimeAgo(run.created_at)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

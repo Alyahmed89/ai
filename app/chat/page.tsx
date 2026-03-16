@@ -348,6 +348,9 @@ export default function ChatPage() {
             onSelectFlow={setSelectedFlowId}
             onSelectTask={setSelectedTaskId}
             onSelectFlowRun={setSelectedFlowRunId}
+            onSelectStep={() => {}} // TODO: Implement step selection
+            onCreateFlow={() => setShowCreateFlowModal(true)}
+            onCreateStep={() => {}} // TODO: Implement create step
           />
         </div>
 
