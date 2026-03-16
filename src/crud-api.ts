@@ -1353,9 +1353,9 @@ crudApi.get('/endpoints', async (c) => {
       offset
     }));
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching endpoints:', error);
-    return c.json(errorResponse('Internal server error', 500));
+    return c.json(errorResponse(`Error fetching endpoints: ${error.message}`, 500));
   }
 });
 
@@ -1389,9 +1389,9 @@ crudApi.get('/endpoints/:name', async (c) => {
 
     return c.json(successResponse(endpoint));
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching endpoint:', error);
-    return c.json(errorResponse('Internal server error', 500));
+    return c.json(errorResponse(`Error fetching endpoint: ${error.message}`, 500));
   }
 });
 
