@@ -253,7 +253,13 @@ app.post('/start', async (c) => {
           
           // If not found in flow_definitions, try flows table (for backward compatibility)
           if (!flowResult) {
-            flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows WHERE id = ?').bind(flow_id).first();
+            try {
+              flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows WHERE id = ?').bind(flow_id).first();
+            } catch (flowsError: any) {
+              // flows table might not exist, that's OK - just continue with null
+              console.log(`[HTTP:START:FLOW] flows table not available: ${flowsError.message}`);
+              flowResult = null;
+            }
           }
           
           if (!flowResult) {
@@ -328,7 +334,13 @@ app.post('/start', async (c) => {
           
           // If no flows in flow_definitions, try flows table (without priority ordering)
           if (!flowResult) {
-            flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
+            try {
+              flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
+            } catch (flowsError: any) {
+              // flows table might not exist, that's OK - just continue with null
+              console.log(`[HTTP:START] flows table not available: ${flowsError.message}`);
+              flowResult = null;
+            }
           }
           
           if (!flowResult) {
@@ -480,7 +492,13 @@ app.get('/start', async (c) => {
         
         // If no flows in flow_definitions, try flows table (without priority ordering)
         if (!flowResult) {
-          flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
+          try {
+            flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
+          } catch (flowsError: any) {
+            // flows table might not exist, that's OK - just continue with null
+            console.log(`[HTTP:START:GET] flows table not available: ${flowsError.message}`);
+            flowResult = null;
+          }
         }
         
         if (!flowResult) {

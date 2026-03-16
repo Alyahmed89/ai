@@ -1603,6 +1603,116 @@ crudApi.delete('/endpoints/:name', async (c) => {
 });
 
 // ============================================
+// AI Command Discovery Endpoint
+// ============================================
+
+// Get all AI-enabled commands
+crudApi.get('/commands', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    // Get query parameters for filtering
+    const tagFilter = c.req.query('tag');
+    
+    let query = `
+      SELECT 
+        name,
+        description,
+        method,
+        url as endpoint,
+        parameter_schema as parameters,
+        tags
+      FROM endpoint_registry 
+      WHERE ai_enabled = TRUE 
+        AND endpoint_type = 'internal_command'
+    `;
+    
+    const params: any[] = [];
+    
+    if (tagFilter) {
+      query += ' AND tags LIKE ?';
+      params.push(`%${tagFilter}%`);
+    }
+    
+    query += ' ORDER BY name';
+    
+    const result = await db.prepare(query).bind(...params).all();
+    
+    // Parse JSON fields
+    const commands = result.results.map((cmd: any) => ({
+      name: cmd.name,
+      description: cmd.description,
+      method: cmd.method,
+      endpoint: cmd.endpoint,
+      parameters: cmd.parameters ? JSON.parse(cmd.parameters) : null,
+      tags: cmd.tags ? JSON.parse(cmd.tags) : []
+    }));
+    
+    return c.json(successResponse({
+      commands,
+      count: commands.length
+    }));
+    
+  } catch (error: any) {
+    console.error('Error fetching AI commands:', error);
+    return c.json(errorResponse(`Error fetching commands: ${error.message}`, 500));
+  }
+});
+
+// Get specific command schema for AI function calling
+crudApi.get('/commands/:name', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const name = c.req.param('name');
+    
+    const query = `
+      SELECT 
+        name,
+        description,
+        method,
+        url as endpoint,
+        parameter_schema as parameters,
+        response_path,
+        tags
+      FROM endpoint_registry 
+      WHERE name = ? 
+        AND ai_enabled = TRUE 
+        AND endpoint_type = 'internal_command'
+    `;
+    
+    const result = await db.prepare(query).bind(name).first();
+    
+    if (!result) {
+      return c.json(notFoundResponse(`AI command not found or not enabled: ${name}`));
+    }
+    
+    // Parse JSON fields
+    const command = {
+      name: result.name,
+      description: result.description,
+      method: result.method,
+      endpoint: result.endpoint,
+      parameters: result.parameters ? JSON.parse(result.parameters) : null,
+      response_path: result.response_path,
+      tags: result.tags ? JSON.parse(result.tags) : []
+    };
+    
+    return c.json(successResponse(command));
+    
+  } catch (error: any) {
+    console.error('Error fetching command schema:', error);
+    return c.json(errorResponse(`Error fetching command: ${error.message}`, 500));
+  }
+});
+
+// ============================================
 // Core Observability Endpoints
 // ============================================
 
