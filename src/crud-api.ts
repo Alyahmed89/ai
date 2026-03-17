@@ -2508,35 +2508,93 @@ crudApi.post('/execute-step', async (c) => {
       }
     }
 
-    // Call DeepSeek
-    const { callDeepSeek } = await import('./services/deepseek');
-    const messages = [{ role: 'user', content: prompt }];
+    // Determine which agent to use
+    let agent = 'openhands'; // Default agent
     
-    const deepseekResult = await callDeepSeek(c.env.DEEPSEEK_API_KEY, messages);
-    
-    if (!deepseekResult.success) {
-      return c.json(errorResponse(`DeepSeek failed: ${deepseekResult.error}`, 500));
+    // Fetch flow definition to get agent field if flow_id is provided
+    if (flow_id) {
+      const flowDef = await db.prepare(
+        'SELECT agent FROM flow_definitions WHERE id = ?'
+      ).bind(flow_id).first();
+      
+      if (flowDef?.agent) {
+        agent = flowDef.agent;
+      }
     }
+    
+    console.log(`[execute-step] Using agent: ${agent} for flow: ${flow_id || 'none'}`);
+    
+    // Call appropriate agent(s) based on configuration
+    const { callDeepSeek } = await import('./services/deepseek');
+    
+    // Create messages with system instruction about available commands
+    const messages = [
+      {
+        role: 'system',
+        content: `You are an AI assistant with access to backend commands.
+Available commands: GET /api/commands
+To execute a command:
+1. Check /api/commands/:name for parameter schema
+2. Make HTTP request to the endpoint with validated parameters
+3. Use the response in your work
 
-    // Optionally call OpenHands (could make configurable)
+Common commands:
+- create_task: Create a new task
+- get_tasks: Get all tasks
+- create_flow_step: Create a flow step
+- get_flow_definitions: Get flow definitions
+- start_conversation: Start a new conversation
+
+You can discover all available commands at /api/commands`
+      },
+      { role: 'user', content: prompt }
+    ];
+    
+    let deepseekResult = null;
     let openhandsResponse = null;
-    if (c.env.OPENHANDS_API_URL) {
+    
+    // Determine which agents to call based on agent field
+    if (agent === 'deepseek' || agent === 'both') {
+      // Call DeepSeek for 'deepseek' or 'both' agents
+      deepseekResult = await callDeepSeek(c.env.DEEPSEEK_API_KEY, messages);
+      
+      if (!deepseekResult.success) {
+        return c.json(errorResponse(`DeepSeek failed: ${deepseekResult.error}`, 500));
+      }
+    }
+    
+    if ((agent === 'openhands' || agent === 'both') && c.env.OPENHANDS_API_URL) {
+      // Call OpenHands for 'openhands' or 'both' agents (if configured)
       const { createOpenHandsConversation } = await import('./services/openhands');
+      
+      // If DeepSeek was called, use its response as input to OpenHands
+      // Otherwise, use the original prompt
+      const inputForOpenHands = deepseekResult?.response || prompt;
+      
       const openhandsResult = await createOpenHandsConversation(
         c.env.OPENHANDS_API_URL,
-        deepseekResult.response
+        inputForOpenHands
       );
       
       if (openhandsResult.success) {
         openhandsResponse = openhandsResult;
       }
+    } else if (agent === 'openhands' && !c.env.OPENHANDS_API_URL) {
+      // If OpenHands is requested but not configured, return error
+      return c.json(errorResponse('OpenHands agent requested but OPENHANDS_API_URL not configured', 400));
+    }
+    
+    // If no agent was called (shouldn't happen with defaults)
+    if (!deepseekResult && !openhandsResponse) {
+      return c.json(errorResponse('No agent available to process request', 500));
     }
 
     return c.json(successResponse({
       step: stepInfo,
       user_prompt,
       prompt_sent: prompt,
-      deepseek_response: deepseekResult.response,
+      agent_used: agent,
+      deepseek_response: deepseekResult?.response || null,
       openhands_response: openhandsResponse,
       timestamp: new Date().toISOString()
     }));
