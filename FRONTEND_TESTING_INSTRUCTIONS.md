@@ -8,7 +8,7 @@
   - `agent='deepseek'` → Only calls DeepSeek
   - `agent='openhands'` → Only calls OpenHands (if configured)
   - `agent='both'` → Calls both (dual-agent mode)
-  - Default: `'openhands'` if flow definition not found
+  - Default: `'deepseek'` if flow definition not found (changed from openhands)
 
 ### 2. **Added: Command Instructions to AI**
 - **Problem**: AI didn't know about available backend commands
@@ -229,7 +229,7 @@ curl -X POST "http://localhost:8787/execute-step" \
 1. **Agent Selection**:
    - `agent_used` field in response matches flow definition
    - Only requested agent(s) respond
-   - Default agent is 'openhands' when no flow_id provided
+   - Default agent is 'deepseek' when no flow_id provided (changed from openhands)
 
 2. **Command System**:
    - `/api/commands` returns 15 AI-enabled commands

@@ -2509,7 +2509,7 @@ crudApi.post('/execute-step', async (c) => {
     }
 
     // Determine which agent to use
-    let agent = 'openhands'; // Default agent
+    let agent = 'deepseek'; // Default agent (changed from openhands)
     
     // Fetch flow definition to get agent field if flow_id is provided
     if (flow_id) {
