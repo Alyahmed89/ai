@@ -190,49 +190,106 @@ export default function ChatPage() {
       };
       setChatMessages(prev => [...prev, taskSuccessMessage]);
       
-      // Now start the flow
-      const flowStartMessage: ChatMessage = {
+      // Execute the first step of the flow directly
+      const stepExecutionMessage: ChatMessage = {
         id: (Date.now() + 1.5).toString(),
         type: 'api_call',
-        content: `Starting flow: rules_are_rules`,
+        content: `Executing step: Process chat prompt - FINAL TEST`,
         timestamp: new Date(),
       };
-      setChatMessages(prev => [...prev, flowStartMessage]);
+      setChatMessages(prev => [...prev, stepExecutionMessage]);
       
-      // Start the flow
-      const flowResponse = await fetch('/api/proxy/start', {
+      // Execute the step directly
+      const stepResponse = await fetch('/api/proxy/api/execute-step', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          step_id: 'step-1773683777886-al61qkgbb',
           flow_id: 'rules_are_rules',
-          input_prompt: prompt
+          user_prompt: prompt
         }),
       });
       
-      if (!flowResponse.ok) throw new Error('Failed to start flow');
+      if (!stepResponse.ok) throw new Error('Failed to execute step');
       
-      const flowResult = await flowResponse.json();
+      const stepResult = await stepResponse.json();
       
-      // Add flow response message
-      const flowResponseMessage: ChatMessage = {
-        id: (Date.now() + 2).toString(),
-        type: 'api_response',
-        content: JSON.stringify(flowResult, null, 2),
-        timestamp: new Date(),
-      };
-      setChatMessages(prev => [...prev, flowResponseMessage]);
-      
-      // Add assistant message with parsed response
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 3).toString(),
-        type: 'assistant',
-        content: flowResult.output_response || flowResult.message || 'Flow executed successfully',
-        timestamp: new Date(),
-      };
-      
-      setChatMessages(prev => [...prev, assistantMessage]);
+      // Add step execution details to chat
+      if (stepResult.success && stepResult.data) {
+        // Show the prompt that was sent to the step
+        const stepPromptMessage: ChatMessage = {
+          id: (Date.now() + 2).toString(),
+          type: 'api_response',
+          content: `Step Prompt Sent:\n${stepResult.data.prompt_sent}`,
+          timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, stepPromptMessage]);
+        
+        // Show the step response
+        const stepResponseMessage: ChatMessage = {
+          id: (Date.now() + 2.5).toString(),
+          type: 'assistant',
+          content: `Step Response:\n${stepResult.data.deepseek_response}`,
+          timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, stepResponseMessage]);
+        
+        // Show OpenHands response if available
+        if (stepResult.data.openhands_response) {
+          const openhandsMessage: ChatMessage = {
+            id: (Date.now() + 3).toString(),
+            type: 'api_response',
+            content: `OpenHands Response: ${JSON.stringify(stepResult.data.openhands_response, null, 2)}`,
+            timestamp: new Date(),
+          };
+          setChatMessages(prev => [...prev, openhandsMessage]);
+        }
+      } else {
+        // Fallback to original flow execution if step execution fails
+        const flowStartMessage: ChatMessage = {
+          id: (Date.now() + 2).toString(),
+          type: 'api_call',
+          content: `Starting flow: rules_are_rules`,
+          timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, flowStartMessage]);
+        
+        // Start the flow as fallback
+        const flowResponse = await fetch('/api/proxy/start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            flow_id: 'rules_are_rules',
+            input_prompt: prompt
+          }),
+        });
+        
+        if (!flowResponse.ok) throw new Error('Failed to start flow');
+        
+        const flowResult = await flowResponse.json();
+        
+        // Add flow response message
+        const flowResponseMessage: ChatMessage = {
+          id: (Date.now() + 2.5).toString(),
+          type: 'api_response',
+          content: JSON.stringify(flowResult, null, 2),
+          timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, flowResponseMessage]);
+        
+        // Add assistant message with parsed response
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 3).toString(),
+          type: 'assistant',
+          content: flowResult.output_response || flowResult.message || 'Flow executed successfully',
+          timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, assistantMessage]);
+      }
       
       // Update task status to completed
       await fetch(`/api/proxy/api/tasks/${createdTaskId}`, {
