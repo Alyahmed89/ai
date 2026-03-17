@@ -135,6 +135,18 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!inputPrompt.trim()) return;
     
+    // Check if a flow is selected
+    if (!selectedFlowId) {
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'assistant',
+        content: 'Please select a flow first. Click on a project, then select a flow from the sidebar.',
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+      return;
+    }
+    
     const prompt = inputPrompt.trim();
     
     // Add user message to chat
@@ -150,18 +162,6 @@ export default function ChatPage() {
     setIsRunning(true);
     
     try {
-      // First, create a task for the "flow1-task-intake" flow (DeepSeek agent)
-      const taskTitle = prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt;
-      
-      // Add API call message for task creation
-      const taskCreationMessage: ChatMessage = {
-        id: (Date.now() + 0.5).toString(),
-        type: 'api_call',
-        content: `Creating task for flow: flow1-task-intake (DeepSeek agent)`,
-        timestamp: new Date(),
-      };
-      setChatMessages(prev => [...prev, taskCreationMessage]);
-      
       // Create task with proper title and description
       const taskResponse = await fetch('/api/proxy/api/tasks', {
         method: 'POST',
@@ -169,9 +169,9 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: `Document API endpoints`,
+          title: prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt,
           description: prompt,
-          flow_id: 'flow1-task-intake',
+          flow_id: selectedFlowId,
           status: 'pending'
         }),
       });
@@ -181,117 +181,32 @@ export default function ChatPage() {
       const taskResult = await taskResponse.json();
       const createdTaskId = taskResult.id;
       
-      // Add task creation success message
-      const taskSuccessMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'api_response',
-        content: `Task created successfully: ${createdTaskId}`,
-        timestamp: new Date(),
-      };
-      setChatMessages(prev => [...prev, taskSuccessMessage]);
-      
-      // Execute the first step of the flow directly
-      const stepExecutionMessage: ChatMessage = {
-        id: (Date.now() + 1.5).toString(),
-        type: 'api_call',
-        content: `Executing step: Task Intake and Analysis`,
-        timestamp: new Date(),
-      };
-      setChatMessages(prev => [...prev, stepExecutionMessage]);
-      
-      // Execute the step directly
-      const stepResponse = await fetch('/api/proxy/api/execute-step', {
+      // Start the flow
+      const flowResponse = await fetch('/api/proxy/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          step_id: 'flow1_step1',
-          flow_id: 'flow1-task-intake',
-          user_prompt: prompt
+          flow_id: selectedFlowId,
+          input_prompt: prompt
         }),
       });
       
-      if (!stepResponse.ok) throw new Error('Failed to execute step');
+      if (!flowResponse.ok) throw new Error('Failed to start flow');
       
-      const stepResult = await stepResponse.json();
+      const flowResult = await flowResponse.json();
       
-      // Add step execution details to chat
-      if (stepResult.success && stepResult.data) {
-        // Show the prompt that was sent to the step
-        const stepPromptMessage: ChatMessage = {
-          id: (Date.now() + 2).toString(),
-          type: 'api_response',
-          content: `Step Prompt Sent:\n${stepResult.data.prompt_sent}`,
-          timestamp: new Date(),
-        };
-        setChatMessages(prev => [...prev, stepPromptMessage]);
-        
-        // Show the step response
-        const stepResponseMessage: ChatMessage = {
-          id: (Date.now() + 2.5).toString(),
-          type: 'assistant',
-          content: `Step Response:\n${stepResult.data.deepseek_response}`,
-          timestamp: new Date(),
-        };
-        setChatMessages(prev => [...prev, stepResponseMessage]);
-        
-        // Show OpenHands response if available
-        if (stepResult.data.openhands_response) {
-          const openhandsMessage: ChatMessage = {
-            id: (Date.now() + 3).toString(),
-            type: 'api_response',
-            content: `OpenHands Response: ${JSON.stringify(stepResult.data.openhands_response, null, 2)}`,
-            timestamp: new Date(),
-          };
-          setChatMessages(prev => [...prev, openhandsMessage]);
-        }
-      } else {
-        // Fallback to original flow execution if step execution fails
-        const flowStartMessage: ChatMessage = {
-          id: (Date.now() + 2).toString(),
-          type: 'api_call',
-          content: `Starting flow: flow1-task-intake`,
-          timestamp: new Date(),
-        };
-        setChatMessages(prev => [...prev, flowStartMessage]);
-        
-        // Start the flow as fallback
-        const flowResponse = await fetch('/api/proxy/start', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            flow_id: 'flow1-task-intake',
-            input_prompt: prompt
-          }),
-        });
-        
-        if (!flowResponse.ok) throw new Error('Failed to start flow');
-        
-        const flowResult = await flowResponse.json();
-        
-        // Add flow response message
-        const flowResponseMessage: ChatMessage = {
-          id: (Date.now() + 2.5).toString(),
-          type: 'api_response',
-          content: JSON.stringify(flowResult, null, 2),
-          timestamp: new Date(),
-        };
-        setChatMessages(prev => [...prev, flowResponseMessage]);
-        
-        // Add assistant message with parsed response
-        const assistantMessage: ChatMessage = {
-          id: (Date.now() + 3).toString(),
-          type: 'assistant',
-          content: flowResult.output_response || flowResult.message || 'Flow executed successfully',
-          timestamp: new Date(),
-        };
-        setChatMessages(prev => [...prev, assistantMessage]);
-      }
+      // Add assistant message with parsed response
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 2.5).toString(),
+        type: 'assistant',
+        content: flowResult.output_response || flowResult.message || 'Flow execution started. Work will happen in background via alarms.',
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, assistantMessage]);
       
-      // Note: Task status should remain "pending" for flow1-task-intake to process it
+      // Note: Task status should remain "pending" for the flow to process it
       // The flow will update the task status when it completes
       
       // Refresh flow runs to show new run
@@ -467,36 +382,36 @@ export default function ChatPage() {
                     <div className="h-full flex items-center justify-center">
                       <div className="text-center">
                         <p className="text-gray-400 text-sm max-w-md">
-                          Type a prompt below to begin. Your message will create a task for the "flow1-task-intake" flow (DeepSeek agent) and start execution.
+                          {selectedFlowId 
+                            ? `Type a prompt below to begin. Your message will create a task for the "${selectedFlowId}" flow and start execution.`
+                            : 'Select a flow first. Click on a project in the sidebar, then select a flow to send messages to it.'}
                         </p>
                       </div>
                     </div>
                   ) : (
-                    chatMessages.map(message => (
-                      <div
-                        key={message.id}
-                        className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
+                    chatMessages
+                      .filter(message => message.type === 'user' || message.type === 'assistant')
+                      .map(message => (
                         <div
-                          className={`max-w-3xl rounded-lg px-4 py-3 ${
-                            message.type === 'user'
-                              ? 'bg-blue-600 text-white'
-                              : message.type === 'assistant'
-                              ? 'bg-gray-900 text-gray-100'
-                              : message.type === 'api_call'
-                              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                              : 'bg-green-500/10 text-green-300 border border-green-500/20'
-                          }`}
+                          key={message.id}
+                          className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
-                          <div className="whitespace-pre-wrap">{message.content}</div>
-                          <div className={`text-xs mt-2 ${
-                            message.type === 'user' ? 'text-blue-200' : 'text-gray-500'
-                          }`}>
-                            {formatTime(message.timestamp)}
+                          <div
+                            className={`max-w-3xl rounded-lg px-4 py-3 ${
+                              message.type === 'user'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-900 text-gray-100'
+                            }`}
+                          >
+                            <div className="whitespace-pre-wrap">{message.content}</div>
+                            <div className={`text-xs mt-2 ${
+                              message.type === 'user' ? 'text-blue-200' : 'text-gray-500'
+                            }`}>
+                              {formatTime(message.timestamp)}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      ))
                   )}
                 </div>
 
@@ -509,16 +424,16 @@ export default function ChatPage() {
                         value={inputPrompt}
                         onChange={(e) => setInputPrompt(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="tell me what you are thinking .."
+                        placeholder={selectedFlowId ? "tell me what you are thinking .." : "Select a flow first to send messages"}
                         className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-12 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         rows={1}
                         disabled={isRunning}
                       />
                       <button
                         type="submit"
-                        disabled={!inputPrompt.trim() || isRunning}
+                        disabled={!inputPrompt.trim() || isRunning || !selectedFlowId}
                         className="absolute right-3 bottom-3 p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        title="Send message"
+                        title={!selectedFlowId ? "Select a flow first" : "Send message"}
                       >
                         {isRunning ? (
                           <svg className="w-5 h-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
