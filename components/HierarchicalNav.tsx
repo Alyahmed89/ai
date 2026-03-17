@@ -59,6 +59,7 @@ interface FlowStep {
   instructions: string;
   step_type: string;
   order_index: number;
+  page_key: string | null;
   blocking: number;
   auto_fail_on_error: number;
   retryable: number;
@@ -73,7 +74,7 @@ interface FlowStep {
   input_keys: string;
   output: number;
   default_next_step_id: string | null;
-  step_number: number;
+  step_number: number | null;
   requires_task: number;
 }
 
@@ -646,7 +647,8 @@ export default function HierarchicalNav({
           onStepUpdated={(stepId) => {
             console.log('Step updated:', stepId);
             setEditingStep(null);
-            // TODO: Refresh step data if needed
+            // Refresh step data after update
+            fetchFlowSteps();
           }}
         />
       )}
