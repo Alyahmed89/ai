@@ -109,6 +109,7 @@ export default function HierarchicalNav({
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(true); // Toggle between tasks and flow runs
+  const [activeSection, setActiveSection] = useState<'steps' | 'tasks' | 'flowRuns'>('steps');
   
   const [loading, setLoading] = useState({
     projects: false,
@@ -252,6 +253,7 @@ export default function HierarchicalNav({
     setSelectedFlowId(flowId);
     setSelectedTaskId(null);
     setSelectedFlowRunId(null);
+    setActiveSection('steps'); // Reset to steps when selecting a new flow
     onSelectFlow?.(flowId);
   };
 
@@ -442,125 +444,134 @@ export default function HierarchicalNav({
                 </span>
               </div>
               <div className="flex items-center space-x-2">
-                {/* Runs icon */}
-                <div className="flex items-center text-xs text-gray-500">
+                {/* Runs icon - clickable */}
+                <button
+                  onClick={() => setActiveSection('flowRuns')}
+                  className={`flex items-center text-xs px-2 py-1 rounded ${
+                    activeSection === 'flowRuns'
+                      ? 'bg-blue-900/30 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                  }`}
+                  title="Show Flow Runs"
+                >
                   <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   <span>{filteredFlowRuns.length}</span>
-                </div>
-                {/* Step icon */}
-                <div className="flex items-center text-xs text-gray-500">
+                </button>
+                {/* Step icon - clickable */}
+                <button
+                  onClick={() => setActiveSection('steps')}
+                  className={`flex items-center text-xs px-2 py-1 rounded ${
+                    activeSection === 'steps'
+                      ? 'bg-blue-900/30 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                  }`}
+                  title="Show Steps"
+                >
                   <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                   <span>{filteredSteps.length}</span>
-                </div>
-                {/* Task icon */}
-                <div className="flex items-center text-xs text-gray-500">
+                </button>
+                {/* Task icon - clickable */}
+                <button
+                  onClick={() => setActiveSection('tasks')}
+                  className={`flex items-center text-xs px-2 py-1 rounded ${
+                    activeSection === 'tasks'
+                      ? 'bg-blue-900/30 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                  }`}
+                  title="Show Tasks"
+                >
                   <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                   <span>{filteredTasks.length}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Steps Section - shown when activeSection is 'steps' */}
+          {activeSection === 'steps' && (
+            <div className="p-4 border-b border-gray-800">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-300">Steps</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {onCreateStep && (
+                    <button
+                      onClick={onCreateStep}
+                      className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                      title="Create New Step"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  )}
+                  {loading.steps && (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                  )}
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Steps Section */}
-          <div className="p-4 border-b border-gray-800">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <span className="text-sm font-medium text-gray-300">Steps</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                {onCreateStep && (
-                  <button
-                    onClick={onCreateStep}
-                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
-                    title="Create New Step"
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {filteredSteps.map(step => (
+                  <div 
+                    key={step.id}
+                    className="group relative"
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </button>
-                )}
-                {loading.steps && (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {filteredSteps.map(step => (
-                <button
-                  key={step.id}
-                  onClick={() => handleStepSelect(step.id)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                    selectedStepId === step.id 
-                      ? 'bg-blue-900/30 text-blue-300' 
-                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center">
-                    <span className="truncate">Step {step.order_index}: {step.title}</span>
-                    <div className="ml-2 flex space-x-1">
-                      {step.blocking === 1 && (
-                        <span className="text-xs px-1 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">B</span>
-                      )}
-                      {step.retryable === 1 && (
-                        <span className="text-xs px-1 py-0.5 bg-green-500/20 text-green-400 rounded">R</span>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => handleStepSelect(step.id)}
+                      className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                        selectedStepId === step.id 
+                          ? 'bg-blue-900/30 text-blue-300' 
+                          : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                      }`}
+                    >
+                      {/* Step title only */}
+                      <span className="truncate">{step.title}</span>
+                      
+                      {/* Edit button stuck to the right - always visible */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // TODO: Implement edit step functionality
+                          console.log('Edit step:', step.id);
+                        }}
+                        className="text-gray-400 hover:text-gray-300 flex-shrink-0"
+                        title="Edit Step"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </button>
                   </div>
-                  <span className="text-xs text-gray-500 ml-2">
-                    {formatTimeAgo(step.created_at)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tasks/Flow Runs Toggle */}
-          <div className="p-4 border-b border-gray-800">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setShowTasks(true)}
-                  className={`text-sm font-medium px-3 py-1 rounded ${
-                    showTasks 
-                      ? 'bg-blue-900/30 text-blue-300' 
-                      : 'text-gray-400 hover:text-gray-300'
-                  }`}
-                >
-                  Tasks ({filteredTasks.length})
-                </button>
-                <button
-                  onClick={() => setShowTasks(false)}
-                  className={`text-sm font-medium px-3 py-1 rounded ${
-                    !showTasks 
-                      ? 'bg-blue-900/30 text-blue-300' 
-                      : 'text-gray-400 hover:text-gray-300'
-                  }`}
-                >
-                  Flow Runs ({filteredFlowRuns.length})
-                </button>
+                ))}
               </div>
-              {showTasks ? (
-                loading.tasks && (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                )
-              ) : (
-                loading.flowRuns && (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                )
-              )}
             </div>
-            
-            {/* Tasks List (shown when toggle is on Tasks) */}
-            {showTasks && (
+          )}
+
+          {/* Tasks Section - shown when activeSection is 'tasks' */}
+          {activeSection === 'tasks' && (
+            <div className="p-4 border-b border-gray-800">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-300">Tasks</span>
+                </div>
+                {loading.tasks && (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                )}
+              </div>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {filteredTasks.map(task => (
                   <button
@@ -579,10 +590,23 @@ export default function HierarchicalNav({
                   </button>
                 ))}
               </div>
-            )}
-            
-            {/* Flow Runs List (shown when toggle is on Flow Runs) */}
-            {!showTasks && (
+            </div>
+          )}
+
+          {/* Flow Runs Section - shown when activeSection is 'flowRuns' */}
+          {activeSection === 'flowRuns' && (
+            <div className="p-4 border-b border-gray-800">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-300">Flow Runs</span>
+                </div>
+                {loading.flowRuns && (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                )}
+              </div>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {filteredFlowRuns.map(run => (
                   <button
@@ -608,8 +632,8 @@ export default function HierarchicalNav({
                   </button>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
