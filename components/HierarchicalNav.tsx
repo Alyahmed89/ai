@@ -368,7 +368,7 @@ export default function HierarchicalNav({
               )}
             </div>
           </div>
-          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto">
+          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
             {projects.map(project => (
               <button
                 key={project.id}
@@ -379,8 +379,10 @@ export default function HierarchicalNav({
                     : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                 }`}
               >
-                <span className="truncate">{project.name}</span>
-                <span className="text-xs text-gray-500 ml-2">
+                <div className="flex items-center min-w-0 flex-1">
+                  <span className="truncate">{project.name}</span>
+                </div>
+                <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
                   {formatTimeAgo(project.created_at * 1000)}
                 </span>
               </button>
@@ -416,7 +418,7 @@ export default function HierarchicalNav({
               )}
             </div>
           </div>
-          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto">
+          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
             {flows.map(flow => (
               <button
                 key={flow.id}
@@ -427,15 +429,15 @@ export default function HierarchicalNav({
                     : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                 }`}
               >
-                <div className="flex items-center">
+                <div className="flex items-center min-w-0 flex-1">
                   <span className="truncate">{flow.name}</span>
                   {flow.agent === 'deepseek' && (
-                    <svg className="w-3 h-3 ml-2 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-3 h-3 ml-2 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
                   )}
                 </div>
-                <span className="text-xs text-gray-500 ml-2">
+                <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
                   {formatTimeAgo(flow.created_at)}
                 </span>
               </button>
@@ -535,7 +537,7 @@ export default function HierarchicalNav({
                   )}
                 </div>
               </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
+              <div className="space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
                 {filteredSteps.map(step => (
                   <div 
                     key={step.id}
@@ -549,8 +551,9 @@ export default function HierarchicalNav({
                           : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                       }`}
                     >
-                      {/* Step title only */}
-                      <span className="truncate">{step.title}</span>
+                      <div className="flex items-center min-w-0 flex-1">
+                        <span className="truncate">{step.title}</span>
+                      </div>
                       
                       {/* Edit button stuck to the right - always visible */}
                       <button
@@ -586,7 +589,7 @@ export default function HierarchicalNav({
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
                 )}
               </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
+              <div className="space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
                 {filteredTasks.map(task => (
                   <button
                     key={task.id}
@@ -597,8 +600,10 @@ export default function HierarchicalNav({
                         : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                     }`}
                   >
-                    <span className="truncate">{task.title || 'Untitled Task'}</span>
-                    <span className="text-xs text-gray-500 ml-2">
+                    <div className="flex items-center min-w-0 flex-1">
+                      <span className="truncate">{task.title || 'Untitled Task'}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
                       {formatTimeAgo(task.created_at)}
                     </span>
                   </button>
@@ -621,7 +626,7 @@ export default function HierarchicalNav({
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
                 )}
               </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
+              <div className="space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
                 {filteredFlowRuns.map(run => (
                   <button
                     key={run.id}
@@ -632,15 +637,15 @@ export default function HierarchicalNav({
                         : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                     }`}
                   >
-                    <div className="flex items-center">
+                    <div className="flex items-center min-w-0 flex-1">
                       <span className="truncate">{run.id.substring(0, 8)}...</span>
-                      <div className={`ml-2 w-2 h-2 rounded-full ${
+                      <div className={`ml-2 w-2 h-2 rounded-full flex-shrink-0 ${
                         run.status === 'active' ? 'bg-green-500' :
                         run.status === 'completed' ? 'bg-blue-500' :
                         'bg-gray-500'
                       }`} />
                     </div>
-                    <span className="text-xs text-gray-500 ml-2">
+                    <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
                       {formatTimeAgo(run.created_at)}
                     </span>
                   </button>
