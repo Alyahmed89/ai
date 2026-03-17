@@ -41,7 +41,12 @@ const projectCreateSchema = z.object({
   id: z.string().min(1).optional(),
   name: z.string().min(1, 'name is required'),
   status: z.enum(['active', 'archived', 'deleted']).default('active'),
-  metadata: z.string().optional().nullable()
+  metadata: z.string().optional().nullable(),
+  // Count fields are ignored on creation (set by database defaults or calculated)
+  node_count: z.number().int().nonnegative().optional(),
+  flow_count: z.number().int().nonnegative().optional(),
+  task_count: z.number().int().nonnegative().optional(),
+  execution_count: z.number().int().nonnegative().optional()
 });
 
 const projectUpdateSchema = projectCreateSchema.partial().extend({
