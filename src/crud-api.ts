@@ -2535,8 +2535,14 @@ crudApi.post('/execute-step', async (c) => {
 Available commands: GET /api/commands
 To execute a command:
 1. Check /api/commands/:name for parameter schema
-2. Make HTTP request to the endpoint with validated parameters
-3. Use the response in your work
+2. Use the format: [COMMAND:command_name] params: {JSON_parameters}
+3. The system will execute the command and return results
+4. Use the response in your work
+
+Command Format Examples:
+- [COMMAND:get_tasks] params: {"status": "pending"}
+- [COMMAND:create_task] params: {"title": "Fix bug", "description": "Fix the critical bug"}
+- [COMMAND:get_flow_definitions] params: {}
 
 Common commands:
 - create_task: Create a new task

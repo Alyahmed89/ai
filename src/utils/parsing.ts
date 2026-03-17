@@ -1,12 +1,13 @@
 // Parsing utilities for DeepSeek Agent
 import { END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN } from '../constants';
-import { DoneResponseData, CreateTaskData, SkipTaskData } from '../types';
+import { DoneResponseData, CreateTaskData, SkipTaskData, CommandData } from '../types';
 
 // Hardened regex patterns for AI tokens
 const CREATE_TASK_REGEX = /\[CREATE_TASK\]\s+flow_id:\s*(\w+)\s+title:\s*([^]+?)\s+description:\s*([^]+?)\s+order_index:\s*(\d+)\s+priority:\s*(\d+)/;
 const SKIP_TASK_REGEX = /\[SKIP_TASK\]\s+task_id:\s*([\w_-]+)\s+reason:\s*([^]+)/;
 const END_FLOW_REGEX = /\[END_FLOW\](?:\s+prompt:\s*([^]+?))?(?:\s+branch:\s*([^]+?))?/;
 const END_FLOW_EARLY_REGEX = /\[END_FLOW_EARLY\](?:\s+reason:\s*([^]+))?/;
+const COMMAND_REGEX = /\[COMMAND:(\w+)\](?:\s+params:\s*(\{[^}]*\}))?/;
 
 /**
  * Parse a DeepSeek response to check for [END_FLOW] or [END_FLOW_EARLY]
@@ -109,16 +110,49 @@ export function parseSkipTask(response: string): SkipTaskData | null {
 }
 
 /**
+ * Parse [COMMAND: name] token from AI response
+ */
+export function parseCommand(response: string): CommandData | null {
+  const match = response.match(COMMAND_REGEX);
+  if (!match) return null;
+  
+  const [, name, paramsStr] = match;
+  
+  // Validate command name format
+  if (!/^[\w_-]+$/.test(name)) {
+    console.warn(`[PARSING] Invalid command name: ${name}`);
+    return null;
+  }
+  
+  let params: Record<string, any> | undefined;
+  if (paramsStr) {
+    try {
+      params = JSON.parse(paramsStr);
+    } catch (error) {
+      console.warn(`[PARSING] Invalid JSON params for command ${name}: ${paramsStr}`);
+      return null;
+    }
+  }
+  
+  return {
+    name: name,
+    params
+  };
+}
+
+/**
  * Extract all AI tokens from response
  */
 export function extractAllTokens(response: string): {
   createTask: CreateTaskData | null;
   skipTask: SkipTaskData | null;
+  command: CommandData | null;
   done: DoneResponseData;
 } {
   return {
     createTask: parseCreateTask(response),
     skipTask: parseSkipTask(response),
+    command: parseCommand(response),
     done: parseDoneResponse(response)
   };
 }

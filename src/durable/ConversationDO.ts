@@ -8,6 +8,7 @@ import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
 import { evaluateCondition, loadExecutionData, saveExecutionData } from '../services/conditionEngine';
+import { CommandExecutor } from '../services/commandExecutor';
 import { 
   MAX_ITERATIONS, 
   END_FLOW_TOKEN, 
@@ -40,7 +41,7 @@ import {
   IDLE_TIMEOUT,
   COMPLETED_CLEANUP_DELAY
 } from '../constants';
-import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData, Condition, CreateTaskData, SkipTaskData } from '../types';
+import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData, Condition, CreateTaskData, SkipTaskData, CommandData } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
   private state: DurableObjectState;
@@ -54,6 +55,9 @@ export class ConversationOrchestratorDO_2026A {
   // Flow switching loop prevention
   private flowSwitchHistory: string[] = [];
   private readonly maxFlowSwitches = 5;
+  
+  // Command executor
+  private commandExecutor: CommandExecutor | null = null;
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
@@ -73,6 +77,21 @@ export class ConversationOrchestratorDO_2026A {
     if (this.conversation === null) {
       this.conversation = await this.state.storage.get('conversation') || null;
     }
+  }
+
+  /**
+   * Lazily initialize command executor
+   */
+  private async getCommandExecutor(): Promise<CommandExecutor> {
+    if (!this.commandExecutor) {
+      this.commandExecutor = new CommandExecutor({
+        env: this.env,
+        db: this.env.FLOW_RUNS_DB,
+        maxRetries: 3,
+        timeoutMs: 10000
+      });
+    }
+    return this.commandExecutor;
   }
   
   /**
@@ -3777,6 +3796,86 @@ ${messageContent}`;
   }
 
   /**
+   * Handle [COMMAND: name] token from AI response
+   */
+  private async handleCommand(
+    commandData: CommandData,
+    step: StepData,
+    originalResponse: string
+  ): Promise<void> {
+    if (!this.conversation) return;
+
+    console.log(`[DO:${this.state.id}] Processing command: ${commandData.name}`, commandData.params);
+
+    try {
+      // Get command executor
+      const commandExecutor = await this.getCommandExecutor();
+      
+      // Execute the command
+      const result = await commandExecutor.executeCommand(commandData);
+      
+      // Format result for AI
+      const resultMessage = commandExecutor.formatResultForAI(result);
+      
+      // Add command result to conversation history
+      if (this.conversation.conversation_history) {
+        this.conversation.conversation_history.push({
+          role: 'system',
+          content: resultMessage,
+          timestamp: Date.now()
+        });
+      }
+      
+      // Save updated conversation state
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Continue the conversation with command result
+      await this.continueWithCommandResult(step, originalResponse, resultMessage);
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error handling command ${commandData.name}:`, error);
+      
+      // Add error to conversation history
+      if (this.conversation.conversation_history) {
+        this.conversation.conversation_history.push({
+          role: 'system',
+          content: `Command "${commandData.name}" failed: ${error.message}`,
+          timestamp: Date.now()
+        });
+      }
+      
+      // Save updated conversation state
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Continue with error message
+      await this.continueWithCommandResult(step, originalResponse, `Command failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Continue conversation after command execution
+   */
+  private async continueWithCommandResult(
+    step: StepData,
+    originalResponse: string,
+    commandResult: string
+  ): Promise<void> {
+    if (!this.conversation) return;
+
+    console.log(`[DO:${this.state.id}] Continuing conversation with command result`);
+    
+    // Build new prompt with command result
+    const newPrompt = `${originalResponse}\n\nCommand Result:\n${commandResult}\n\nContinue with the task.`;
+    
+    // Update conversation with new prompt
+    this.conversation.current_prompt = newPrompt;
+    await this.state.storage.put('conversation', this.conversation);
+    
+    // Continue processing the step
+    await this.processStep(step);
+  }
+
+  /**
    * Start a new flow when [END_FLOW] contains a new prompt
    * @param doneData Parsed done response data
    */
@@ -3922,16 +4021,22 @@ ${messageContent}`;
       await this.markTaskAsDone(tokens.skipTask.task_id, `Skipped: ${tokens.skipTask.reason}`);
     }
     
-    // 3. Check for [END_FLOW] tokens
+    // 3. Check for [COMMAND: name] tokens
+    if (tokens.command) {
+      await this.handleCommand(tokens.command, step, response);
+      return; // Command handling will continue the conversation
+    }
+    
+    // 4. Check for [END_FLOW] tokens
     if (tokens.done.done) {
       await this.handleDoneResponse(response, 'ai_end_flow');
       return;
     }
     
-    // 4. Send output if enabled for this step
+    // 5. Send output if enabled for this step
     await this.sendStepOutputIfEnabled(step, response);
     
-    // 5. Continue with next step in current flow
+    // 6. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
     // Flow transitions only happen via flow_definitions.next_flow_id
     // when flow completes (next_step == -1)

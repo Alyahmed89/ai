@@ -326,6 +326,11 @@ export interface SkipTaskData {
   reason: string;
 }
 
+export interface CommandData {
+  name: string;
+  params?: Record<string, any>;
+}
+
 // Condition engine types
 export interface Condition {
   id: string;
