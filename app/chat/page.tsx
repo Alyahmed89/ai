@@ -150,28 +150,28 @@ export default function ChatPage() {
     setIsRunning(true);
     
     try {
-      // First, create a task for the "rules_are_rules" flow
+      // First, create a task for the "flow1-task-intake" flow (DeepSeek agent)
       const taskTitle = prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt;
       
       // Add API call message for task creation
       const taskCreationMessage: ChatMessage = {
         id: (Date.now() + 0.5).toString(),
         type: 'api_call',
-        content: `Creating task for flow: rules_are_rules`,
+        content: `Creating task for flow: flow1-task-intake (DeepSeek agent)`,
         timestamp: new Date(),
       };
       setChatMessages(prev => [...prev, taskCreationMessage]);
       
-      // Create task
+      // Create task with proper title and description
       const taskResponse = await fetch('/api/proxy/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: `Chat: ${taskTitle}`,
+          title: `Document API endpoints`,
           description: prompt,
-          flow_id: 'rules_are_rules',
+          flow_id: 'flow1-task-intake',
           status: 'pending'
         }),
       });
@@ -194,7 +194,7 @@ export default function ChatPage() {
       const stepExecutionMessage: ChatMessage = {
         id: (Date.now() + 1.5).toString(),
         type: 'api_call',
-        content: `Executing step: Process chat prompt - FINAL TEST`,
+        content: `Executing step: Task Intake and Analysis`,
         timestamp: new Date(),
       };
       setChatMessages(prev => [...prev, stepExecutionMessage]);
@@ -206,8 +206,8 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          step_id: 'step-1773683777886-al61qkgbb',
-          flow_id: 'rules_are_rules',
+          step_id: 'flow1_step1',
+          flow_id: 'flow1-task-intake',
           user_prompt: prompt
         }),
       });
@@ -251,7 +251,7 @@ export default function ChatPage() {
         const flowStartMessage: ChatMessage = {
           id: (Date.now() + 2).toString(),
           type: 'api_call',
-          content: `Starting flow: rules_are_rules`,
+          content: `Starting flow: flow1-task-intake`,
           timestamp: new Date(),
         };
         setChatMessages(prev => [...prev, flowStartMessage]);
@@ -263,7 +263,7 @@ export default function ChatPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            flow_id: 'rules_are_rules',
+            flow_id: 'flow1-task-intake',
             input_prompt: prompt
           }),
         });
@@ -291,16 +291,8 @@ export default function ChatPage() {
         setChatMessages(prev => [...prev, assistantMessage]);
       }
       
-      // Update task status to completed
-      await fetch(`/api/proxy/api/tasks/${createdTaskId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: 'completed'
-        }),
-      });
+      // Note: Task status should remain "pending" for flow1-task-intake to process it
+      // The flow will update the task status when it completes
       
       // Refresh flow runs to show new run
       fetchFlowRuns();
@@ -475,7 +467,7 @@ export default function ChatPage() {
                     <div className="h-full flex items-center justify-center">
                       <div className="text-center">
                         <p className="text-gray-400 text-sm max-w-md">
-                          Type a prompt below to begin. Your message will create a task for the "rules_are_rules" flow and start execution.
+                          Type a prompt below to begin. Your message will create a task for the "flow1-task-intake" flow (DeepSeek agent) and start execution.
                         </p>
                       </div>
                     </div>

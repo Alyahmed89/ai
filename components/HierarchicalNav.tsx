@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import EditStepModal from './EditStepModal';
+import TaskDetailsModal from './TaskDetailsModal';
 
 interface Project {
   id: string;
@@ -113,6 +114,7 @@ export default function HierarchicalNav({
   const [showTasks, setShowTasks] = useState(true); // Toggle between tasks and flow runs
   const [activeSection, setActiveSection] = useState<'steps' | 'tasks' | 'flowRuns'>('steps');
   const [editingStep, setEditingStep] = useState<FlowStep | null>(null);
+  const [selectedTaskDetails, setSelectedTaskDetails] = useState<Task | null>(null);
   
   const [loading, setLoading] = useState({
     projects: false,
@@ -263,6 +265,16 @@ export default function HierarchicalNav({
   const handleTaskSelect = (taskId: string | null) => {
     setSelectedTaskId(taskId);
     onSelectTask?.(taskId);
+    
+    // Find and show task details
+    if (taskId) {
+      const task = tasks.find(t => t.id === taskId);
+      if (task) {
+        setSelectedTaskDetails(task);
+      }
+    } else {
+      setSelectedTaskDetails(null);
+    }
   };
 
   const handleFlowRunSelect = (flowRunId: string | null) => {
@@ -650,6 +662,14 @@ export default function HierarchicalNav({
             // Refresh step data after update
             fetchFlowSteps();
           }}
+        />
+      )}
+
+      {/* Task Details Modal */}
+      {selectedTaskDetails && (
+        <TaskDetailsModal
+          task={selectedTaskDetails}
+          onClose={() => setSelectedTaskDetails(null)}
         />
       )}
     </div>
