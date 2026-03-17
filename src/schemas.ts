@@ -59,6 +59,7 @@ export const flowDefinitionSchema = z.object({
   updated_at: timestampSchema,
   next_flow_id: z.string().optional().nullable(),
   priority: z.number().int().default(0),
+  agent: z.string().default('openhands'),
 });
 
 // Flow Definition Create Schema

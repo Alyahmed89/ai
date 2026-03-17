@@ -9,12 +9,13 @@ CREATE TABLE IF NOT EXISTS flows (
   branch TEXT DEFAULT 'main',
   max_iterations INTEGER DEFAULT 20,
   description TEXT,
+  agent TEXT DEFAULT 'openhands',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Copy existing flow definitions to flows table for backward compatibility
-INSERT OR IGNORE INTO flows (id, name, repo, branch, max_iterations, description, created_at, updated_at)
+INSERT OR IGNORE INTO flows (id, name, repo, branch, max_iterations, description, agent, created_at, updated_at)
 SELECT 
   id,
   name,
@@ -22,6 +23,7 @@ SELECT
   branch,
   max_iterations,
   description,
+  COALESCE(agent, 'openhands') as agent,
   created_at,
   updated_at
 FROM flow_definitions;

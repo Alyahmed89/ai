@@ -2334,14 +2334,14 @@ crudApi.post('/flow-definitions', async (c) => {
     }
     
     const validatedData = validation.data!;
-    const { id, name, description, max_iterations, repository, branch, next_flow_id, priority } = validatedData;
+    const { id, name, description, max_iterations, repository, branch, next_flow_id, priority, agent } = validatedData;
     
     // Generate ID if not provided
     const flowDefinitionId = id || `flow-def-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     const sql = `
-      INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, next_flow_id, priority, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, next_flow_id, priority, agent, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     await db.prepare(sql).bind(
@@ -2352,7 +2352,8 @@ crudApi.post('/flow-definitions', async (c) => {
       repository,
       branch || 'main',
       dbValue(next_flow_id),
-      priority || 0
+      priority || 0,
+      agent
     ).run();
     
     return c.json(apiResponse(true, { id: flowDefinitionId, message: 'Flow definition created successfully' }, undefined, 201));
@@ -2379,7 +2380,7 @@ crudApi.put('/flow-definitions/:id', async (c) => {
     }
     
     const validatedData = validation.data!;
-    const { name, description, max_iterations, repository, branch, next_flow_id, priority } = validatedData;
+    const { name, description, max_iterations, repository, branch, next_flow_id, priority, agent } = validatedData;
 
     // Build dynamic SQL for partial updates
     const updates: string[] = [];
@@ -2412,6 +2413,10 @@ crudApi.put('/flow-definitions/:id', async (c) => {
     if (priority !== undefined) {
       updates.push('priority = ?');
       values.push(priority);
+    }
+    if (agent !== undefined) {
+      updates.push('agent = ?');
+      values.push(agent);
     }
     
     // Always update the updated_at timestamp

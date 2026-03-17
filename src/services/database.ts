@@ -1204,7 +1204,7 @@ export async function getFlowDefinition(
     // First try the flows table with repo column
     try {
       const result = await db.prepare(`
-        SELECT id, name, '' as description, max_iterations, repo as repository, branch, 'openhands' as agent
+        SELECT id, name, '' as description, max_iterations, repo as repository, branch, COALESCE(agent, 'openhands') as agent
         FROM flows
         WHERE id = ?
       `).bind(flow_id).first();
