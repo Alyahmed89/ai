@@ -243,6 +243,9 @@ export default function ChatPage() {
     const maxPolls = 30; // 30 polls * 2 seconds = 60 seconds total
     const pollInterval = 2000; // Poll every 2 seconds
     
+    // Track completed steps to avoid duplicates
+    const completedStepIndices = new Set<number>();
+    
     const pollIntervalId = setInterval(async () => {
       pollCount++;
       
@@ -259,21 +262,26 @@ export default function ChatPage() {
         if (statusData.success && statusData.data?.conversation) {
           const conversation = statusData.data.conversation;
           
-          // Update the assistant message with current status
+          // Get flow steps information
+          const flowSteps = conversation.flow_steps || [];
+          const currentStepIndex = conversation.current_step_index || 0;
+          const lastStepResponse = conversation.last_step_response || '';
+          
+          // Update the initial assistant message with overall progress
           setChatMessages(prev => prev.map(msg => {
             if (msg.id === assistantMessageId) {
               let content = '';
               
               if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-                // Flow is completed - show the actual response
-                content = conversation.last_step_response || 'Flow completed successfully.';
+                // Flow is completed - show completion message
+                content = `✅ Flow completed successfully.`;
                 clearInterval(pollIntervalId);
-              } else if (conversation.last_step_response) {
-                // Flow is still running - show progress
-                content = `⏳ Flow processing... (${pollCount * 2}s)\n\n${conversation.last_step_response}`;
               } else {
-                // No response yet - show waiting message
-                content = `⏳ Waiting for flow to process... (${pollCount * 2}s)`;
+                // Flow is still running - show progress
+                const completedSteps = Math.max(0, currentStepIndex);
+                const totalSteps = flowSteps.length;
+                const progress = totalSteps > 0 ? `${completedSteps}/${totalSteps} steps` : 'processing';
+                content = `⏳ Flow processing... (${pollCount * 2}s, ${progress})`;
               }
               
               return {
@@ -284,9 +292,63 @@ export default function ChatPage() {
             return msg;
           }));
           
+          // Check if we have a new step response to display
+          if (lastStepResponse && currentStepIndex > 0) {
+            // The step that just completed is at index currentStepIndex - 1
+            const completedStepIndex = currentStepIndex - 1;
+            
+            if (!completedStepIndices.has(completedStepIndex) && completedStepIndex >= 0) {
+              // Mark this step as completed
+              completedStepIndices.add(completedStepIndex);
+              
+              // Get step details
+              const step = flowSteps[completedStepIndex];
+              const stepTitle = step?.title || `Step ${completedStepIndex + 1}`;
+              const stepDescription = step?.description || '';
+              
+              // Create a new message for this step response
+              const stepMessage: ChatMessage = {
+                id: `${assistantMessageId}_step_${completedStepIndex}`,
+                type: 'assistant',
+                content: `### ${stepTitle}\n\n${stepDescription ? `${stepDescription}\n\n` : ''}**Response:** ${lastStepResponse}`,
+                timestamp: new Date(),
+              };
+              
+              // Add the step message to chat
+              setChatMessages(prev => {
+                // Check if this step message already exists
+                const existingIndex = prev.findIndex(msg => msg.id === stepMessage.id);
+                if (existingIndex >= 0) {
+                  // Update existing message
+                  return prev.map((msg, idx) => 
+                    idx === existingIndex ? stepMessage : msg
+                  );
+                } else {
+                  // Add new message
+                  return [...prev, stepMessage];
+                }
+              });
+            }
+          }
+          
           // Stop polling if flow is completed
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             clearInterval(pollIntervalId);
+            
+            // Add final completion message if not already added
+            const finalMessageId = `${assistantMessageId}_final`;
+            const finalMessageExists = chatMessages.some(msg => msg.id === finalMessageId);
+            
+            if (!finalMessageExists) {
+              const finalMessage: ChatMessage = {
+                id: finalMessageId,
+                type: 'assistant',
+                content: `## Flow Execution Complete\n\nAll ${flowSteps.length} steps have been processed successfully.`,
+                timestamp: new Date(),
+              };
+              
+              setChatMessages(prev => [...prev, finalMessage]);
+            }
           }
         }
       } catch (error) {
