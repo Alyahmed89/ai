@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import EditStepModal from './EditStepModal';
 
 interface Project {
   id: string;
@@ -110,6 +111,7 @@ export default function HierarchicalNav({
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(true); // Toggle between tasks and flow runs
   const [activeSection, setActiveSection] = useState<'steps' | 'tasks' | 'flowRuns'>('steps');
+  const [editingStep, setEditingStep] = useState<FlowStep | null>(null);
   
   const [loading, setLoading] = useState({
     projects: false,
@@ -541,8 +543,7 @@ export default function HierarchicalNav({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          // TODO: Implement edit step functionality
-                          console.log('Edit step:', step.id);
+                          setEditingStep(step);
                         }}
                         className="text-gray-400 hover:text-gray-300 flex-shrink-0"
                         title="Edit Step"
@@ -635,6 +636,19 @@ export default function HierarchicalNav({
             </div>
           )}
         </div>
+      )}
+
+      {/* Edit Step Modal */}
+      {editingStep && (
+        <EditStepModal
+          step={editingStep}
+          onClose={() => setEditingStep(null)}
+          onStepUpdated={(stepId) => {
+            console.log('Step updated:', stepId);
+            setEditingStep(null);
+            // TODO: Refresh step data if needed
+          }}
+        />
       )}
     </div>
   );
