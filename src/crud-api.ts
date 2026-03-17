@@ -1368,6 +1368,7 @@ crudApi.get('/endpoints/:name', async (c) => {
     }
 
     const name = c.req.param('name');
+    const testMode = c.req.query('test') === 'true';
 
     const sql = `
       SELECT 
@@ -1376,7 +1377,8 @@ crudApi.get('/endpoints/:name', async (c) => {
         timeout_ms, max_retries, retry_delay_ms, cache_key,
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
-        created_at, updated_at, created_by, tags
+        created_at, updated_at, created_by, tags,
+        ai_enabled, endpoint_type, parameter_schema
       FROM endpoint_registry
       WHERE name = ?
     `;
@@ -1387,7 +1389,113 @@ crudApi.get('/endpoints/:name', async (c) => {
       return c.json(notFoundResponse('Endpoint not found'));
     }
 
-    return c.json(successResponse(endpoint));
+    // Parse JSON fields for response
+    const parsedEndpoint = { ...endpoint };
+    
+    // Parse JSON fields if they exist
+    if (parsedEndpoint.headers) {
+      try {
+        parsedEndpoint.headers = JSON.parse(parsedEndpoint.headers);
+      } catch (e) {
+        // Keep as string if not valid JSON
+      }
+    }
+    
+    if (parsedEndpoint.query_params) {
+      try {
+        parsedEndpoint.query_params = JSON.parse(parsedEndpoint.query_params);
+      } catch (e) {
+        // Keep as string if not valid JSON
+      }
+    }
+    
+    if (parsedEndpoint.allowed_domains) {
+      try {
+        parsedEndpoint.allowed_domains = JSON.parse(parsedEndpoint.allowed_domains);
+      } catch (e) {
+        // Keep as string if not valid JSON
+      }
+    }
+    
+    if (parsedEndpoint.tags) {
+      try {
+        parsedEndpoint.tags = JSON.parse(parsedEndpoint.tags);
+      } catch (e) {
+        // Keep as string if not valid JSON
+      }
+    }
+    
+    if (parsedEndpoint.parameter_schema) {
+      try {
+        parsedEndpoint.parameter_schema = JSON.parse(parsedEndpoint.parameter_schema);
+      } catch (e) {
+        // Keep as string if not valid JSON
+      }
+    }
+
+    // If test mode is requested, provide test information but don't make actual request
+    if (testMode) {
+      // Analyze endpoint for template variables
+      const url = parsedEndpoint.url;
+      const urlVariableRegex = /\{([^}]+)\}/g;
+      const urlVariables: string[] = [];
+      let match;
+      
+      while ((match = urlVariableRegex.exec(url)) !== null) {
+        urlVariables.push(match[1]);
+      }
+      
+      // Check body template for variables
+      const bodyVariables: string[] = [];
+      if (parsedEndpoint.body_template) {
+        const bodyVarRegex = /\{([^}]+)\}/g;
+        let bodyMatch;
+        while ((bodyMatch = bodyVarRegex.exec(parsedEndpoint.body_template)) !== null) {
+          bodyVariables.push(bodyMatch[1]);
+        }
+      }
+      
+      // Check query params for variables
+      const queryVariables: string[] = [];
+      if (parsedEndpoint.query_params && typeof parsedEndpoint.query_params === 'object') {
+        Object.values(parsedEndpoint.query_params).forEach(value => {
+          if (typeof value === 'string') {
+            const queryVarRegex = /\{([^}]+)\}/g;
+            let queryMatch;
+            while ((queryMatch = queryVarRegex.exec(value)) !== null) {
+              queryVariables.push(queryMatch[1]);
+            }
+          }
+        });
+      }
+      
+      // Combine all unique variables
+      const allVariables = [...new Set([...urlVariables, ...bodyVariables, ...queryVariables])];
+      
+      return c.json({
+        ...successResponse(parsedEndpoint),
+        test_info: {
+          can_test: true,
+          test_endpoint: `POST /api/endpoints/${name}/test`,
+          required_parameters: allVariables,
+          example_test_request: {
+            method: 'POST',
+            url: `/api/endpoints/${name}/test`,
+            body: allVariables.reduce((acc, param) => {
+              acc[param] = "example_value";
+              return acc;
+            }, {} as Record<string, string>)
+          },
+          notes: [
+            'Use POST /api/endpoints/{name}/test to make actual test requests with parameters.',
+            'URL template variables like {username} must be provided in test parameters.',
+            'Authentication values starting with "env:" reference environment variables.'
+          ]
+        }
+      });
+    }
+
+    return c.json(successResponse(parsedEndpoint));
 
   } catch (error: any) {
     console.error('Error fetching endpoint:', error);
@@ -1599,6 +1707,262 @@ crudApi.delete('/endpoints/:name', async (c) => {
   } catch (error) {
     console.error('Error deleting endpoint:', error);
     return c.json(errorResponse('Internal server error', 500));
+  }
+});
+
+// 6️⃣ Test endpoint and get available variables
+crudApi.post('/endpoints/:name/test', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const name = c.req.param('name');
+    const testParams = await c.req.json().catch(() => ({}));
+
+    // Get endpoint configuration
+    const endpointSql = `
+      SELECT
+        id, name, description, url, method, auth_type, auth_value,
+        headers, body_template, query_params, response_path,
+        timeout_ms, max_retries, retry_delay_ms, cache_key,
+        cache_ttl_seconds, encrypt_cache, response_validator,
+        allowed_domains, require_https, log_level,
+        created_at, updated_at, created_by, tags,
+        ai_enabled, endpoint_type, parameter_schema
+      FROM endpoint_registry
+      WHERE name = ?
+    `;
+
+    const endpoint = await db.prepare(endpointSql).bind(name).first();
+
+    if (!endpoint) {
+      return c.json(notFoundResponse('Endpoint not found'));
+    }
+
+    // Parse JSON fields
+    const headers = endpoint.headers ? JSON.parse(endpoint.headers) : {};
+    const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : {};
+    const allowedDomains = endpoint.allowed_domains ? JSON.parse(endpoint.allowed_domains) : [];
+    const tags = endpoint.tags ? JSON.parse(endpoint.tags) : [];
+    const parameterSchema = endpoint.parameter_schema ? JSON.parse(endpoint.parameter_schema) : null;
+
+    // Build the actual URL with template variables
+    let url = endpoint.url;
+    
+    // Replace URL template variables with test parameters
+    const urlVariableRegex = /\{([^}]+)\}/g;
+    let match;
+    while ((match = urlVariableRegex.exec(url)) !== null) {
+      const varName = match[1];
+      if (testParams[varName]) {
+        url = url.replace(`{${varName}}`, encodeURIComponent(testParams[varName]));
+      } else {
+        // If variable not provided, return error
+        return c.json({
+          success: false,
+          error: `Missing required URL parameter: ${varName}`,
+          message: `The endpoint URL requires the parameter '${varName}' which was not provided in test parameters.`,
+          required_parameters: [varName],
+          example_test_parameters: { [varName]: "example_value" }
+        }, 400);
+      }
+    }
+
+    // Add query parameters
+    if (Object.keys(queryParams).length > 0) {
+      const urlObj = new URL(url);
+      Object.entries(queryParams).forEach(([key, value]) => {
+        // Replace template variables in query param values
+        let paramValue = String(value);
+        const paramVarRegex = /\{([^}]+)\}/g;
+        let paramMatch;
+        while ((paramMatch = paramVarRegex.exec(paramValue)) !== null) {
+          const paramVarName = paramMatch[1];
+          if (testParams[paramVarName]) {
+            paramValue = paramValue.replace(`{${paramVarName}}`, testParams[paramVarName]);
+          }
+        }
+        urlObj.searchParams.append(key, paramValue);
+      });
+      url = urlObj.toString();
+    }
+
+    // Handle authentication
+    let authHeaders = { ...headers };
+    if (endpoint.auth_type !== 'none' && endpoint.auth_value) {
+      let authValue = endpoint.auth_value;
+      
+      // Check if auth value is an environment variable reference
+      if (authValue.startsWith('env:')) {
+        const envVarName = authValue.substring(4);
+        authValue = c.env[envVarName] || '';
+        
+        if (!authValue) {
+          return c.json({
+            success: false,
+            error: `Environment variable not found: ${envVarName}`,
+            message: `The authentication requires environment variable '${envVarName}' which is not set.`,
+            note: 'Environment variables are not available in test mode for security reasons.'
+          }, 400);
+        }
+      }
+      
+      switch (endpoint.auth_type) {
+        case 'bearer':
+          authHeaders['Authorization'] = `Bearer ${authValue}`;
+          break;
+        case 'basic':
+          // btoa is available in Cloudflare Workers environment
+          authHeaders['Authorization'] = `Basic ${btoa(authValue)}`;
+          break;
+        case 'api_key':
+          // API key can be in header or query param - default to header
+          authHeaders['X-API-Key'] = authValue;
+          break;
+        case 'custom':
+          // Custom auth - assume it's already in the headers
+          break;
+      }
+    }
+
+    // Prepare request body if needed
+    let requestBody = null;
+    if (endpoint.body_template && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(endpoint.method)) {
+      let bodyTemplate = endpoint.body_template;
+      
+      // Replace template variables in body
+      const bodyVarRegex = /\{([^}]+)\}/g;
+      let bodyMatch;
+      while ((bodyMatch = bodyVarRegex.exec(bodyTemplate)) !== null) {
+        const bodyVarName = bodyMatch[1];
+        if (testParams[bodyVarName] !== undefined) {
+          bodyTemplate = bodyTemplate.replace(`{${bodyVarName}}`, JSON.stringify(testParams[bodyVarName]));
+        }
+      }
+      
+      try {
+        requestBody = JSON.parse(bodyTemplate);
+      } catch (e) {
+        requestBody = bodyTemplate;
+      }
+    }
+
+    // Make the test request
+    const startTime = Date.now();
+    const fetchOptions: RequestInit = {
+      method: endpoint.method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders
+      }
+    };
+
+    if (requestBody) {
+      fetchOptions.body = JSON.stringify(requestBody);
+    }
+
+    let response;
+    let responseText;
+    let responseJson;
+    let statusCode;
+    let responseTime;
+
+    try {
+      response = await fetch(url, fetchOptions);
+      statusCode = response.status;
+      responseText = await response.text();
+      responseTime = Date.now() - startTime;
+      
+      // Try to parse as JSON
+      try {
+        responseJson = JSON.parse(responseText);
+      } catch (e) {
+        responseJson = null;
+      }
+    } catch (error: any) {
+      return c.json({
+        success: false,
+        error: 'Request failed',
+        message: error.message,
+        url,
+        method: endpoint.method,
+        request_headers: authHeaders,
+        request_body: requestBody
+      }, 500);
+    }
+
+    // Extract variables based on response_path if specified
+    let extractedVariables = {};
+    if (endpoint.response_path && responseJson) {
+      try {
+        // Simple JSON path extraction (supports dot notation)
+        const pathParts = endpoint.response_path.split('.');
+        let current = responseJson;
+        for (const part of pathParts) {
+          if (current && typeof current === 'object' && part in current) {
+            current = current[part];
+          } else {
+            current = null;
+            break;
+          }
+        }
+        
+        if (current !== null) {
+          extractedVariables = { [endpoint.response_path]: current };
+        }
+      } catch (e) {
+        // Ignore extraction errors
+      }
+    }
+
+    // Also extract top-level fields from JSON response
+    if (responseJson && typeof responseJson === 'object') {
+      Object.entries(responseJson).forEach(([key, value]) => {
+        if (!extractedVariables[key]) {
+          extractedVariables[key] = value;
+        }
+      });
+    }
+
+    return c.json({
+      success: true,
+      endpoint: {
+        name: endpoint.name,
+        description: endpoint.description,
+        url: endpoint.url,
+        method: endpoint.method,
+        auth_type: endpoint.auth_type,
+        endpoint_type: endpoint.endpoint_type,
+        response_path: endpoint.response_path
+      },
+      test_request: {
+        actual_url: url,
+        method: endpoint.method,
+        status_code: statusCode,
+        response_time_ms: responseTime,
+        request_headers: authHeaders,
+        request_body: requestBody
+      },
+      response: {
+        status: statusCode,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseJson || responseText,
+        size_bytes: responseText.length
+      },
+      extracted_variables: extractedVariables,
+      available_variables: Object.keys(extractedVariables),
+      notes: [
+        'Variables can be used in other endpoints using {variable_name} syntax.',
+        'For nested values, use dot notation in response_path field.',
+        'Authentication values starting with "env:" reference environment variables.'
+      ]
+    });
+
+  } catch (error: any) {
+    console.error('Error testing endpoint:', error);
+    return c.json(errorResponse(`Error testing endpoint: ${error.message}`, 500));
   }
 });
 

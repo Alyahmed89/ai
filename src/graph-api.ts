@@ -272,8 +272,8 @@ graphApi.post('/projects', async (c) => {
     const now = Math.floor(Date.now() / 1000);
 
     const sql = `
-      INSERT INTO projects (id, name, status, node_count, flow_count, task_count, execution_count, created_at, updated_at, metadata)
-      VALUES (?, ?, ?, 0, 0, 0, 0, ?, ?, ?)
+      INSERT INTO projects (id, name, status, created_at, updated_at, metadata)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
 
     await db.prepare(sql).bind(
@@ -395,6 +395,64 @@ graphApi.delete('/projects/:id', async (c) => {
     return c.json(apiResponse(true, { message: 'Project soft deleted successfully' }));
   } catch (error) {
     return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
+// GET /projects/{projectId}/flows - Get flows associated with a project
+// This endpoint matches flows to projects based on repository name containing project name keywords
+graphApi.get('/projects/:projectId/flows', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const projectId = c.req.param('projectId');
+    
+    // First, get the project to extract its name
+    const project = await db.prepare('SELECT name FROM projects WHERE id = ? AND deleted_at IS NULL').bind(projectId).first();
+    if (!project) {
+      return c.json(notFoundResponse('Project not found'));
+    }
+
+    const projectName = project.name as string;
+    
+    // Extract keywords from project name (lowercase, remove common words)
+    const projectKeywords = projectName.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ') // Remove special characters
+      .split(/\s+/) // Split by whitespace
+      .filter(word => word.length > 2) // Filter out short words
+      .filter(word => !['project', 'framework', 'platform', 'system', 'application'].includes(word)); // Remove common words
+    
+    if (projectKeywords.length === 0) {
+      // If no keywords found, use the entire project name (without "project-" prefix if present)
+      const cleanName = projectName.toLowerCase().replace(/^project-/, '').replace(/[^a-z0-9]/g, '');
+      if (cleanName) {
+        projectKeywords.push(cleanName);
+      } else {
+        // If still no keywords, return empty array
+        return c.json(successResponse([]));
+      }
+    }
+
+    // Build query to find flows whose repository contains any of the project keywords
+    let query = 'SELECT * FROM flow_definitions WHERE ';
+    const params: any[] = [];
+    
+    // Create LIKE conditions for each keyword
+    const likeConditions = projectKeywords.map(keyword => {
+      params.push(`%${keyword}%`);
+      return 'repository LIKE ?';
+    });
+    
+    query += likeConditions.join(' OR ');
+    query += ' ORDER BY name';
+    
+    const result = await db.prepare(query).bind(...params).all();
+    return c.json(successResponse(result.results || []));
+  } catch (error) {
+    console.error('Error getting flows for project:', error);
+    return c.json(errorResponse('Internal server error', 500));
   }
 });
 
@@ -523,8 +581,8 @@ graphApi.post('/nodes', async (c) => {
       hash
     ).run();
     
-    // Update project node count
-    await db.prepare('UPDATE projects SET node_count = node_count + 1, updated_at = ? WHERE id = ?')
+    // Update project timestamp (node count is computed dynamically)
+    await db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
       .bind(now, project_id).run();
     
     return c.json(apiResponse(true, { id: nodeId, message: 'Node created successfully' }, undefined, 201));
@@ -708,14 +766,14 @@ graphApi.patch('/nodes/:id', async (c) => {
       return c.json(apiResponse(false, undefined, 'Node not found', 404));
     }
     
-    // Update project counts if project_id was changed
+    // Update project timestamps if project_id was changed (node count is computed dynamically)
     if (project_id !== undefined && oldProjectId && oldProjectId !== project_id) {
-      // Decrement old project's node_count
-      await db.prepare('UPDATE projects SET node_count = node_count - 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+      // Update old project's timestamp
+      await db.prepare('UPDATE projects SET updated_at = ? WHERE id = ? AND deleted_at IS NULL')
         .bind(now, oldProjectId).run();
       
-      // Increment new project's node_count
-      await db.prepare('UPDATE projects SET node_count = node_count + 1, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+      // Update new project's timestamp
+      await db.prepare('UPDATE projects SET updated_at = ? WHERE id = ? AND deleted_at IS NULL')
         .bind(now, project_id).run();
     }
 
@@ -750,8 +808,8 @@ graphApi.delete('/nodes/:id', async (c) => {
       return c.json(apiResponse(false, undefined, 'Node not found', 404));
     }
     
-    // Update project node count
-    await db.prepare('UPDATE projects SET node_count = node_count - 1, updated_at = ? WHERE id = ?')
+    // Update project timestamp (node count is computed dynamically)
+    await db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?')
       .bind(now, (node as any).project_id).run();
 
     return c.json(apiResponse(true, { message: 'Node soft deleted successfully' }));
