@@ -2012,46 +2012,85 @@ export class ConversationOrchestratorDO_2026A {
       const isDecisionStep = this.conversation.current_step.step_key === 'gap_analysis';
       
       if (!isDecisionStep) {
-        // For non-decision steps, send directly to OpenHands
-        console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
-        console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
-        console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
-        console.log(`[DO:${this.state.id}] DeepSeek called: false (bypassing for execution step)`);
-        console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
-        console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
-        
-        // Build initial conversation messages
-        const initialMessages = buildInitialMessages(
-          this.conversation.initial_user_prompt,
-          {
-            repository: this.conversation.repository,
-            branch: this.conversation.branch,
-            iteration: this.conversation.iteration,
-            max_iterations: this.conversation.max_iterations
+        // Check agent type - if deepseek, call DeepSeek API instead of OpenHands
+        if (this.conversation.agent === 'deepseek') {
+          console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
+          console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
+          console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
+          console.log(`[DO:${this.state.id}] Agent is 'deepseek', calling DeepSeek API instead of OpenHands`);
+          console.log(`[DO:${this.state.id}] Payload to DeepSeek (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
+          console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
+          
+          // Build messages for DeepSeek
+          const messages = [
+            {
+              role: 'system',
+              content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.`
+            },
+            {
+              role: 'user',
+              content: this.conversation.initial_user_prompt
+            }
+          ];
+          
+          // Call DeepSeek API
+          const deepseekResult = await callDeepSeek(this.env.DEEPSEEK_API_KEY, messages);
+          
+          if (!deepseekResult.success) {
+            console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
+            await this.stopConversation(`deepseek_failed: ${deepseekResult.error}`);
+            return;
           }
-        );
-        
-        // Store initial messages in conversation
-        this.conversation.conversation_messages = initialMessages;
-        
-        // For flow execution mode, we need to send the command as if DeepSeek said it
-        // Remove the user message (created by buildInitialMessages) and replace with assistant message
-        // OpenHands expects: Assistant (DeepSeek) gives command → User (OpenHands) executes
-        this.conversation.conversation_messages = [
-          ...initialMessages.filter(m => m.role !== 'user'), // Keep system message if any
-          {
-            role: 'assistant',
-            content: this.conversation.initial_user_prompt // This contains the exact command from DB
-          }
-        ];
-        
-        this.conversation.last_deepseek_response = this.conversation.initial_user_prompt;
-        this.conversation.deepseek_response_pending = false;
-        
-        // Transition to WAITING_OPENHANDS state
-        this.conversation.state = 'WAITING_OPENHANDS';
-        console.log(`[DO:${this.state.id}] Transitioned to WAITING_OPENHANDS for flow step execution`);
-        return;
+          
+          // Store DeepSeek response
+          this.conversation.last_deepseek_response = deepseekResult.response!;
+          this.conversation.deepseek_response_pending = false;
+          
+          // For deepseek-only flows, complete the step immediately
+          await this.handleStepCompletion(this.conversation.current_step, deepseekResult.response!);
+          return;
+        } else {
+          // For openhands or both agents, send to OpenHands
+          console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
+          console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
+          console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
+          console.log(`[DO:${this.state.id}] DeepSeek called: false (bypassing for execution step)`);
+          console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
+          console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
+          
+          // Build initial conversation messages
+          const initialMessages = buildInitialMessages(
+            this.conversation.initial_user_prompt,
+            {
+              repository: this.conversation.repository,
+              branch: this.conversation.branch,
+              iteration: this.conversation.iteration,
+              max_iterations: this.conversation.max_iterations
+            }
+          );
+          
+          // Store initial messages in conversation
+          this.conversation.conversation_messages = initialMessages;
+          
+          // For flow execution mode, we need to send the command as if DeepSeek said it
+          // Remove the user message (created by buildInitialMessages) and replace with assistant message
+          // OpenHands expects: Assistant (DeepSeek) gives command → User (OpenHands) executes
+          this.conversation.conversation_messages = [
+            ...initialMessages.filter(m => m.role !== 'user'), // Keep system message if any
+            {
+              role: 'assistant',
+              content: this.conversation.initial_user_prompt // This contains the exact command from DB
+            }
+          ];
+          
+          this.conversation.last_deepseek_response = this.conversation.initial_user_prompt;
+          this.conversation.deepseek_response_pending = false;
+          
+          // Transition to WAITING_OPENHANDS state
+          this.conversation.state = 'WAITING_OPENHANDS';
+          console.log(`[DO:${this.state.id}] Transitioned to WAITING_OPENHANDS for flow step execution`);
+          return;
+        }
       } else {
         // This is a decision step (Step 7) - log that we're sending to DeepSeek
         console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
