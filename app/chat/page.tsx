@@ -161,6 +161,9 @@ export default function ChatPage() {
     setInputPrompt('');
     setIsRunning(true);
     
+    // Store the assistant message ID so we can update it later
+    const assistantMessageId = (Date.now() + 2.5).toString();
+    
     try {
       // Create task with proper title and description
       const taskResponse = await fetch('/api/proxy/api/tasks', {
@@ -196,10 +199,11 @@ export default function ChatPage() {
       if (!flowResponse.ok) throw new Error('Failed to start flow');
       
       const flowResult = await flowResponse.json();
+      const conversationId = flowResult.data?.conversation_id;
       
-      // Add assistant message with parsed response
+      // Add initial assistant message
       const assistantMessage: ChatMessage = {
-        id: (Date.now() + 2.5).toString(),
+        id: assistantMessageId,
         type: 'assistant',
         content: flowResult.output_response || flowResult.message || 'Flow execution started. Work will happen in background via alarms.',
         timestamp: new Date(),
@@ -211,6 +215,11 @@ export default function ChatPage() {
       
       // Refresh flow runs to show new run
       fetchFlowRuns();
+      
+      // Start polling for actual results if we have a conversation ID
+      if (conversationId) {
+        startPollingForResults(conversationId, assistantMessageId);
+      }
       
     } catch (error) {
       console.error('Error executing request:', error);
@@ -227,6 +236,92 @@ export default function ChatPage() {
     } finally {
       setIsRunning(false);
     }
+  };
+
+  const startPollingForResults = (conversationId: string, assistantMessageId: string) => {
+    let pollCount = 0;
+    const maxPolls = 30; // 30 polls * 2 seconds = 60 seconds total
+    const pollInterval = 2000; // Poll every 2 seconds
+    
+    const pollIntervalId = setInterval(async () => {
+      pollCount++;
+      
+      try {
+        const statusResponse = await fetch(`/api/proxy/status/${conversationId}`);
+        
+        if (!statusResponse.ok) {
+          console.error(`Status check failed: ${statusResponse.status}`);
+          return;
+        }
+        
+        const statusData = await statusResponse.json();
+        
+        if (statusData.success && statusData.data?.conversation) {
+          const conversation = statusData.data.conversation;
+          
+          // Update the assistant message with current status
+          setChatMessages(prev => prev.map(msg => {
+            if (msg.id === assistantMessageId) {
+              let content = '';
+              
+              if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+                // Flow is completed - show the actual response
+                content = conversation.last_step_response || 'Flow completed successfully.';
+                clearInterval(pollIntervalId);
+              } else if (conversation.last_step_response) {
+                // Flow is still running - show progress
+                content = `⏳ Flow processing... (${pollCount * 2}s)\n\n${conversation.last_step_response}`;
+              } else {
+                // No response yet - show waiting message
+                content = `⏳ Waiting for flow to process... (${pollCount * 2}s)`;
+              }
+              
+              return {
+                ...msg,
+                content: content
+              };
+            }
+            return msg;
+          }));
+          
+          // Stop polling if flow is completed
+          if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+            clearInterval(pollIntervalId);
+          }
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+        
+        // Update message with error
+        setChatMessages(prev => prev.map(msg => {
+          if (msg.id === assistantMessageId) {
+            return {
+              ...msg,
+              content: `❌ Error checking flow status: ${error instanceof Error ? error.message : 'Unknown error'}`
+            };
+          }
+          return msg;
+        }));
+        
+        clearInterval(pollIntervalId);
+      }
+      
+      // Stop polling after max attempts
+      if (pollCount >= maxPolls) {
+        clearInterval(pollIntervalId);
+        
+        // Update message with timeout
+        setChatMessages(prev => prev.map(msg => {
+          if (msg.id === assistantMessageId) {
+            return {
+              ...msg,
+              content: `⏰ Flow timed out after 60 seconds. The flow may still be processing in the background.`
+            };
+          }
+          return msg;
+        }));
+      }
+    }, pollInterval);
   };
 
   const handleEditFlow = (flowId: string) => {
