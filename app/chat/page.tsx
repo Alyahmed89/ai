@@ -238,6 +238,98 @@ export default function ChatPage() {
     }
   };
 
+  const handlePlay = async () => {
+    // Check if a flow is selected
+    if (!selectedFlowId) {
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'assistant',
+        content: 'Please select a flow first. Click on a project, then select a flow from the sidebar.',
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+      return;
+    }
+    
+    setIsRunning(true);
+    
+    // Store the assistant message ID so we can update it later
+    const assistantMessageId = (Date.now() + 2.5).toString();
+    
+    try {
+      // Create task with default title and description
+      const taskResponse = await fetch('/api/proxy/api/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: `Run ${selectedFlowId} flow`,
+          description: `Starting ${selectedFlowId} flow without prompt`,
+          flow_id: selectedFlowId,
+          status: 'pending'
+        }),
+      });
+      
+      if (!taskResponse.ok) throw new Error('Failed to create task');
+      
+      const taskResult = await taskResponse.json();
+      const createdTaskId = taskResult.id;
+      
+      // Start the flow with empty prompt
+      const flowResponse = await fetch('/api/proxy/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flow_id: selectedFlowId,
+          input_prompt: ''
+        }),
+      });
+      
+      if (!flowResponse.ok) throw new Error('Failed to start flow');
+      
+      const flowResult = await flowResponse.json();
+      const conversationId = flowResult.data?.conversation_id;
+      
+      // Add initial assistant message
+      const assistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        type: 'assistant',
+        content: flowResult.output_response || flowResult.message || `Starting ${selectedFlowId} flow without prompt...`,
+        timestamp: new Date(),
+      };
+      setChatMessages(prev => [...prev, assistantMessage]);
+      
+      // Note: Task status should remain "pending" for the flow to process it
+      // The flow will update the task status when it completes
+      
+      // Refresh flow runs to show new run
+      fetchFlowRuns();
+      
+      // Start polling for actual results if we have a conversation ID
+      if (conversationId) {
+        startPollingForResults(conversationId, assistantMessageId);
+      }
+      
+    } catch (error) {
+      console.error('Error executing request:', error);
+      
+      // Add error message to chat
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 2).toString(),
+        type: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+      
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   const startPollingForResults = (conversationId: string, assistantMessageId: string) => {
     let pollCount = 0;
     const maxPolls = 30; // 30 polls * 2 seconds = 60 seconds total
@@ -582,27 +674,41 @@ export default function ChatPage() {
                         onChange={(e) => setInputPrompt(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder={selectedFlowId ? "tell me what you are thinking .." : "Select a flow first to send messages"}
-                        className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-12 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-24 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         rows={1}
                         disabled={isRunning}
                       />
-                      <button
-                        type="submit"
-                        disabled={!inputPrompt.trim() || isRunning || !selectedFlowId}
-                        className="absolute right-3 bottom-3 p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        title={!selectedFlowId ? "Select a flow first" : "Send message"}
-                      >
-                        {isRunning ? (
-                          <svg className="w-5 h-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                        ) : (
+                      <div className="absolute right-3 bottom-3 flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={handlePlay}
+                          disabled={isRunning || !selectedFlowId}
+                          className="p-2 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title={!selectedFlowId ? "Select a flow first" : "Start flow without prompt"}
+                        >
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                        )}
-                      </button>
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={!inputPrompt.trim() || isRunning || !selectedFlowId}
+                          className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title={!selectedFlowId ? "Select a flow first" : "Send message"}
+                        >
+                          {isRunning ? (
+                            <svg className="w-5 h-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <div className="flex items-center space-x-4">
@@ -614,7 +720,20 @@ export default function ChatPage() {
                           </span>
                         )}
                       </div>
-                      <span>{inputPrompt.length}/2000</span>
+                      <div className="flex items-center space-x-4">
+                        <button
+                          onClick={handlePlay}
+                          disabled={isRunning || !selectedFlowId}
+                          className="text-green-400 hover:text-green-300 disabled:opacity-50 disabled:cursor-not-allowed text-xs flex items-center"
+                          title="Start flow without prompt"
+                        >
+                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          </svg>
+                          Start flow
+                        </button>
+                        <span>{inputPrompt.length}/2000</span>
+                      </div>
                     </div>
                   </form>
                 </div>
