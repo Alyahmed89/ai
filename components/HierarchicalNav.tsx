@@ -73,6 +73,7 @@ interface FlowStep {
   default_next_step: string | null;
   output_auth_token: string | null;
   input_keys: string;
+  use_endpoints: string; // New field for endpoint configuration
   output: number;
   default_next_step_id: string | null;
   step_number: number | null;
