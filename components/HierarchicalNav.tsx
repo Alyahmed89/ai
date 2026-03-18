@@ -89,6 +89,7 @@ interface HierarchicalNavProps {
   onCreateProject?: () => void;
   onCreateFlow?: () => void;
   onCreateStep?: () => void;
+  onEditFlow?: (flowId: string) => void;
 }
 
 export default function HierarchicalNav({
@@ -99,7 +100,8 @@ export default function HierarchicalNav({
   onSelectStep,
   onCreateProject,
   onCreateFlow,
-  onCreateStep
+  onCreateStep,
+  onEditFlow
 }: HierarchicalNavProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [flows, setFlows] = useState<FlowDefinition[]>([]);
@@ -403,17 +405,6 @@ export default function HierarchicalNav({
               <span className="text-sm font-medium text-gray-300">Flows</span>
             </div>
             <div className="flex items-center space-x-2">
-              {onCreateFlow && (
-                <button
-                  onClick={onCreateFlow}
-                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
-                  title="Create New Flow"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              )}
               {loading.flows && (
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
               )}
@@ -421,27 +412,42 @@ export default function HierarchicalNav({
           </div>
           <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
             {flows.map(flow => (
-              <button
-                key={flow.id}
-                onClick={() => handleFlowSelect(flow.id)}
-                className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                  selectedFlowId === flow.id 
-                    ? 'bg-blue-900/30 text-blue-300' 
-                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                }`}
-              >
-                <div className="flex items-center min-w-0 flex-1">
-                  <span className="truncate">{flow.name}</span>
-                  {flow.agent === 'deepseek' && (
-                    <svg className="w-3 h-3 ml-2 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <div key={flow.id} className="group flex items-center">
+                <button
+                  onClick={() => handleFlowSelect(flow.id)}
+                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                    selectedFlowId === flow.id 
+                      ? 'bg-blue-900/30 text-blue-300' 
+                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center min-w-0 flex-1">
+                    <span className="truncate">{flow.name}</span>
+                    {flow.agent === 'deepseek' && (
+                      <svg className="w-3 h-3 ml-2 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
+                    {formatTimeAgo(flow.created_at)}
+                  </span>
+                </button>
+                {onEditFlow && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditFlow(flow.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
+                    title="Edit Flow"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
-                  )}
-                </div>
-                <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
-                  {formatTimeAgo(flow.created_at)}
-                </span>
-              </button>
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -452,14 +458,25 @@ export default function HierarchicalNav({
         <div className="flex-1 overflow-y-auto">
           {/* Flow Info Header */}
           <div className="p-4 border-b border-gray-800">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
+            <div className="mb-2">
+              <div className="flex items-center mb-3 group">
                 <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 <span className="text-sm font-medium text-gray-300 truncate">
                   {flows.find(f => f.id === selectedFlowId)?.name || 'Flow'}
                 </span>
+                {onEditFlow && selectedFlowId && (
+                  <button
+                    onClick={() => onEditFlow(selectedFlowId)}
+                    className="opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto ml-2 text-gray-400 hover:text-gray-300 flex-shrink-0"
+                    title="Edit Flow"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                )}
               </div>
               <div className="flex items-center space-x-2">
                 {/* Runs icon - clickable */}
@@ -542,7 +559,7 @@ export default function HierarchicalNav({
                 {filteredSteps.map(step => (
                   <div 
                     key={step.id}
-                    className="group relative"
+                    className="group flex items-center"
                   >
                     <button
                       onClick={() => handleStepSelect(step.id)}
@@ -555,20 +572,20 @@ export default function HierarchicalNav({
                       <div className="flex items-center min-w-0 flex-1">
                         <span className="truncate">{step.title}</span>
                       </div>
-                      
-                      {/* Edit button stuck to the right - always visible */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingStep(step);
-                        }}
-                        className="text-gray-400 hover:text-gray-300 flex-shrink-0"
-                        title="Edit Step"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                    </button>
+                    
+                    {/* Edit button - visible on hover */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingStep(step);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
+                      title="Edit Step"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
                     </button>
                   </div>
                 ))}
