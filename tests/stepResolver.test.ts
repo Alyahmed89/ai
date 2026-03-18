@@ -26,35 +26,58 @@ vi.mock('../src/services/database', () => ({
 
 describe('StepResolver', () => {
   describe('resolveStepInstructions', () => {
-    it('should resolve step with input_keys using SecureVariableResolver', async () => {
+    it('should resolve step with use_endpoints using unified endpoint system', async () => {
       const step = {
         step_id: 'test-step',
         step_key: 'test',
         title: 'Test Step',
-        description: 'Step with {* user_data.name *}',
+        description: 'Step with {api.user_data.response.name}',
         step_type: 'action',
         order_index: 1,
         page_key: null,
         blocking: true,
         auto_fail_on_error: false,
         retryable: false,
-        input_keys: JSON.stringify([{
-          key: 'user_data',
-          url: 'https://api.example.com/users/1',
-          method: 'GET'
+        use_endpoints: JSON.stringify([{
+          endpoint_id: 'test-endpoint-123',
+          phase: 'input',
+          map: {
+            'response.name': 'user_data.name'
+          }
         }])
       };
       
+      // Mock the executeUnifiedEndpoints function
+      const { executeUnifiedEndpoints } = await import('../src/services/stepResolver');
+      vi.mocked(executeUnifiedEndpoints).mockResolvedValue({
+        api_calls: [{
+          endpoint_id: 'test-endpoint-123',
+          endpoint_name: 'user_data',
+          phase: 'input',
+          request: { url: 'https://api.example.com/users/1', method: 'GET' },
+          response: { data: { name: 'John', email: 'john@example.com' } }
+        }],
+        variables: {
+          api: {
+            user_data: {
+              response: { name: 'John', email: 'john@example.com' }
+            }
+          },
+          env: { API_TOKEN: 'test' },
+          previous_step: {}
+        }
+      });
+      
       const result = await resolveStepInstructions(
         step,
-        null, // db not needed for input_keys
+        {} as any, // mock db
         { API_TOKEN: 'test' },
         { flow_id: 'test-flow', execution_id: 'test-exec' }
       );
       
-      expect(result.instructions).toBe('Resolved instructions with variables');
-      expect(result.variables).toEqual({ user_data: { name: 'John' } });
-      expect(result.api_responses).toEqual({ user_data: { success: true } });
+      expect(result.instructions).toContain('John');
+      expect(result.variables?.api?.user_data?.response?.name).toBe('John');
+      expect(result.api_responses?.['test-endpoint-123']?.name).toBe('John');
     });
     
     it('should fall back to task_id system when input_keys fails', async () => {
