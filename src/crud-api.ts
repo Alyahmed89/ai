@@ -1377,8 +1377,7 @@ crudApi.get('/endpoints/:name', async (c) => {
         timeout_ms, max_retries, retry_delay_ms, cache_key,
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
-        created_at, updated_at, created_by, tags,
-        sample_response
+        created_at, updated_at, created_by, tags
       FROM endpoint_registry
       WHERE name = ?
     `;
@@ -1842,8 +1841,7 @@ crudApi.post('/endpoints/:name/test', async (c) => {
         timeout_ms, max_retries, retry_delay_ms, cache_key,
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
-        created_at, updated_at, created_by, tags,
-        sample_response
+        created_at, updated_at, created_by, tags
       FROM endpoint_registry
       WHERE name = ?
     `;
