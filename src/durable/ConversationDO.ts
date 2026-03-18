@@ -3604,11 +3604,13 @@ ${messageContent}`;
     }
     
     // Add step instructions - USE RESOLVED INSTRUCTIONS
+    // Declare resolvedStep outside try-catch block so it's available in the scope
+    let resolvedStep: any = null;
     try {
       // Get previous step responses for variable substitution
       const previousStepResponses = await this.getPreviousStepResponses();
       
-      const resolvedStep = await resolveStepInstructions(
+      resolvedStep = await resolveStepInstructions(
         step,
         this.env.FLOW_RUNS_DB,
         this.env as Record<string, string>,
@@ -3644,11 +3646,21 @@ ${messageContent}`;
         );
       }
       
+      // Ensure resolvedStep has api_calls property for database storage
+      // Convert api_responses to api_calls format if needed
+      if (!resolvedStep.api_calls) {
+        resolvedStep.api_calls = resolvedStep.api_responses ? Object.values(resolvedStep.api_responses) : [];
+      }
+      
     } catch (error) {
       console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
       // Fall back to original description
       if (step.description) {
         prompt += `\n\n${step.description}`;
+      }
+      // Initialize resolvedStep with empty api_calls if not set
+      if (!resolvedStep) {
+        resolvedStep = { api_calls: [] };
       }
     }
     
@@ -3718,7 +3730,7 @@ Use the response in your work.`
           `DeepSeek API error: ${deepseekResult.error}`,
           'failed',
           1,
-          resolvedStep.api_calls // Pass API calls for database storage
+          resolvedStep?.api_calls || [] // Pass API calls for database storage, safely handle undefined
         );
         // For errors, we still need to complete the step to move forward
         await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
@@ -3741,7 +3753,7 @@ Use the response in your work.`
         response,
         'completed',
         1,
-        resolvedStep.api_calls // Pass API calls for database storage
+        resolvedStep?.api_calls || [] // Pass API calls for database storage, safely handle undefined
       );
       
       // Complete the step with DeepSeek response
