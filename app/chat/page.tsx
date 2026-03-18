@@ -329,6 +329,30 @@ export default function ChatPage() {
       const flowResult = await flowResponse.json();
       const conversationId = flowResult.data?.conversation_id;
       
+      // Debug log
+      console.log('Flow start result:', flowResult);
+      console.log('Flow data:', flowResult.data);
+      
+      // Add status message (api_response type) for flow start
+      const statusMessage: ChatMessage = {
+        id: `${assistantMessageId}_status`,
+        type: 'api_response',
+        content: `STATUS: Flow execution started successfully!`,
+        timestamp: new Date(),
+      };
+      
+      console.log('Adding status message:', statusMessage);
+      console.log('assistantMessageId:', assistantMessageId);
+      console.log('Status message ID:', statusMessage.id);
+      setChatMessages(prev => {
+        console.log('Previous messages count:', prev.length);
+        console.log('Previous messages:', prev.map(m => ({id: m.id, type: m.type, content: m.content.substring(0, 50)})));
+        const newMessages = [...prev, statusMessage];
+        console.log('New messages count:', newMessages.length);
+        console.log('New messages:', newMessages.map(m => ({id: m.id, type: m.type, content: m.content.substring(0, 50)})));
+        return newMessages;
+      });
+      
       // Don't add initial assistant message - we'll only show step instructions and responses
       // The assistantMessageId is still used for polling but won't create a visible message
       
@@ -425,14 +449,14 @@ export default function ChatPage() {
       const flowResult = await flowResponse.json();
       const conversationId = flowResult.data?.conversation_id;
       
-      // Add initial assistant message
-      const assistantMessage: ChatMessage = {
+      // Add status message (api_response type) for flow start
+      const statusMessage: ChatMessage = {
         id: assistantMessageId,
-        type: 'assistant',
-        content: flowResult.output_response || flowResult.message || `Starting ${selectedFlowId} flow without prompt...`,
+        type: 'api_response',
+        content: `STATUS: Flow execution started successfully!`,
         timestamp: new Date(),
       };
-      setChatMessages(prev => [...prev, assistantMessage]);
+      setChatMessages(prev => [...prev, statusMessage]);
       
       // Note: Task status should remain "pending" for the flow to process it
       // The flow will update the task status when it completes
@@ -493,8 +517,8 @@ export default function ChatPage() {
           
           // Debug: log step data
           console.log('Flow steps:', flowSteps);
-          if (flowSteps.length > 0 && completedStepIndex < flowSteps.length) {
-            console.log('Step at index', completedStepIndex, ':', flowSteps[completedStepIndex]);
+          if (flowSteps.length > 0 && currentStepIndex < flowSteps.length) {
+            console.log('Step at index', currentStepIndex, ':', flowSteps[currentStepIndex]);
           }
           
           // Update the initial assistant message with overall progress
@@ -807,6 +831,8 @@ export default function ChatPage() {
                         if (message.type === 'step') return true;
                         // Show assistant messages that are step responses (contain "**Response:**")
                         if (message.type === 'assistant' && message.content.includes('**Response:**')) return true;
+                        // Show api_response messages (status messages)
+                        if (message.type === 'api_response') return true;
                         // Don't show other assistant messages (like flow status messages)
                         return false;
                       })
@@ -825,6 +851,8 @@ export default function ChatPage() {
                                 ? 'bg-blue-600 text-white'
                                 : message.type === 'step'
                                 ? 'bg-purple-600 text-white'
+                                : message.type === 'api_response'
+                                ? 'bg-green-600 text-white'
                                 : 'bg-gray-900 text-gray-100'
                             }`}
                           >
@@ -834,6 +862,8 @@ export default function ChatPage() {
                                 ? 'text-blue-200' 
                                 : message.type === 'step'
                                 ? 'text-purple-200'
+                                : message.type === 'api_response'
+                                ? 'text-green-200'
                                 : 'text-gray-500'
                             }`}>
                               {formatTime(message.timestamp)}
