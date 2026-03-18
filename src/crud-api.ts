@@ -1522,6 +1522,15 @@ crudApi.get('/endpoints/introspect', async (c) => {
     
     let endpoint;
     try {
+      // STEP 7: Verify DB instance and count
+      console.log("STEP 7: Verifying DB instance and count");
+      console.log("DB INSTANCE:", c.env.FLOW_RUNS_DB ? "EXISTS" : "NULL");
+      
+      const countSql = `SELECT COUNT(*) as total FROM endpoint_registry`;
+      console.log("Test 0 - Count SQL:", countSql);
+      const countResult = await db.prepare(countSql).first();
+      console.log("Test 0 - Total endpoints in DB:", countResult?.total || 0);
+      
       // Test 1: Hardcoded query
       const hardcodedSql = `SELECT * FROM endpoint_registry WHERE id = 'endpoint_001'`;
       console.log("Test 1 - Hardcoded SQL:", hardcodedSql);
@@ -1618,11 +1627,11 @@ crudApi.get('/endpoints/introspect', async (c) => {
       }
       
       if (!endpoint) {
-        console.log("STEP 1-6: Endpoint not found with any method");
+        console.log("STEP 1-7: Endpoint not found with any method");
         return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
       }
       
-      console.log("STEP 1-6: Found endpoint:", endpoint.id, endpoint.name);
+      console.log("STEP 1-7: Found endpoint:", endpoint.id, endpoint.name);
       
       // Return basic endpoint info for now
       const response = {
@@ -1637,7 +1646,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
       return c.json(successResponse(response));
       
     } catch (queryError) {
-      console.error("STEP 1-6: Query error:", queryError);
+      console.error("STEP 1-7: Query error:", queryError);
       return c.json(errorResponse(`Database query error: ${queryError.message}`, 500));
     }
 
