@@ -1516,9 +1516,9 @@ crudApi.get('/endpoints/introspect', async (c) => {
     const trimmedId = endpointId.trim();
     console.log("INTROSPECT PARAM TRIMMED:", trimmedId, "length:", trimmedId.length);
 
-    // STEP 1: HARDCODED TEST - Test without parameter binding
-    console.log("STEP 1: Testing HARDCODED query without parameter binding");
-    console.log("trimmedId:", JSON.stringify(trimmedId));
+    // STEP 1 & 2: HARDCODED TEST + STRING MATCH ANALYSIS
+    console.log("STEP 1 & 2: Testing queries and analyzing string matches");
+    console.log("trimmedId:", JSON.stringify(trimmedId), "length:", trimmedId.length);
     
     let endpoint;
     try {
@@ -1534,18 +1534,30 @@ crudApi.get('/endpoints/introspect', async (c) => {
       } else {
         console.log("STEP 1 RESULT: Hardcoded query also fails - Different issue");
         
-        // Test 2: Original parameter binding for comparison
+        // STEP 2: Analyze string matches - check for hidden characters
+        console.log("STEP 2: Analyzing string matches in database");
+        const analyzeSql = `SELECT id, LENGTH(id) as len, HEX(id) as hex FROM endpoint_registry`;
+        console.log("Test 2 - Analyze SQL:", analyzeSql);
+        const analyzeResults = await db.prepare(analyzeSql).all();
+        console.log("Test 2 - Analyze results count:", analyzeResults.results?.length || 0);
+        if (analyzeResults.results) {
+          for (const row of analyzeResults.results) {
+            console.log(`  ID: "${row.id}", Length: ${row.len}, Hex: ${row.hex}`);
+          }
+        }
+        
+        // Test 3: Original parameter binding for comparison
         const paramSql = `SELECT * FROM endpoint_registry WHERE id = ?`;
-        console.log("Test 2 - Parameter SQL:", paramSql, "with param:", trimmedId);
+        console.log("Test 3 - Parameter SQL:", paramSql, "with param:", trimmedId);
         const paramResult = await db.prepare(paramSql).bind(trimmedId).first();
-        console.log("Test 2 - Parameter result:", paramResult ? "FOUND" : "NOT FOUND");
+        console.log("Test 3 - Parameter result:", paramResult ? "FOUND" : "NOT FOUND");
         
         if (!paramResult) {
-          // Test 3: Try with name instead of id
+          // Test 4: Try with name instead of id
           const nameSql = `SELECT * FROM endpoint_registry WHERE name = ?`;
-          console.log("Test 3 - Name SQL:", nameSql, "with param:", trimmedId);
+          console.log("Test 4 - Name SQL:", nameSql, "with param:", trimmedId);
           const nameResult = await db.prepare(nameSql).bind(trimmedId).first();
-          console.log("Test 3 - Name result:", nameResult ? "FOUND" : "NOT FOUND");
+          console.log("Test 4 - Name result:", nameResult ? "FOUND" : "NOT FOUND");
           endpoint = nameResult;
         } else {
           endpoint = paramResult;
@@ -1553,11 +1565,11 @@ crudApi.get('/endpoints/introspect', async (c) => {
       }
       
       if (!endpoint) {
-        console.log("STEP 1: Endpoint not found with any method");
+        console.log("STEP 1&2: Endpoint not found with any method");
         return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
       }
       
-      console.log("STEP 1: Found endpoint:", endpoint.id, endpoint.name);
+      console.log("STEP 1&2: Found endpoint:", endpoint.id, endpoint.name);
       
       // Return basic endpoint info for now
       const response = {
@@ -1572,7 +1584,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
       return c.json(successResponse(response));
       
     } catch (queryError) {
-      console.error("STEP 1: Query error:", queryError);
+      console.error("STEP 1&2: Query error:", queryError);
       return c.json(errorResponse(`Database query error: ${queryError.message}`, 500));
     }
 
