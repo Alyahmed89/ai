@@ -3478,6 +3478,8 @@ ${messageContent}`;
     
     // Check if we have a current_prompt (e.g., from continueWithCommandResult)
     let prompt = this.conversation.current_prompt;
+    // Declare resolvedStep at function scope so it's available later
+    let resolvedStep: any = null;
     
     if (prompt) {
       console.log(`[DO:${this.state.id}] Using existing current_prompt (${prompt.length} chars)`);
@@ -3612,8 +3614,7 @@ ${messageContent}`;
     }
     
     // Add step instructions - USE RESOLVED INSTRUCTIONS
-    // Declare resolvedStep outside try-catch block so it's available in the scope
-    let resolvedStep: any = null;
+    // resolvedStep is already declared at function scope
     try {
       // Get previous step responses for variable substitution
       const previousStepResponses = await this.getPreviousStepResponses();
