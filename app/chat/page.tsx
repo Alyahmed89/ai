@@ -164,6 +164,10 @@ export default function ChatPage() {
     // Store the assistant message ID so we can update it later
     const assistantMessageId = (Date.now() + 2.5).toString();
     
+    // Variables that need to be accessible in catch block
+    let originalInstructions: Record<string, string> = {};
+    let restoreOriginalInstructions: (() => Promise<void>) | null = null;
+    
     try {
       // First, fetch all flow steps and filter by flow_id
       const stepsResponse = await fetch('/api/proxy/api/flow-steps');
@@ -173,7 +177,7 @@ export default function ChatPage() {
       console.log('Fetched steps for flow', selectedFlowId, ':', steps);
       
       // Save original instructions and update with resolved placeholders
-      const originalInstructions: Record<string, string> = {};
+      originalInstructions = {};
       const updatePromises = [];
       
       for (const step of steps) {
@@ -247,14 +251,14 @@ export default function ChatPage() {
       }
       
       // Function to restore original instructions
-      const restoreOriginalInstructions = async () => {
+      restoreOriginalInstructions = async () => {
         if (Object.keys(originalInstructions).length === 0) return;
         
         console.log('Restoring original instructions for steps:', Object.keys(originalInstructions));
         const restorePromises = [];
         
         for (const [stepId, originalInstruction] of Object.entries(originalInstructions)) {
-          const step = steps.find(s => s.id === stepId);
+          const step = steps.find((s: any) => s.id === stepId);
           if (!step) continue;
           
           const stepData = {
@@ -371,7 +375,7 @@ export default function ChatPage() {
       console.error('Error executing request:', error);
       
       // Restore original instructions if update failed
-      if (Object.keys(originalInstructions).length > 0) {
+      if (Object.keys(originalInstructions).length > 0 && restoreOriginalInstructions) {
         console.log('Error occurred, attempting to restore original instructions...');
         try {
           await restoreOriginalInstructions();
@@ -824,7 +828,7 @@ export default function ChatPage() {
                     </div>
                   ) : (
                     chatMessages
-                      .filter(message => {
+                      .filter((message: ChatMessage) => {
                         // Show user messages
                         if (message.type === 'user') return true;
                         // Show step messages
@@ -836,7 +840,7 @@ export default function ChatPage() {
                         // Don't show other assistant messages (like flow status messages)
                         return false;
                       })
-                      .map(message => (
+                      .map((message: ChatMessage) => (
                         <div
                           key={message.id}
                           className={`flex ${
@@ -1076,8 +1080,8 @@ export default function ChatPage() {
                   <h4 className="text-sm font-medium text-gray-400 mb-2">Chat Messages</h4>
                   <div className="space-y-3">
                     {chatMessages
-                      .filter(msg => msg.content.includes(selectedFlowRun.flow_id) || msg.content.includes(selectedFlowRun.id))
-                      .map(message => (
+                      .filter((msg: ChatMessage) => msg.content.includes(selectedFlowRun.flow_id) || msg.content.includes(selectedFlowRun.id))
+                      .map((message: ChatMessage) => (
                         <div
                           key={message.id}
                           className={`p-3 rounded-lg ${
