@@ -1378,7 +1378,7 @@ crudApi.get('/endpoints/:name', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        ai_enabled, endpoint_type, parameter_schema
+        sample_response
       FROM endpoint_registry
       WHERE name = ?
     `;
