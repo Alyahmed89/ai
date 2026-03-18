@@ -1574,7 +1574,18 @@ crudApi.get('/endpoints/introspect', async (c) => {
               console.log("Test 6 - CAST SQL:", castSql, "with param:", trimmedId);
               const castResult = await db.prepare(castSql).bind(trimmedId).first();
               console.log("Test 6 - CAST result:", castResult ? "FOUND" : "NOT FOUND");
-              endpoint = castResult;
+              
+              if (!castResult) {
+                // STEP 5: Test LIKE operator (IMPORTANT)
+                console.log("STEP 5: Testing LIKE operator");
+                const likeSql = `SELECT * FROM endpoint_registry WHERE id LIKE ?`;
+                console.log("Test 7 - LIKE SQL:", likeSql, "with param:", trimmedId);
+                const likeResult = await db.prepare(likeSql).bind(trimmedId).first();
+                console.log("Test 7 - LIKE result:", likeResult ? "FOUND" : "NOT FOUND");
+                endpoint = likeResult;
+              } else {
+                endpoint = castResult;
+              }
             } else {
               endpoint = trimResult;
             }
@@ -1587,11 +1598,11 @@ crudApi.get('/endpoints/introspect', async (c) => {
       }
       
       if (!endpoint) {
-        console.log("STEP 1-4: Endpoint not found with any method");
+        console.log("STEP 1-5: Endpoint not found with any method");
         return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
       }
       
-      console.log("STEP 1-4: Found endpoint:", endpoint.id, endpoint.name);
+      console.log("STEP 1-5: Found endpoint:", endpoint.id, endpoint.name);
       
       // Return basic endpoint info for now
       const response = {
@@ -1606,7 +1617,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
       return c.json(successResponse(response));
       
     } catch (queryError) {
-      console.error("STEP 1-4: Query error:", queryError);
+      console.error("STEP 1-5: Query error:", queryError);
       return c.json(errorResponse(`Database query error: ${queryError.message}`, 500));
     }
 
