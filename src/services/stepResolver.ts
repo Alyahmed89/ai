@@ -452,6 +452,11 @@ export async function executeUnifiedEndpoints(
     // Command execution happens after AI response parsing
     
     return { api_calls: apiCalls, variables };
+    
+  } catch (error) {
+    console.error('[executeUnifiedEndpoints] Error parsing use_endpoints:', error);
+    return { api_calls: apiCalls, variables };
+  }
 }
 
 // STEP 4: Unified command execution
@@ -684,12 +689,6 @@ async function buildCommandRequest(
     body,
     query_params: queryParams
   };
-}
-    
-  } catch (error) {
-    console.error('[executeUnifiedEndpoints] Error parsing use_endpoints:', error);
-    return { api_calls: apiCalls, variables };
-  }
 }
 
 // Helper to build endpoint request with variable substitution
