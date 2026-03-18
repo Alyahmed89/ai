@@ -103,6 +103,7 @@ export default function HierarchicalNav({
   onCreateStep,
   onEditFlow
 }: HierarchicalNavProps) {
+  console.log('HierarchicalNav props:', { onEditFlow, onSelectFlow, onCreateFlow });
   const [projects, setProjects] = useState<Project[]>([]);
   const [flows, setFlows] = useState<FlowDefinition[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -112,6 +113,8 @@ export default function HierarchicalNav({
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [showTasks, setShowTasks] = useState(true); // Toggle between tasks and flow runs
