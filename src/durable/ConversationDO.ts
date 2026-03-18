@@ -3478,19 +3478,15 @@ ${messageContent}`;
     
     // Check if we have a current_prompt (e.g., from continueWithCommandResult)
     let prompt = this.conversation.current_prompt;
-    let usingExistingPrompt = false;
     
     if (prompt) {
       console.log(`[DO:${this.state.id}] Using existing current_prompt (${prompt.length} chars)`);
       // Clear current_prompt after using it
       this.conversation.current_prompt = undefined;
-      usingExistingPrompt = true;
     } else {
       // Build new prompt with step instructions
       prompt = `Execute step: ${step.title}`;
-    
-    // Only build full prompt if not using existing prompt
-    if (!usingExistingPrompt) {
+      
       // Check for task injection
       // Priority: 1. Static task_id, 2. Dynamic requires_task
       let taskInjected = false;
@@ -3693,7 +3689,7 @@ ${messageContent}`;
       prompt_length: prompt.length,
       timestamp: Date.now()
     };
-    } // End of if (!usingExistingPrompt) block
+    } // End of else block (not using existing prompt)
     
     // SPECIAL HANDLING: For 'hello' step type, complete immediately without OpenHands
     if (step.step_type === 'hello') {
