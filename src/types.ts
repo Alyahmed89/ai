@@ -261,6 +261,7 @@ export interface StepRunData {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
   created_at: number;
   duration_ms: number;
+  api_calls?: string; // JSON string of API calls for unified endpoint system
 }
 
 export interface DoneResponseData {
@@ -310,6 +311,9 @@ export interface StepData {
   goal_criteria?: string;
   max_iterations_per_step?: number;
   expected_response?: string; // Expected response that goes after instructions in prompt
+  // NEW: Unified endpoint system
+  use_endpoints?: string; // JSON array of endpoint configurations
+  extra_step?: boolean; // Whether to run extra step loop
 }
 
 // AI token parsing types

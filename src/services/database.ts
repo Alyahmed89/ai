@@ -135,8 +135,8 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
     await db.prepare(`
       INSERT INTO step_runs (
         id, flow_run_id, step_id, iteration, attempt, prompt, response,
-        input_payload, output_payload, status, created_at, duration_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        input_payload, output_payload, status, created_at, duration_ms, api_calls
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(flow_run_id, step_id, iteration, attempt) 
       DO UPDATE SET
         prompt = excluded.prompt,
@@ -144,7 +144,8 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
         input_payload = excluded.input_payload,
         output_payload = excluded.output_payload,
         status = excluded.status,
-        duration_ms = excluded.duration_ms
+        duration_ms = excluded.duration_ms,
+        api_calls = excluded.api_calls
     `).bind(
       stepRun.id,
       stepRun.flow_run_id,
@@ -157,7 +158,8 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
       stepRun.output_payload || null,
       stepRun.status,
       stepRun.created_at,
-      stepRun.duration_ms
+      stepRun.duration_ms,
+      stepRun.api_calls || null
     ).run();
 
     return { success: true };
