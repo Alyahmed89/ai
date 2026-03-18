@@ -165,6 +165,134 @@ export default function ChatPage() {
     const assistantMessageId = (Date.now() + 2.5).toString();
     
     try {
+      // First, fetch all flow steps and filter by flow_id
+      const stepsResponse = await fetch('/api/proxy/api/flow-steps');
+      if (!stepsResponse.ok) throw new Error('Failed to fetch flow steps');
+      const stepsData = await stepsResponse.json();
+      const steps = stepsData.data.filter((step: any) => step.flow_id === selectedFlowId);
+      console.log('Fetched steps for flow', selectedFlowId, ':', steps);
+      
+      // Save original instructions and update with resolved placeholders
+      const originalInstructions: Record<string, string> = {};
+      const updatePromises = [];
+      
+      for (const step of steps) {
+        console.log('Checking step:', step.id, 'instructions:', step.instructions);
+        if (step.instructions && (step.instructions.includes('{input_prompt}') || step.instructions.includes('{user.message}'))) {
+          // Save original instructions
+          originalInstructions[step.id] = step.instructions;
+          
+          // Resolve placeholders
+          let resolvedInstructions = step.instructions;
+          if (prompt) {
+            // Replace {input_prompt} placeholder
+            if (resolvedInstructions.includes('{input_prompt}')) {
+              resolvedInstructions = resolvedInstructions.replace(/\{input_prompt\}/g, prompt);
+              console.log('Replaced {input_prompt} with:', prompt);
+            }
+            // Replace {user.message} placeholder
+            if (resolvedInstructions.includes('{user.message}')) {
+              resolvedInstructions = resolvedInstructions.replace(/\{user\.message\}/g, prompt);
+              console.log('Replaced {user.message} with:', prompt);
+            }
+          }
+          
+          console.log('Original instructions:', step.instructions);
+          console.log('Resolved instructions:', resolvedInstructions);
+          
+          // Update step with resolved instructions
+          // Convert numeric fields to booleans for API compatibility
+          const stepData = {
+            ...step,
+            instructions: resolvedInstructions,
+            blocking: step.blocking === 1,
+            auto_fail_on_error: step.auto_fail_on_error === 1,
+            retryable: step.retryable === 1,
+            output: step.output === 1,
+            requires_task: step.requires_task === 1,
+            extra_step: step.extra_step === 1
+          };
+          
+          const updatePromise = fetch(`/api/proxy/api/flow-steps/${step.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(stepData),
+          }).then(async (response) => {
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Failed to update step:', step.id, 'Status:', response.status, 'Error:', errorText);
+              throw new Error(`Failed to update step ${step.id}: ${response.status}`);
+            }
+            console.log('Successfully updated step:', step.id);
+            return response.json();
+          }).catch(error => {
+            console.error('Error updating step:', step.id, error);
+            throw error;
+          });
+          updatePromises.push(updatePromise);
+        }
+      }
+      
+      // Wait for all step updates to complete
+      if (updatePromises.length > 0) {
+        console.log('Waiting for', updatePromises.length, 'step updates to complete...');
+        await Promise.all(updatePromises);
+        console.log('All step updates completed');
+        // Add a small delay to ensure updates are propagated
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        console.log('No steps with placeholders found');
+      }
+      
+      // Function to restore original instructions
+      const restoreOriginalInstructions = async () => {
+        if (Object.keys(originalInstructions).length === 0) return;
+        
+        console.log('Restoring original instructions for steps:', Object.keys(originalInstructions));
+        const restorePromises = [];
+        
+        for (const [stepId, originalInstruction] of Object.entries(originalInstructions)) {
+          const step = steps.find(s => s.id === stepId);
+          if (!step) continue;
+          
+          const stepData = {
+            ...step,
+            instructions: originalInstruction,
+            blocking: step.blocking === 1,
+            auto_fail_on_error: step.auto_fail_on_error === 1,
+            retryable: step.retryable === 1,
+            output: step.output === 1,
+            requires_task: step.requires_task === 1,
+            extra_step: step.extra_step === 1
+          };
+          
+          const restorePromise = fetch(`/api/proxy/api/flow-steps/${stepId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(stepData)
+          }).then(async (response) => {
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Failed to restore step:', stepId, 'Status:', response.status, 'Error:', errorText);
+            } else {
+              console.log('Successfully restored step:', stepId);
+            }
+            return response.json();
+          }).catch(error => {
+            console.error('Error restoring step:', stepId, error);
+          });
+          
+          restorePromises.push(restorePromise);
+        }
+        
+        if (restorePromises.length > 0) {
+          await Promise.all(restorePromises);
+          console.log('All original instructions restored');
+        }
+      };
+      
       // Create task with proper title and description
       const taskResponse = await fetch('/api/proxy/api/tasks', {
         method: 'POST',
@@ -212,11 +340,21 @@ export default function ChatPage() {
       
       // Start polling for actual results if we have a conversation ID
       if (conversationId) {
-        startPollingForResults(conversationId, assistantMessageId);
+        startPollingForResults(conversationId, assistantMessageId, prompt, restoreOriginalInstructions);
       }
       
     } catch (error) {
       console.error('Error executing request:', error);
+      
+      // Restore original instructions if update failed
+      if (Object.keys(originalInstructions).length > 0) {
+        console.log('Error occurred, attempting to restore original instructions...');
+        try {
+          await restoreOriginalInstructions();
+        } catch (restoreError) {
+          console.error('Failed to restore instructions after error:', restoreError);
+        }
+      }
       
       // Add error message to chat
       const errorMessage: ChatMessage = {
@@ -304,7 +442,7 @@ export default function ChatPage() {
       
       // Start polling for actual results if we have a conversation ID
       if (conversationId) {
-        startPollingForResults(conversationId, assistantMessageId);
+        startPollingForResults(conversationId, assistantMessageId, "");
       }
       
     } catch (error) {
@@ -324,7 +462,7 @@ export default function ChatPage() {
     }
   };
 
-  const startPollingForResults = (conversationId: string, assistantMessageId: string) => {
+  const startPollingForResults = (conversationId: string, assistantMessageId: string, userMessage: string = '', restoreInstructions?: () => Promise<void>) => {
     let pollCount = 0;
     const maxPolls = 30; // 30 polls * 2 seconds = 60 seconds total
     const pollInterval = 2000; // Poll every 2 seconds
@@ -353,6 +491,12 @@ export default function ChatPage() {
           const currentStepIndex = conversation.current_step_index || 0;
           const lastStepResponse = conversation.last_step_response || '';
           
+          // Debug: log step data
+          console.log('Flow steps:', flowSteps);
+          if (flowSteps.length > 0 && completedStepIndex < flowSteps.length) {
+            console.log('Step at index', completedStepIndex, ':', flowSteps[completedStepIndex]);
+          }
+          
           // Update the initial assistant message with overall progress
           setChatMessages(prev => prev.map(msg => {
             if (msg.id === assistantMessageId) {
@@ -362,6 +506,14 @@ export default function ChatPage() {
                 // Flow is completed - show completion message
                 content = `✅ Flow completed successfully.`;
                 clearInterval(pollIntervalId);
+                
+                // Restore original step instructions if provided
+                if (restoreInstructions) {
+                  console.log('Flow completed, restoring original instructions...');
+                  restoreInstructions().catch(error => {
+                    console.error('Failed to restore instructions:', error);
+                  });
+                }
               } else {
                 // Flow is still running - show progress
                 const completedSteps = Math.max(0, currentStepIndex);
@@ -390,13 +542,28 @@ export default function ChatPage() {
               // Get step details
               const step = flowSteps[completedStepIndex];
               const stepTitle = step?.title || `Step ${completedStepIndex + 1}`;
-              const stepDescription = step?.description || '';
+              const stepInstructions = step?.instructions || '';
+              
+              // Replace placeholders with actual user message
+              let stepInstructionsWithUserMessage = stepInstructions || 'Processing step...';
+              if (userMessage) {
+                // Replace {user.message} placeholder
+                if (stepInstructionsWithUserMessage.includes('{user.message}')) {
+                  stepInstructionsWithUserMessage = stepInstructionsWithUserMessage.replace(/\{user\.message\}/g, userMessage);
+                }
+                // Replace {input_prompt} placeholder
+                if (stepInstructionsWithUserMessage.includes('{input_prompt}')) {
+                  stepInstructionsWithUserMessage = stepInstructionsWithUserMessage.replace(/\{input_prompt\}/g, userMessage);
+                }
+              }
+              
+              let stepContent = `### ${stepTitle}\n\n${stepInstructionsWithUserMessage}`;
               
               // Create a STEP message (instruction) - appears on RIGHT side
               const stepInstructionMessage: ChatMessage = {
                 id: `${assistantMessageId}_step_instruction_${completedStepIndex}`,
                 type: 'step',
-                content: `### ${stepTitle}\n\n${stepDescription || 'Processing step...'}`,
+                content: stepContent,
                 timestamp: new Date(),
               };
               
@@ -446,12 +613,28 @@ export default function ChatPage() {
       } catch (error) {
         console.error('Polling error:', error);
         clearInterval(pollIntervalId);
+        
+        // Restore original step instructions if provided
+        if (restoreInstructions) {
+          console.log('Polling error, restoring original instructions...');
+          restoreInstructions().catch(err => {
+            console.error('Failed to restore instructions:', err);
+          });
+        }
       }
       
       // Stop polling after max attempts
       if (pollCount >= maxPolls) {
         clearInterval(pollIntervalId);
         // Don't show timeout message - we only show step instructions and responses
+        
+        // Restore original step instructions if provided
+        if (restoreInstructions) {
+          console.log('Polling timeout, restoring original instructions...');
+          restoreInstructions().catch(error => {
+            console.error('Failed to restore instructions:', error);
+          });
+        }
       }
     }, pollInterval);
   };
