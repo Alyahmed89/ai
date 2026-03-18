@@ -3,10 +3,10 @@ import { END_FLOW_TOKEN, END_FLOW_EARLY_TOKEN } from '../constants';
 import { DoneResponseData, CreateTaskData, SkipTaskData, CommandData } from '../types';
 
 // Hardened regex patterns for AI tokens
-const CREATE_TASK_REGEX = /\[CREATE_TASK\]\s+flow_id:\s*(\w+)\s+title:\s*([^]+?)\s+description:\s*([^]+?)\s+order_index:\s*(\d+)\s+priority:\s*(\d+)/;
-const SKIP_TASK_REGEX = /\[SKIP_TASK\]\s+task_id:\s*([\w_-]+)\s+reason:\s*([^]+)/;
-const END_FLOW_REGEX = /\[END_FLOW\](?:\s+prompt:\s*([^]+?))?(?:\s+branch:\s*([^]+?))?/;
-const END_FLOW_EARLY_REGEX = /\[END_FLOW_EARLY\](?:\s+reason:\s*([^]+))?/;
+const CREATE_TASK_REGEX = /\[CREATE_TASK\]\s+flow_id:\s*(\w+)\s+title:\s*([\s\S]+?)\s+description:\s*([\s\S]+?)\s+order_index:\s*(\d+)\s+priority:\s*(\d+)/;
+const SKIP_TASK_REGEX = /\[SKIP_TASK\]\s+task_id:\s*([\w_-]+)\s+reason:\s*([\s\S]+)/;
+const END_FLOW_REGEX = /\[END_FLOW\](?:\s+prompt:\s*([\s\S]+?))?(?:\s+branch:\s*([\s\S]+?))?/;
+const END_FLOW_EARLY_REGEX = /\[END_FLOW_EARLY\](?:\s+reason:\s*([\s\S]+))?/;
 const COMMAND_REGEX = /\[COMMAND:(\w+)\](?:\s+params:\s*(\{[^}]*\}))?/;
 
 /**
