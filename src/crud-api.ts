@@ -1582,7 +1582,27 @@ crudApi.get('/endpoints/introspect', async (c) => {
                 console.log("Test 7 - LIKE SQL:", likeSql, "with param:", trimmedId);
                 const likeResult = await db.prepare(likeSql).bind(trimmedId).first();
                 console.log("Test 7 - LIKE result:", likeResult ? "FOUND" : "NOT FOUND");
-                endpoint = likeResult;
+                
+                if (!likeResult) {
+                  // STEP 6: Test no parameter binding with sanitized string interpolation
+                  console.log("STEP 6: Testing sanitized string interpolation (TEMP FIX)");
+                  
+                  // Sanitize ID - allow only [a-zA-Z0-9_]
+                  const sanitizedId = trimmedId.replace(/[^a-zA-Z0-9_]/g, '');
+                  console.log("Sanitized ID:", sanitizedId, "original:", trimmedId);
+                  
+                  if (sanitizedId && sanitizedId === trimmedId) {
+                    const rawSql = `SELECT * FROM endpoint_registry WHERE id = '${sanitizedId}' LIMIT 1`;
+                    console.log("Test 8 - Raw SQL (sanitized):", rawSql);
+                    const rawResult = await db.prepare(rawSql).first();
+                    console.log("Test 8 - Raw result:", rawResult ? "FOUND" : "NOT FOUND");
+                    endpoint = rawResult;
+                  } else {
+                    console.log("STEP 6: ID contains invalid characters, skipping raw SQL");
+                  }
+                } else {
+                  endpoint = likeResult;
+                }
               } else {
                 endpoint = castResult;
               }
@@ -1598,11 +1618,11 @@ crudApi.get('/endpoints/introspect', async (c) => {
       }
       
       if (!endpoint) {
-        console.log("STEP 1-5: Endpoint not found with any method");
+        console.log("STEP 1-6: Endpoint not found with any method");
         return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
       }
       
-      console.log("STEP 1-5: Found endpoint:", endpoint.id, endpoint.name);
+      console.log("STEP 1-6: Found endpoint:", endpoint.id, endpoint.name);
       
       // Return basic endpoint info for now
       const response = {
@@ -1617,7 +1637,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
       return c.json(successResponse(response));
       
     } catch (queryError) {
-      console.error("STEP 1-5: Query error:", queryError);
+      console.error("STEP 1-6: Query error:", queryError);
       return c.json(errorResponse(`Database query error: ${queryError.message}`, 500));
     }
 
