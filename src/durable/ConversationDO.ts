@@ -3670,7 +3670,7 @@ ${messageContent}`;
     // SPECIAL HANDLING: For 'hello' step type, complete immediately without OpenHands
     if (step.step_type === 'hello') {
       console.log(`[DO:${this.state.id}] 'hello' step type detected, completing immediately`);
-      // Save hello step run to database
+      // Save hello step run to database (no API calls for hello steps)
       await this.saveStepRunToDatabase(
         step,
         "Hello step (auto-completed)",
@@ -3701,12 +3701,14 @@ ${messageContent}`;
       
       if (!deepseekResult.success) {
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
-        // Save failed step run to database
+        // Save failed step run to database with API calls
         await this.saveStepRunToDatabase(
           step,
           prompt,
           `DeepSeek API error: ${deepseekResult.error}`,
-          'failed'
+          'failed',
+          1,
+          resolvedStep.api_calls // Pass API calls for database storage
         );
         // For errors, we still need to complete the step to move forward
         await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
@@ -3722,12 +3724,14 @@ ${messageContent}`;
       const response = deepseekResult.response;
       console.log(`[DO:${this.state.id}] DeepSeek response received (${response.length} chars)`);
       
-      // Save successful step run to database
+      // Save successful step run to database with API calls
       await this.saveStepRunToDatabase(
         step,
         prompt,
         response,
-        'completed'
+        'completed',
+        1,
+        resolvedStep.api_calls // Pass API calls for database storage
       );
       
       // Complete the step with DeepSeek response
@@ -4736,7 +4740,8 @@ ${messageContent}`;
     prompt: string,
     response: string,
     status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' = 'completed',
-    attempt: number = 1
+    attempt: number = 1,
+    apiCalls?: any[] // Optional API calls data from unified endpoint system
   ): Promise<void> {
     if (!this.conversation || !this.flowRunId) return;
     
@@ -4768,7 +4773,8 @@ ${messageContent}`;
       output_payload: undefined, // Can be populated later if needed
       status,
       created_at: Math.floor(Date.now() / 1000),
-      duration_ms: 0 // TODO: Calculate actual duration
+      duration_ms: 0, // TODO: Calculate actual duration
+      api_calls: apiCalls ? JSON.stringify(apiCalls) : undefined
     };
 
     // Save to database

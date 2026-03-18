@@ -92,6 +92,7 @@ export async function resolveStepInstructions(
       return {
         instructions,
         variables: unifiedResult.variables,
+        api_calls: unifiedResult.api_calls, // Return full API calls array for database storage
         api_responses: unifiedResult.api_calls.reduce((acc: Record<string, any>, call) => {
           acc[call.endpoint_id] = call.response.data;
           return acc;
