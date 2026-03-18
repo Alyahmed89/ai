@@ -14,6 +14,9 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
     const started_at = flowRun.status === 'active' ? now : null;
     const completed_at = (flowRun.status === 'completed' || flowRun.status === 'failed' || flowRun.status === 'stopped' || flowRun.status === 'new_flow_started') ? now : null;
     
+    // Ensure conversation_id is not undefined
+    const conversation_id = flowRun.conversation_id || null;
+    
     await db.prepare(`
       INSERT INTO flow_runs (
         id, flow_id, conversation_id, step_id, input_prompt, output_response,
@@ -22,7 +25,7 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
     `).bind(
       flowRun.id,
       flowRun.flow_id || null,
-      flowRun.conversation_id,
+      conversation_id,
       flowRun.step_id || null,
       flowRun.input_prompt || null,
       flowRun.output_response || null,
