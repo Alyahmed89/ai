@@ -225,17 +225,29 @@ function addCommandFormatInstructions(instructions: string, step: StepData): str
       return instructions;
     }
     
-    // Check if any endpoints have phase "command"
-    const hasCommandEndpoints = useEndpoints.some((ep: any) => ep.phase === 'command');
+    // Handle both formats:
+    // 1. Array of strings: ["rules_search_exact", "rules_search_partial"]
+    // 2. Array of objects: [{"endpoint_id": "rules_search_exact", "phase": "command"}, ...]
     
-    if (!hasCommandEndpoints) {
-      return instructions;
+    let commandEndpoints: string[] = [];
+    
+    if (useEndpoints.length > 0) {
+      if (typeof useEndpoints[0] === 'string') {
+        // Format 1: Array of strings - assume all are command endpoints
+        commandEndpoints = useEndpoints;
+      } else if (typeof useEndpoints[0] === 'object' && useEndpoints[0] !== null) {
+        // Format 2: Array of objects - filter by phase "command"
+        const hasCommandEndpoints = useEndpoints.some((ep: any) => ep.phase === 'command');
+        
+        if (!hasCommandEndpoints) {
+          return instructions;
+        }
+        
+        commandEndpoints = useEndpoints
+          .filter((ep: any) => ep.phase === 'command')
+          .map((ep: any) => ep.endpoint_id || ep.endpoint_name || ep.name || ep.id);
+      }
     }
-    
-    // Get command endpoint names
-    const commandEndpoints = useEndpoints
-      .filter((ep: any) => ep.phase === 'command')
-      .map((ep: any) => ep.endpoint_id);
     
     if (commandEndpoints.length === 0) {
       return instructions;
@@ -450,10 +462,26 @@ export async function executeUnifiedEndpoints(
       return { api_calls: apiCalls, variables };
     }
     
+    // Normalize endpoints to object format with phase property
+    const normalizedEndpoints = useEndpoints.map((ep: any) => {
+      if (typeof ep === 'string') {
+        // String format: assume it's a command endpoint
+        return { endpoint_id: ep, endpoint_name: ep, phase: 'command' };
+      } else if (typeof ep === 'object' && ep !== null) {
+        // Object format: ensure it has required properties
+        return {
+          endpoint_id: ep.endpoint_id || ep.endpoint_name || ep.name || ep.id,
+          endpoint_name: ep.endpoint_name || ep.name || ep.endpoint_id || ep.id,
+          phase: ep.phase || 'command' // Default to command if not specified
+        };
+      }
+      return ep;
+    });
+    
     // Group endpoints by phase
-    const inputEndpoints = useEndpoints.filter((ep: any) => ep.phase === 'input');
-    const commandEndpoints = useEndpoints.filter((ep: any) => ep.phase === 'command');
-    const outputEndpoints = useEndpoints.filter((ep: any) => ep.phase === 'output');
+    const inputEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'input');
+    const commandEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'command');
+    const outputEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'output');
     
     // Execute input phase endpoints
     for (const endpointConfig of inputEndpoints) {
@@ -576,8 +604,24 @@ export async function executeUnifiedCommands(
       return { api_calls: apiCalls, command_results: commandResults };
     }
     
+    // Normalize endpoints to object format with phase property
+    const normalizedEndpoints = useEndpoints.map((ep: any) => {
+      if (typeof ep === 'string') {
+        // String format: assume it's a command endpoint
+        return { endpoint_id: ep, endpoint_name: ep, phase: 'command' };
+      } else if (typeof ep === 'object' && ep !== null) {
+        // Object format: ensure it has required properties
+        return {
+          endpoint_id: ep.endpoint_id || ep.endpoint_name || ep.name || ep.id,
+          endpoint_name: ep.endpoint_name || ep.name || ep.endpoint_id || ep.id,
+          phase: ep.phase || 'command' // Default to command if not specified
+        };
+      }
+      return ep;
+    });
+    
     // Get command phase endpoints
-    const commandEndpoints = useEndpoints.filter((ep: any) => ep.phase === 'command');
+    const commandEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'command');
     
     // Parse commands from AI response
     const commands = parseCommandsFromAIResponse(aiResponse);
