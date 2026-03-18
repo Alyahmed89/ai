@@ -1566,7 +1566,18 @@ crudApi.get('/endpoints/introspect', async (c) => {
             console.log("Test 5 - TRIM SQL:", trimSql, "with param:", trimmedId);
             const trimResult = await db.prepare(trimSql).bind(trimmedId).first();
             console.log("Test 5 - TRIM result:", trimResult ? "FOUND" : "NOT FOUND");
-            endpoint = trimResult;
+            
+            if (!trimResult) {
+              // STEP 4: Test CAST to TEXT
+              console.log("STEP 4: Testing CAST to TEXT");
+              const castSql = `SELECT * FROM endpoint_registry WHERE CAST(id AS TEXT) = ?`;
+              console.log("Test 6 - CAST SQL:", castSql, "with param:", trimmedId);
+              const castResult = await db.prepare(castSql).bind(trimmedId).first();
+              console.log("Test 6 - CAST result:", castResult ? "FOUND" : "NOT FOUND");
+              endpoint = castResult;
+            } else {
+              endpoint = trimResult;
+            }
           } else {
             endpoint = nameResult;
           }
@@ -1576,11 +1587,11 @@ crudApi.get('/endpoints/introspect', async (c) => {
       }
       
       if (!endpoint) {
-        console.log("STEP 1-3: Endpoint not found with any method");
+        console.log("STEP 1-4: Endpoint not found with any method");
         return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
       }
       
-      console.log("STEP 1-3: Found endpoint:", endpoint.id, endpoint.name);
+      console.log("STEP 1-4: Found endpoint:", endpoint.id, endpoint.name);
       
       // Return basic endpoint info for now
       const response = {
@@ -1595,7 +1606,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
       return c.json(successResponse(response));
       
     } catch (queryError) {
-      console.error("STEP 1-3: Query error:", queryError);
+      console.error("STEP 1-4: Query error:", queryError);
       return c.json(errorResponse(`Database query error: ${queryError.message}`, 500));
     }
 
