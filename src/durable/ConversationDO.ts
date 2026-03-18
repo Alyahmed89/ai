@@ -3947,7 +3947,7 @@ Use the response in your work.`
     await this.state.storage.put('conversation', this.conversation);
     
     // Continue processing the step
-    await this.processStep(step);
+    await this.handleSendingStepState();
   }
 
   /**
