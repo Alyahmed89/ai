@@ -8,7 +8,7 @@ import HierarchicalNav from '@/components/HierarchicalNav';
 
 interface ChatMessage {
   id: string;
-  type: 'user' | 'assistant' | 'api_call' | 'api_response';
+  type: 'user' | 'assistant' | 'api_call' | 'api_response' | 'step';
   content: string;
   timestamp: Date;
 }
@@ -398,27 +398,47 @@ export default function ChatPage() {
               const stepTitle = step?.title || `Step ${completedStepIndex + 1}`;
               const stepDescription = step?.description || '';
               
-              // Create a new message for this step response
-              const stepMessage: ChatMessage = {
-                id: `${assistantMessageId}_step_${completedStepIndex}`,
-                type: 'assistant',
-                content: `### ${stepTitle}\n\n${stepDescription ? `${stepDescription}\n\n` : ''}**Response:** ${lastStepResponse}`,
+              // Create a STEP message (instruction) - appears on RIGHT side
+              const stepInstructionMessage: ChatMessage = {
+                id: `${assistantMessageId}_step_instruction_${completedStepIndex}`,
+                type: 'step',
+                content: `### ${stepTitle}\n\n${stepDescription || 'Processing step...'}`,
                 timestamp: new Date(),
               };
               
-              // Add the step message to chat
+              // Create a RESPONSE message - appears on LEFT side
+              const stepResponseMessage: ChatMessage = {
+                id: `${assistantMessageId}_step_response_${completedStepIndex}`,
+                type: 'assistant',
+                content: `**Response:** ${lastStepResponse}`,
+                timestamp: new Date(),
+              };
+              
+              // Add both messages to chat
               setChatMessages(prev => {
-                // Check if this step message already exists
-                const existingIndex = prev.findIndex(msg => msg.id === stepMessage.id);
-                if (existingIndex >= 0) {
-                  // Update existing message
-                  return prev.map((msg, idx) => 
-                    idx === existingIndex ? stepMessage : msg
-                  );
+                let newMessages = [...prev];
+                
+                // Check if step instruction already exists
+                const stepInstructionIndex = newMessages.findIndex(msg => msg.id === stepInstructionMessage.id);
+                if (stepInstructionIndex >= 0) {
+                  // Update existing step instruction
+                  newMessages[stepInstructionIndex] = stepInstructionMessage;
                 } else {
-                  // Add new message
-                  return [...prev, stepMessage];
+                  // Add new step instruction
+                  newMessages.push(stepInstructionMessage);
                 }
+                
+                // Check if step response already exists
+                const stepResponseIndex = newMessages.findIndex(msg => msg.id === stepResponseMessage.id);
+                if (stepResponseIndex >= 0) {
+                  // Update existing step response
+                  newMessages[stepResponseIndex] = stepResponseMessage;
+                } else {
+                  // Add new step response
+                  newMessages.push(stepResponseMessage);
+                }
+                
+                return newMessages;
               });
             }
           }
@@ -639,22 +659,32 @@ export default function ChatPage() {
                     </div>
                   ) : (
                     chatMessages
-                      .filter(message => message.type === 'user' || message.type === 'assistant')
+                      .filter(message => message.type === 'user' || message.type === 'assistant' || message.type === 'step')
                       .map(message => (
                         <div
                           key={message.id}
-                          className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                          className={`flex ${
+                            message.type === 'user' || message.type === 'step' 
+                              ? 'justify-end' 
+                              : 'justify-start'
+                          }`}
                         >
                           <div
                             className={`max-w-3xl rounded-lg px-4 py-3 ${
                               message.type === 'user'
                                 ? 'bg-blue-600 text-white'
+                                : message.type === 'step'
+                                ? 'bg-purple-600 text-white'
                                 : 'bg-gray-900 text-gray-100'
                             }`}
                           >
                             <div className="whitespace-pre-wrap">{message.content}</div>
                             <div className={`text-xs mt-2 ${
-                              message.type === 'user' ? 'text-blue-200' : 'text-gray-500'
+                              message.type === 'user' 
+                                ? 'text-blue-200' 
+                                : message.type === 'step'
+                                ? 'text-purple-200'
+                                : 'text-gray-500'
                             }`}>
                               {formatTime(message.timestamp)}
                             </div>
