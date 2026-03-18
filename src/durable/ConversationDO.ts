@@ -2025,7 +2025,10 @@ export class ConversationOrchestratorDO_2026A {
           const messages = [
             {
               role: 'system',
-              content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.`
+              content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
+To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+The system will execute the command and return the results.
+Use the response in your work.`
             },
             {
               role: 'user',
@@ -3689,6 +3692,13 @@ ${messageContent}`;
       
       // Build messages for DeepSeek
       const messages = [
+        {
+          role: 'system',
+          content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
+To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+The system will execute the command and return the results.
+Use the response in your work.`
+        },
         { role: 'user', content: prompt }
       ];
       
