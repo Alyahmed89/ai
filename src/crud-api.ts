@@ -1425,13 +1425,7 @@ crudApi.get('/endpoints/:name', async (c) => {
       }
     }
     
-    if (parsedEndpoint.parameter_schema) {
-      try {
-        parsedEndpoint.parameter_schema = JSON.parse(parsedEndpoint.parameter_schema);
-      } catch (e) {
-        // Keep as string if not valid JSON
-      }
-    }
+
 
     // If test mode is requested, provide test information but don't make actual request
     if (testMode) {
@@ -1849,7 +1843,7 @@ crudApi.post('/endpoints/:name/test', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        ai_enabled, endpoint_type, parameter_schema
+        sample_response
       FROM endpoint_registry
       WHERE name = ?
     `;
@@ -1865,7 +1859,6 @@ crudApi.post('/endpoints/:name/test', async (c) => {
     const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : {};
     const allowedDomains = endpoint.allowed_domains ? JSON.parse(endpoint.allowed_domains) : [];
     const tags = endpoint.tags ? JSON.parse(endpoint.tags) : [];
-    const parameterSchema = endpoint.parameter_schema ? JSON.parse(endpoint.parameter_schema) : null;
 
     // Build the actual URL with template variables
     let url = endpoint.url;
@@ -2106,11 +2099,8 @@ crudApi.get('/commands', async (c) => {
         description,
         method,
         url as endpoint,
-        parameter_schema as parameters,
         tags
       FROM endpoint_registry 
-      WHERE ai_enabled = TRUE 
-        AND endpoint_type = 'internal_command'
     `;
     
     const params: any[] = [];
@@ -2161,13 +2151,10 @@ crudApi.get('/commands/:name', async (c) => {
         description,
         method,
         url as endpoint,
-        parameter_schema as parameters,
         response_path,
         tags
       FROM endpoint_registry 
       WHERE name = ? 
-        AND ai_enabled = TRUE 
-        AND endpoint_type = 'internal_command'
     `;
     
     const result = await db.prepare(query).bind(name).first();

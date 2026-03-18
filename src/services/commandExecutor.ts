@@ -52,12 +52,9 @@ export class CommandExecutor {
           description,
           method,
           url as endpoint,
-          parameter_schema as parameters,
           tags
         FROM endpoint_registry 
-        WHERE ai_enabled = TRUE 
-          AND endpoint_type = 'internal_command'
-          AND name = ?
+        WHERE name = ?
       `;
 
       const result = await this.db.prepare(query).bind(name).first();
@@ -290,11 +287,8 @@ ${dataStr}`;
           description,
           method,
           url as endpoint,
-          parameter_schema as parameters,
           tags
         FROM endpoint_registry 
-        WHERE ai_enabled = TRUE 
-          AND endpoint_type = 'internal_command'
         ORDER BY name
       `;
 
