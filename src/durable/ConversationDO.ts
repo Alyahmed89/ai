@@ -2066,7 +2066,12 @@ export class ConversationOrchestratorDO_2026A {
               branch: this.conversation.branch,
               iteration: this.conversation.iteration,
               max_iterations: this.conversation.max_iterations
-            }
+            },
+            // System message for flow execution with command format instructions
+            `You are an AI assistant executing a workflow step.
+To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+The system will execute the command and return the results.
+Use the response in your work.`
           );
           
           // Store initial messages in conversation
@@ -2111,7 +2116,12 @@ export class ConversationOrchestratorDO_2026A {
         branch: this.conversation.branch,
         iteration: this.conversation.iteration,
         max_iterations: this.conversation.max_iterations
-      }
+      },
+      // System message for flow execution with command format instructions
+      `You are an AI assistant executing a workflow step.
+To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+The system will execute the command and return the results.
+Use the response in your work.`
     );
     
     // Store initial messages in conversation

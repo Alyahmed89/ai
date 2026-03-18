@@ -86,6 +86,9 @@ export async function resolveStepInstructions(
       // Inject API responses into instructions
       instructions = injectApiResponses(instructions, unifiedResult.api_calls, unifiedResult.variables);
       
+      // Add command format instructions if step has command endpoints
+      instructions = addCommandFormatInstructions(instructions, step);
+      
       return {
         instructions,
         variables: unifiedResult.variables,
@@ -207,6 +210,59 @@ function injectTaskData(
   }
   
   return result;
+}
+
+// Add command format instructions to step instructions
+function addCommandFormatInstructions(instructions: string, step: StepData): string {
+  if (!step.use_endpoints || step.use_endpoints.trim() === '') {
+    return instructions;
+  }
+  
+  try {
+    const useEndpoints = JSON.parse(step.use_endpoints);
+    
+    if (!Array.isArray(useEndpoints)) {
+      return instructions;
+    }
+    
+    // Check if any endpoints have phase "command"
+    const hasCommandEndpoints = useEndpoints.some((ep: any) => ep.phase === 'command');
+    
+    if (!hasCommandEndpoints) {
+      return instructions;
+    }
+    
+    // Get command endpoint names
+    const commandEndpoints = useEndpoints
+      .filter((ep: any) => ep.phase === 'command')
+      .map((ep: any) => ep.endpoint_id);
+    
+    if (commandEndpoints.length === 0) {
+      return instructions;
+    }
+    
+    // Add command format instructions
+    const commandInstructions = `
+
+=== COMMAND EXECUTION INSTRUCTIONS ===
+To execute commands, use the format: [COMMAND:endpoint_name] params: {JSON_parameters}
+
+Available command endpoints: ${commandEndpoints.join(', ')}
+
+Examples:
+- [COMMAND:${commandEndpoints[0]}] params: {"param1": "value1", "param2": "value2"}
+- [COMMAND:${commandEndpoints[0]}] params: {"userWord": "example"}
+
+The system will execute the command and return the results.
+=== END COMMAND INSTRUCTIONS ===
+`;
+    
+    return instructions + commandInstructions;
+    
+  } catch (error) {
+    console.error('[addCommandFormatInstructions] Error parsing use_endpoints:', error);
+    return instructions;
+  }
 }
 
 // Generate example input_keys configuration for a step
