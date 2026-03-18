@@ -704,37 +704,73 @@ export async function executeUnifiedCommands(
 function parseCommandsFromAIResponse(aiResponse: string): Array<{name: string; params: Record<string, any>}> {
   const commands: Array<{name: string; params: Record<string, any>}> = [];
   
-  // Simple command parsing - look for [COMMAND] pattern
-  const commandPattern = /\[(\w+)\](.*?)(?=\[\w+\]|$)/gs;
+  // Command parsing - look for [COMMAND:endpoint_name] pattern
+  const commandPattern = /\[COMMAND:(\w+)\](.*?)(?=\[COMMAND:\w+\]|$)/gs;
   let match;
   
   while ((match = commandPattern.exec(aiResponse)) !== null) {
     const commandName = match[1];
     const commandContent = match[2].trim();
     
-    // Parse parameters (simple key-value parsing)
+    // Parse parameters - look for JSON after "params:"
     const params: Record<string, any> = {};
-    const paramPattern = /(\w+):\s*([^\n]+)/g;
-    let paramMatch;
     
-    while ((paramMatch = paramPattern.exec(commandContent)) !== null) {
-      const key = paramMatch[1];
-      let value = paramMatch[2].trim();
-      
-      // Try to parse JSON values
+    // Try to extract JSON parameters
+    const paramsMatch = commandContent.match(/params:\s*(\{.*\}|\[.*\])/s);
+    if (paramsMatch) {
       try {
-        if (value.startsWith('{') || value.startsWith('[')) {
-          value = JSON.parse(value);
-        } else if (value === 'true' || value === 'false') {
-          value = value === 'true';
-        } else if (!isNaN(Number(value)) && value !== '') {
-          value = Number(value);
-        }
+        const jsonParams = JSON.parse(paramsMatch[1]);
+        Object.assign(params, jsonParams);
       } catch (e) {
-        // Keep as string if parsing fails
+        console.error(`[parseCommandsFromAIResponse] Failed to parse JSON params for ${commandName}:`, e);
+        // Fall back to simple key-value parsing
+        const paramPattern = /(\w+):\s*([^\n]+)/g;
+        let paramMatch;
+        
+        while ((paramMatch = paramPattern.exec(commandContent)) !== null) {
+          const key = paramMatch[1];
+          let value = paramMatch[2].trim();
+          
+          // Try to parse JSON values
+          try {
+            if (value.startsWith('{') || value.startsWith('[')) {
+              value = JSON.parse(value);
+            } else if (value === 'true' || value === 'false') {
+              value = value === 'true';
+            } else if (!isNaN(Number(value)) && value !== '') {
+              value = Number(value);
+            }
+          } catch (e) {
+            // Keep as string if parsing fails
+          }
+          
+          params[key] = value;
+        }
       }
+    } else {
+      // Fall back to simple key-value parsing if no JSON params found
+      const paramPattern = /(\w+):\s*([^\n]+)/g;
+      let paramMatch;
       
-      params[key] = value;
+      while ((paramMatch = paramPattern.exec(commandContent)) !== null) {
+        const key = paramMatch[1];
+        let value = paramMatch[2].trim();
+        
+        // Try to parse JSON values
+        try {
+          if (value.startsWith('{') || value.startsWith('[')) {
+            value = JSON.parse(value);
+          } else if (value === 'true' || value === 'false') {
+            value = value === 'true';
+          } else if (!isNaN(Number(value)) && value !== '') {
+            value = Number(value);
+          }
+        } catch (e) {
+          // Keep as string if parsing fails
+        }
+        
+        params[key] = value;
+      }
     }
     
     commands.push({ name: commandName, params });
