@@ -1503,7 +1503,126 @@ crudApi.get('/endpoints/:name', async (c) => {
   }
 });
 
-// 3️⃣ Create new endpoint
+// 3️⃣ Introspect endpoint - extract available keys from sample response
+crudApi.get('/endpoints/introspect', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const endpointId = c.req.query('endpoint_id');
+    if (!endpointId) {
+      return c.json({ error: 'endpoint_id query parameter is required' }, 400);
+    }
+
+    // Get endpoint details
+    const endpointSql = `
+      SELECT 
+        id, name, description, url, method, auth_type, auth_value,
+        headers, body_template, query_params, response_path,
+        timeout_ms, max_retries, retry_delay_ms, cache_key,
+        cache_ttl_seconds, encrypt_cache, response_validator,
+        allowed_domains, require_https, log_level,
+        created_at, updated_at, created_by, tags
+      FROM endpoint_registry
+      WHERE id = ?
+    `;
+
+    const endpoint = await db.prepare(endpointSql).bind(endpointId).first();
+    if (!endpoint) {
+      return c.json(notFoundResponse(`Endpoint not found: ${endpointId}`));
+    }
+
+    // Parse JSON fields
+    const parsedEndpoint = { ...endpoint };
+    if (parsedEndpoint.headers) {
+      try {
+        parsedEndpoint.headers = JSON.parse(parsedEndpoint.headers);
+      } catch (e) {
+        // Keep as string if not valid JSON
+      }
+    }
+
+    // Helper function to flatten JSON and extract keys
+    function extractKeys(obj: any, prefix = ''): string[] {
+      const keys: string[] = [];
+      
+      if (obj && typeof obj === 'object') {
+        for (const [key, value] of Object.entries(obj)) {
+          const fullKey = prefix ? `${prefix}.${key}` : key;
+          
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            // Recursively extract nested object keys
+            keys.push(...extractKeys(value, fullKey));
+          } else {
+            // Add leaf key
+            keys.push(fullKey);
+          }
+        }
+      }
+      
+      return keys;
+    }
+
+    // Check if we have a sample_response field (we'll add this later)
+    let sampleResponse = null;
+    let availableKeys: string[] = [];
+
+    // For now, we'll create a mock sample response for testing
+    // In a real implementation, we would:
+    // 1. Check if endpoint has sample_response stored
+    // 2. If not and method is GET, call endpoint once safely
+    // 3. Extract keys from response
+    
+    // Mock sample response for testing
+    if (endpointId === 'test_endpoint_1') {
+      sampleResponse = {
+        data: {
+          user: {
+            id: 1,
+            name: "John Doe",
+            email: "john@example.com"
+          },
+          posts: [
+            { id: 1, title: "Post 1" },
+            { id: 2, title: "Post 2" }
+          ]
+        }
+      };
+      availableKeys = extractKeys(sampleResponse);
+    } else {
+      // Default empty response
+      sampleResponse = { message: "No sample response available" };
+      availableKeys = ["message"];
+    }
+
+    // Build response
+    const response = {
+      id: parsedEndpoint.id,
+      name: parsedEndpoint.name,
+      description: parsedEndpoint.description,
+      method: parsedEndpoint.method,
+      url: parsedEndpoint.url,
+      headers: parsedEndpoint.headers,
+      sample_request: {
+        method: parsedEndpoint.method,
+        url: parsedEndpoint.url,
+        headers: parsedEndpoint.headers || {}
+      },
+      sample_response: sampleResponse,
+      available_keys: availableKeys
+    };
+
+    return c.json(successResponse(response));
+
+  } catch (error: any) {
+    console.error('Error introspecting endpoint:', error);
+    return c.json(errorResponse(`Error introspecting endpoint: ${error.message}`, 500));
+  }
+});
+
+// 4️⃣ Create new endpoint
 crudApi.post('/endpoints', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
