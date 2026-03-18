@@ -54,6 +54,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
     step_type: 'action',
     inputEndpointId: '',
     outputEndpointId: '',
+    inputKeys: '',
     blocking: 0,
     retryable: 0,
     auto_fail_on_error: 0,
@@ -63,17 +64,23 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
   // Initialize form data from step prop and fetch endpoints
   useEffect(() => {
     if (step) {
-      // Parse input_keys to get endpoint ID
+      // Parse input_keys to get endpoint ID or input keys string
       let inputEndpointId = '';
+      let inputKeys = '';
       try {
         if (step.input_keys) {
-          const inputKeys = JSON.parse(step.input_keys);
-          if (Array.isArray(inputKeys) && inputKeys.length > 0 && inputKeys[0].endpoint_ref) {
-            inputEndpointId = inputKeys[0].endpoint_ref;
+          // Try to parse as JSON (for endpoint references)
+          const parsed = JSON.parse(step.input_keys);
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].endpoint_ref) {
+            inputEndpointId = parsed[0].endpoint_ref;
+          } else {
+            // Not a valid endpoint JSON, treat as input keys string
+            inputKeys = step.input_keys;
           }
         }
       } catch (e) {
-        console.error('Error parsing input_keys:', e);
+        // Not valid JSON, treat as input keys string
+        inputKeys = step.input_keys;
       }
       
       // Parse output_url to get endpoint ID
@@ -88,6 +95,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
         step_type: step.step_type || 'action',
         inputEndpointId,
         outputEndpointId,
+        inputKeys,
         blocking: step.blocking || 0,
         retryable: step.retryable || 0,
         auto_fail_on_error: step.auto_fail_on_error || 0,
@@ -129,10 +137,25 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
         [name]: parseInt(value) || 0
       }));
     } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
+      // Clear the other input field when one is set
+      if (name === 'inputEndpointId' && value) {
+        setFormData(prev => ({
+          ...prev,
+          inputEndpointId: value,
+          inputKeys: '' // Clear input keys when endpoint is selected
+        }));
+      } else if (name === 'inputKeys' && value) {
+        setFormData(prev => ({
+          ...prev,
+          inputKeys: value,
+          inputEndpointId: '' // Clear endpoint when input keys are entered
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          [name]: value
+        }));
+      }
     }
   };
 
@@ -141,13 +164,17 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
     setError(null);
     
     try {
-      // Prepare input_keys based on selected input endpoint
+      // Prepare input_keys based on selected input endpoint or input keys string
       let inputKeys = '[]';
       if (formData.inputEndpointId) {
+        // Use endpoint reference format
         inputKeys = JSON.stringify([{
           key: 'endpoint',
           endpoint_ref: formData.inputEndpointId
         }]);
+      } else if (formData.inputKeys.trim()) {
+        // Use simple string format (comma-separated keys)
+        inputKeys = formData.inputKeys.trim();
       }
       
       // Prepare output_url based on selected output endpoint
@@ -335,6 +362,18 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                     </option>
                   ))}
                 </select>
+                <div className="mt-2">
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Or Input Keys (comma-separated)</label>
+                  <input
+                    type="text"
+                    name="inputKeys"
+                    value={formData.inputKeys}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                    placeholder="e.g., user_input,test_data"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Enter comma-separated input keys (used if no endpoint selected)</p>
+                </div>
               </div>
 
               <div>

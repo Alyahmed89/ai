@@ -201,14 +201,8 @@ export default function ChatPage() {
       const flowResult = await flowResponse.json();
       const conversationId = flowResult.data?.conversation_id;
       
-      // Add initial assistant message
-      const assistantMessage: ChatMessage = {
-        id: assistantMessageId,
-        type: 'assistant',
-        content: flowResult.output_response || flowResult.message || 'Flow execution started. Work will happen in background via alarms.',
-        timestamp: new Date(),
-      };
-      setChatMessages(prev => [...prev, assistantMessage]);
+      // Don't add initial assistant message - we'll only show step instructions and responses
+      // The assistantMessageId is still used for polling but won't create a visible message
       
       // Note: Task status should remain "pending" for the flow to process it
       // The flow will update the task status when it completes
@@ -446,54 +440,18 @@ export default function ChatPage() {
           // Stop polling if flow is completed
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             clearInterval(pollIntervalId);
-            
-            // Add final completion message if not already added
-            const finalMessageId = `${assistantMessageId}_final`;
-            const finalMessageExists = chatMessages.some(msg => msg.id === finalMessageId);
-            
-            if (!finalMessageExists) {
-              const finalMessage: ChatMessage = {
-                id: finalMessageId,
-                type: 'assistant',
-                content: `## Flow Execution Complete\n\nAll ${flowSteps.length} steps have been processed successfully.`,
-                timestamp: new Date(),
-              };
-              
-              setChatMessages(prev => [...prev, finalMessage]);
-            }
+            // Don't add final completion message - we only show step instructions and responses
           }
         }
       } catch (error) {
         console.error('Polling error:', error);
-        
-        // Update message with error
-        setChatMessages(prev => prev.map(msg => {
-          if (msg.id === assistantMessageId) {
-            return {
-              ...msg,
-              content: `❌ Error checking flow status: ${error instanceof Error ? error.message : 'Unknown error'}`
-            };
-          }
-          return msg;
-        }));
-        
         clearInterval(pollIntervalId);
       }
       
       // Stop polling after max attempts
       if (pollCount >= maxPolls) {
         clearInterval(pollIntervalId);
-        
-        // Update message with timeout
-        setChatMessages(prev => prev.map(msg => {
-          if (msg.id === assistantMessageId) {
-            return {
-              ...msg,
-              content: `⏰ Flow timed out after 60 seconds. The flow may still be processing in the background.`
-            };
-          }
-          return msg;
-        }));
+        // Don't show timeout message - we only show step instructions and responses
       }
     }, pollInterval);
   };
@@ -659,7 +617,16 @@ export default function ChatPage() {
                     </div>
                   ) : (
                     chatMessages
-                      .filter(message => message.type === 'user' || message.type === 'assistant' || message.type === 'step')
+                      .filter(message => {
+                        // Show user messages
+                        if (message.type === 'user') return true;
+                        // Show step messages
+                        if (message.type === 'step') return true;
+                        // Show assistant messages that are step responses (contain "**Response:**")
+                        if (message.type === 'assistant' && message.content.includes('**Response:**')) return true;
+                        // Don't show other assistant messages (like flow status messages)
+                        return false;
+                      })
                       .map(message => (
                         <div
                           key={message.id}
