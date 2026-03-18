@@ -1558,18 +1558,29 @@ crudApi.get('/endpoints/introspect', async (c) => {
           console.log("Test 4 - Name SQL:", nameSql, "with param:", trimmedId);
           const nameResult = await db.prepare(nameSql).bind(trimmedId).first();
           console.log("Test 4 - Name result:", nameResult ? "FOUND" : "NOT FOUND");
-          endpoint = nameResult;
+          
+          if (!nameResult) {
+            // STEP 3: Force trim match with TRIM() function
+            console.log("STEP 3: Testing TRIM() function match");
+            const trimSql = `SELECT * FROM endpoint_registry WHERE TRIM(id) = TRIM(?)`;
+            console.log("Test 5 - TRIM SQL:", trimSql, "with param:", trimmedId);
+            const trimResult = await db.prepare(trimSql).bind(trimmedId).first();
+            console.log("Test 5 - TRIM result:", trimResult ? "FOUND" : "NOT FOUND");
+            endpoint = trimResult;
+          } else {
+            endpoint = nameResult;
+          }
         } else {
           endpoint = paramResult;
         }
       }
       
       if (!endpoint) {
-        console.log("STEP 1&2: Endpoint not found with any method");
+        console.log("STEP 1-3: Endpoint not found with any method");
         return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
       }
       
-      console.log("STEP 1&2: Found endpoint:", endpoint.id, endpoint.name);
+      console.log("STEP 1-3: Found endpoint:", endpoint.id, endpoint.name);
       
       // Return basic endpoint info for now
       const response = {
@@ -1584,7 +1595,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
       return c.json(successResponse(response));
       
     } catch (queryError) {
-      console.error("STEP 1&2: Query error:", queryError);
+      console.error("STEP 1-3: Query error:", queryError);
       return c.json(errorResponse(`Database query error: ${queryError.message}`, 500));
     }
 
