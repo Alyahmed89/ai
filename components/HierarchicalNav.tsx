@@ -439,7 +439,7 @@ export default function HierarchicalNav({
                       e.stopPropagation();
                       onEditFlow(flow.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
+                    className="invisible group-hover:visible text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
                     title="Edit Flow"
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -469,7 +469,7 @@ export default function HierarchicalNav({
                 {onEditFlow && selectedFlowId && (
                   <button
                     onClick={() => onEditFlow(selectedFlowId)}
-                    className="opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto ml-2 text-gray-400 hover:text-gray-300 flex-shrink-0"
+                    className="invisible group-hover:visible ml-2 text-gray-400 hover:text-gray-300 flex-shrink-0"
                     title="Edit Flow"
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -580,7 +580,7 @@ export default function HierarchicalNav({
                         e.stopPropagation();
                         setEditingStep(step);
                       }}
-                      className="opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
+                      className="invisible group-hover:visible text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
                       title="Edit Step"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
