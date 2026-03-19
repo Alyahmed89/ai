@@ -633,7 +633,7 @@ export class ConversationOrchestratorDO_2026A {
     
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration', 'POST /openhands-response']
+      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /start-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration', 'POST /openhands-response']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
