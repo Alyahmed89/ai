@@ -676,3 +676,5 @@ export { StrictConversationDO };
 // Export old class names for reference (not used)
 export { StrictConversationDO as ConversationDO_v2 };
 export { StrictConversationDO as ConversationDO };
+// Export StrictConversationDO as ConversationOrchestratorDO_2026A for migration compatibility
+export { StrictConversationDO as ConversationOrchestratorDO_2026A };

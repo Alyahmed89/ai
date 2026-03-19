@@ -9,9 +9,11 @@ OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 ADMIN_KEY = "test-admin-key-123"  # Change this in production
 
 # Use strict execution engine - NO fallbacks, NO silent handling
+# Using ConversationOrchestratorDO_2026A class name for migration compatibility
+# This is actually StrictConversationDO exported with the old name
 [[durable_objects.bindings]]
 name = "CONVERSATIONS"
-class_name = "StrictConversationDO"
+class_name = "ConversationOrchestratorDO_2026A"
 
 # D1 database for flow runs tracking (etaflow tasks database)
 [[d1_databases]]
