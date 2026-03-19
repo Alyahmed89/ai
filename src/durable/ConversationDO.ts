@@ -2237,15 +2237,18 @@ IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" 
     // Update activity tracking for adaptive polling
     this.updateActivityTracking();
     
+    // Filter out status messages from AI response
+    const filteredResponse = this.filterStatusMessages(deepseekResult.response!);
+    
     // Check for stop condition
-    const doneData = this.checkForDone(deepseekResult.response!);
+    const doneData = this.checkForDone(filteredResponse);
     
     // Check deterministic completion via external verification
     const verificationResult = await shouldCompleteTask(
       this.conversation.repository,
       this.conversation.branch || 'main',
       this.conversation.iteration,
-      deepseekResult.response!
+      filteredResponse
     );
     
     // Complete if either AI says done OR external verification passes
@@ -2254,7 +2257,7 @@ IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" 
       console.log(`[DO:${this.state.id}] Completion triggered: ${reason}`);
       console.log(`[DO:${this.state.id}] Verification details: ${JSON.stringify(verificationResult.verificationResult)}`);
       
-      await this.handleDoneResponse(deepseekResult.response!, reason);
+      await this.handleDoneResponse(filteredResponse, reason);
       await this.stopConversation(reason);
       return;
     }
@@ -2262,10 +2265,10 @@ IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" 
     // Add DeepSeek response to conversation history
     this.conversation.conversation_messages!.push({
       role: 'assistant',
-      content: deepseekResult.response!
+      content: filteredResponse
     });
     
-    this.conversation.last_deepseek_response = deepseekResult.response;
+    this.conversation.last_deepseek_response = filteredResponse;
     
     // Clear DeepSeek response pending flag since we got a response
     this.conversation.deepseek_response_pending = false;
@@ -2273,7 +2276,7 @@ IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" 
     // Check if we're in dual-agent mode
     if (this.conversation.dual_agent_state && !this.conversation.dual_agent_state.is_complete) {
       console.log(`[DO:${this.state.id}] Handling dual-agent response`);
-      await this.handleDualAgentResponse(deepseekResult.response!);
+      await this.handleDualAgentResponse(filteredResponse);
       return;
     }
     
@@ -3378,15 +3381,18 @@ ${messageContent}`;
     // Update activity tracking for adaptive polling
     this.updateActivityTracking();
     
+    // Filter out status messages from AI response
+    const filteredResponse = this.filterStatusMessages(deepseekResult.response!);
+    
     // Check for stop condition
-    const doneData = this.checkForDone(deepseekResult.response!);
+    const doneData = this.checkForDone(filteredResponse);
     
     // Check deterministic completion via external verification
     const verificationResult = await shouldCompleteTask(
       this.conversation.repository,
       this.conversation.branch || 'main',
       this.conversation.iteration,
-      deepseekResult.response!
+      filteredResponse
     );
     
     // Complete if either AI says done OR external verification passes
@@ -3395,7 +3401,7 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Completion triggered: ${reason}`);
       console.log(`[DO:${this.state.id}] Verification details: ${JSON.stringify(verificationResult.verificationResult)}`);
       
-      await this.handleDoneResponse(deepseekResult.response!, reason);
+      await this.handleDoneResponse(filteredResponse, reason);
       await this.stopConversation(reason);
       return;
     }
@@ -3403,10 +3409,10 @@ ${messageContent}`;
     // Add DeepSeek response to conversation history
     this.conversation.conversation_messages!.push({
       role: 'assistant',
-      content: deepseekResult.response!
+      content: filteredResponse
     });
     
-    this.conversation.last_deepseek_response = deepseekResult.response;
+    this.conversation.last_deepseek_response = filteredResponse;
     
     // Clear DeepSeek response pending flag since we got a response
     this.conversation.deepseek_response_pending = false;
@@ -3414,7 +3420,7 @@ ${messageContent}`;
     // Check if we're in dual-agent mode
     if (this.conversation.dual_agent_state && !this.conversation.dual_agent_state.is_complete) {
       console.log(`[DO:${this.state.id}] Handling dual-agent response`);
-      await this.handleDualAgentResponse(deepseekResult.response!);
+      await this.handleDualAgentResponse(filteredResponse);
       return;
     }
     
@@ -3503,13 +3509,16 @@ ${messageContent}`;
     // Update activity tracking for adaptive polling
     this.updateActivityTracking();
     
-    // Add DeepSeek response to conversation history
+    // Filter out status messages from AI response
+    const filteredResponse = this.filterStatusMessages(deepseekResult.response!);
+    
+    // Add filtered DeepSeek response to conversation history
     this.conversation.conversation_messages!.push({
       role: 'assistant',
-      content: deepseekResult.response!
+      content: filteredResponse
     });
     
-    this.conversation.last_deepseek_response = deepseekResult.response;
+    this.conversation.last_deepseek_response = filteredResponse;
     
     // Clear DeepSeek response pending flag
     this.conversation.deepseek_response_pending = false;
