@@ -53,13 +53,15 @@ export default function ApiEndpointsModal({ isOpen, onClose }: ApiEndpointsModal
         endpointsArray = data.endpoints || data.commands || [];
       } else if (typeof data === 'object' && data !== null) {
         // Try to extract endpoints from object properties
-        endpointsArray = Object.values(data).filter(item => 
-          item && typeof item === 'object' && (item.path || item.method)
-        );
+        endpointsArray = Object.values(data).filter(item => {
+          if (!item || typeof item !== 'object') return false;
+          const endpointItem = item as Record<string, any>;
+          return endpointItem.path || endpointItem.method;
+        });
       }
       
       // Ensure all endpoints have required fields
-      endpointsArray = endpointsArray.map(endpoint => ({
+      endpointsArray = endpointsArray.map((endpoint: any) => ({
         path: endpoint.path || '',
         method: endpoint.method || 'GET',
         description: endpoint.description,
