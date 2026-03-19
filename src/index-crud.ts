@@ -1,7 +1,7 @@
 // Hono HTTP API with CRUD endpoints
 import { Hono } from 'hono';
 import { CloudflareBindings } from './types';
-import { StrictConversationDO } from './durable/StrictConversationDO';
+import { ConversationOrchestratorDO_2026A } from './durable/ConversationDO';
 import { crudApi } from './crud-api';
 import { graphApi } from './graph-api';
 import { successResponse, errorResponse, notFoundResponse } from './response';
@@ -672,9 +672,7 @@ app.get('/status/:id', async (c) => {
 });
 
 export default app;
-export { StrictConversationDO };
+export { ConversationOrchestratorDO_2026A };
 // Export old class names for reference (not used)
-export { StrictConversationDO as ConversationDO_v2 };
-export { StrictConversationDO as ConversationDO };
-// Export StrictConversationDO as ConversationOrchestratorDO_2026A for migration compatibility
-export { StrictConversationDO as ConversationOrchestratorDO_2026A };
+export { ConversationOrchestratorDO_2026A as ConversationDO_v2 };
+export { ConversationOrchestratorDO_2026A as ConversationDO };

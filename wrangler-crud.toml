@@ -8,9 +8,7 @@ DEEPSEEK_API_KEY = "sk-57370a37c79f4b7db9dbd1e253c25b8b"
 OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 ADMIN_KEY = "test-admin-key-123"  # Change this in production
 
-# Use strict execution engine - NO fallbacks, NO silent handling
-# Using ConversationOrchestratorDO_2026A class name for migration compatibility
-# This is actually StrictConversationDO exported with the old name
+# Use actual exported class name (original ConversationOrchestratorDO_2026A to restore flow execution)
 [[durable_objects.bindings]]
 name = "CONVERSATIONS"
 class_name = "ConversationOrchestratorDO_2026A"
@@ -38,4 +36,4 @@ database_id = "35f4cc1c-5656-4c02-bda8-26b62b63e6ca"
 # Durable Object migration for new class (using new_sqlite_classes for free plan)
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["StrictConversationDO"]
+new_sqlite_classes = ["ConversationOrchestratorDO_2026A"]
