@@ -1451,11 +1451,11 @@ export class ConversationOrchestratorDO_2026A {
     // Calculate progress
     const totalSteps = this.conversation.flow_steps?.length || 0;
     const currentStep = this.conversation.current_flow_step || 1;
-    // For SENDING STEP: progress = (currentStep - 1)/totalSteps (steps completed so far)
+    // For SENDING STEP: progress = currentStep/totalSteps (current step number)
     // For STEP COMPLETED: progress = currentStep/totalSteps (steps completed including this one)
-    const progress = status === 'SENDING STEP' 
-      ? `${Math.max(0, currentStep - 1)}/${totalSteps}`
-      : `${currentStep}/${totalSteps}`;
+    // Note: Both use currentStep because when sending a step, we're on that step
+    // When step completes, we're still on that step (moveToNextStep happens after)
+    const progress = `${currentStep}/${totalSteps}`;
 
     // Format status message
     const statusMessage = `**Status:** ${status}\n**Step:** ${step.title}\n**Progress:** ${progress}`;
