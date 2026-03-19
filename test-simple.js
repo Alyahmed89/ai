@@ -3,7 +3,7 @@ console.log('=== ULTRA-MINIMAL FLOW EXECUTION ===\n');
 
 console.log('1. User calls:');
 console.log('   POST /start');
-console.log('   Body: {"flow": "etaflow"}');
+console.log('   Body: {"flow_id": "etaflow"}');
 console.log('');
 
 console.log('2. System loads steps from database:');
@@ -38,7 +38,7 @@ console.log('6. Repeat for all 21 steps');
 console.log('');
 
 console.log('=== WHAT IS INCLUDED ===');
-console.log('1. /start endpoint - accepts {"flow": "etaflow"}');
+console.log('1. /start endpoint - accepts {"flow_id": "etaflow"}');
 console.log('2. FlowDO - loads steps from database, sends to OpenHands');
 console.log('3. /response endpoint - OpenHands sends responses here');
 console.log('4. Steps sent sequentially from first to last');
