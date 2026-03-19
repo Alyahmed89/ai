@@ -906,29 +906,93 @@ function resolveVariableReference(
 
 // Helper to execute endpoint request
 async function executeEndpointRequest(request: any, endpoint: any): Promise<any> {
-  // For now, use mock response for testing
-  // In production, this would make actual HTTP requests
-  if (endpoint.sample_response) {
+  // STRICT EXECUTION: Make actual HTTP requests, NO mock responses
+  console.log(`[STRICT] Executing endpoint: ${endpoint.name}`, {
+    method: endpoint.method,
+    endpoint: endpoint.endpoint,
+    request
+  });
+
+  try {
+    // Build URL with path parameters
+    let url = endpoint.endpoint;
+    
+    // Replace path parameters (e.g., /api/users/:id)
+    if (request.path_params) {
+      Object.entries(request.path_params).forEach(([key, value]) => {
+        url = url.replace(`:${key}`, encodeURIComponent(String(value)));
+      });
+    }
+    
+    // Add query parameters
+    if (request.query_params) {
+      const queryParams = new URLSearchParams();
+      Object.entries(request.query_params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          queryParams.append(key, String(value));
+        }
+      });
+      const queryString = queryParams.toString();
+      if (queryString) {
+        url += (url.includes('?') ? '&' : '?') + queryString;
+      }
+    }
+    
+    // Prepare request options
+    const options: RequestInit = {
+      method: endpoint.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(request.headers || {})
+      }
+    };
+    
+    // Add body for POST/PUT/PATCH requests
+    if (request.body && ['POST', 'PUT', 'PATCH'].includes(endpoint.method?.toUpperCase() || '')) {
+      options.body = JSON.stringify(request.body);
+    }
+    
+    // Make the actual HTTP request
+    console.log(`[STRICT] Making HTTP request: ${endpoint.method} ${url}`);
+    const response = await fetch(url, options);
+    
+    // Parse response
+    const responseText = await response.text();
+    let responseData;
+    
     try {
-      const sampleData = JSON.parse(endpoint.sample_response);
-      return {
-        status: 200,
-        data: sampleData
-      };
-    } catch (error) {
-      console.error(`[executeEndpointRequest] Error parsing sample_response for ${endpoint.name}:`, error);
+      responseData = responseText ? JSON.parse(responseText) : {};
+    } catch (parseError) {
+      console.error(`[STRICT] Failed to parse JSON response for ${endpoint.name}:`, responseText);
+      responseData = { raw_response: responseText };
     }
+    
+    // Return structured response
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      data: responseData,
+      headers: Object.fromEntries(response.headers.entries()),
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error: any) {
+    console.error(`[STRICT] Error executing endpoint ${endpoint.name}:`, error);
+    
+    // Return structured error (NO silent handling)
+    return {
+      status: 500,
+      statusText: 'Internal Error',
+      data: {
+        error: 'Endpoint execution failed',
+        message: error.message,
+        endpoint: endpoint.name,
+        timestamp: new Date().toISOString()
+      },
+      headers: {},
+      timestamp: new Date().toISOString()
+    };
   }
-  
-  // Default mock response
-  return {
-    status: 200,
-    data: {
-      id: 1,
-      name: endpoint.name,
-      message: "Mock response for testing"
-    }
-  };
 }
 
 // Helper to inject API response data into instructions
