@@ -128,6 +128,9 @@ export interface ConversationData {
     is_complete: boolean;
     completion_reason: string;
   };
+
+  // Step status tracking
+  step_status_sent?: boolean; // Track if SENDING STEP status has been sent for current step
 }
 
 // OpenHands event types

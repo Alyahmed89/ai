@@ -603,7 +603,8 @@ export class ConversationOrchestratorDO_2026A {
         created_at: Date.now(),
         updated_at: Date.now(),
         project_facts: [], // Empty array instead of database query
-        agent: 'openhands' // Default agent for non-flow initialization
+        agent: 'openhands', // Default agent for non-flow initialization
+        step_status_sent: false // Track if SENDING STEP status has been sent for current step
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -917,6 +918,7 @@ export class ConversationOrchestratorDO_2026A {
         // Task-based execution fields
         task_execution_mode: currentStep !== null,
         current_task_id: currentStep?.step_id,
+        step_status_sent: false, // Track if SENDING STEP status has been sent for current step
         current_task_title: currentStep?.title,
         current_task_description: currentStep?.description || undefined,
         
@@ -1110,7 +1112,8 @@ export class ConversationOrchestratorDO_2026A {
         flow_steps: steps,
         current_step_index: 0,
         agent: flowDefinition?.agent || 'openhands', // Set agent from flow definition
-        flow_execution_mode: true // Enable flow execution mode for step-by-step execution
+        flow_execution_mode: true, // Enable flow execution mode for step-by-step execution
+        step_status_sent: false // Track if SENDING STEP status has been sent for current step
       };
       
       // Set current_step if we have steps
@@ -1652,7 +1655,8 @@ export class ConversationOrchestratorDO_2026A {
         updated_at: Date.now(),
         project_facts: projectFacts,
         openhands_conversation_id: openhands_conversation_id,
-        agent: 'openhands' // Default to openhands for attached conversations
+        agent: 'openhands', // Default to openhands for attached conversations
+        step_status_sent: false // Track if SENDING STEP status has been sent for current step
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -3598,11 +3602,12 @@ ${messageContent}`;
     // Check if we have a current_prompt (e.g., from continueWithCommandResult)
     let prompt = this.conversation.current_prompt;
     
-    // Only send SENDING STEP status when we're first sending a step (no current_prompt)
-    // Not when we're continuing with a command result
-    if (!prompt) {
+    // Only send SENDING STEP status when we're first sending a step
+    // Track with step_status_sent flag to prevent duplicates
+    if (!this.conversation.step_status_sent) {
       // Send SENDING STEP status with progress
       await this.sendStepStatus(step, 'SENDING STEP');
+      this.conversation.step_status_sent = true;
     }
     
     // Check if this is a dual-agent step
@@ -4327,7 +4332,10 @@ Use the response in your work.`
     // 6. Send STEP COMPLETED status
     await this.sendStepStatus(step, 'STEP COMPLETED');
     
-    // 7. Continue with next step in current flow
+    // 7. Reset step status sent flag for next step
+    this.conversation.step_status_sent = false;
+    
+    // 8. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
     // Flow transitions only happen via flow_definitions.next_flow_id
     // when flow completes (next_step == -1)
