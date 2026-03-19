@@ -399,9 +399,6 @@ export default function HierarchicalNav({
                 <div className="flex items-center min-w-0 flex-1">
                   <span className="truncate">{project.name}</span>
                 </div>
-                <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
-                  {formatTimeAgo(project.created_at * 1000)}
-                </span>
               </button>
             ))}
           </div>
@@ -438,6 +435,20 @@ export default function HierarchicalNav({
           <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
             {flows.map(flow => (
               <div key={flow.id} className="group flex items-center">
+                {onEditFlow && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditFlow(flow.id);
+                    }}
+                    className="invisible group-hover:visible text-gray-400 hover:text-gray-300 mr-1 p-1 flex-shrink-0"
+                    title="Edit Flow"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   onClick={() => handleFlowSelect(flow.id)}
                   className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
@@ -454,24 +465,7 @@ export default function HierarchicalNav({
                       </svg>
                     )}
                   </div>
-                  <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
-                    {formatTimeAgo(flow.created_at)}
-                  </span>
                 </button>
-                {onEditFlow && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditFlow(flow.id);
-                    }}
-                    className="invisible group-hover:visible text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
-                    title="Edit Flow"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                )}
               </div>
             ))}
           </div>
@@ -555,144 +549,150 @@ export default function HierarchicalNav({
 
           {/* Steps Section - shown when activeSection is 'steps' */}
           {activeSection === 'steps' && (
-            <div className="p-4 border-b border-gray-800">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  <span className="text-sm font-medium text-gray-300">Steps</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {onCreateStep && (
-                    <button
-                      onClick={onCreateStep}
-                      className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
-                      title="Create New Step"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </button>
-                  )}
-                  {loading.steps && (
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                  )}
+            <div className="flex flex-col h-full">
+              <div className="p-4 border-b border-gray-800">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span className="text-sm font-medium text-gray-300">Steps</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {onCreateStep && (
+                      <button
+                        onClick={onCreateStep}
+                        className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                        title="Create New Step"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                    )}
+                    {loading.steps && (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
-                {filteredSteps.map(step => (
-                  <div 
-                    key={step.id}
-                    className="group flex items-center"
-                  >
-                    <button
-                      onClick={() => handleStepSelect(step.id)}
-                      className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                        selectedStepId === step.id 
-                          ? 'bg-blue-900/30 text-blue-300' 
-                          : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                      }`}
+              <div className="flex-1 overflow-y-auto">
+                <div className="space-y-1 p-4">
+                  {filteredSteps.map(step => (
+                    <div 
+                      key={step.id}
+                      className="group flex items-center"
                     >
-                      <div className="flex items-center min-w-0 flex-1">
-                        <span className="truncate">{step.title}</span>
-                      </div>
-                    </button>
-                    
-                    {/* Edit button - visible on hover */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingStep(step);
-                      }}
-                      className="invisible group-hover:visible text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
-                      title="Edit Step"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        onClick={() => handleStepSelect(step.id)}
+                        className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                          selectedStepId === step.id 
+                            ? 'bg-blue-900/30 text-blue-300' 
+                            : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center min-w-0 flex-1">
+                          <span className="truncate">{step.title}</span>
+                        </div>
+                      </button>
+                      
+                      {/* Edit button - visible on hover */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingStep(step);
+                        }}
+                        className="invisible group-hover:visible text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
+                        title="Edit Step"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
           {/* Tasks Section - shown when activeSection is 'tasks' */}
           {activeSection === 'tasks' && (
-            <div className="p-4 border-b border-gray-800">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  <span className="text-sm font-medium text-gray-300">Tasks</span>
+            <div className="flex flex-col h-full">
+              <div className="p-4 border-b border-gray-800">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span className="text-sm font-medium text-gray-300">Tasks</span>
+                  </div>
+                  {loading.tasks && (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                  )}
                 </div>
-                {loading.tasks && (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                )}
               </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
-                {filteredTasks.map(task => (
-                  <button
-                    key={task.id}
-                    onClick={() => handleTaskSelect(task.id)}
-                    className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                      selectedTaskId === task.id 
-                        ? 'bg-blue-900/30 text-blue-300' 
-                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center min-w-0 flex-1">
-                      <span className="truncate">{task.title || 'Untitled Task'}</span>
-                    </div>
-                    <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
-                      {formatTimeAgo(task.created_at)}
-                    </span>
-                  </button>
-                ))}
+              <div className="flex-1 overflow-y-auto">
+                <div className="space-y-1 p-4">
+                  {filteredTasks.map(task => (
+                    <button
+                      key={task.id}
+                      onClick={() => handleTaskSelect(task.id)}
+                      className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                        selectedTaskId === task.id 
+                          ? 'bg-blue-900/30 text-blue-300' 
+                          : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center min-w-0 flex-1">
+                        <span className="truncate">{task.title || 'Untitled Task'}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
           {/* Flow Runs Section - shown when activeSection is 'flowRuns' */}
           {activeSection === 'flowRuns' && (
-            <div className="p-4 border-b border-gray-800">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span className="text-sm font-medium text-gray-300">Flow Runs</span>
+            <div className="flex flex-col h-full">
+              <div className="p-4 border-b border-gray-800">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span className="text-sm font-medium text-gray-300">Flow Runs</span>
+                  </div>
+                  {loading.flowRuns && (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                  )}
                 </div>
-                {loading.flowRuns && (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                )}
               </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
-                {filteredFlowRuns.map(run => (
-                  <button
-                    key={run.id}
-                    onClick={() => handleFlowRunSelect(run.id)}
-                    className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                      selectedFlowRunId === run.id 
-                        ? 'bg-blue-900/30 text-blue-300' 
-                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center min-w-0 flex-1">
-                      <span className="truncate">{run.id.substring(0, 8)}...</span>
-                      <div className={`ml-2 w-2 h-2 rounded-full flex-shrink-0 ${
-                        run.status === 'active' ? 'bg-green-500' :
-                        run.status === 'completed' ? 'bg-blue-500' :
-                        'bg-gray-500'
-                      }`} />
-                    </div>
-                    <span className="text-xs text-gray-500 ml-2 whitespace-nowrap flex-shrink-0">
-                      {formatTimeAgo(run.created_at)}
-                    </span>
-                  </button>
-                ))}
+              <div className="flex-1 overflow-y-auto">
+                <div className="space-y-1 p-4">
+                  {filteredFlowRuns.map(run => (
+                    <button
+                      key={run.id}
+                      onClick={() => handleFlowRunSelect(run.id)}
+                      className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                        selectedFlowRunId === run.id 
+                          ? 'bg-blue-900/30 text-blue-300' 
+                          : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center min-w-0 flex-1">
+                        <span className="truncate">{run.id.substring(0, 8)}...</span>
+                        <div className={`ml-2 w-2 h-2 rounded-full flex-shrink-0 ${
+                          run.status === 'active' ? 'bg-green-500' :
+                          run.status === 'completed' ? 'bg-blue-500' :
+                          'bg-gray-500'
+                        }`} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
