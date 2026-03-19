@@ -187,7 +187,7 @@ export class CommandExecutor {
     command: CommandRegistryEntry,
     params: Record<string, any> | undefined
   ): Promise<any> {
-    const endpointPath = this.buildCommandUrl(command.endpoint, params);
+    const endpointPath = this.buildCommandUrl(command.endpoint, params, command.method);
     
     // Determine if we need to prepend baseUrl
     let url: string;
