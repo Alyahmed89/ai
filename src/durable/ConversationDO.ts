@@ -2108,12 +2108,12 @@ export class ConversationOrchestratorDO_2026A {
               role: 'system',
               content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
 
+CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
+
 ${availableCommands}
 
 The system will execute the command and return the results.
-Use the response in your work.
-
-IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. Just execute the step and return the result.`
+Use the response in your work.`
             },
             {
               role: 'user',
@@ -2215,12 +2215,12 @@ Use the response in your work.`
       // System message for flow execution with command format instructions
       `You are an AI assistant executing a workflow step.
 
+CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
+
 ${availableCommands}
 
 The system will execute the command and return the results.
-Use the response in your work.
-
-IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. Just execute the step and return the result.`
+Use the response in your work.`
     );
     
     // Store initial messages in conversation
@@ -3827,12 +3827,12 @@ ${messageContent}`;
           role: 'system',
           content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
 
+CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
+
 ${availableCommands}
 
 The system will execute the command and return the results.
-Use the response in your work.
-
-IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. Just execute the step and return the result.`
+Use the response in your work.`
         },
         { role: 'user', content: prompt }
       ];
