@@ -239,6 +239,32 @@ Stack: ${error.stack}`;
     try {
       await this.loadConversationState();
       
+      // Initialize a new conversation
+      if (path === '/initialize' && request.method === 'POST') {
+        return await this.handleInitialize(request);
+      }
+      
+      // Initialize a new flow execution
+      if (path === '/initialize-flow' && request.method === 'POST') {
+        return await this.handleInitializeFlow(request);
+      }
+      
+      // Ultra-minimal flow execution (NEW)
+      if (path === '/start-flow' && request.method === 'POST') {
+        return await this.handleStartFlow(request);
+      }
+      
+      // Get conversation state
+      if (path === '/get-state' && request.method === 'GET') {
+        return await this.handleGetState();
+      }
+      
+      // OpenHands response webhook (for flow execution)
+      if (path === '/openhands-response' && request.method === 'POST') {
+        return await this.handleOpenHandsResponse(request);
+      }
+      
+      // Strict execution endpoints
       if (path.endsWith('/handle-command-strict') && request.method === 'POST') {
         return await this.handleCommandStrictEndpoint(request);
       }
@@ -255,7 +281,13 @@ Stack: ${error.stack}`;
         return await this.resetExecutionStateEndpoint();
       }
       
-      return new Response('Not Found', { status: 404 });
+      return new Response(JSON.stringify({
+        error: 'Not found',
+        available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /start-flow', 'GET /get-state', 'POST /openhands-response', 'POST /handle-command-strict', 'POST /execute-flow-strict', 'GET /execution-state', 'POST /reset-execution-state']
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
       
     } catch (error: any) {
       console.error(`[STRICT_DO] Error handling request:`, error);
@@ -341,5 +373,240 @@ Stack: ${error.stack}`;
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
+  }
+
+  // ==========================================================================
+  // Required endpoints for compatibility with index-crud.ts
+  // ==========================================================================
+
+  /**
+   * Initialize a new conversation (simplified version)
+   */
+  private async handleInitialize(request: Request): Promise<Response> {
+    try {
+      const body = await request.json() as {
+        repository: string;
+        branch?: string;
+        initial_user_prompt: string;
+        max_iterations?: number;
+      };
+      const { repository, branch, initial_user_prompt, max_iterations } = body;
+      
+      if (!repository || !initial_user_prompt) {
+        return new Response(JSON.stringify({ error: 'Need repository and initial_user_prompt' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Initialize conversation - SIMPLIFIED for strict execution
+      this.conversation = {
+        state: 'INIT',
+        initial_user_prompt,
+        iteration: 0,
+        repository,
+        branch: branch || 'main',
+        max_iterations: max_iterations || 20,
+        status: 'active',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        project_facts: [],
+        agent: 'openhands',
+        conversation_history: []
+      };
+      
+      await this.state.storage.put('conversation', this.conversation);
+      
+      console.log(`[STRICT_DO:${this.state.id}] Initialized conversation for strict execution`);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        conversation_id: this.state.id.toString(),
+        state: 'INIT',
+        message: 'Conversation initialized for strict execution.'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[STRICT_DO:${this.state.id}] Initialize error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  /**
+   * Initialize a new flow execution (simplified version)
+   */
+  private async handleInitializeFlow(request: Request): Promise<Response> {
+    try {
+      console.log(`[STRICT_DO:${this.state.id}] handleInitializeFlow called`);
+      
+      const body = await request.json() as {
+        flow_id: string;
+        repository?: string;
+        branch?: string;
+        initial_user_prompt?: string;
+        max_iterations?: number;
+      };
+      const { flow_id, repository, branch, initial_user_prompt, max_iterations } = body;
+      
+      console.log(`[STRICT_DO:${this.state.id}] Parsed request: flow_id=${flow_id}`);
+      
+      if (!flow_id) {
+        return new Response(JSON.stringify({ error: 'flow_id is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Initialize conversation for flow execution
+      this.conversation = {
+        state: 'INIT',
+        initial_user_prompt: initial_user_prompt || `Execute flow: ${flow_id}`,
+        iteration: 0,
+        repository: repository || 'unknown/repository',
+        branch: branch || 'main',
+        max_iterations: max_iterations || 20,
+        status: 'active',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        project_facts: [],
+        agent: 'openhands',
+        conversation_history: [],
+        flow_id: flow_id
+      };
+      
+      await this.state.storage.put('conversation', this.conversation);
+      
+      console.log(`[STRICT_DO:${this.state.id}] Initialized flow execution: ${flow_id}`);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        conversation_id: this.state.id.toString(),
+        state: 'INIT',
+        flow_id,
+        message: 'Flow execution initialized for strict execution.'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[STRICT_DO:${this.state.id}] InitializeFlow error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  /**
+   * Start flow execution (simplified version)
+   */
+  private async handleStartFlow(request: Request): Promise<Response> {
+    try {
+      const body = await request.json() as {
+        flow_id: string;
+      };
+      const { flow_id } = body;
+      
+      if (!flow_id) {
+        return new Response(JSON.stringify({ error: 'flow_id is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // For strict execution, we just initialize the flow
+      // Actual execution happens through execute-flow-strict endpoint
+      this.conversation = {
+        state: 'INIT',
+        initial_user_prompt: `Execute flow: ${flow_id}`,
+        iteration: 0,
+        repository: 'unknown/repository',
+        branch: 'main',
+        max_iterations: 20,
+        status: 'active',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        project_facts: [],
+        agent: 'openhands',
+        conversation_history: [],
+        flow_id: flow_id
+      };
+      
+      await this.state.storage.put('conversation', this.conversation);
+      
+      console.log(`[STRICT_DO:${this.state.id}] Started flow: ${flow_id}`);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        conversation_id: this.state.id.toString(),
+        state: 'INIT',
+        flow_id,
+        message: 'Flow started for strict execution.'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[STRICT_DO:${this.state.id}] StartFlow error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  /**
+   * Get conversation state
+   */
+  private async handleGetState(): Promise<Response> {
+    return new Response(JSON.stringify({
+      success: true,
+      conversation: this.conversation || { state: 'not_initialized' }
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  /**
+   * Handle OpenHands response webhook (for flow execution)
+   * Simplified version - just logs and returns success
+   */
+  private async handleOpenHandsResponse(request: Request): Promise<Response> {
+    try {
+      await this.loadConversationState();
+      
+      if (!this.conversation) {
+        return new Response(JSON.stringify({ error: 'Conversation not initialized' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      const body = await request.json();
+      console.log(`[STRICT_DO:${this.state.id}] OpenHands webhook received:`, body);
+      
+      // For strict execution, we just acknowledge the webhook
+      // Actual processing happens through strict execution engine
+      
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'OpenHands response received by strict execution engine',
+        conversation_state: this.conversation.state
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error: any) {
+      console.error(`[STRICT_DO:${this.state.id}] OpenHandsResponse error: ${error.message}`);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
   }
 }
