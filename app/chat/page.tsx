@@ -543,11 +543,13 @@ export default function ChatPage() {
                   });
                 }
               } else {
-                // Flow is still running - show progress
+                // Flow is still running - show detailed progress
                 const completedSteps = Math.max(0, currentStepIndex);
                 const totalSteps = flowSteps.length;
                 const progress = totalSteps > 0 ? `${completedSteps}/${totalSteps} steps` : 'processing';
-                content = `⏳ Flow processing... (${pollCount * 2}s, ${progress})`;
+                const currentStep = flowSteps[currentStepIndex];
+                const stepTitle = currentStep?.title || `Step ${currentStepIndex + 1}`;
+                content = `⏳ Flow processing... (${pollCount * 2}s)\n**Current Step:** ${stepTitle}\n**Progress:** ${progress}\n**State:** ${conversation.state || 'RUNNING'}`;
               }
               
               return {
@@ -559,19 +561,20 @@ export default function ChatPage() {
           }));
           
           // Check if we have a new step response to display
-          if (lastStepResponse && currentStepIndex > 0) {
-            // The step that just completed is at index currentStepIndex - 1
-            const completedStepIndex = currentStepIndex - 1;
+          if (lastStepResponse && lastStepResponse.trim()) {
+            // Track responses by their content hash to avoid duplicates
+            const responseHash = btoa(lastStepResponse).substring(0, 32);
+            const responseKey = `response_${responseHash}`;
             
-            if (!completedStepIndices.has(completedStepIndex) && completedStepIndex >= 0) {
-              // Mark this step as completed
-              completedStepIndices.add(completedStepIndex);
-              
-              // Get step details
-              const step = flowSteps[completedStepIndex];
-              const stepTitle = step?.title || `Step ${completedStepIndex + 1}`;
-              const stepInstructions = step?.instructions || '';
-              
+            if (!completedStepIndices.has(responseKey)) {
+              // Mark this response as displayed
+              completedStepIndices.add(responseKey);
+
+              // Get current step details (the step that generated this response)
+              const currentStep = flowSteps[currentStepIndex] || flowSteps[Math.max(0, currentStepIndex - 1)];
+              const stepTitle = currentStep?.title || `Step ${currentStepIndex + 1}`;
+              const stepInstructions = currentStep?.description || currentStep?.instructions || '';
+
               // Replace placeholders with actual user message
               let stepInstructionsWithUserMessage = stepInstructions || 'Processing step...';
               if (userMessage) {
@@ -584,49 +587,33 @@ export default function ChatPage() {
                   stepInstructionsWithUserMessage = stepInstructionsWithUserMessage.replace(/\{input_prompt\}/g, userMessage);
                 }
               }
-              
-              let stepContent = `### ${stepTitle}\n\n${stepInstructionsWithUserMessage}`;
-              
-              // Create a STEP message (instruction) - appears on RIGHT side
-              const stepInstructionMessage: ChatMessage = {
-                id: `${assistantMessageId}_step_instruction_${completedStepIndex}`,
-                type: 'step',
-                content: stepContent,
+
+              // Create a STATUS message showing the current state
+              const statusMessage: ChatMessage = {
+                id: `${assistantMessageId}_status_${Date.now()}`,
+                type: 'api_response',
+                content: `**Status:** ${conversation.state || 'RUNNING'}\n**Step:** ${stepTitle}\n**Progress:** ${currentStepIndex + 1}/${flowSteps.length}`,
                 timestamp: new Date(),
               };
-              
-              // Create a RESPONSE message - appears on LEFT side
+
+              // Create a STEP RESPONSE message
               const stepResponseMessage: ChatMessage = {
-                id: `${assistantMessageId}_step_response_${completedStepIndex}`,
+                id: `${assistantMessageId}_step_response_${Date.now()}`,
                 type: 'assistant',
-                content: `**Response:** ${lastStepResponse}`,
+                content: `**Response:**\n${lastStepResponse}`,
                 timestamp: new Date(),
               };
-              
+
               // Add both messages to chat
               setChatMessages(prev => {
                 let newMessages = [...prev];
-                
-                // Check if step instruction already exists
-                const stepInstructionIndex = newMessages.findIndex(msg => msg.id === stepInstructionMessage.id);
-                if (stepInstructionIndex >= 0) {
-                  // Update existing step instruction
-                  newMessages[stepInstructionIndex] = stepInstructionMessage;
-                } else {
-                  // Add new step instruction
-                  newMessages.push(stepInstructionMessage);
-                }
-                
-                // Check if step response already exists
-                const stepResponseIndex = newMessages.findIndex(msg => msg.id === stepResponseMessage.id);
-                if (stepResponseIndex >= 0) {
-                  // Update existing step response
-                  newMessages[stepResponseIndex] = stepResponseMessage;
-                } else {
-                  // Add new step response
-                  newMessages.push(stepResponseMessage);
-                }
-                
+
+                // Add status message
+                newMessages.push(statusMessage);
+
+                // Add step response message
+                newMessages.push(stepResponseMessage);
+
                 return newMessages;
               });
             }
