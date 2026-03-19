@@ -1402,14 +1402,21 @@ export class ConversationOrchestratorDO_2026A {
    */
   private filterStatusMessages(response: string): string {
     // Remove lines that look like status messages
+    console.log(`[DO:${this.state.id}] Filtering status messages from response: ${response.substring(0, 200)}...`);
     const lines = response.split('\n');
     const filteredLines = lines.filter(line => {
       // Remove lines that start with **Status:**, **Step:**, or **Progress:**
-      return !line.trim().startsWith('**Status:**') && 
-             !line.trim().startsWith('**Step:**') && 
-             !line.trim().startsWith('**Progress:**');
+      const shouldFilter = line.trim().startsWith('**Status:**') || 
+             line.trim().startsWith('**Step:**') || 
+             line.trim().startsWith('**Progress:**');
+      if (shouldFilter) {
+        console.log(`[DO:${this.state.id}] Filtering out line: ${line}`);
+      }
+      return !shouldFilter;
     });
-    return filteredLines.join('\n').trim();
+    const filteredResponse = filteredLines.join('\n').trim();
+    console.log(`[DO:${this.state.id}] Filtered response: ${filteredResponse.substring(0, 200)}...`);
+    return filteredResponse;
   }
 
   /**
