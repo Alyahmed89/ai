@@ -41,7 +41,7 @@ import {
   IDLE_TIMEOUT,
   COMPLETED_CLEANUP_DELAY
 } from '../constants';
-import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData, Condition, CreateTaskData, SkipTaskData, CommandData } from '../types';
+import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData, Condition, CreateTaskData, SkipTaskData, CommandData, ExecutionEvent, ExecutionEventRecord, FlowInitResponse } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
   private state: DurableObjectState;
@@ -59,6 +59,9 @@ export class ConversationOrchestratorDO_2026A {
   // Command executor
   private commandExecutor: CommandExecutor | null = null;
 
+  // Event emission system for UI step streaming
+  private eventListeners: ((event: ExecutionEvent) => void)[] = [];
+
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
     this.env = env;
@@ -68,6 +71,143 @@ export class ConversationOrchestratorDO_2026A {
     this.flowStepsCache = null;
     this.flowStepsCacheTime = 0;
     this.flowSwitchHistory = [];
+  }
+  // ==========================================================================
+  // EVENT EMISSION SYSTEM
+  // ==========================================================================
+
+  /**
+   * Add event listener for execution events
+   */
+  addEventListener(listener: (event: ExecutionEvent) => void): void {
+    this.eventListeners.push(listener);
+  }
+
+  /**
+   * Remove event listener
+   */
+  removeEventListener(listener: (event: ExecutionEvent) => void): void {
+    this.eventListeners = this.eventListeners.filter(l => l !== listener);
+  }
+
+  /**
+   * Emit execution event to all listeners
+   */
+  private emitEvent(event: ExecutionEvent): void {
+    console.log(`[DO:${this.state.id}] Emitting event: ${event.type}`, event);
+    
+    // Store event in database for debugging/replay
+    this.storeEventInDatabase(event).catch(error => {
+      console.error(`[DO:${this.state.id}] Failed to store event in database:`, error);
+    });
+    
+    // Notify all listeners
+    for (const listener of this.eventListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error(`[DO:${this.state.id}] Event listener error:`, error);
+      }
+    }
+  }
+
+  /**
+   * Store event in database for debugging and replay
+   */
+  private async storeEventInDatabase(event: ExecutionEvent): Promise<void> {
+    if (!this.env.FLOW_RUNS_DB || !this.flowRunId) {
+      return; // No database configured or no flow run ID
+    }
+
+    try {
+      const eventRecord: ExecutionEventRecord = {
+        flow_run_id: this.flowRunId,
+        event_type: event.type,
+        payload: JSON.stringify(event),
+        timestamp: event.ts,
+        created_at: Date.now()
+      };
+
+      await this.env.FLOW_RUNS_DB.prepare(
+        'INSERT INTO execution_events (flow_run_id, event_type, payload, timestamp, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).bind(
+        eventRecord.flow_run_id,
+        eventRecord.event_type,
+        eventRecord.payload,
+        eventRecord.timestamp,
+        eventRecord.created_at
+      ).run();
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error storing event in database:`, error.message);
+      // Don't throw - event emission should not fail if storage fails
+    }
+  }
+
+  /**
+   * Helper methods for common event types
+   */
+  private emitStepStarted(stepId: string, title: string): void {
+    this.emitEvent({
+      type: 'STEP_STARTED',
+      stepId,
+      title,
+      ts: Date.now()
+    });
+  }
+
+  private emitCommandCalling(command: string, params?: Record<string, unknown>): void {
+    this.emitEvent({
+      type: 'COMMAND_CALLING',
+      command,
+      params,
+      ts: Date.now()
+    });
+  }
+
+  private emitCommandResponse(response: unknown, startTime: number): void {
+    this.emitEvent({
+      type: 'COMMAND_RESPONSE',
+      response,
+      duration: Date.now() - startTime,
+      ts: Date.now()
+    });
+  }
+
+  private emitStepCompleted(stepId: string, result: unknown): void {
+    this.emitEvent({
+      type: 'STEP_COMPLETED',
+      stepId,
+      result,
+      ts: Date.now()
+    });
+  }
+
+  private emitStepError(stepId: string, error: string): void {
+    this.emitEvent({
+      type: 'STEP_ERROR',
+      stepId,
+      error,
+      ts: Date.now()
+    });
+  }
+
+  private emitFlowStarted(flowId: string, flowRunId: string): void {
+    this.emitEvent({
+      type: 'FLOW_STARTED',
+      flowId,
+      flowRunId,
+      ts: Date.now()
+    });
+  }
+
+  private emitFlowCompleted(flowId: string, flowRunId: string, result: unknown): void {
+    this.emitEvent({
+      type: 'FLOW_COMPLETED',
+      flowId,
+      flowRunId,
+      result,
+      ts: Date.now()
+    });
   }
   
   /**
@@ -936,7 +1076,7 @@ export class ConversationOrchestratorDO_2026A {
       
       console.log(`[DO:${this.state.id}] Initialized flow execution for flow: ${flow_id}, alarm scheduled`);
       
-      const responseData: any = {
+      const responseData: FlowInitResponse = {
         success: true,
         conversation_id: this.state.id.toString(),
         flow_id: flow_id,
@@ -1129,6 +1269,10 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] Database available: ${!!this.env.FLOW_RUNS_DB}`);
       console.log(`[DO:${this.state.id}] Conversation flow_id: ${this.conversation?.flow_id}`);
       console.log(`[DO:${this.state.id}] Conversation created_at: ${this.conversation?.created_at}`);
+      
+      // Emit FLOW_STARTED event for UI streaming
+      this.emitFlowStarted(flow_id, this.flowRunId);
+      
       await this.createInitialFlowRun();
       
       // Schedule alarm to send first step
@@ -1608,7 +1752,7 @@ export class ConversationOrchestratorDO_2026A {
     
     try {
       const result = await this.env.FLOW_RUNS_DB.prepare(
-        'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, input_keys, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url, output_auth_token, requires_task FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
+        'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, input_keys, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url, output_auth_token, requires_task, dual_agent, ruler_agent, goal_criteria, max_iterations_per_step, expected_response, use_endpoints, extra_step FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
       
       return result.results || [];
@@ -3278,6 +3422,11 @@ Use the response in your work.`
         }
         
         await this.saveFlowRunToDatabase(reason, flowStatus);
+        
+        // Emit FLOW_COMPLETED event for UI streaming if this is a flow completion
+        if (isFlowCompletion && this.flowRunId && this.conversation?.flow_id) {
+          this.emitFlowCompleted(this.conversation.flow_id, this.flowRunId, { reason, flowStatus });
+        }
       } catch (error: any) {
         console.error(`[DO:${this.state.id}] Error saving flow run in stopConversation: ${error.message}`);
       }
@@ -3598,6 +3747,9 @@ ${messageContent}`;
     
     // Update current_step to track which step is being executed
     this.conversation.current_step = step;
+    
+    // Emit STEP_STARTED event for UI streaming
+    this.emitStepStarted(step.step_id || step.id || `step-${step.order_index}`, step.title);
     
     // Check if we have a current_prompt (e.g., from continueWithCommandResult)
     let prompt = this.conversation.current_prompt;
@@ -4050,8 +4202,15 @@ Use the response in your work.`
       // Get command executor
       const commandExecutor = await this.getCommandExecutor();
       
+      // Emit COMMAND_CALLING event for UI streaming
+      this.emitCommandCalling(commandData.name, commandData.params);
+      
       // Execute the command
+      const startTime = Date.now();
       const result = await commandExecutor.executeCommand(commandData);
+      
+      // Emit COMMAND_RESPONSE event for UI streaming
+      this.emitCommandResponse(result, startTime);
       
       // Format result for AI
       const resultMessage = commandExecutor.formatResultForAI(result);
@@ -4073,6 +4232,12 @@ Use the response in your work.`
       
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Error handling command ${commandData.name}:`, error);
+      
+      // Emit STEP_ERROR event for UI streaming
+      if (step) {
+        const stepId = step.step_id || step.id || `step-${step.order_index}`;
+        this.emitStepError(stepId, `Command "${commandData.name}" failed: ${error.message}`);
+      }
       
       // Add error to conversation history
       if (this.conversation.conversation_history) {
@@ -4332,7 +4497,11 @@ Use the response in your work.`
     // 6. Send STEP COMPLETED status
     await this.sendStepStatus(step, 'STEP COMPLETED');
     
-    // 7. Reset step status sent flag for next step
+    // 7. Emit STEP_COMPLETED event for UI streaming
+    const stepId = step.step_id || step.id || `step-${step.order_index}`;
+    this.emitStepCompleted(stepId, { response, filteredResponse });
+    
+    // 8. Reset step status sent flag for next step
     this.conversation.step_status_sent = false;
     
     // 8. Continue with next step in current flow

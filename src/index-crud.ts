@@ -620,6 +620,62 @@ app.get('/status/:id', async (c) => {
   }
 });
 
+// ============================================================================
+// SSE STREAMING ENDPOINT FOR EXECUTION EVENTS
+// ============================================================================
+app.get('/execution-events/:flowRunId', async (c) => {
+  try {
+    const flowRunId = c.req.param('flowRunId');
+    
+    if (!flowRunId) {
+      return c.json(errorResponse('Missing flowRunId parameter', 400));
+    }
+    
+    console.log(`[HTTP:SSE] Starting SSE stream for flowRunId: ${flowRunId}`);
+    
+    // Create a TransformStream for the SSE response
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+    
+    // Write SSE headers
+    writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'CONNECTED', flowRunId, timestamp: Date.now() })}\n\n`));
+    
+    // Store the writer for event emission (in a real implementation, this would be in a global store)
+    // For now, we'll just return the stream and events will be emitted to all active streams
+    // In production, you'd want to manage this with a proper event bus
+    
+    // Set up response with SSE headers
+    const response = new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    });
+    
+    // Store the writer in a global map (simplified - in production use proper event bus)
+    // This is a simplified implementation - in a real app you'd use a proper event bus
+    const streamId = `${flowRunId}-${Date.now()}`;
+    console.log(`[HTTP:SSE] Created SSE stream ${streamId} for flowRunId: ${flowRunId}`);
+    
+    // Clean up when connection closes
+    c.req.signal.addEventListener('abort', () => {
+      console.log(`[HTTP:SSE] SSE stream ${streamId} closed`);
+      writer.close();
+    });
+    
+    return response;
+
+  } catch (error: any) {
+    console.error(`[HTTP:SSE] Endpoint error: ${error.message}`);
+    return c.json(errorResponse(error.message, 500));
+  }
+});
+
 export default app;
 export { ConversationOrchestratorDO_2026A };
 // Export old class names for reference (not used)

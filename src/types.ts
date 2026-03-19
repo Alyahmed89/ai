@@ -356,3 +356,42 @@ export interface ConditionEvaluationResult {
   error?: string;
   nextFlowId?: string;
 }
+
+// Execution events for UI step streaming
+export type ExecutionEvent =
+  | { type: 'STEP_STARTED'; stepId: string; title: string; ts: number }
+  | { type: 'COMMAND_CALLING'; command: string; params?: Record<string, unknown>; ts: number }
+  | { type: 'COMMAND_RESPONSE'; response: unknown; duration: number; ts: number }
+  | { type: 'STEP_COMPLETED'; stepId: string; result: unknown; ts: number }
+  | { type: 'STEP_ERROR'; stepId: string; error: string; ts: number }
+  | { type: 'FLOW_STARTED'; flowId: string; flowRunId: string; ts: number }
+  | { type: 'FLOW_COMPLETED'; flowId: string; flowRunId: string; result: unknown; ts: number };
+
+// Event storage for debugging/replay
+export interface ExecutionEventRecord {
+  id?: number;
+  flow_run_id: string;
+  event_type: string;
+  payload: string; // JSON string of event data
+  timestamp: number;
+  created_at?: number;
+}
+
+// Standard API response format
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  error?: string;
+  [key: string]: unknown; // Allow additional properties
+}
+
+// Flow initialization response
+export interface FlowInitResponse {
+  success: boolean;
+  conversation_id: string;
+  flow_id: string;
+  state: string;
+  message: string;
+  note?: string;
+}

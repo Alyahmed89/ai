@@ -362,7 +362,15 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.input_keys,  -- For dynamic API data fetching
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
-        fs.output_auth_token
+        fs.output_auth_token,
+        fs.requires_task,
+        fs.dual_agent,
+        fs.ruler_agent,
+        fs.goal_criteria,
+        fs.max_iterations_per_step,
+        fs.expected_response,
+        fs.use_endpoints,
+        fs.extra_step
       FROM flow_steps fs
       WHERE fs.flow_id = ?
       ORDER BY fs.order_index
@@ -408,6 +416,14 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
         fs.output_auth_token,
+        fs.requires_task,
+        fs.dual_agent,
+        fs.ruler_agent,
+        fs.goal_criteria,
+        fs.max_iterations_per_step,
+        fs.expected_response,
+        fs.use_endpoints,
+        fs.extra_step,
         t.title as task_title,
         t.description as task_description
       FROM flow_steps fs
@@ -697,7 +713,15 @@ export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_r
         fs.input_keys,
         CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
         fs.output_url,
-        fs.output_auth_token
+        fs.output_auth_token,
+        fs.requires_task,
+        fs.dual_agent,
+        fs.ruler_agent,
+        fs.goal_criteria,
+        fs.max_iterations_per_step,
+        fs.expected_response,
+        fs.use_endpoints,
+        fs.extra_step
       FROM flow_steps fs
       WHERE fs.flow_id = ? 
     `;
@@ -804,7 +828,15 @@ export async function getNextStepBasedOnConditions(
               input_keys: null,
               output: false,
               output_url: null,
-              output_auth_token: null
+              output_auth_token: null,
+              requires_task: false,
+              dual_agent: false,
+              ruler_agent: null,
+              goal_criteria: null,
+              max_iterations_per_step: null,
+              expected_response: null,
+              use_endpoints: null,
+              extra_step: false
             } as unknown as StepData;
           }
           
@@ -827,7 +859,15 @@ export async function getNextStepBasedOnConditions(
                 fs.input_keys,
                 CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
                 fs.output_url,
-                fs.output_auth_token
+                fs.output_auth_token,
+                fs.requires_task,
+                fs.dual_agent,
+                fs.ruler_agent,
+                fs.goal_criteria,
+                fs.max_iterations_per_step,
+                fs.expected_response,
+                fs.use_endpoints,
+                fs.extra_step
               FROM flow_steps fs
               WHERE fs.id = ?
               LIMIT 1
@@ -861,7 +901,15 @@ export async function getNextStepBasedOnConditions(
                 fs.input_keys,
                 CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
                 fs.output_url,
-                fs.output_auth_token
+                fs.output_auth_token,
+                fs.requires_task,
+                fs.dual_agent,
+                fs.ruler_agent,
+                fs.goal_criteria,
+                fs.max_iterations_per_step,
+                fs.expected_response,
+                fs.use_endpoints,
+                fs.extra_step
               FROM flow_steps fs
               WHERE fs.flow_id = ? AND fs.order_index = ?
               LIMIT 1
@@ -931,7 +979,15 @@ export async function getNextStepBasedOnConditions(
           fs.input_keys,
           CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
           fs.output_url,
-          fs.output_auth_token
+          fs.output_auth_token,
+          fs.requires_task,
+          fs.dual_agent,
+          fs.ruler_agent,
+          fs.goal_criteria,
+          fs.max_iterations_per_step,
+          fs.expected_response,
+          fs.use_endpoints,
+          fs.extra_step
         FROM flow_steps fs
         WHERE fs.id = ?
         LIMIT 1
@@ -968,7 +1024,15 @@ export async function getNextStepBasedOnConditions(
           fs.input_keys,
           CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
           fs.output_url,
-          fs.output_auth_token
+          fs.output_auth_token,
+          fs.requires_task,
+          fs.dual_agent,
+          fs.ruler_agent,
+          fs.goal_criteria,
+          fs.max_iterations_per_step,
+          fs.expected_response,
+          fs.use_endpoints,
+          fs.extra_step
         FROM flow_steps fs
         WHERE fs.flow_id = ? AND fs.order_index = ?
         LIMIT 1
@@ -1007,7 +1071,20 @@ export async function getNextStepBasedOnConditions(
           fs.page_key,
           fs.blocking,
           fs.auto_fail_on_error,
-          fs.retryable
+          fs.retryable,
+          fs.task_id,
+          fs.input_keys,
+          CASE WHEN fs.output_url IS NOT NULL AND fs.output_url != '' THEN 1 ELSE 0 END as output,
+          fs.output_url,
+          fs.output_auth_token,
+          fs.requires_task,
+          fs.dual_agent,
+          fs.ruler_agent,
+          fs.goal_criteria,
+          fs.max_iterations_per_step,
+          fs.expected_response,
+          fs.use_endpoints,
+          fs.extra_step
         FROM flow_steps fs
         WHERE fs.flow_id = ? AND fs.order_index = ?
         LIMIT 1
