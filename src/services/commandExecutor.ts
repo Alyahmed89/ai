@@ -260,13 +260,22 @@ export class CommandExecutor {
     const usedPathParams = new Set<string>();
     
     // Replace path parameters and track which ones were used
+    // Support both :param and {param} syntax
     if (params) {
       for (const [key, value] of Object.entries(params)) {
         if (typeof value === 'string' || typeof value === 'number') {
-          const paramPlaceholder = `:${key}`;
-          if (url.includes(paramPlaceholder)) {
-            url = url.replace(paramPlaceholder, encodeURIComponent(value.toString()));
+          // Try :param syntax first
+          const colonPlaceholder = `:${key}`;
+          if (url.includes(colonPlaceholder)) {
+            url = url.replace(colonPlaceholder, encodeURIComponent(value.toString()));
             usedPathParams.add(key);
+          } else {
+            // Try {param} syntax
+            const bracePlaceholder = `{${key}}`;
+            if (url.includes(bracePlaceholder)) {
+              url = url.replace(bracePlaceholder, encodeURIComponent(value.toString()));
+              usedPathParams.add(key);
+            }
           }
         }
       }
