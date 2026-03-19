@@ -55,6 +55,7 @@ export class CommandExecutor {
           description,
           method,
           url as endpoint,
+          parameter_schema,
           tags
         FROM endpoint_registry 
         WHERE name = ?
@@ -72,7 +73,7 @@ export class CommandExecutor {
         description: result.description,
         method: result.method,
         endpoint: result.endpoint,
-        parameters: result.parameters ? JSON.parse(result.parameters) : null,
+        parameters: result.parameter_schema ? JSON.parse(result.parameter_schema) : null,
         tags: result.tags ? JSON.parse(result.tags) : []
       };
     } catch (error: any) {
@@ -187,7 +188,17 @@ export class CommandExecutor {
     params: Record<string, any> | undefined
   ): Promise<any> {
     const endpointPath = this.buildCommandUrl(command.endpoint, params);
-    const url = `${this.baseUrl}${endpointPath}`;
+    
+    // Determine if we need to prepend baseUrl
+    let url: string;
+    if (endpointPath.startsWith('http://') || endpointPath.startsWith('https://')) {
+      // Already a full URL, use as-is
+      url = endpointPath;
+    } else {
+      // Relative path, prepend baseUrl
+      url = `${this.baseUrl}${endpointPath}`;
+    }
+    
     const options: RequestInit = {
       method: command.method,
       headers: {
