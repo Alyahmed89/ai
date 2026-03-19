@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import HierarchicalNav from '@/components/HierarchicalNav';
 import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 import EditFlowModal from '@/components/EditFlowModal';
 import CreateProjectModal from '@/components/CreateProjectModal';
-import HierarchicalNav from '@/components/HierarchicalNav';
 
 interface ChatMessage {
   id: string;
@@ -55,12 +55,27 @@ interface Task {
   order_index: number | null;
 }
 
+interface FlowDefinition {
+  id: string;
+  name: string;
+  description: string | null;
+  max_iterations: number;
+  repository: string;
+  branch: string;
+  created_at: string;
+  updated_at: string;
+  next_flow_id: string | null;
+  priority: number;
+  agent: string;
+}
+
 export default function ChatPage() {
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [flowDefinitions, setFlowDefinitions] = useState<FlowDefinition[]>([]);
   const [showCreateFlowModal, setShowCreateFlowModal] = useState<boolean>(false);
   const [showEditFlowModal, setShowEditFlowModal] = useState<boolean>(false);
   const [showCreateProjectModal, setShowCreateProjectModal] = useState<boolean>(false);
@@ -73,13 +88,15 @@ export default function ChatPage() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch flow runs and tasks on component mount
+  // Fetch flow definitions, flow runs and tasks on component mount
   useEffect(() => {
+    fetchFlowDefinitions();
     fetchFlowRuns();
     fetchTasks();
     
-    // Auto-refresh flow runs and tasks every 30 seconds
+    // Auto-refresh flow definitions, flow runs and tasks every 30 seconds
     const interval = setInterval(() => {
+      fetchFlowDefinitions();
       fetchFlowRuns();
       fetchTasks();
     }, 30000);
@@ -101,6 +118,161 @@ export default function ChatPage() {
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [inputPrompt]);
+
+  // Handle flow run selection - fetch conversation messages
+  useEffect(() => {
+    const fetchFlowRunConversation = async () => {
+      if (!selectedFlowRunId) {
+        // Clear chat messages when no flow run is selected
+        setChatMessages([]);
+        return;
+      }
+
+      try {
+        // Fetch flow run details to get conversation_id
+        const flowRunResponse = await fetch(`/api/proxy/api/flow-runs/${selectedFlowRunId}`);
+        if (!flowRunResponse.ok) {
+          console.error('Failed to fetch flow run details');
+          return;
+        }
+
+        const flowRunData = await flowRunResponse.json();
+        const flowRun = flowRunData.flow_run;
+        const conversationId = flowRun.conversation_id;
+
+        if (!conversationId) {
+          // Show flow run info in chat
+          const messages: ChatMessage[] = [];
+          
+          // Add flow run info as a system message
+          messages.push({
+            id: `flow-run-info-${flowRun.id}`,
+            type: 'assistant',
+            content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
+            timestamp: new Date(flowRun.started_at * 1000)
+          });
+
+          // Add input prompt if available
+          if (flowRun.input_prompt) {
+            messages.push({
+              id: `input-${flowRun.id}`,
+              type: 'user',
+              content: flowRun.input_prompt,
+              timestamp: new Date(flowRun.started_at * 1000)
+            });
+          }
+
+          // Add output response if available
+          if (flowRun.output_response) {
+            messages.push({
+              id: `output-${flowRun.id}`,
+              type: 'assistant',
+              content: flowRun.output_response,
+              timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
+            });
+          }
+
+          setChatMessages(messages);
+          return;
+        }
+
+        // Fetch conversation details
+        const conversationResponse = await fetch(`/api/proxy/status/${conversationId}`);
+        if (!conversationResponse.ok) {
+          console.error('Failed to fetch conversation details');
+          return;
+        }
+
+        const conversationData = await conversationResponse.json();
+        
+        if (conversationData.success && conversationData.data?.conversation) {
+          const conversation = conversationData.data.conversation;
+          const flowSteps = conversation.flow_steps || [];
+          const lastStepResponse = conversation.last_step_response || '';
+          
+          // Build chat messages from conversation
+          const messages: ChatMessage[] = [];
+          
+          // Add flow run info as a system message
+          messages.push({
+            id: `flow-run-info-${flowRun.id}`,
+            type: 'assistant',
+            content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
+            timestamp: new Date(flowRun.started_at * 1000)
+          });
+
+          // Add input prompt if available
+          if (flowRun.input_prompt) {
+            messages.push({
+              id: `input-${flowRun.id}`,
+              type: 'user',
+              content: flowRun.input_prompt,
+              timestamp: new Date(flowRun.started_at * 1000)
+            });
+          }
+
+          // Add flow steps as assistant messages
+          flowSteps.forEach((step: any, index: number) => {
+            if (step.instructions) {
+              messages.push({
+                id: `step-${step.id}-${index}`,
+                type: 'assistant',
+                content: `Step ${index + 1}: ${step.title || 'Untitled'}\n\n${step.instructions}`,
+                timestamp: new Date(flowRun.started_at * 1000 + index * 1000) // Stagger timestamps
+              });
+            }
+          });
+
+          // Add last step response if available
+          if (lastStepResponse) {
+            messages.push({
+              id: `response-${flowRun.id}`,
+              type: 'assistant',
+              content: lastStepResponse,
+              timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
+            });
+          }
+
+          setChatMessages(messages);
+        } else {
+          // Fallback to showing just flow run info
+          const messages: ChatMessage[] = [];
+          messages.push({
+            id: `flow-run-info-${flowRun.id}`,
+            type: 'assistant',
+            content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
+            timestamp: new Date(flowRun.started_at * 1000)
+          });
+
+          if (flowRun.input_prompt) {
+            messages.push({
+              id: `input-${flowRun.id}`,
+              type: 'user',
+              content: flowRun.input_prompt,
+              timestamp: new Date(flowRun.started_at * 1000)
+            });
+          }
+
+          setChatMessages(messages);
+        }
+      } catch (error) {
+        console.error('Error fetching flow run conversation:', error);
+      }
+    };
+
+    fetchFlowRunConversation();
+  }, [selectedFlowRunId]);
+
+  const fetchFlowDefinitions = async () => {
+    try {
+      const response = await fetch('/api/proxy/api/flow-definitions');
+      if (!response.ok) throw new Error('Failed to fetch flow definitions');
+      const data = await response.json();
+      setFlowDefinitions(data);
+    } catch (error) {
+      console.error('Error fetching flow definitions:', error);
+    }
+  };
 
   const fetchFlowRuns = async () => {
     try {
@@ -140,7 +312,7 @@ export default function ChatPage() {
       const errorMessage: ChatMessage = {
         id: Date.now().toString(),
         type: 'assistant',
-        content: 'Please select a flow first. Click on a project, then select a flow from the sidebar.',
+        content: 'Please select a flow first.',
         timestamp: new Date(),
       };
       setChatMessages(prev => [...prev, errorMessage]);
@@ -404,7 +576,7 @@ export default function ChatPage() {
       const errorMessage: ChatMessage = {
         id: Date.now().toString(),
         type: 'assistant',
-        content: 'Please select a flow first. Click on a project, then select a flow from the sidebar.',
+        content: 'Please select a flow first.',
         timestamp: new Date(),
       };
       setChatMessages(prev => [...prev, errorMessage]);
@@ -732,58 +904,28 @@ export default function ChatPage() {
     <div className="min-h-screen bg-black text-gray-100 font-sans">
       {/* Full screen layout */}
       <div className="flex h-screen">
-        {/* Left sidebar - Hierarchical Navigation */}
-        <div className="w-64 flex-shrink-0">
+        {/* Left sidebar */}
+        <div className="w-64 bg-gray-900 border-r border-gray-800 overflow-y-auto">
           <HierarchicalNav
-            onSelectProject={setSelectedProjectId}
-            onSelectFlow={setSelectedFlowId}
-            onSelectTask={setSelectedTaskId}
-            onSelectFlowRun={setSelectedFlowRunId}
-            onSelectStep={() => {}} // TODO: Implement step selection
-            onCreateProject={() => setShowCreateProjectModal(true)}
+            selectedProjectId={selectedProjectId}
+            selectedFlowId={selectedFlowId}
+            selectedTaskId={selectedTaskId}
+            selectedFlowRunId={selectedFlowRunId}
+            onSelectProject={(projectId) => setSelectedProjectId(projectId)}
+            onSelectFlow={(flowId) => setSelectedFlowId(flowId)}
+            onSelectTask={(taskId) => setSelectedTaskId(taskId)}
+            onSelectFlowRun={(flowRunId) => setSelectedFlowRunId(flowRunId)}
             onCreateFlow={() => setShowCreateFlowModal(true)}
-            onCreateStep={() => {}} // TODO: Implement create step
-            onEditFlow={handleEditFlow}
+            onEditFlow={(flowId) => {
+              setEditingFlowId(flowId);
+              setShowEditFlowModal(true);
+            }}
+            onCreateProject={() => setShowCreateProjectModal(true)}
           />
         </div>
-
+        
         {/* Main content area */}
         <div className="flex-1 flex flex-col">
-          {/* Chat header */}
-          <div className="bg-gray-900 p-4">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center">
-                <svg className="w-5 h-5 text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-                <h2 className="text-lg font-semibold text-gray-200">Chat</h2>
-                {selectedFlowId && (
-                  <span className="ml-3 px-2 py-1 text-xs bg-blue-900/30 text-blue-300 rounded">
-                    Flow: {selectedFlowId.substring(0, 8)}...
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-3">
-                {isRunning && (
-                  <div className="flex items-center text-sm text-blue-400">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400 mr-2"></div>
-                    <span>Running...</span>
-                  </div>
-                )}
-                {selectedFlowId && (
-                  <button
-                    onClick={() => handleEditFlow(selectedFlowId)}
-                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium rounded-lg transition-colors flex items-center"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Edit Flow
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
 
           {/* Chat area */}
           <div className="flex-1 overflow-hidden">
@@ -801,7 +943,7 @@ export default function ChatPage() {
                         <p className="text-gray-400 text-sm max-w-md">
                           {selectedFlowId 
                             ? `Type a prompt below to begin. Your message will create a task for the "${selectedFlowId}" flow and start execution.`
-                            : 'Select a flow first. Click on a project in the sidebar, then select a flow to send messages to it.'}
+                            : 'Select a flow first.'}
                         </p>
                       </div>
                     </div>
@@ -816,7 +958,9 @@ export default function ChatPage() {
                         if (message.type === 'assistant' && message.content.includes('**Response:**')) return true;
                         // Show api_response messages (status messages)
                         if (message.type === 'api_response') return true;
-                        // Don't show other assistant messages (like flow status messages)
+                        // Show flow run info messages (contain "Flow Run:")
+                        if (message.type === 'assistant' && message.content.includes('Flow Run:')) return true;
+                        // Don't show other assistant messages
                         return false;
                       })
                       .map((message: ChatMessage) => (
@@ -903,31 +1047,7 @@ export default function ChatPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <div className="flex items-center space-x-4">
-                        <span>Press Enter to send</span>
-                        {isRunning && (
-                          <span className="flex items-center">
-                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500 mr-1"></div>
-                            Processing...
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        <button
-                          onClick={handlePlay}
-                          disabled={isRunning || !selectedFlowId}
-                          className="text-green-400 hover:text-green-300 disabled:opacity-50 disabled:cursor-not-allowed text-xs flex items-center"
-                          title="Start flow without prompt"
-                        >
-                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                          </svg>
-                          Start flow
-                        </button>
-                        <span>{inputPrompt.length}/2000</span>
-                      </div>
-                    </div>
+
                   </form>
                 </div>
               </div>

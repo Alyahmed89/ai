@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import EditStepModal from './EditStepModal';
 import TaskDetailsModal from './TaskDetailsModal';
+import ApiEndpointsModal from './ApiEndpointsModal';
 
 interface Project {
   id: string;
@@ -121,6 +122,7 @@ export default function HierarchicalNav({
   const [activeSection, setActiveSection] = useState<'steps' | 'tasks' | 'flowRuns'>('steps');
   const [editingStep, setEditingStep] = useState<FlowStep | null>(null);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<Task | null>(null);
+  const [showApiEndpointsModal, setShowApiEndpointsModal] = useState(false);
   
   const [loading, setLoading] = useState({
     projects: false,
@@ -358,6 +360,15 @@ export default function HierarchicalNav({
               <span className="text-sm font-medium text-gray-300">Projects</span>
             </div>
             <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowApiEndpointsModal(true)}
+                className="text-xs text-purple-400 hover:text-purple-300 flex items-center"
+                title="View API Endpoints"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+              </button>
               {onCreateProject && (
                 <button
                   onClick={onCreateProject}
@@ -408,6 +419,17 @@ export default function HierarchicalNav({
               <span className="text-sm font-medium text-gray-300">Flows</span>
             </div>
             <div className="flex items-center space-x-2">
+              {onCreateFlow && (
+                <button
+                  onClick={onCreateFlow}
+                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                  title="Create New Flow"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              )}
               {loading.flows && (
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
               )}
@@ -698,6 +720,12 @@ export default function HierarchicalNav({
           onClose={() => setSelectedTaskDetails(null)}
         />
       )}
+
+      {/* API Endpoints Modal */}
+      <ApiEndpointsModal
+        isOpen={showApiEndpointsModal}
+        onClose={() => setShowApiEndpointsModal(false)}
+      />
     </div>
   );
 }
