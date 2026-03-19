@@ -2130,12 +2130,15 @@ IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" 
             return;
           }
           
-          // Store DeepSeek response
-          this.conversation.last_deepseek_response = deepseekResult.response!;
+          // Filter out status messages from AI response
+          const filteredResponse = this.filterStatusMessages(deepseekResult.response!);
+          
+          // Store filtered DeepSeek response
+          this.conversation.last_deepseek_response = filteredResponse;
           this.conversation.deepseek_response_pending = false;
           
           // For deepseek-only flows, complete the step immediately
-          await this.handleStepCompletion(this.conversation.current_step, deepseekResult.response!);
+          await this.handleStepCompletion(this.conversation.current_step, filteredResponse);
           return;
         } else {
           // For openhands or both agents, send to OpenHands
