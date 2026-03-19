@@ -1682,13 +1682,14 @@ crudApi.post('/endpoints', async (c) => {
         timeout_ms, max_retries, retry_delay_ms, cache_key,
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
-        created_at, updated_at, created_by, tags
+        created_at, updated_at, created_by, tags,
+        ai_enabled, endpoint_type, parameter_schema
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?
       )
     `;
 
@@ -1717,7 +1718,10 @@ crudApi.post('/endpoints', async (c) => {
       now,
       now,
       endpointData.created_by || 'api',
-      endpointData.tags ? JSON.stringify(endpointData.tags) : null
+      endpointData.tags ? JSON.stringify(endpointData.tags) : null,
+      endpointData.ai_enabled ? 1 : 0,
+      endpointData.endpoint_type || 'external_api',
+      endpointData.parameter_schema ? JSON.stringify(endpointData.parameter_schema) : null
     ];
 
     await db.prepare(sql).bind(...params).run();
@@ -1770,7 +1774,8 @@ crudApi.put('/endpoints/:name', async (c) => {
       'headers', 'body_template', 'query_params', 'response_path',
       'timeout_ms', 'max_retries', 'retry_delay_ms', 'cache_key',
       'cache_ttl_seconds', 'encrypt_cache', 'response_validator',
-      'allowed_domains', 'require_https', 'log_level', 'tags'
+      'allowed_domains', 'require_https', 'log_level', 'tags',
+      'ai_enabled', 'endpoint_type', 'parameter_schema'
     ];
 
     fields.forEach(field => {
@@ -1778,18 +1783,13 @@ crudApi.put('/endpoints/:name', async (c) => {
         let value = endpointData[field];
         
         // Handle JSON fields
-        if (['headers', 'query_params', 'allowed_domains', 'tags'].includes(field) && value) {
+        if (['headers', 'query_params', 'allowed_domains', 'tags', 'parameter_schema'].includes(field) && value) {
           value = JSON.stringify(value);
         }
         
-        // Handle boolean field
-        if (field === 'encrypt_cache') {
+        // Handle boolean fields
+        if (['encrypt_cache', 'require_https', 'ai_enabled'].includes(field)) {
           value = value ? 1 : 0;
-        }
-        
-        // Handle boolean field
-        if (field === 'require_https') {
-          value = value !== false ? 1 : 0;
         }
         
         // Handle method case
