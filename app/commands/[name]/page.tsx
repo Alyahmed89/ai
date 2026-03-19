@@ -240,8 +240,8 @@ function CommandDetailsContent() {
           ) : (
             <div className="space-y-6">
               <div className="space-y-4">
-                {Object.entries(command.parameters.properties).map(([paramName, paramDetails]: [string, any]) => {
-                  const isRequired = command.parameters.required && command.parameters.required.includes(paramName);
+                {Object.entries(command.parameters.properties!).map(([paramName, paramDetails]: [string, any]) => {
+                  const isRequired = command.parameters!.required && command.parameters.required.includes(paramName);
                   const paramType = paramDetails.type || 'string';
                   const paramValue = formData[paramName] !== undefined ? formData[paramName] : '';
                   
