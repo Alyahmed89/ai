@@ -37,8 +37,3 @@ database_id = "35f4cc1c-5656-4c02-bda8-26b62b63e6ca"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["StrictConversationDO"]
-
-# Delete old Durable Object class (delete-class migration)
-[[migrations]]
-tag = "v2"
-deleted_classes = ["ConversationOrchestratorDO_2026A"]

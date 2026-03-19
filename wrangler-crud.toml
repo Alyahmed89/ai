@@ -8,10 +8,10 @@ DEEPSEEK_API_KEY = "sk-57370a37c79f4b7db9dbd1e253c25b8b"
 OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 ADMIN_KEY = "test-admin-key-123"  # Change this in production
 
-# Use actual exported class name
+# Use strict execution engine - NO fallbacks, NO silent handling
 [[durable_objects.bindings]]
 name = "CONVERSATIONS"
-class_name = "ConversationOrchestratorDO_2026A"
+class_name = "StrictConversationDO"
 
 # D1 database for flow runs tracking (etaflow tasks database)
 [[d1_databases]]
@@ -36,4 +36,4 @@ database_id = "35f4cc1c-5656-4c02-bda8-26b62b63e6ca"
 # Durable Object migration for new class (using new_sqlite_classes for free plan)
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["ConversationOrchestratorDO_2026A"]
+new_sqlite_classes = ["StrictConversationDO"]
