@@ -257,12 +257,17 @@ export class CommandExecutor {
    */
   private buildCommandUrl(endpoint: string, params: Record<string, any> | undefined, method?: string): string {
     let url = endpoint;
+    const usedPathParams = new Set<string>();
     
-    // Replace path parameters
+    // Replace path parameters and track which ones were used
     if (params) {
       for (const [key, value] of Object.entries(params)) {
         if (typeof value === 'string' || typeof value === 'number') {
-          url = url.replace(`:${key}`, encodeURIComponent(value.toString()));
+          const paramPlaceholder = `:${key}`;
+          if (url.includes(paramPlaceholder)) {
+            url = url.replace(paramPlaceholder, encodeURIComponent(value.toString()));
+            usedPathParams.add(key);
+          }
         }
       }
     }
@@ -272,7 +277,8 @@ export class CommandExecutor {
     if (params && method && ['GET', 'DELETE'].includes(method.toUpperCase())) {
       const queryParams = new URLSearchParams();
       for (const [key, value] of Object.entries(params)) {
-        if (!url.includes(`:${key}`)) { // Skip path params (already replaced)
+        // Skip path params that were already used in the URL
+        if (!usedPathParams.has(key)) {
           queryParams.append(key, value.toString());
         }
       }
