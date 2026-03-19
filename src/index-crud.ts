@@ -218,7 +218,7 @@ app.get('/commands', async (c) => {
     return c.json({
       commands,
       count: commands.length,
-      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands'
+      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands. Test with POST /test-command/:name'
     });
     
   } catch (error: any) {
@@ -277,7 +277,7 @@ app.get('/commands/:name', async (c) => {
     
     return c.json({
       command,
-      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands'
+      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands. Test with POST /test-command/:name'
     });
     
   } catch (error: any) {
@@ -286,6 +286,52 @@ app.get('/commands/:name', async (c) => {
       error: `Error fetching command: ${error.message}`,
       command: null
     }, 200); // Return 200 with error instead of 500
+  }
+});
+// Test command execution endpoint
+app.post('/test-command/:name', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ 
+        error: 'Database not configured',
+        success: false
+      }, 200);
+    }
+
+    const name = c.req.param('name');
+    const params = await c.req.json().catch(() => ({}));
+    
+    // Import and use CommandExecutor
+    const { CommandExecutor } = await import('./services/commandExecutor');
+    
+    const commandExecutor = new CommandExecutor({
+      env: c.env,
+      db: db,
+      baseUrl: 'https://deepseek-agent.alghamdimo89.workers.dev'
+    });
+    
+    // Execute the command
+    const result = await commandExecutor.executeCommand({
+      name: name,
+      params: params
+    });
+    
+    return c.json({
+      success: result.success,
+      data: result.data,
+      error: result.error,
+      commandName: result.commandName,
+      executionTime: result.executionTime,
+      note: 'This is a test endpoint for executing commands. For production use, use the conversation endpoints.'
+    });
+    
+  } catch (error: any) {
+    console.error('Error testing command:', error);
+    return c.json({ 
+      error: `Error testing command: ${error.message}`,
+      success: false
+    }, 200);
   }
 });
 
