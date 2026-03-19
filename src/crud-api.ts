@@ -2223,6 +2223,53 @@ crudApi.get('/commands/:name', async (c) => {
   }
 });
 
+// Test command execution endpoint
+crudApi.post('/test-command/:name', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ 
+        error: 'Database not configured',
+        success: false
+      }, 200);
+    }
+
+    const name = c.req.param('name');
+    const params = await c.req.json().catch(() => ({}));
+    
+    // Import and use CommandExecutor
+    const { CommandExecutor } = await import('./services/commandExecutor');
+    
+    const commandExecutor = new CommandExecutor({
+      env: c.env,
+      db: db,
+      baseUrl: 'https://deepseek-agent.alghamdimo89.workers.dev'
+    });
+    
+    // Execute the command
+    const result = await commandExecutor.executeCommand({
+      name: name,
+      params: params
+    });
+    
+    return c.json({
+      success: result.success,
+      data: result.data,
+      error: result.error,
+      commandName: result.commandName,
+      executionTime: result.executionTime,
+      note: 'This is a test endpoint for executing commands. For production use, use the conversation endpoints.'
+    });
+    
+  } catch (error: any) {
+    console.error('Error testing command:', error);
+    return c.json({ 
+      error: `Error testing command: ${error.message}`,
+      success: false
+    }, 200);
+  }
+});
+
 // ============================================
 // Core Observability Endpoints
 // ============================================
