@@ -3595,8 +3595,15 @@ ${messageContent}`;
     // Update current_step to track which step is being executed
     this.conversation.current_step = step;
     
-    // Send SENDING STEP status with progress
-    await this.sendStepStatus(step, 'SENDING STEP');
+    // Check if we have a current_prompt (e.g., from continueWithCommandResult)
+    let prompt = this.conversation.current_prompt;
+    
+    // Only send SENDING STEP status when we're first sending a step (no current_prompt)
+    // Not when we're continuing with a command result
+    if (!prompt) {
+      // Send SENDING STEP status with progress
+      await this.sendStepStatus(step, 'SENDING STEP');
+    }
     
     // Check if this is a dual-agent step
     if (this.isDualAgentStep(step)) {
@@ -3604,9 +3611,6 @@ ${messageContent}`;
       await this.handleDualAgentConversation(step);
       return;
     }
-    
-    // Check if we have a current_prompt (e.g., from continueWithCommandResult)
-    let prompt = this.conversation.current_prompt;
     // Declare resolvedStep at function scope so it's available later
     let resolvedStep: any = null;
     
