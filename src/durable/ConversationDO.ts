@@ -1397,6 +1397,57 @@ export class ConversationOrchestratorDO_2026A {
   }
 
   // Helper to send step response to output_url if output is enabled
+  /**
+   * Filter out status messages from AI response
+   */
+  private filterStatusMessages(response: string): string {
+    // Remove lines that look like status messages
+    const lines = response.split('\n');
+    const filteredLines = lines.filter(line => {
+      // Remove lines that start with **Status:**, **Step:**, or **Progress:**
+      return !line.trim().startsWith('**Status:**') && 
+             !line.trim().startsWith('**Step:**') && 
+             !line.trim().startsWith('**Progress:**');
+    });
+    return filteredLines.join('\n').trim();
+  }
+
+  /**
+   * Send step status message (SENDING STEP or STEP COMPLETED)
+   */
+  private async sendStepStatus(step: any, status: 'SENDING STEP' | 'STEP COMPLETED'): Promise<void> {
+    if (!step || !this.conversation) {
+      console.log(`[DO:${this.state.id}] No step or conversation for status sending`);
+      return;
+    }
+
+    // Check if output is enabled for this step
+    const outputEnabled = this.convertOutputToBoolean(step.output);
+    if (!outputEnabled) {
+      console.log(`[DO:${this.state.id}] Output not enabled for step: ${step.title}, skipping status`);
+      return;
+    }
+
+    // Check if output_url is provided
+    if (!step.output_url || !step.output_url.trim()) {
+      console.log(`[DO:${this.state.id}] Output enabled but no output_url provided for step: ${step.title}, skipping status`);
+      return;
+    }
+
+    // Calculate progress
+    const totalSteps = this.conversation.flow_steps?.length || 0;
+    const currentStep = this.conversation.current_flow_step || 1;
+    const progress = `${currentStep}/${totalSteps}`;
+
+    // Format status message
+    const statusMessage = `**Status:** ${status}\n**Step:** ${step.title}\n**Progress:** ${progress}`;
+
+    console.log(`[DO:${this.state.id}] Sending ${status} status for step "${step.title}" with progress ${progress}`);
+
+    // Send status message
+    await this.sendStepOutputIfEnabled(step, statusMessage);
+  }
+
   private async sendStepOutputIfEnabled(step: any, response: any): Promise<void> {
     if (!step) {
       console.log(`[DO:${this.state.id}] No step provided for output sending`);
@@ -2060,7 +2111,9 @@ export class ConversationOrchestratorDO_2026A {
 ${availableCommands}
 
 The system will execute the command and return the results.
-Use the response in your work.`
+Use the response in your work.
+
+IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. Just execute the step and return the result.`
             },
             {
               role: 'user',
@@ -2162,7 +2215,9 @@ Use the response in your work.`
 ${availableCommands}
 
 The system will execute the command and return the results.
-Use the response in your work.`
+Use the response in your work.
+
+IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. Just execute the step and return the result.`
     );
     
     // Store initial messages in conversation
@@ -3507,6 +3562,9 @@ ${messageContent}`;
     // Update current_step to track which step is being executed
     this.conversation.current_step = step;
     
+    // Send SENDING STEP status with progress
+    await this.sendStepStatus(step, 'SENDING STEP');
+    
     // Check if this is a dual-agent step
     if (this.isDualAgentStep(step)) {
       console.log(`[DO:${this.state.id}] Step is in dual-agent mode, starting dual-agent conversation`);
@@ -3760,7 +3818,9 @@ ${messageContent}`;
 ${availableCommands}
 
 The system will execute the command and return the results.
-Use the response in your work.`
+Use the response in your work.
+
+IMPORTANT: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. Just execute the step and return the result.`
         },
         { role: 'user', content: prompt }
       ];
@@ -4217,10 +4277,16 @@ Use the response in your work.`
       return;
     }
     
-    // 5. Send output if enabled for this step
-    await this.sendStepOutputIfEnabled(step, response);
+    // 5. Filter out any status messages from AI response and send output if enabled
+    const filteredResponse = this.filterStatusMessages(response);
+    if (filteredResponse) {
+      await this.sendStepOutputIfEnabled(step, filteredResponse);
+    }
     
-    // 6. Continue with next step in current flow
+    // 6. Send STEP COMPLETED status
+    await this.sendStepStatus(step, 'STEP COMPLETED');
+    
+    // 7. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
     // Flow transitions only happen via flow_definitions.next_flow_id
     // when flow completes (next_step == -1)
