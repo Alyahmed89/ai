@@ -255,7 +255,7 @@ export class CommandExecutor {
   /**
    * Build command URL with path parameters
    */
-  private buildCommandUrl(endpoint: string, params: Record<string, any> | undefined): string {
+  private buildCommandUrl(endpoint: string, params: Record<string, any> | undefined, method?: string): string {
     let url = endpoint;
     
     // Replace path parameters
@@ -267,11 +267,12 @@ export class CommandExecutor {
       }
     }
     
-    // Add query parameters for GET/DELETE
-    if (params && ['GET', 'DELETE'].includes(url.split(' ')[0]?.toUpperCase() || '')) {
+    // Add query parameters for GET/DELETE requests
+    // For POST/PUT/PATCH, params go in the request body, not query string
+    if (params && method && ['GET', 'DELETE'].includes(method.toUpperCase())) {
       const queryParams = new URLSearchParams();
       for (const [key, value] of Object.entries(params)) {
-        if (!url.includes(`:${key}`)) { // Skip path params
+        if (!url.includes(`:${key}`)) { // Skip path params (already replaced)
           queryParams.append(key, value.toString());
         }
       }
