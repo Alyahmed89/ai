@@ -230,6 +230,64 @@ app.get('/commands', async (c) => {
     }, 200); // Return 200 with error instead of 500
   }
 });
+// Get single AI command by name
+app.get('/commands/:name', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ 
+        error: 'Database not configured',
+        command: null
+      }, 200); // Return 200 with error instead of 500
+    }
+
+    const name = c.req.param('name');
+    
+    // Get specific AI-enabled command
+    const query = `
+      SELECT 
+        name,
+        description,
+        method,
+        url as endpoint,
+        parameter_schema,
+        tags
+      FROM endpoint_registry 
+      WHERE name = ? AND ai_enabled = TRUE
+    `;
+    
+    const result = await db.prepare(query).bind(name).first();
+    
+    if (!result) {
+      return c.json({ 
+        error: `AI command not found or not enabled: ${name}`,
+        command: null
+      }, 200); // Return 200 with error instead of 404
+    }
+    
+    // Parse JSON fields
+    const command = {
+      name: result.name,
+      description: result.description,
+      method: result.method,
+      endpoint: result.endpoint,
+      parameters: result.parameter_schema ? JSON.parse(result.parameter_schema) : null,
+      tags: result.tags ? JSON.parse(result.tags) : []
+    };
+    
+    return c.json({
+      command,
+      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands'
+    });
+    
+  } catch (error: any) {
+    console.error('Error fetching AI command:', error);
+    return c.json({ 
+      error: `Error fetching command: ${error.message}`,
+      command: null
+    }, 200); // Return 200 with error instead of 500
+  }
+});
 
 
 

@@ -2138,6 +2138,7 @@ crudApi.get('/commands', async (c) => {
         description,
         method,
         url as endpoint,
+        parameter_schema,
         tags
       FROM endpoint_registry 
     `;
@@ -2159,7 +2160,7 @@ crudApi.get('/commands', async (c) => {
       description: cmd.description,
       method: cmd.method,
       endpoint: cmd.endpoint,
-      parameters: cmd.parameters ? JSON.parse(cmd.parameters) : null,
+      parameters: cmd.parameter_schema ? JSON.parse(cmd.parameter_schema) : null,
       tags: cmd.tags ? JSON.parse(cmd.tags) : []
     }));
     
@@ -2190,6 +2191,7 @@ crudApi.get('/commands/:name', async (c) => {
         description,
         method,
         url as endpoint,
+        parameter_schema,
         response_path,
         tags
       FROM endpoint_registry 
@@ -2208,7 +2210,7 @@ crudApi.get('/commands/:name', async (c) => {
       description: result.description,
       method: result.method,
       endpoint: result.endpoint,
-      parameters: result.parameters ? JSON.parse(result.parameters) : null,
+      parameters: result.parameter_schema ? JSON.parse(result.parameter_schema) : null,
       response_path: result.response_path,
       tags: result.tags ? JSON.parse(result.tags) : []
     };
