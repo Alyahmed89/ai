@@ -6,6 +6,8 @@ interface TestRequest {
   params?: Record<string, any>;
   headers?: Record<string, string>;
   body?: any;
+  url?: string; // Allow overriding URL for testing
+  method?: string; // Allow overriding method for testing
 }
 
 interface TestResponse {
@@ -16,6 +18,12 @@ interface TestResponse {
     headers: Record<string, string>;
     body: any;
     duration_ms: number;
+    request_details: {
+      url: string;
+      method: string;
+      headers: Record<string, string>;
+      body?: any;
+    };
   };
   error?: string;
 }
@@ -33,45 +41,138 @@ export async function OPTIONS() {
   });
 }
 
+// Helper function to replace URL placeholders with parameters
+function replaceUrlPlaceholders(url: string, params: Record<string, any>): string {
+  let result = url;
+  for (const [key, value] of Object.entries(params)) {
+    const placeholder = `{${key}}`;
+    if (result.includes(placeholder)) {
+      result = result.replace(new RegExp(placeholder, 'g'), encodeURIComponent(String(value)));
+    }
+  }
+  return result;
+}
+
+// Helper function to build query string from parameters
+function buildQueryString(params: Record<string, any>): string {
+  const queryParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      queryParams.append(key, String(value));
+    }
+  }
+  const queryString = queryParams.toString();
+  return queryString ? `?${queryString}` : '';
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ name: string }> }
 ) {
+  const startTime = Date.now();
+  
   try {
     const params = await context.params;
     const { name } = params;
     const testRequest: TestRequest = await request.json();
     
-    // For now, return a mock test response
-    // In production, this would:
-    // 1. Look up the endpoint by name
-    // 2. Apply authentication and headers
-    // 3. Replace URL placeholders with parameters
-    // 4. Make the actual HTTP request
-    // 5. Return the response
+    // Get endpoint configuration (in production, this would come from database)
+    // For now, we'll use the test request or default to a test API
+    const endpointUrl = testRequest.url || 'https://jsonplaceholder.typicode.com';
+    const endpointMethod = testRequest.method?.toUpperCase() || 'GET';
     
-    const mockResponse = {
-      status: 200,
-      statusText: 'OK',
-      headers: {
-        'content-type': 'application/json',
-        'x-powered-by': 'mock-api'
-      },
-      body: {
-        message: 'Test request successful',
-        endpoint: name,
-        params: testRequest.params || {},
-        timestamp: new Date().toISOString()
-      },
-      duration_ms: 150
+    // Determine the actual URL to test
+    let testUrl = endpointUrl;
+    
+    // If it's a GitHub API test, use a real GitHub endpoint
+    if (name.toLowerCase().includes('github')) {
+      testUrl = 'https://api.github.com';
+      if (testRequest.params?.username) {
+        testUrl = `https://api.github.com/users/${encodeURIComponent(testRequest.params.username)}`;
+      }
+    }
+    
+    // Replace URL placeholders with parameters
+    if (testRequest.params) {
+      testUrl = replaceUrlPlaceholders(testUrl, testRequest.params);
+    }
+    
+    // Build headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'EndpointRegistry-Test/1.0',
+      ...testRequest.headers
     };
     
-    const response: TestResponse = {
-      success: true,
-      data: mockResponse
+    // Add GitHub API specific headers if testing GitHub
+    if (name.toLowerCase().includes('github')) {
+      headers['Accept'] = 'application/vnd.github.v3+json';
+      // Note: In production, auth headers would come from endpoint configuration
+    }
+    
+    // Prepare request options
+    const requestOptions: RequestInit = {
+      method: endpointMethod,
+      headers,
+      redirect: 'follow'
     };
     
-    return Response.json(response, {
+    // Add body for POST, PUT, PATCH requests
+    if (['POST', 'PUT', 'PATCH'].includes(endpointMethod) && testRequest.body) {
+      requestOptions.body = JSON.stringify(testRequest.body);
+    }
+    
+    // Make the actual HTTP request
+    const response = await fetch(testUrl, requestOptions);
+    const duration_ms = Date.now() - startTime;
+    
+    // Try to parse response body
+    let responseBody: any;
+    const contentType = response.headers.get('content-type') || '';
+    
+    if (contentType.includes('application/json')) {
+      try {
+        responseBody = await response.json();
+      } catch {
+        responseBody = await response.text();
+      }
+    } else if (contentType.includes('text/')) {
+      responseBody = await response.text();
+    } else {
+      // For binary or unknown content types, return info about the response
+      responseBody = {
+        message: `Response content type: ${contentType}`,
+        size: response.headers.get('content-length') || 'unknown',
+        type: contentType
+      };
+    }
+    
+    // Convert headers to plain object
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    
+    const testResponse = {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      body: responseBody,
+      duration_ms,
+      request_details: {
+        url: testUrl,
+        method: endpointMethod,
+        headers,
+        body: testRequest.body
+      }
+    };
+    
+    const apiResponse: TestResponse = {
+      success: response.ok,
+      data: testResponse
+    };
+    
+    return Response.json(apiResponse, {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -80,17 +181,34 @@ export async function POST(
     });
     
   } catch (error) {
+    const duration_ms = Date.now() - startTime;
     console.error('Error testing endpoint:', error);
-    return Response.json(
-      { success: false, error: 'Failed to test endpoint' },
-      { 
-        status: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        },
+    
+    const errorResponse: TestResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to test endpoint',
+      data: {
+        status: 0,
+        statusText: 'Network Error',
+        headers: {},
+        body: null,
+        duration_ms,
+        request_details: {
+          url: '',
+          method: 'GET',
+          headers: {},
+          body: undefined
+        }
       }
-    );
+    };
+    
+    return Response.json(errorResponse, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+    });
   }
 }

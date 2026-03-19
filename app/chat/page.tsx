@@ -649,11 +649,17 @@ export default function ChatPage() {
       if (!flowResponse.ok) throw new Error('Failed to start flow');
       
       const flowResult = await flowResponse.json();
-      const conversationId = flowResult.data?.conversation_id;
       
       // Debug log
       console.log('Flow start result:', flowResult);
       console.log('Flow data:', flowResult.data);
+      
+      // Check if flow actually started successfully
+      if (!flowResult.success) {
+        throw new Error(flowResult.error || 'Failed to start flow execution');
+      }
+      
+      const conversationId = flowResult.data?.conversation_id;
       
       // Add status message (api_response type) for flow start
       const statusMessage: ChatMessage = {
@@ -769,6 +775,12 @@ export default function ChatPage() {
       if (!flowResponse.ok) throw new Error('Failed to start flow');
       
       const flowResult = await flowResponse.json();
+      
+      // Check if flow actually started successfully
+      if (!flowResult.success) {
+        throw new Error(flowResult.error || 'Failed to start flow execution');
+      }
+      
       const conversationId = flowResult.data?.conversation_id;
       
       // Add status message (api_response type) for flow start
