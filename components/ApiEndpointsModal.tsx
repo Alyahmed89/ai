@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 
 interface ApiEndpoint {
+  name: string;
   path: string;
   method: string;
   description?: string;
@@ -38,7 +39,7 @@ export default function ApiEndpointsModal({ isOpen, onClose }: ApiEndpointsModal
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/proxy/commands');
+      const response = await fetch('/api/proxy/api/commands');
       if (!response.ok) {
         throw new Error(`Failed to fetch endpoints: ${response.status} ${response.statusText}`);
       }
@@ -46,7 +47,10 @@ export default function ApiEndpointsModal({ isOpen, onClose }: ApiEndpointsModal
       
       // Transform the data if needed
       let endpointsArray = [];
-      if (Array.isArray(data)) {
+      if (data.success && data.data && data.data.commands) {
+        // Handle format: {success: true, data: {commands: [...]}}
+        endpointsArray = data.data.commands;
+      } else if (Array.isArray(data)) {
         endpointsArray = data;
       } else if (data.endpoints || data.commands) {
         // Handle different response formats
@@ -56,13 +60,14 @@ export default function ApiEndpointsModal({ isOpen, onClose }: ApiEndpointsModal
         endpointsArray = Object.values(data).filter(item => {
           if (!item || typeof item !== 'object') return false;
           const endpointItem = item as Record<string, any>;
-          return endpointItem.path || endpointItem.method;
+          return endpointItem.path || endpointItem.method || endpointItem.name;
         });
       }
       
       // Ensure all endpoints have required fields
       endpointsArray = endpointsArray.map((endpoint: any) => ({
-        path: endpoint.path || '',
+        name: endpoint.name || '',
+        path: endpoint.path || endpoint.endpoint || '',
         method: endpoint.method || 'GET',
         description: endpoint.description,
         parameters: Array.isArray(endpoint.parameters) ? endpoint.parameters : [],
@@ -142,8 +147,27 @@ export default function ApiEndpointsModal({ isOpen, onClose }: ApiEndpointsModal
                     <div className={`px-3 py-1 rounded text-xs font-medium border ${getMethodColor(endpoint.method)}`}>
                       {endpoint.method}
                     </div>
-                    <div className="ml-4 flex-1 font-mono text-sm text-gray-200 break-all">
-                      {endpoint.path}
+                    <div className="ml-4 flex-1">
+                      <div className="font-mono text-sm text-gray-200 break-all">
+                        {endpoint.path}
+                      </div>
+                      {endpoint.name && (
+                        <div className="mt-1">
+                          <a 
+                            href={`/commands/${endpoint.name}`}
+                            className="text-blue-400 hover:text-blue-300 text-sm font-medium inline-flex items-center"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onClose();
+                            }}
+                          >
+                            {endpoint.name}
+                            <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
