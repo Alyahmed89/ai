@@ -495,8 +495,8 @@ export default function ChatPage() {
     const maxPolls = 30; // 30 polls * 2 seconds = 60 seconds total
     const pollInterval = 2000; // Poll every 2 seconds
     
-    // Track completed steps to avoid duplicates
-    const completedStepIndices = new Set<number>();
+    // Track completed steps and responses to avoid duplicates
+    const completedStepIndices = new Set<string>();
     
     const pollIntervalId = setInterval(async () => {
       pollCount++;
