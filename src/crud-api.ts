@@ -2166,7 +2166,8 @@ crudApi.get('/commands', async (c) => {
     
     return c.json(successResponse({
       commands,
-      count: commands.length
+      count: commands.length,
+      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands. Test with POST /api/test-command/:name'
     }));
     
   } catch (error: any) {
@@ -2215,7 +2216,10 @@ crudApi.get('/commands/:name', async (c) => {
       tags: result.tags ? JSON.parse(result.tags) : []
     };
     
-    return c.json(successResponse(command));
+    return c.json(successResponse({
+      ...command,
+      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands. Test with POST /api/test-command/:name'
+    }));
     
   } catch (error: any) {
     console.error('Error fetching command schema:', error);
