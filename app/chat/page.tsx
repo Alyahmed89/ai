@@ -907,10 +907,6 @@ export default function ChatPage() {
         {/* Left sidebar */}
         <div className="w-64 bg-gray-900 border-r border-gray-800 overflow-y-auto">
           <HierarchicalNav
-            selectedProjectId={selectedProjectId}
-            selectedFlowId={selectedFlowId}
-            selectedTaskId={selectedTaskId}
-            selectedFlowRunId={selectedFlowRunId}
             onSelectProject={(projectId) => setSelectedProjectId(projectId)}
             onSelectFlow={(flowId) => setSelectedFlowId(flowId)}
             onSelectTask={(taskId) => setSelectedTaskId(taskId)}
