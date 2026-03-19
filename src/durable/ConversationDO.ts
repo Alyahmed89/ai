@@ -61,6 +61,7 @@ export class ConversationOrchestratorDO_2026A {
 
   // Event emission system for UI step streaming
   private eventListeners: ((event: ExecutionEvent) => void)[] = [];
+  private eventSequence: number = 0; // Sequence counter for event ordering
 
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
@@ -71,6 +72,7 @@ export class ConversationOrchestratorDO_2026A {
     this.flowStepsCache = null;
     this.flowStepsCacheTime = 0;
     this.flowSwitchHistory = [];
+    this.eventSequence = 0;
   }
   // ==========================================================================
   // EVENT EMISSION SYSTEM
@@ -94,17 +96,27 @@ export class ConversationOrchestratorDO_2026A {
    * Emit execution event to all listeners
    */
   private emitEvent(event: ExecutionEvent): void {
-    console.log(`[DO:${this.state.id}] Emitting event: ${event.type}`, event);
+    // Increment sequence counter
+    this.eventSequence++;
+    
+    // Ensure event has sequence and flowRunId
+    const enrichedEvent = {
+      ...event,
+      sequence: this.eventSequence,
+      flowRunId: this.flowRunId || 'unknown'
+    } as ExecutionEvent;
+    
+    console.log(`[DO:${this.state.id}] Emitting event #${this.eventSequence}: ${enrichedEvent.type}`, enrichedEvent);
     
     // Store event in database for debugging/replay
-    this.storeEventInDatabase(event).catch(error => {
+    this.storeEventInDatabase(enrichedEvent).catch(error => {
       console.error(`[DO:${this.state.id}] Failed to store event in database:`, error);
     });
     
     // Notify all listeners
     for (const listener of this.eventListeners) {
       try {
-        listener(event);
+        listener(enrichedEvent);
       } catch (error) {
         console.error(`[DO:${this.state.id}] Event listener error:`, error);
       }
@@ -155,38 +167,50 @@ export class ConversationOrchestratorDO_2026A {
     });
   }
 
-  private emitCommandCalling(command: string, params?: Record<string, unknown>): void {
+  private emitCommandCalling(stepId: string, command: string, params?: Record<string, unknown>): void {
     this.emitEvent({
       type: 'COMMAND_CALLING',
+      stepId,
       command,
       params,
       ts: Date.now()
     });
   }
 
-  private emitCommandResponse(response: unknown, startTime: number): void {
+  private emitCommandResponse(stepId: string, command: string, response: unknown, startTime: number): void {
+    // Normalize response for UI rendering
+    const normalizedResponse = this.normalizeResponse(response);
+    
     this.emitEvent({
       type: 'COMMAND_RESPONSE',
-      response,
+      stepId,
+      command,
+      response: normalizedResponse,
       duration: Date.now() - startTime,
       ts: Date.now()
     });
   }
 
   private emitStepCompleted(stepId: string, result: unknown): void {
+    // Normalize result for UI rendering
+    const normalizedResult = this.normalizeStepResult(result);
+    
     this.emitEvent({
       type: 'STEP_COMPLETED',
       stepId,
-      result,
+      result: normalizedResult,
       ts: Date.now()
     });
   }
 
-  private emitStepError(stepId: string, error: string): void {
+  private emitStepError(stepId: string, error: string | Error): void {
+    // Normalize error for UI rendering
+    const normalizedError = this.normalizeError(error);
+    
     this.emitEvent({
       type: 'STEP_ERROR',
       stepId,
-      error,
+      error: normalizedError,
       ts: Date.now()
     });
   }
@@ -201,13 +225,204 @@ export class ConversationOrchestratorDO_2026A {
   }
 
   private emitFlowCompleted(flowId: string, flowRunId: string, result: unknown): void {
+    // Normalize flow result for UI rendering
+    const normalizedResult = this.normalizeFlowResult(result);
+    
     this.emitEvent({
       type: 'FLOW_COMPLETED',
       flowId,
       flowRunId,
-      result,
+      result: normalizedResult,
       ts: Date.now()
     });
+  }
+
+  /**
+   * Normalize response for UI rendering
+   */
+  private normalizeResponse(response: unknown): {
+    type: 'text' | 'json' | 'error' | 'html' | 'markdown';
+    content: string;
+    metadata?: Record<string, unknown>;
+  } {
+    if (response === null || response === undefined) {
+      return {
+        type: 'text',
+        content: 'null'
+      };
+    }
+
+    if (typeof response === 'string') {
+      // Try to detect content type
+      if (response.startsWith('{') || response.startsWith('[')) {
+        try {
+          JSON.parse(response);
+          return {
+            type: 'json',
+            content: response,
+            metadata: { parsed: true }
+          };
+        } catch {
+          // Not valid JSON
+        }
+      }
+      
+      if (response.toLowerCase().includes('<html>') || response.toLowerCase().includes('<div>')) {
+        return {
+          type: 'html',
+          content: response,
+          metadata: { sanitized: false }
+        };
+      }
+      
+      if (response.includes('# ') || response.includes('## ') || response.includes('* ')) {
+        return {
+          type: 'markdown',
+          content: response,
+          metadata: { rendered: false }
+        };
+      }
+      
+      return {
+        type: 'text',
+        content: response
+      };
+    }
+
+    if (typeof response === 'object') {
+      if (response instanceof Error) {
+        return {
+          type: 'error',
+          content: response.message,
+          metadata: { 
+            name: response.name,
+            stack: response.stack 
+          }
+        };
+      }
+      
+      // Convert object to JSON string
+      try {
+        const jsonString = JSON.stringify(response, null, 2);
+        return {
+          type: 'json',
+          content: jsonString,
+          metadata: { 
+            objectType: response.constructor.name,
+            keys: Object.keys(response)
+          }
+        };
+      } catch {
+        return {
+          type: 'text',
+          content: String(response)
+        };
+      }
+    }
+
+    // Fallback for numbers, booleans, etc.
+    return {
+      type: 'text',
+      content: String(response)
+    };
+  }
+
+  /**
+   * Normalize step result for UI rendering
+   */
+  private normalizeStepResult(result: unknown): {
+    type: 'success' | 'partial' | 'skipped';
+    summary: string;
+    data?: unknown;
+  } {
+    if (typeof result === 'string') {
+      return {
+        type: 'success',
+        summary: result,
+        data: result
+      };
+    }
+
+    if (typeof result === 'object' && result !== null) {
+      const resultObj = result as Record<string, unknown>;
+      
+      if (resultObj.type && ['success', 'partial', 'skipped'].includes(resultObj.type as string)) {
+        return {
+          type: resultObj.type as 'success' | 'partial' | 'skipped',
+          summary: typeof resultObj.summary === 'string' ? resultObj.summary : 'Step completed',
+          data: resultObj.data
+        };
+      }
+    }
+
+    // Default to success
+    return {
+      type: 'success',
+      summary: 'Step completed successfully',
+      data: result
+    };
+  }
+
+  /**
+   * Normalize error for UI rendering
+   */
+  private normalizeError(error: string | Error): {
+    message: string;
+    code?: string;
+    details?: unknown;
+  } {
+    if (typeof error === 'string') {
+      return {
+        message: error
+      };
+    }
+
+    if (error instanceof Error) {
+      return {
+        message: error.message,
+        code: error.name,
+        details: error.stack
+      };
+    }
+
+    return {
+      message: 'Unknown error occurred',
+      details: error
+    };
+  }
+
+  /**
+   * Normalize flow result for UI rendering
+   */
+  private normalizeFlowResult(result: unknown): {
+    status: 'success' | 'failed' | 'cancelled';
+    summary: string;
+    stepsCompleted: number;
+    totalSteps: number;
+    data?: unknown;
+  } {
+    // Default values
+    const defaultResult = {
+      status: 'success' as const,
+      summary: 'Flow completed',
+      stepsCompleted: 0,
+      totalSteps: 0,
+      data: result
+    };
+
+    if (typeof result === 'object' && result !== null) {
+      const resultObj = result as Record<string, unknown>;
+      
+      return {
+        status: (resultObj.status as 'success' | 'failed' | 'cancelled') || 'success',
+        summary: typeof resultObj.summary === 'string' ? resultObj.summary : defaultResult.summary,
+        stepsCompleted: typeof resultObj.stepsCompleted === 'number' ? resultObj.stepsCompleted : defaultResult.stepsCompleted,
+        totalSteps: typeof resultObj.totalSteps === 'number' ? resultObj.totalSteps : defaultResult.totalSteps,
+        data: resultObj.data || result
+      };
+    }
+
+    return defaultResult;
   }
   
   /**
@@ -4203,14 +4418,15 @@ Use the response in your work.`
       const commandExecutor = await this.getCommandExecutor();
       
       // Emit COMMAND_CALLING event for UI streaming
-      this.emitCommandCalling(commandData.name, commandData.params);
+      const stepId = step.step_id || step.id || `step-${step.order_index}`;
+      this.emitCommandCalling(stepId, commandData.name, commandData.params);
       
       // Execute the command
       const startTime = Date.now();
       const result = await commandExecutor.executeCommand(commandData);
       
       // Emit COMMAND_RESPONSE event for UI streaming
-      this.emitCommandResponse(result, startTime);
+      this.emitCommandResponse(stepId, commandData.name, result, startTime);
       
       // Format result for AI
       const resultMessage = commandExecutor.formatResultForAI(result);

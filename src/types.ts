@@ -359,13 +359,82 @@ export interface ConditionEvaluationResult {
 
 // Execution events for UI step streaming
 export type ExecutionEvent =
-  | { type: 'STEP_STARTED'; stepId: string; title: string; ts: number }
-  | { type: 'COMMAND_CALLING'; command: string; params?: Record<string, unknown>; ts: number }
-  | { type: 'COMMAND_RESPONSE'; response: unknown; duration: number; ts: number }
-  | { type: 'STEP_COMPLETED'; stepId: string; result: unknown; ts: number }
-  | { type: 'STEP_ERROR'; stepId: string; error: string; ts: number }
-  | { type: 'FLOW_STARTED'; flowId: string; flowRunId: string; ts: number }
-  | { type: 'FLOW_COMPLETED'; flowId: string; flowRunId: string; result: unknown; ts: number };
+  | { 
+      type: 'STEP_STARTED'; 
+      stepId: string; 
+      flowRunId: string;
+      sequence: number;
+      title: string; 
+      ts: number;
+    }
+  | { 
+      type: 'COMMAND_CALLING'; 
+      stepId: string;
+      flowRunId: string;
+      sequence: number;
+      command: string; 
+      params?: Record<string, unknown>; 
+      ts: number;
+    }
+  | { 
+      type: 'COMMAND_RESPONSE'; 
+      stepId: string;
+      flowRunId: string;
+      sequence: number;
+      command: string;
+      response: {
+        type: 'text' | 'json' | 'error' | 'html' | 'markdown';
+        content: string;
+        metadata?: Record<string, unknown>;
+      };
+      duration: number; 
+      ts: number;
+    }
+  | { 
+      type: 'STEP_COMPLETED'; 
+      stepId: string; 
+      flowRunId: string;
+      sequence: number;
+      result: {
+        type: 'success' | 'partial' | 'skipped';
+        summary: string;
+        data?: unknown;
+      };
+      ts: number;
+    }
+  | { 
+      type: 'STEP_ERROR'; 
+      stepId: string; 
+      flowRunId: string;
+      sequence: number;
+      error: {
+        message: string;
+        code?: string;
+        details?: unknown;
+      };
+      ts: number;
+    }
+  | { 
+      type: 'FLOW_STARTED'; 
+      flowId: string; 
+      flowRunId: string;
+      sequence: number;
+      ts: number;
+    }
+  | { 
+      type: 'FLOW_COMPLETED'; 
+      flowId: string; 
+      flowRunId: string;
+      sequence: number;
+      result: {
+        status: 'success' | 'failed' | 'cancelled';
+        summary: string;
+        stepsCompleted: number;
+        totalSteps: number;
+        data?: unknown;
+      };
+      ts: number;
+    };
 
 // Event storage for debugging/replay
 export interface ExecutionEventRecord {
