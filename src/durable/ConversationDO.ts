@@ -88,7 +88,8 @@ export class ConversationOrchestratorDO_2026A {
         env: this.env,
         db: this.env.FLOW_RUNS_DB,
         maxRetries: 3,
-        timeoutMs: 10000
+        timeoutMs: 10000,
+        baseUrl: 'https://deepseek-agent.alghamdimo89.workers.dev'
       });
     }
     return this.commandExecutor;

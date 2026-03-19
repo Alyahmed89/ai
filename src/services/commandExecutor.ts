@@ -23,6 +23,7 @@ export interface CommandExecutorOptions {
   db: any;
   maxRetries?: number;
   timeoutMs?: number;
+  baseUrl?: string;
 }
 
 /**
@@ -33,12 +34,14 @@ export class CommandExecutor {
   private db: any;
   private maxRetries: number;
   private timeoutMs: number;
+  private baseUrl: string;
 
   constructor(options: CommandExecutorOptions) {
     this.env = options.env;
     this.db = options.db;
     this.maxRetries = options.maxRetries || 3;
     this.timeoutMs = options.timeoutMs || 10000;
+    this.baseUrl = options.baseUrl || 'https://deepseek-agent.alghamdimo89.workers.dev';
   }
 
   /**
@@ -183,7 +186,8 @@ export class CommandExecutor {
     command: CommandRegistryEntry,
     params: Record<string, any> | undefined
   ): Promise<any> {
-    const url = this.buildCommandUrl(command.endpoint, params);
+    const endpointPath = this.buildCommandUrl(command.endpoint, params);
+    const url = `${this.baseUrl}${endpointPath}`;
     const options: RequestInit = {
       method: command.method,
       headers: {
@@ -199,7 +203,7 @@ export class CommandExecutor {
     // Execute with retry logic
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`[COMMAND] Attempt ${attempt}/${this.maxRetries}: ${command.method} ${url}`);
+        console.log(`[COMMAND] Attempt ${attempt}/${this.maxRetries}: ${command.method} ${url} (endpoint: ${endpointPath})`);
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
