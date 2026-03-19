@@ -168,12 +168,67 @@ app.get('/', (c) => {
     version: '1.0.0',
     endpoints: {
       api: '/api/*',
+      commands: '/commands',
       health: '/health',
       start: '/start',
       attach: '/attach',
       status: '/status/:id'
     }
   });
+});
+
+// Commands endpoint for AI discovery
+app.get('/commands', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ 
+        error: 'Database not configured',
+        commands: [],
+        count: 0
+      }, 200); // Return 200 with empty commands instead of 500
+    }
+
+    // Get all AI-enabled commands
+    const query = `
+      SELECT 
+        name,
+        description,
+        method,
+        url as endpoint,
+        parameter_schema,
+        tags
+      FROM endpoint_registry 
+      WHERE ai_enabled = TRUE
+      ORDER BY name
+    `;
+    
+    const result = await db.prepare(query).all();
+    
+    // Parse JSON fields
+    const commands = result.results.map((cmd: any) => ({
+      name: cmd.name,
+      description: cmd.description,
+      method: cmd.method,
+      endpoint: cmd.endpoint,
+      parameters: cmd.parameter_schema ? JSON.parse(cmd.parameter_schema) : null,
+      tags: cmd.tags ? JSON.parse(cmd.tags) : []
+    }));
+    
+    return c.json({
+      commands,
+      count: commands.length,
+      note: 'Use [COMMAND:name] params: {JSON_parameters} format to execute commands'
+    });
+    
+  } catch (error: any) {
+    console.error('Error fetching AI commands:', error);
+    return c.json({ 
+      error: `Error fetching commands: ${error.message}`,
+      commands: [],
+      count: 0
+    }, 200); // Return 200 with error instead of 500
+  }
 });
 
 

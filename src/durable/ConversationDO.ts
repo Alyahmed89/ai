@@ -95,6 +95,34 @@ export class ConversationOrchestratorDO_2026A {
   }
   
   /**
+   * Get available commands for AI
+   */
+  private async getAvailableCommands(): Promise<string> {
+    try {
+      const commandExecutor = await this.getCommandExecutor();
+      const commands = await commandExecutor.getAllCommands();
+      
+      if (commands.length === 0) {
+        return "No commands available. Use /commands endpoint to discover commands.";
+      }
+      
+      // Format commands for AI prompt
+      const commandList = commands.map(cmd => {
+        const params = cmd.parameters 
+          ? `params: ${JSON.stringify(cmd.parameters, null, 2)}`
+          : 'params: {}';
+        return `- ${cmd.name}: ${cmd.description}\n  ${params}`;
+      }).join('\n\n');
+      
+      return `AVAILABLE COMMANDS:\n${commandList}\n\nUse format: [COMMAND:command_name] params: {JSON_parameters}`;
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error getting available commands:`, error);
+      return "Error loading commands. Use /commands endpoint to discover available commands.";
+    }
+  }
+  
+  /**
    * Safely update conversation state with invariant checks
    */
   private async updateConversationState(updates: Partial<ConversationState>): Promise<void> {
@@ -2022,11 +2050,14 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
           
           // Build messages for DeepSeek
+          const availableCommands = await this.getAvailableCommands();
           const messages = [
             {
               role: 'system',
               content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
-To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+
+${availableCommands}
+
 The system will execute the command and return the results.
 Use the response in your work.`
             },
@@ -2061,7 +2092,8 @@ Use the response in your work.`
           console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
           console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
           
-          // Build initial conversation messages
+          // Build initial conversation messages with available commands
+          const availableCommands = await this.getAvailableCommands();
           const initialMessages = buildInitialMessages(
             this.conversation.initial_user_prompt,
             {
@@ -2072,7 +2104,9 @@ Use the response in your work.`
             },
             // System message for flow execution with command format instructions
             `You are an AI assistant executing a workflow step.
-To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+
+${availableCommands}
+
 The system will execute the command and return the results.
 Use the response in your work.`
           );
@@ -2111,7 +2145,8 @@ Use the response in your work.`
     // Normal flow: send to DeepSeek
     console.log(`[DO:${this.state.id}] INIT state: Sending to DeepSeek`);
     
-    // Build initial conversation messages
+    // Build initial conversation messages with available commands
+    const availableCommands = await this.getAvailableCommands();
     const initialMessages = buildInitialMessages(
       this.conversation.initial_user_prompt,
       {
@@ -2122,7 +2157,9 @@ Use the response in your work.`
       },
       // System message for flow execution with command format instructions
       `You are an AI assistant executing a workflow step.
-To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+
+${availableCommands}
+
 The system will execute the command and return the results.
 Use the response in your work.`
     );
@@ -3712,12 +3749,15 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Flow ID: ${this.conversation.flow_id}, Step: ${this.conversation.current_flow_step}`);
       console.log(`[DO:${this.state.id}] Prompt preview: ${prompt.substring(0, 200)}...`);
       
-      // Build messages for DeepSeek
+      // Build messages for DeepSeek with available commands
+      const availableCommands = await this.getAvailableCommands();
       const messages = [
         {
           role: 'system',
           content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
-To execute backend commands, use the format: [COMMAND:command_name] params: {JSON_parameters}
+
+${availableCommands}
+
 The system will execute the command and return the results.
 Use the response in your work.`
         },
@@ -3893,6 +3933,13 @@ Use the response in your work.`
     console.log(`[DO:${this.state.id}] Processing command: ${commandData.name}`, commandData.params);
 
     try {
+      // Handle fallback commands
+      const mappedCommand = this.mapFallbackCommand(commandData);
+      if (mappedCommand !== commandData) {
+        console.log(`[DO:${this.state.id}] Mapped command ${commandData.name} to ${mappedCommand.name}`);
+        commandData = mappedCommand;
+      }
+
       // Get command executor
       const commandExecutor = await this.getCommandExecutor();
       
@@ -3935,6 +3982,57 @@ Use the response in your work.`
       // Continue with error message
       await this.continueWithCommandResult(step, originalResponse, `Command failed: ${error.message}`);
     }
+  }
+
+  /**
+   * Map fallback commands like list/help to actual commands
+   */
+  private mapFallbackCommand(commandData: CommandData): CommandData {
+    const { name, params } = commandData;
+    
+    // Map list command to get_tasks
+    if (name === 'list') {
+      return {
+        name: 'get_tasks',
+        params: params || {}
+      };
+    }
+    
+    // Map help command to return available commands
+    if (name === 'help') {
+      // Return a special command that will show available commands
+      return {
+        name: 'help',
+        params: { 
+          message: 'Available commands can be discovered via /commands endpoint. Use [COMMAND:get_tasks] to list tasks, [COMMAND:get_flow_definitions] to list flows, etc.'
+        }
+      };
+    }
+    
+    // Map rules_search to get_tasks with search parameters
+    if (name === 'rules_search') {
+      return {
+        name: 'get_tasks',
+        params: { 
+          search: params?.query || '',
+          ...params
+        }
+      };
+    }
+    
+    // Map rules_check_synonyms to get_tasks with tag search
+    if (name === 'rules_check_synonyms') {
+      return {
+        name: 'get_tasks',
+        params: { 
+          tags: params?.words || [],
+          ...params
+        }
+      };
+    }
+    
+    // Return original command if no mapping
+    return commandData;
   }
 
   /**

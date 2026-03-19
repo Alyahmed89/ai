@@ -87,6 +87,16 @@ export class CommandExecutor {
     try {
       console.log(`[COMMAND] Executing command: ${commandData.name}`, commandData.params);
       
+      // Handle special commands that don't exist in registry
+      if (commandData.name === 'help') {
+        return {
+          success: true,
+          data: commandData.params?.message || 'Available commands can be discovered via /commands endpoint.',
+          commandName: commandData.name,
+          executionTime: Date.now() - startTime
+        };
+      }
+      
       // Get command details from registry
       const command = await this.getCommandFromRegistry(commandData.name);
       if (!command) {
