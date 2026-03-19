@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
 export const runtime = 'edge';
@@ -32,6 +32,19 @@ interface StepRun {
   output_payload?: string;
 }
 
+interface ExecutionEvent {
+  type: 'step_started' | 'step_completed' | 'step_failed' | 'flow_completed' | 'flow_failed';
+  data: {
+    flow_run_id: string;
+    step_run_id?: string;
+    step_id?: string;
+    status?: string;
+    response?: string;
+    duration_ms?: number;
+    timestamp: string;
+  };
+}
+
 export default function FlowRunDetailsPage() {
   const params = useParams();
   const [id, setId] = useState<string | null>(null);
@@ -39,6 +52,9 @@ export default function FlowRunDetailsPage() {
   const [flowRun, setFlowRun] = useState<FlowRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [events, setEvents] = useState<ExecutionEvent[]>([]);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     const fetchParams = async () => {
@@ -52,8 +68,109 @@ export default function FlowRunDetailsPage() {
   useEffect(() => {
     if (id) {
       fetchFlowRun();
+      subscribeToEvents();
     }
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        setIsSubscribed(false);
+      }
+    };
   }, [id]);
+
+  const subscribeToEvents = () => {
+    if (!id || eventSourceRef.current) return;
+
+    try {
+      const eventSource = new EventSource(`/api/execution-events/${id}`);
+      eventSourceRef.current = eventSource;
+      
+      eventSource.onopen = () => {
+        console.log('SSE connection opened');
+        setIsSubscribed(true);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const executionEvent: ExecutionEvent = JSON.parse(event.data);
+          setEvents(prev => [...prev, executionEvent]);
+          
+          // Update flow run status if flow completed/failed
+          if (executionEvent.type === 'flow_completed' || executionEvent.type === 'flow_failed') {
+            setFlowRun(prev => prev ? {
+              ...prev,
+              status: executionEvent.type === 'flow_completed' ? 'completed' : 'failed',
+              completed_at: executionEvent.data.timestamp
+            } : null);
+          }
+          
+          // Update step runs if step event
+          if (executionEvent.type.includes('step_') && executionEvent.data.step_run_id) {
+            setFlowRun(prev => {
+              if (!prev || !prev.stepRuns) return prev;
+              
+              const stepIndex = prev.stepRuns.findIndex(step => step.id === executionEvent.data.step_run_id);
+              if (stepIndex === -1) {
+                // Add new step run
+                const newStepRun: StepRun = {
+                  id: executionEvent.data.step_run_id!,
+                  step_id: executionEvent.data.step_id || '',
+                  prompt: '',
+                  response: executionEvent.data.response || '',
+                  status: executionEvent.type === 'step_started' ? 'running' : 
+                         executionEvent.type === 'step_completed' ? 'completed' : 'failed',
+                  iteration: 0,
+                  attempt: 0,
+                  duration_ms: executionEvent.data.duration_ms || 0,
+                  created_at: executionEvent.data.timestamp
+                };
+                
+                return {
+                  ...prev,
+                  stepRuns: [...prev.stepRuns, newStepRun]
+                };
+              } else {
+                // Update existing step run
+                const updatedStepRuns = [...prev.stepRuns];
+                updatedStepRuns[stepIndex] = {
+                  ...updatedStepRuns[stepIndex],
+                  status: executionEvent.type === 'step_started' ? 'running' : 
+                         executionEvent.type === 'step_completed' ? 'completed' : 'failed',
+                  response: executionEvent.data.response || updatedStepRuns[stepIndex].response,
+                  duration_ms: executionEvent.data.duration_ms || updatedStepRuns[stepIndex].duration_ms
+                };
+                
+                return {
+                  ...prev,
+                  stepRuns: updatedStepRuns
+                };
+              }
+            });
+          }
+        } catch (err) {
+          console.error('Error parsing SSE event:', err);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('SSE error:', error);
+        setIsSubscribed(false);
+        eventSource.close();
+        eventSourceRef.current = null;
+        
+        // Try to reconnect after 5 seconds
+        setTimeout(() => {
+          if (id) {
+            subscribeToEvents();
+          }
+        }, 5000);
+      };
+    } catch (err) {
+      console.error('Failed to create EventSource:', err);
+      setIsSubscribed(false);
+    }
+  };
 
   const fetchFlowRun = async () => {
     try {
@@ -145,12 +262,20 @@ export default function FlowRunDetailsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Flow Run Details</h1>
           <p className="text-gray-600">ID: {flowRun.id}</p>
         </div>
-        <button
-          onClick={fetchFlowRun}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center">
+            <div className={`w-3 h-3 rounded-full mr-2 ${isSubscribed ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="text-sm text-gray-600">
+              {isSubscribed ? 'Live updates connected' : 'Live updates disconnected'}
+            </span>
+          </div>
+          <button
+            onClick={fetchFlowRun}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Flow Run Summary */}
@@ -220,6 +345,62 @@ export default function FlowRunDetailsPage() {
           </div>
         </div>
       </div>
+
+      {/* Execution Events */}
+      {events.length > 0 && (
+        <div className="bg-white shadow rounded-lg p-6 mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Live Execution Events ({events.length} events)</h2>
+          
+          <div className="space-y-4">
+            {events.slice().reverse().map((event, index) => (
+              <div key={`${event.type}-${event.data.timestamp}-${index}`} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">
+                      {event.type.replace('_', ' ').toUpperCase()}
+                    </h3>
+                    <div className="flex items-center space-x-4 mt-1">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        event.type.includes('completed') ? 'bg-green-100 text-green-800' :
+                        event.type.includes('failed') ? 'bg-red-100 text-red-800' :
+                        event.type.includes('started') ? 'bg-blue-100 text-blue-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {event.type}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {formatDate(event.data.timestamp)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-3">
+                  <div className="text-sm text-gray-700">
+                    {event.data.step_id && (
+                      <p><span className="font-medium">Step:</span> {event.data.step_id}</p>
+                    )}
+                    {event.data.step_run_id && (
+                      <p><span className="font-medium">Step Run ID:</span> {event.data.step_run_id.substring(0, 8)}...</p>
+                    )}
+                    {event.data.duration_ms && (
+                      <p><span className="font-medium">Duration:</span> {formatDuration(event.data.duration_ms)}</p>
+                    )}
+                    {event.data.response && (
+                      <div className="mt-2">
+                        <p className="font-medium mb-1">Response:</p>
+                        <div className="bg-gray-50 rounded p-3">
+                          <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all">{event.data.response}</pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Step Runs */}
       {flowRun.stepRuns && flowRun.stepRuns.length > 0 && (
