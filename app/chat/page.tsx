@@ -13,6 +13,21 @@ interface ChatMessage {
   timestamp: Date;
 }
 
+interface ParsedMessage {
+  id: string;
+  type: 'user' | 'status' | 'command' | 'response' | 'system' | 'step';
+  content: string;
+  timestamp: Date;
+  metadata?: {
+    statusType?: 'sending_step' | 'running' | 'completed' | 'error';
+    stepName?: string;
+    progress?: string;
+    commandName?: string;
+    commandParams?: any;
+    isThinking?: boolean;
+  };
+}
+
 interface FlowRun {
   id: string;
   flow_id: string;
@@ -68,6 +83,137 @@ interface FlowDefinition {
   priority: number;
   agent: string;
 }
+
+// Parse raw chat messages into structured messages
+const parseChatMessage = (message: ChatMessage): ParsedMessage => {
+  const { id, type, content, timestamp } = message;
+  
+  // User messages are straightforward
+  if (type === 'user') {
+    return {
+      id,
+      type: 'user',
+      content,
+      timestamp
+    };
+  }
+  
+  // Status messages (api_response type with **Status:** prefix)
+  if (type === 'api_response' || (type === 'assistant' && content.includes('**Status:**'))) {
+    const statusMatch = content.match(/\*\*Status:\*\*\s*(\w+)/i);
+    const stepMatch = content.match(/\*\*Step:\*\*\s*(.+)/i);
+    const progressMatch = content.match(/\*\*Progress:\*\*\s*(\d+\/\d+)/i);
+    
+    let statusType: 'sending_step' | 'running' | 'completed' | 'error' = 'running';
+    if (statusMatch) {
+      const status = statusMatch[1].toLowerCase();
+      if (status.includes('sending') || status.includes('pending')) statusType = 'sending_step';
+      else if (status.includes('complete') || status.includes('done')) statusType = 'completed';
+      else if (status.includes('error') || status.includes('fail')) statusType = 'error';
+      else statusType = 'running';
+    }
+    
+    return {
+      id,
+      type: 'status',
+      content,
+      timestamp,
+      metadata: {
+        statusType,
+        stepName: stepMatch ? stepMatch[1] : undefined,
+        progress: progressMatch ? progressMatch[1] : undefined
+      }
+    };
+  }
+  
+  // Command calls (contain [COMMAND:...])
+  if (content.includes('[COMMAND:')) {
+    const commandMatch = content.match(/\[COMMAND:([^\]]+)\]\s*params:\s*(\{[^]*\})/);
+    if (commandMatch) {
+      const commandName = commandMatch[1];
+      let commandParams = {};
+      try {
+        commandParams = JSON.parse(commandMatch[2]);
+      } catch (e) {
+        // If JSON parsing fails, use raw text
+        commandParams = { raw: commandMatch[2] };
+      }
+      
+      return {
+        id,
+        type: 'command',
+        content,
+        timestamp,
+        metadata: {
+          commandName,
+          commandParams
+        }
+      };
+    }
+    
+    // Simple command format without params
+    const simpleCommandMatch = content.match(/\[COMMAND:([^\]]+)\]/);
+    if (simpleCommandMatch) {
+      return {
+        id,
+        type: 'command',
+        content,
+        timestamp,
+        metadata: {
+          commandName: simpleCommandMatch[1],
+          commandParams: {}
+        }
+      };
+    }
+  }
+  
+  // AI responses with thinking/analysis
+  if (type === 'assistant' && content.includes('**Response:**')) {
+    const responseContent = content.replace('**Response:**', '').trim();
+    const isThinking = responseContent.toLowerCase().includes('i\'ll try') || 
+                      responseContent.toLowerCase().includes('let me') ||
+                      responseContent.toLowerCase().includes('thinking') ||
+                      responseContent.toLowerCase().includes('analyzing');
+    
+    return {
+      id,
+      type: 'response',
+      content: responseContent,
+      timestamp,
+      metadata: {
+        isThinking
+      }
+    };
+  }
+  
+  // Step messages
+  if (type === 'step') {
+    return {
+      id,
+      type: 'step',
+      content,
+      timestamp
+    };
+  }
+  
+  // System messages (flow run info, etc.)
+  if (type === 'assistant' && content.includes('Flow Run:')) {
+    return {
+      id,
+      type: 'system',
+      content,
+      timestamp
+    };
+  }
+  
+  // Default: treat as response
+  return {
+    id,
+    type: 'response',
+    content,
+    timestamp
+  };
+};
 
 export default function ChatPage() {
   const [inputPrompt, setInputPrompt] = useState<string>('');
@@ -853,6 +999,107 @@ export default function ChatPage() {
     return `${diffSec}s ago`;
   };
 
+  // Helper function to render a parsed message
+  const renderParsedMessage = (parsedMessage: ParsedMessage) => {
+    const { id, type, content, timestamp, metadata } = parsedMessage;
+    
+    const getMessageStyles = () => {
+      switch (type) {
+        case 'user':
+          return 'bg-blue-600 text-white justify-end';
+        case 'status':
+          const statusColor = metadata?.statusType === 'completed' ? 'bg-green-600' :
+                            metadata?.statusType === 'error' ? 'bg-red-600' :
+                            metadata?.statusType === 'sending_step' ? 'bg-yellow-600' :
+                            'bg-green-700';
+          return `${statusColor} text-white justify-start`;
+        case 'command':
+          return 'bg-purple-700 text-white justify-start';
+        case 'response':
+          const thinkingColor = metadata?.isThinking ? 'bg-gray-800' : 'bg-gray-900';
+          return `${thinkingColor} text-gray-100 justify-start`;
+        case 'step':
+          return 'bg-indigo-600 text-white justify-end';
+        case 'system':
+          return 'bg-gray-800 text-gray-300 justify-start';
+        default:
+          return 'bg-gray-900 text-gray-100 justify-start';
+      }
+    };
+
+    const getTimestampColor = () => {
+      switch (type) {
+        case 'user': return 'text-blue-200';
+        case 'status': return 'text-green-200';
+        case 'command': return 'text-purple-200';
+        case 'response': return metadata?.isThinking ? 'text-gray-400' : 'text-gray-500';
+        case 'step': return 'text-indigo-200';
+        case 'system': return 'text-gray-500';
+        default: return 'text-gray-500';
+      }
+    };
+
+    const renderContent = () => {
+      switch (type) {
+        case 'status':
+          return (
+            <div className="space-y-1">
+              <div className="font-semibold">Status: {metadata?.statusType?.toUpperCase().replace('_', ' ')}</div>
+              {metadata?.stepName && <div className="text-sm opacity-90">Step: {metadata.stepName}</div>}
+              {metadata?.progress && <div className="text-sm opacity-80">Progress: {metadata.progress}</div>}
+            </div>
+          );
+        
+        case 'command':
+          return (
+            <div className="space-y-2">
+              <div className="font-semibold">Command: {metadata?.commandName}</div>
+              {metadata?.commandParams && Object.keys(metadata.commandParams).length > 0 && (
+                <div className="bg-black/30 rounded p-2 text-sm font-mono overflow-x-auto">
+                  <div className="text-gray-400 mb-1">Parameters:</div>
+                  <pre className="whitespace-pre-wrap">
+                    {JSON.stringify(metadata.commandParams, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          );
+        
+        case 'response':
+          return (
+            <div className="space-y-2">
+              {metadata?.isThinking && (
+                <div className="flex items-center text-sm text-gray-400 mb-1">
+                  <svg className="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Thinking...
+                </div>
+              )}
+              <div className="whitespace-pre-wrap">{content}</div>
+            </div>
+          );
+        
+        default:
+          return <div className="whitespace-pre-wrap">{content}</div>;
+      }
+    };
+
+    const alignmentClass = type === 'user' || type === 'step' ? 'justify-end' : 'justify-start';
+    const styles = getMessageStyles();
+
+    return (
+      <div key={id} className={`flex ${alignmentClass}`}>
+        <div className={`max-w-3xl rounded-lg px-4 py-3 ${styles}`}>
+          {renderContent()}
+          <div className={`text-xs mt-2 ${getTimestampColor()}`}>
+            {formatTime(timestamp)}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const getStatusColor = (status: string): string => {
     switch (status?.toLowerCase()) {
       case 'completed': return 'bg-green-500/20 text-green-400';
@@ -945,55 +1192,12 @@ export default function ChatPage() {
                     </div>
                   ) : (
                     chatMessages
-                      .filter((message: ChatMessage) => {
-                        // Show user messages
-                        if (message.type === 'user') return true;
-                        // Show step messages
-                        if (message.type === 'step') return true;
-                        // Show assistant messages that are step responses (contain "**Response:**")
-                        if (message.type === 'assistant' && message.content.includes('**Response:**')) return true;
-                        // Show api_response messages (status messages)
-                        if (message.type === 'api_response') return true;
-                        // Show flow run info messages (contain "Flow Run:")
-                        if (message.type === 'assistant' && message.content.includes('Flow Run:')) return true;
-                        // Don't show other assistant messages
-                        return false;
+                      .map(parseChatMessage)
+                      .filter((parsedMessage: ParsedMessage) => {
+                        // Show all parsed messages except empty ones
+                        return parsedMessage.content.trim().length > 0;
                       })
-                      .map((message: ChatMessage) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${
-                            message.type === 'user' || message.type === 'step' 
-                              ? 'justify-end' 
-                              : 'justify-start'
-                          }`}
-                        >
-                          <div
-                            className={`max-w-3xl rounded-lg px-4 py-3 ${
-                              message.type === 'user'
-                                ? 'bg-blue-600 text-white'
-                                : message.type === 'step'
-                                ? 'bg-purple-600 text-white'
-                                : message.type === 'api_response'
-                                ? 'bg-green-600 text-white'
-                                : 'bg-gray-900 text-gray-100'
-                            }`}
-                          >
-                            <div className="whitespace-pre-wrap">{message.content}</div>
-                            <div className={`text-xs mt-2 ${
-                              message.type === 'user' 
-                                ? 'text-blue-200' 
-                                : message.type === 'step'
-                                ? 'text-purple-200'
-                                : message.type === 'api_response'
-                                ? 'text-green-200'
-                                : 'text-gray-500'
-                            }`}>
-                              {formatTime(message.timestamp)}
-                            </div>
-                          </div>
-                        </div>
-                      ))
+                      .map(renderParsedMessage)
                   )}
                 </div>
 
