@@ -780,7 +780,9 @@ export class ConversationOrchestratorDO_2026A {
               );
               
               // Build the task prompt with resolved instructions
-              taskPrompt = `Execute step: ${currentStep.title}`;
+              // Remove "Step X: " prefix from title to prevent AI from inferring progress
+              const stepTitleWithoutNumber = currentStep.title.replace(/^Step \d+: /, '');
+              taskPrompt = `Execute step: ${stepTitleWithoutNumber}`;
               
               // Add task data if available (backward compatibility)
               if (resolvedStep.task_data) {
@@ -822,7 +824,9 @@ export class ConversationOrchestratorDO_2026A {
               console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
               
               // Fall back to old logic if step resolver fails
-              taskPrompt = `Execute step: ${currentStep.title}`;
+              // Remove "Step X: " prefix from title to prevent AI from inferring progress
+              const stepTitleWithoutNumber = currentStep.title.replace(/^Step \d+: /, '');
+              taskPrompt = `Execute step: ${stepTitleWithoutNumber}`;
               
               if (taskData) {
                 taskPrompt += `\n\n=== TASK ===`;
@@ -1873,7 +1877,9 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Build step prompt with step details
-      let taskPrompt = `Execute step: ${nextStep.title}`;
+      // Remove "Step X: " prefix from title to prevent AI from inferring progress
+      const stepTitleWithoutNumber = nextStep.title.replace(/^Step \d+: /, '');
+      let taskPrompt = `Execute step: ${stepTitleWithoutNumber}`;
       
       // Inject task data if available
       if (taskData) {
@@ -2120,6 +2126,8 @@ export class ConversationOrchestratorDO_2026A {
               content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
 
 CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
+
+IMPORTANT: The step title may include a step number like "Step 2: Search for exact matches". Do NOT use this step number to calculate or report progress. Progress tracking is handled by the system, not by you.
 
 ${availableCommands}
 
@@ -2867,7 +2875,9 @@ Use the response in your work.`
         console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
         
         // Build step command
-        let stepCommand = `Execute step: ${nextStep.title}`;
+        // Remove "Step X: " prefix from title to prevent AI from inferring progress
+        const stepTitleWithoutNumber = nextStep.title.replace(/^Step \d+: /, '');
+        let stepCommand = `Execute step: ${stepTitleWithoutNumber}`;
         if (nextStep.description) {
           stepCommand += `\n${nextStep.description}`;
         }
@@ -3606,7 +3616,9 @@ ${messageContent}`;
       this.conversation.current_prompt = undefined;
     } else {
       // Build new prompt with step instructions
-      prompt = `Execute step: ${step.title}`;
+      // Remove "Step X: " prefix from title to prevent AI from inferring progress
+      const stepTitleWithoutNumber = step.title.replace(/^Step \d+: /, '');
+      prompt = `Execute step: ${stepTitleWithoutNumber}`;
       
       // Check for task injection
       // Priority: 1. Static task_id, 2. Dynamic requires_task
@@ -3839,6 +3851,8 @@ ${messageContent}`;
           content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
 
 CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
+
+IMPORTANT: The step title may include a step number like "Step 2: Search for exact matches". Do NOT use this step number to calculate or report progress. Progress tracking is handled by the system, not by you.
 
 ${availableCommands}
 
