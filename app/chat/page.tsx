@@ -356,6 +356,20 @@ export default function ChatPage() {
             state: conversation.state
           });
           
+          // DEBUG: Log step responses
+          if (conversation.flow_steps) {
+            console.log('DEBUG - Step responses:');
+            conversation.flow_steps.forEach((step: any, index: number) => {
+              console.log(`  Step ${index + 1}:`, {
+                title: step.title,
+                hasResponse: !!step.response,
+                responseLength: step.response?.length || 0,
+                responsePreview: step.response ? step.response.substring(0, 100) + '...' : 'NO RESPONSE',
+                status: step.status
+              });
+            });
+          }
+          
           // Build chat messages from conversation (for backward compatibility)
           const messages: ChatMessage[] = [];
           

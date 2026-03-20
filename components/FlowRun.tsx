@@ -32,10 +32,10 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
 
   const events: ExecutionEvent[] = [];
 
-  // Add FLOW_RUNNING event if flow is not completed (only once)
+  // Add FLOW_RUNNING event if flow is not completed
   if (conversation.flow_completed !== true && conversation.state && conversation.state !== 'not_initialized') {
     events.push({
-      key: 'FLOW_RUNNING',
+      key: `FLOW_RUNNING_${Date.now()}`,
       type: 'FLOW_RUNNING'
     });
   }
@@ -103,11 +103,27 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
   // Debug log to see what data we're receiving
   React.useEffect(() => {
     console.log('FlowRun component received data:', JSON.stringify(data, null, 2));
+    if (data) {
+      console.log('FlowRun - Data analysis:', {
+        hasFlowSteps: !!data.flow_steps,
+        flowStepsCount: data.flow_steps?.length || 0,
+        flowCompleted: data.flow_completed,
+        state: data.state,
+        stepResponses: data.flow_steps?.map((step, i) => ({
+          step: i + 1,
+          hasResponse: !!step.response,
+          responseLength: step.response?.length || 0,
+          status: step.status
+        }))
+      });
+    }
   }, [data]);
   
   // Transform conversation data to events
   const events = React.useMemo(() => {
-    return mapConversationToEvents(data);
+    const events = mapConversationToEvents(data);
+    console.log('FlowRun - Generated events:', events.map(e => ({ type: e.type, key: e.key, contentLength: e.content?.length || 0 })));
+    return events;
   }, [data]);
 
   // Render events as chat messages
