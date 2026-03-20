@@ -848,6 +848,8 @@ export default function ChatPage() {
           console.log('Polling conversation:', conversationId);
           console.log('Conversation state:', conversation.state);
           console.log('Flow completed:', conversation.flow_completed);
+          console.log('Poll count:', pollCount);
+          console.log('Max polls:', maxPolls);
           
           // Get flow steps information
           const flowSteps = conversation.flow_steps || [];
