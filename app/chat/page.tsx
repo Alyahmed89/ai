@@ -845,7 +845,8 @@ export default function ChatPage() {
         console.log('Status response:', data);
         
         // Check if we have valid conversation data
-        if (data.success && data.data?.conversation) {
+        // Note: The response has data.success (top level) and data.data.success (nested)
+        if (data.success && data.data?.success && data.data?.conversation) {
           const conversation = data.data.conversation;
           console.log(`State: ${conversation.state}, Flow Completed: ${conversation.flow_completed}`);
           
@@ -872,6 +873,8 @@ export default function ChatPage() {
             console.log('Conversation expired/cleared');
             return true; // Stop polling
           }
+        } else {
+          console.log('Invalid response structure:', data);
         }
         
         // Check max polls
