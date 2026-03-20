@@ -831,6 +831,8 @@ export default function ChatPage() {
     const pollIntervalId = setInterval(async () => {
       pollCount++;
       
+      console.log(`Polling attempt ${pollCount}/${maxPolls} for conversation: ${conversationId}`);
+      
       try {
         const statusResponse = await fetch(`/api/proxy/status/${conversationId}`);
         
