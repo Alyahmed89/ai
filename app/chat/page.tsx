@@ -833,10 +833,12 @@ export default function ChatPage() {
     // Track completed steps and responses to avoid duplicates
     const completedStepIndices = new Set<string>();
     
-    const pollIntervalId = setInterval(async () => {
-      pollCount++;
-      
-      console.log(`Polling attempt ${pollCount}/${maxPolls} for conversation: ${conversationId}`);
+    try {
+      console.log('Setting up polling interval...');
+      const pollIntervalId = setInterval(async () => {
+        pollCount++;
+        
+        console.log(`Polling attempt ${pollCount}/${maxPolls} for conversation: ${conversationId}`);
       
       try {
         const statusResponse = await fetch(`/api/proxy/status/${conversationId}`);
