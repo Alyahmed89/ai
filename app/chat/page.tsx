@@ -833,14 +833,69 @@ export default function ChatPage() {
     // Track completed steps and responses to avoid duplicates
     const completedStepIndices = new Set<string>();
     
-    try {
-      console.log('Setting up polling interval...');
-      const pollIntervalId = setInterval(async () => {
-        pollCount++;
-        
-        console.log(`Polling attempt ${pollCount}/${maxPolls} for conversation: ${conversationId}`);
-      
+    // First, check status immediately (flow might already be done)
+    const checkStatusImmediately = async () => {
       try {
+        console.log('Checking status immediately for conversation:', conversationId);
+        const statusResponse = await fetch(`/api/proxy/status/${conversationId}`);
+        
+        if (!statusResponse.ok) {
+          console.error(`Immediate status check failed: ${statusResponse.status}`);
+          return false;
+        }
+        
+        const statusData = await statusResponse.json();
+        console.log('Immediate status data:', statusData);
+        
+        if (statusData.success && statusData.data?.conversation) {
+          const conversation = statusData.data.conversation;
+          console.log('Immediate conversation state:', conversation.state, 'flow_completed:', conversation.flow_completed);
+          
+          // If already completed, handle it immediately
+          if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+            console.log('Flow already completed! Updating UI...');
+            
+            // Update status message to show completion
+            setChatMessages(prevMessages => {
+              const filteredMessages = prevMessages.filter(msg => 
+                !msg.id.startsWith(`status_${conversationId}_`)
+              );
+              
+              const completionMessage: ChatMessage = {
+                id: `completion_${conversationId}_${Date.now()}`,
+                type: 'api_response',
+                content: `✅ Flow completed immediately!\n**Final State:** ${conversation.state}\n**Completed At:** ${new Date().toLocaleTimeString()}`,
+                timestamp: new Date(),
+              };
+              
+              return [...filteredMessages, completionMessage];
+            });
+            
+            return true; // Already completed
+          }
+        }
+      } catch (error) {
+        console.error('Error in immediate status check:', error);
+      }
+      return false;
+    };
+    
+    // Start with immediate check
+    checkStatusImmediately().then(alreadyCompleted => {
+      if (alreadyCompleted) {
+        console.log('Flow already completed, no need to poll');
+        return;
+      }
+      
+      // If not completed, start polling
+      console.log('Flow not completed yet, starting polling interval...');
+      const pollIntervalId = setInterval(async () => {
+        try {
+          pollCount++;
+          
+          console.log(`Polling attempt ${pollCount}/${maxPolls} for conversation: ${conversationId}`);
+        
+        try {
         const statusResponse = await fetch(`/api/proxy/status/${conversationId}`);
         
         if (!statusResponse.ok) {
@@ -1025,6 +1080,10 @@ export default function ChatPage() {
         }
       }
     }, pollInterval);
+    
+    // Store interval ID for potential cleanup
+    console.log('Polling interval started with ID:', pollIntervalId);
+    });
   };
 
   const handleEditFlow = (flowId: string) => {
