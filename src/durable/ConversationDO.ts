@@ -1398,10 +1398,13 @@ export class ConversationOrchestratorDO_2026A {
       
       // Load steps from database
       errorContext += `, loading steps`;
+      console.log(`[DO:${this.state.id}] Calling loadFlowStepsFromDB for flow: ${flow_id}`);
       const steps = await this.loadFlowStepsFromDB(flow_id);
+      console.log(`[DO:${this.state.id}] loadFlowStepsFromDB returned ${steps?.length || 0} steps`);
       
       if (!steps || steps.length === 0) {
         console.error(`[DO:${this.state.id}] No steps found for flow: ${flow_id}`);
+        console.error(`[DO:${this.state.id}] Error context: ${errorContext}`);
         return new Response(JSON.stringify({ 
           error: `No steps found for flow: ${flow_id}`,
           context: errorContext
@@ -1970,7 +1973,7 @@ export class ConversationOrchestratorDO_2026A {
     }
   }
 
-  // Helper to load flow steps from database
+  // Helper to load flow steps from database with robust schema detection
   private async loadFlowStepsFromDB(flowId: string): Promise<any[]> {
     if (!this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not configured`);
@@ -1978,30 +1981,233 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     try {
-      // Try the new schema first (with step_key, title, instructions, order_index)
-      // If that fails, fall back to the old schema (with step_number, prompt)
-      const result = await this.env.FLOW_RUNS_DB.prepare(
-        'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, input_keys, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url, output_auth_token, requires_task, dual_agent, ruler_agent, goal_criteria, max_iterations_per_step, expected_response, use_endpoints, extra_step FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
-      ).bind(flowId).all();
-
-      // If we got results, return them
-      if (result.results && result.results.length > 0) {
-        return result.results;
+      console.log(`[DO:${this.state.id}] Loading steps for flow: ${flowId}`);
+      
+      // First, try to detect the schema by checking what columns exist
+      const availableColumns = await this.detectFlowStepsSchema();
+      console.log(`[DO:${this.state.id}] Detected available columns: ${availableColumns.join(', ')}`);
+      
+      // Build query based on available columns
+      const query = this.buildFlowStepsQuery(availableColumns);
+      console.log(`[DO:${this.state.id}] Built query: ${query.substring(0, 200)}...`);
+      
+      // Execute the query
+      const result = await this.env.FLOW_RUNS_DB.prepare(query).bind(flowId).all();
+      console.log(`[DO:${this.state.id}] Query executed, found ${result.results?.length || 0} results`);
+      
+      if (!result.results || result.results.length === 0) {
+        console.log(`[DO:${this.state.id}] No steps found for flow ${flowId}`);
+        return [];
       }
       
-      // If no results with new schema, try old schema
-      console.log(`[DO:${this.state.id}] No results with new schema, trying old schema`);
-      const oldSchemaResult = await this.env.FLOW_RUNS_DB.prepare(
-        'SELECT id as step_id, step_number as order_index, prompt as description, step_type, expected_response FROM flow_steps WHERE flow_id = ? ORDER BY step_number'
-      ).bind(flowId).all();
+      // Transform results to expected format
+      const transformedResults = this.transformFlowStepResults(result.results, availableColumns);
+      console.log(`[DO:${this.state.id}] Transformed ${transformedResults.length} results`);
       
-      // Convert old schema results to match expected format
-      const convertedResults = (oldSchemaResult.results || []).map((step: any) => ({
-        ...step,
-        step_key: step.step_id, // Use step_id as step_key
-        title: `Step ${step.order_index}`, // Generate title
-        instructions: step.description, // prompt is already mapped to description
-        // Set defaults for missing columns
+      return transformedResults;
+      
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error loading steps: ${error.message}`);
+      console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
+      return [];
+    }
+  }
+  
+  // Detect available columns in flow_steps table
+  private async detectFlowStepsSchema(): Promise<string[]> {
+    const availableColumns: string[] = [];
+    
+    // Test for common column names
+    const testColumns = [
+      'id', 'flow_id', 'step_key', 'title', 'instructions', 'description', 
+      'prompt', 'step_type', 'order_index', 'step_number', 'page_key',
+      'blocking', 'auto_fail_on_error', 'retryable', 'task_id', 'input_keys',
+      'output_url', 'output_auth_token', 'requires_task', 'dual_agent',
+      'ruler_agent', 'goal_criteria', 'max_iterations_per_step', 
+      'expected_response', 'use_endpoints', 'extra_step', 'created_at', 'updated_at'
+    ];
+    
+    for (const column of testColumns) {
+      try {
+        // Try a simple query with the column
+        const testResult = await this.env.FLOW_RUNS_DB.prepare(
+          `SELECT ${column} FROM flow_steps LIMIT 1`
+        ).first();
+        
+        if (testResult !== null) {
+          availableColumns.push(column);
+        }
+      } catch (error) {
+        // Column doesn't exist or query failed, skip it
+        console.log(`[DO:${this.state.id}] Column ${column} not available: ${error.message}`);
+      }
+    }
+    
+    // If we couldn't detect any columns, try a wildcard query
+    if (availableColumns.length === 0) {
+      try {
+        const wildcardResult = await this.env.FLOW_RUNS_DB.prepare(
+          'SELECT * FROM flow_steps LIMIT 1'
+        ).first();
+        
+        if (wildcardResult) {
+          // Get column names from the result object
+          const columns = Object.keys(wildcardResult);
+          availableColumns.push(...columns);
+          console.log(`[DO:${this.state.id}] Detected columns via wildcard: ${columns.join(', ')}`);
+        }
+      } catch (error) {
+        console.error(`[DO:${this.state.id}] Wildcard query failed: ${error.message}`);
+      }
+    }
+    
+    return availableColumns;
+  }
+  
+  // Build query based on available columns
+  private buildFlowStepsQuery(availableColumns: string[]): string {
+    // Map column aliases to ensure consistent output format
+    const columnMappings: Record<string, string> = {};
+    
+    // Always include id as step_id
+    columnMappings['step_id'] = 'id';
+    
+    // Map step_key (use id if step_key doesn't exist)
+    if (availableColumns.includes('step_key')) {
+      columnMappings['step_key'] = 'step_key';
+    } else {
+      columnMappings['step_key'] = 'id';
+    }
+    
+    // Map title (generate if doesn't exist)
+    if (availableColumns.includes('title')) {
+      columnMappings['title'] = 'title';
+    } else {
+      columnMappings['title'] = `'Step ' || COALESCE(order_index, step_number, id)`;
+    }
+    
+    // Map description/instructions/prompt
+    if (availableColumns.includes('instructions')) {
+      columnMappings['description'] = 'instructions';
+    } else if (availableColumns.includes('prompt')) {
+      columnMappings['description'] = 'prompt';
+    } else if (availableColumns.includes('description')) {
+      columnMappings['description'] = 'description';
+    } else {
+      columnMappings['description'] = `'Step instructions'`;
+    }
+    
+    // Map step_type
+    if (availableColumns.includes('step_type')) {
+      columnMappings['step_type'] = 'step_type';
+    } else {
+      columnMappings['step_type'] = `'default'`;
+    }
+    
+    // Map order_index/step_number
+    if (availableColumns.includes('order_index')) {
+      columnMappings['order_index'] = 'order_index';
+    } else if (availableColumns.includes('step_number')) {
+      columnMappings['order_index'] = 'step_number';
+    } else {
+      columnMappings['order_index'] = 'id';
+    }
+    
+    // Map other columns if available
+    const optionalColumns = [
+      'page_key', 'blocking', 'auto_fail_on_error', 'retryable', 'task_id',
+      'input_keys', 'output_url', 'output_auth_token', 'requires_task',
+      'dual_agent', 'ruler_agent', 'goal_criteria', 'max_iterations_per_step',
+      'expected_response', 'use_endpoints', 'extra_step'
+    ];
+    
+    for (const column of optionalColumns) {
+      if (availableColumns.includes(column)) {
+        columnMappings[column] = column;
+      } else {
+        // Provide default values for missing columns
+        if (column === 'output_url' || column === 'output_auth_token' || 
+            column === 'goal_criteria' || column === 'expected_response' ||
+            column === 'use_endpoints') {
+          columnMappings[column] = 'NULL';
+        } else if (column === 'blocking' || column === 'auto_fail_on_error' ||
+                  column === 'retryable' || column === 'requires_task' ||
+                  column === 'dual_agent' || column === 'extra_step') {
+          columnMappings[column] = '0';
+        } else if (column === 'page_key' || column === 'task_id' ||
+                  column === 'input_keys' || column === 'ruler_agent') {
+          columnMappings[column] = 'NULL';
+        } else if (column === 'max_iterations_per_step') {
+          columnMappings[column] = 'NULL';
+        }
+      }
+    }
+    
+    // Add output column (computed from output_url)
+    if (availableColumns.includes('output_url')) {
+      columnMappings['output'] = `CASE WHEN output_url IS NOT NULL AND output_url != '' THEN 1 ELSE 0 END`;
+    } else {
+      columnMappings['output'] = '0';
+    }
+    
+    // Build SELECT clause
+    const selectClause = Object.entries(columnMappings)
+      .map(([alias, column]) => `${column} AS ${alias}`)
+      .join(', ');
+    
+    // Build ORDER BY clause
+    let orderByClause = 'ORDER BY ';
+    if (availableColumns.includes('order_index')) {
+      orderByClause += 'order_index';
+    } else if (availableColumns.includes('step_number')) {
+      orderByClause += 'step_number';
+    } else {
+      orderByClause += 'id';
+    }
+    
+    return `SELECT ${selectClause} FROM flow_steps WHERE flow_id = ? ${orderByClause}`;
+  }
+  
+  // Transform results to expected format
+  private transformFlowStepResults(results: any[], availableColumns: string[]): any[] {
+    return results.map((step: any) => {
+      const transformed: any = { ...step };
+      
+      // Ensure required fields exist
+      if (!transformed.step_key && transformed.step_id) {
+        transformed.step_key = transformed.step_id;
+      }
+      
+      if (!transformed.title && transformed.order_index !== undefined) {
+        transformed.title = `Step ${transformed.order_index}`;
+      } else if (!transformed.title) {
+        transformed.title = `Step ${transformed.step_id || 'unknown'}`;
+      }
+      
+      if (!transformed.instructions && transformed.description) {
+        transformed.instructions = transformed.description;
+      } else if (!transformed.instructions) {
+        transformed.instructions = transformed.description || 'No instructions provided';
+      }
+      
+      // Ensure boolean fields are properly typed
+      const booleanFields = ['blocking', 'auto_fail_on_error', 'retryable', 'requires_task', 'dual_agent', 'extra_step', 'output'];
+      for (const field of booleanFields) {
+        if (transformed[field] !== undefined) {
+          transformed[field] = Boolean(transformed[field]);
+        }
+      }
+      
+      // Ensure numeric fields are properly typed
+      const numericFields = ['order_index', 'max_iterations_per_step'];
+      for (const field of numericFields) {
+        if (transformed[field] !== undefined && transformed[field] !== null) {
+          transformed[field] = Number(transformed[field]);
+        }
+      }
+      
+      // Set defaults for missing optional fields
+      const defaultValues: Record<string, any> = {
         page_key: null,
         blocking: false,
         auto_fail_on_error: false,
@@ -2013,18 +2219,22 @@ export class ConversationOrchestratorDO_2026A {
         output_auth_token: null,
         requires_task: false,
         dual_agent: false,
-        ruler_agent: false,
+        ruler_agent: null,
         goal_criteria: null,
         max_iterations_per_step: null,
+        expected_response: null,
         use_endpoints: null,
         extra_step: false
-      }));
+      };
       
-      return convertedResults;
-    } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Error loading steps: ${error.message}`);
-      return [];
-    }
+      for (const [field, defaultValue] of Object.entries(defaultValues)) {
+        if (transformed[field] === undefined) {
+          transformed[field] = defaultValue;
+        }
+      }
+      
+      return transformed;
+    });
   }
 
   private async handleAttach(request: Request): Promise<Response> {
