@@ -842,6 +842,7 @@ export default function ChatPage() {
         }
         
         const statusData = await statusResponse.json();
+        console.log('Status data received:', statusData);
         
         if (statusData.success && statusData.data?.conversation) {
           const conversation = statusData.data.conversation;
