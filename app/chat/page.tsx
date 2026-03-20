@@ -821,6 +821,11 @@ export default function ChatPage() {
   };
 
   const startPollingForResults = (conversationId: string, assistantMessageId: string, userMessage: string = '', restoreInstructions?: () => Promise<void>) => {
+    console.log('=== START POLLING FUNCTION CALLED ===');
+    console.log('conversationId:', conversationId);
+    console.log('assistantMessageId:', assistantMessageId);
+    console.log('userMessage:', userMessage);
+    
     let pollCount = 0;
     const maxPolls = 30; // 30 polls * 2 seconds = 60 seconds total
     const pollInterval = 2000; // Poll every 2 seconds
