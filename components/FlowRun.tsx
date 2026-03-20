@@ -15,6 +15,8 @@ export type ConversationData = {
     id?: string;
     title?: string;
     instructions?: string;
+    response?: string | null;
+    status?: string;
   }>;
   last_step_response?: string;
 };
@@ -30,35 +32,50 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
 
   const events: ExecutionEvent[] = [];
 
-  // Add FLOW_RUNNING event if state is "running" (only once)
-  if (conversation.state === 'running') {
+  // Add FLOW_RUNNING event if flow is not completed (only once)
+  if (conversation.flow_completed !== true && conversation.state && conversation.state !== 'not_initialized') {
     events.push({
       key: 'FLOW_RUNNING',
       type: 'FLOW_RUNNING'
     });
   }
 
-  // Add STEP_PROMPT events for each flow step with instructions
+  // Add STEP_PROMPT and STEP_RESPONSE events for each flow step
   if (conversation.flow_steps && Array.isArray(conversation.flow_steps)) {
     conversation.flow_steps.forEach((step, index) => {
+      // Add STEP_PROMPT event for step instructions
       if (step.instructions) {
-        const content = step.title 
+        const promptContent = step.title 
           ? `Step ${index + 1}: ${step.title}\n\n${step.instructions}`
           : `Step ${index + 1}:\n\n${step.instructions}`;
         
         events.push({
-          key: `STEP_PROMPT:${content}`,
+          key: `STEP_PROMPT:${step.id || index}:${promptContent}`,
           type: 'STEP_PROMPT',
-          content
+          content: promptContent
+        });
+      }
+
+      // Add STEP_RESPONSE event for step response (if exists and not null)
+      if (step.response && step.response.trim() !== '') {
+        const status = step.status || 'unknown';
+        const responseContent = step.title 
+          ? `Step ${index + 1}: ${step.title}\nStatus: ${status}\n\n${step.response}`
+          : `Step ${index + 1}\nStatus: ${status}\n\n${step.response}`;
+        
+        events.push({
+          key: `STEP_RESPONSE:${step.id || index}:${step.response.substring(0, 50)}`,
+          type: 'STEP_RESPONSE',
+          content: responseContent
         });
       }
     });
   }
 
-  // Add STEP_RESPONSE event if last_step_response exists
-  if (conversation.last_step_response) {
+  // Add STEP_RESPONSE event if last_step_response exists (fallback)
+  if (conversation.last_step_response && conversation.last_step_response.trim() !== '') {
     events.push({
-      key: `STEP_RESPONSE:${conversation.last_step_response}`,
+      key: `STEP_RESPONSE:LAST:${conversation.last_step_response.substring(0, 50)}`,
       type: 'STEP_RESPONSE',
       content: conversation.last_step_response
     });
