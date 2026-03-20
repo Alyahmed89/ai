@@ -967,6 +967,27 @@ export default function ChatPage() {
           
           // Stop polling if flow is completed or failed to initialize
           if (conversation.state === 'not_initialized' || conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+            console.log('Flow completed or not initialized! Stopping polling...');
+            
+            // Update the status message to show completion
+            if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+              setMessages(prevMessages => {
+                const filteredMessages = prevMessages.filter(msg => 
+                  !msg.id.startsWith(`status_${conversationId}_`)
+                );
+                
+                const completionMessage: Message = {
+                  id: `completion_${conversationId}_${Date.now()}`,
+                  role: 'assistant',
+                  content: `✅ Flow completed successfully!\n**Final State:** ${conversation.state}\n**Total Steps:** ${flowSteps.length}\n**Completed At:** ${new Date().toLocaleTimeString()}`,
+                  timestamp: new Date().toLocaleTimeString(),
+                  isStatus: true
+                };
+                
+                return [...filteredMessages, completionMessage];
+              });
+            }
+            
             clearInterval(pollIntervalId);
             // Don't add final completion message - we only show step instructions and responses
           }
