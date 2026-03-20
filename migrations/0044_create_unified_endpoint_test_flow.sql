@@ -1,4 +1,4 @@
--- Migration 0042: Create test flow for unified endpoint system
+-- Migration 0044: Create test flow for unified endpoint system
 -- Creates a test flow with step using use_endpoints and extra_step=true
 
 -- Create test flow definition

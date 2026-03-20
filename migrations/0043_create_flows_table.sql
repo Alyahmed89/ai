@@ -1,4 +1,4 @@
--- Migration 0040: Create flows table for backward compatibility
+-- Migration 0043: Create flows table for backward compatibility
 -- The system expects a 'flows' table for backward compatibility with older code
 -- This table has minimal schema matching what the code queries
 

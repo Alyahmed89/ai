@@ -1,4 +1,4 @@
--- Migration 0043: Add ai_enabled column to endpoint_registry table
+-- Migration 0045: Add ai_enabled column to endpoint_registry table
 -- This column is referenced in the code but missing from the schema
 
 -- Add ai_enabled column to endpoint_registry

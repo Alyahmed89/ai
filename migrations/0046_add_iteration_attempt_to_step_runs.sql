@@ -1,4 +1,4 @@
--- Migration 0044: Add iteration and attempt columns to step_runs table
+-- Migration 0046: Add iteration and attempt columns to step_runs table
 -- These columns are referenced in the code but missing from the schema
 
 -- Add iteration column to step_runs (references iterations table)

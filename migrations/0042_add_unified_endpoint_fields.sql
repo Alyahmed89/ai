@@ -1,4 +1,4 @@
--- Migration 0041: Add unified endpoint fields for flow_steps and step_runs
+-- Migration 0042: Add unified endpoint fields for flow_steps and step_runs
 -- Adds support for use_endpoints, extra_step, and api_calls
 
 -- Add use_endpoints column to flow_steps (JSON array of endpoint configurations)
