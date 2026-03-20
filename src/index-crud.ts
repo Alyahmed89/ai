@@ -588,6 +588,123 @@ app.get('/status/:id', async (c) => {
 });
 
 // ============================================================================
+// STOP ENDPOINT - Stop a running conversation/flow
+// ============================================================================
+app.post('/stop', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { conversation_id } = body;
+    
+    if (!conversation_id) {
+      return c.json(errorResponse('Missing conversation_id parameter', 400));
+    }
+    
+    if (!c.env.CONVERSATIONS) {
+      return c.json(errorResponse('Durable Objects not configured', 500));
+    }
+    
+    // Get the Durable Object
+    let id;
+    try {
+      id = c.env.CONVERSATIONS.idFromString(conversation_id);
+    } catch (error) {
+      return c.json(errorResponse('Invalid conversation ID', 400));
+    }
+    
+    const conversationDo = c.env.CONVERSATIONS.get(id);
+    
+    // Call the Durable Object's stop endpoint
+    const doResponse = await conversationDo.fetch('http://placeholder/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    
+    if (!doResponse.ok) {
+      const errorText = await doResponse.text();
+      console.error(`[HTTP:STOP] Durable Object error: ${doResponse.status} - ${errorText}`);
+      return c.json(errorResponse(`Failed to stop conversation: ${doResponse.status}`, 500));
+    }
+    
+    // Decrement active conversation count
+    try {
+      if (c.env.RATE_LIMIT_KV) {
+        const activeConversationsKey = 'global:active_conversations';
+        const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
+        const newCount = Math.max(0, parseInt(currentCount || '0') - 1);
+        await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
+        console.log(`[RATE_LIMIT] Active conversations after stop: ${newCount}`);
+      }
+    } catch (error) {
+      console.error(`[RATE_LIMIT] Error updating active conversation count: ${error}`);
+    }
+    
+    const result = await doResponse.json();
+    return c.json(successResponse(result));
+    
+  } catch (error: any) {
+    console.error(`[HTTP:STOP] Endpoint error: ${error.message}`);
+    return c.json(errorResponse(error.message, 500));
+  }
+});
+
+// ============================================================================
+// DELETE ENDPOINT - Delete a conversation/flow (permanent removal)
+// ============================================================================
+app.delete('/conversation/:id', async (c) => {
+  try {
+    const conversationId = c.req.param('id');
+    
+    if (!c.env.CONVERSATIONS) {
+      return c.json(errorResponse('Durable Objects not configured', 500));
+    }
+    
+    // Get the Durable Object
+    let id;
+    try {
+      id = c.env.CONVERSATIONS.idFromString(conversationId);
+    } catch (error) {
+      return c.json(errorResponse('Invalid conversation ID', 400));
+    }
+    
+    const conversationDo = c.env.CONVERSATIONS.get(id);
+    
+    // Call the Durable Object's delete endpoint
+    const doResponse = await conversationDo.fetch('http://placeholder/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    
+    if (!doResponse.ok) {
+      const errorText = await doResponse.text();
+      console.error(`[HTTP:DELETE] Durable Object error: ${doResponse.status} - ${errorText}`);
+      return c.json(errorResponse(`Failed to delete conversation: ${doResponse.status}`, 500));
+    }
+    
+    // Decrement active conversation count
+    try {
+      if (c.env.RATE_LIMIT_KV) {
+        const activeConversationsKey = 'global:active_conversations';
+        const currentCount = await c.env.RATE_LIMIT_KV.get(activeConversationsKey);
+        const newCount = Math.max(0, parseInt(currentCount || '0') - 1);
+        await c.env.RATE_LIMIT_KV.put(activeConversationsKey, newCount.toString(), { expirationTtl: 3600 }); // 1 hour TTL
+        console.log(`[RATE_LIMIT] Active conversations after delete: ${newCount}`);
+      }
+    } catch (error) {
+      console.error(`[RATE_LIMIT] Error updating active conversation count: ${error}`);
+    }
+    
+    const result = await doResponse.json();
+    return c.json(successResponse(result));
+    
+  } catch (error: any) {
+    console.error(`[HTTP:DELETE] Endpoint error: ${error.message}`);
+    return c.json(errorResponse(error.message, 500));
+  }
+});
+
+// ============================================================================
 // SSE STREAMING ENDPOINT FOR EXECUTION EVENTS
 // ============================================================================
 app.get('/execution-events/:flowRunId', async (c) => {
