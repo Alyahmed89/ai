@@ -821,12 +821,19 @@ export class ConversationOrchestratorDO_2026A {
       const { getFlowSteps } = await import('../services/database');
       const steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flowId);
       
-      // Update cache
-      this.flowStepsCache = steps;
-      this.flowStepsCacheTime = now;
-      console.log(`[DO:${this.state.id}] Cached ${steps.length} flow steps for ${flowId}`);
+      // Convert StepData[] to ExecutionStepData[] by adding response and status fields
+      const executionSteps: ExecutionStepData[] = steps.map(step => ({
+        ...step,
+        response: null,
+        status: 'pending' as const
+      }));
       
-      return steps;
+      // Update cache
+      this.flowStepsCache = executionSteps;
+      this.flowStepsCacheTime = now;
+      console.log(`[DO:${this.state.id}] Cached ${executionSteps.length} flow steps for ${flowId}`);
+      
+      return executionSteps;
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Error loading flow steps: ${error.message}`);
       return null;
@@ -876,7 +883,17 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     // Fall back to sequential steps if no conditional branching
-    const steps = await this.loadFlowSteps(flowId);
+    // First, try to use steps from conversation (they have execution state)
+    let steps: ExecutionStepData[] | null = null;
+    
+    if (this.conversation.flow_steps && this.conversation.flow_steps.length > 0) {
+      console.log(`[DO:${this.state.id}] Using steps from conversation.flow_steps (${this.conversation.flow_steps.length} steps)`);
+      steps = this.conversation.flow_steps;
+    } else {
+      // Fall back to loading from database
+      console.log(`[DO:${this.state.id}] No steps in conversation.flow_steps, loading from database`);
+      steps = await this.loadFlowSteps(flowId);
+    }
     
     if (!steps || steps.length === 0) {
       console.log(`[DO:${this.state.id}] No steps found for flow ${flowId}`);
@@ -1285,7 +1302,7 @@ export class ConversationOrchestratorDO_2026A {
       // Convert steps to ExecutionStepData by adding response and status fields
       const executionSteps: ExecutionStepData[] = steps ? steps.map(step => ({
         ...step,
-        response: undefined,
+        response: null,
         status: 'pending' as const
       })) : [];
       
@@ -1507,7 +1524,7 @@ export class ConversationOrchestratorDO_2026A {
       // Convert steps to ExecutionStepData by adding response and status fields
       const executionSteps: ExecutionStepData[] = steps.map(step => ({
         ...step,
-        response: undefined,
+        response: null,
         status: 'pending' as const
       }));
       
@@ -2269,7 +2286,10 @@ export class ConversationOrchestratorDO_2026A {
         max_iterations_per_step: null,
         expected_response: null,
         use_endpoints: null,
-        extra_step: false
+        extra_step: false,
+        // Initialize execution fields
+        response: null,
+        status: 'pending'
       };
       
       for (const [field, defaultValue] of Object.entries(defaultValues)) {
