@@ -134,7 +134,7 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
 const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
   // Debug log to see what data we're receiving
   React.useEffect(() => {
-    console.log('FlowRun component received data:', JSON.stringify(data, null, 2));
+    console.log('FlowRun component received data:', data);
     if (data) {
       console.log('FlowRun - Data analysis:', {
         hasFlowSteps: !!data.flow_steps,
@@ -148,6 +148,8 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
           status: step.status
         }))
       });
+    } else {
+      console.log('FlowRun - Data is null or undefined');
     }
   }, [data]);
   
@@ -229,6 +231,23 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
   if (events.length === 0) {
     return (
       <div className="p-8 text-center text-gray-500">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 text-left">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <span className="text-yellow-400">⚠️</span>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                <strong>Debug Info:</strong> Data received: {data ? 'YES' : 'NO'}, Events: {events.length}
+                {data && (
+                  <span>
+                    , Flow steps: {data.flow_steps?.length || 0}, Flow completed: {data.flow_completed ? 'YES' : 'NO'}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
         No flow events to display
       </div>
     );
