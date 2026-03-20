@@ -5,6 +5,7 @@ import HierarchicalNav from '@/components/HierarchicalNav';
 import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 import EditFlowModal from '@/components/EditFlowModal';
 import CreateProjectModal from '@/components/CreateProjectModal';
+import FlowRun, { ConversationData } from '@/components/FlowRun';
 
 interface ChatMessage {
   id: string;
@@ -231,6 +232,7 @@ export default function ChatPage() {
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
+  const [conversationData, setConversationData] = useState<ConversationData | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -271,6 +273,7 @@ export default function ChatPage() {
       if (!selectedFlowRunId) {
         // Clear chat messages when no flow run is selected
         setChatMessages([]);
+        setConversationData(null);
         return;
       }
 
@@ -330,13 +333,19 @@ export default function ChatPage() {
         }
 
         const conversationData = await conversationResponse.json();
+        console.log('Conversation data:', JSON.stringify(conversationData, null, 2));
         
         if (conversationData.success && conversationData.data?.conversation) {
           const conversation = conversationData.data.conversation;
+          console.log('Conversation:', JSON.stringify(conversation, null, 2));
           const flowSteps = conversation.flow_steps || [];
           const lastStepResponse = conversation.last_step_response || '';
+          console.log('Flow steps:', flowSteps.length, 'Last step response:', lastStepResponse);
           
-          // Build chat messages from conversation
+          // Store conversation data for FlowRun component
+          setConversationData(conversation);
+          
+          // Build chat messages from conversation (for backward compatibility)
           const messages: ChatMessage[] = [];
           
           // Add flow run info as a system message
@@ -359,6 +368,7 @@ export default function ChatPage() {
 
           // Add flow steps as assistant messages
           flowSteps.forEach((step: any, index: number) => {
+            console.log(`Step ${index}:`, JSON.stringify(step, null, 2));
             if (step.instructions) {
               messages.push({
                 id: `step-${step.id}-${index}`,
@@ -366,6 +376,8 @@ export default function ChatPage() {
                 content: `Step ${index + 1}: ${step.title || 'Untitled'}\n\n${step.instructions}`,
                 timestamp: new Date(flowRun.started_at * 1000 + index * 1000) // Stagger timestamps
               });
+            } else {
+              console.log(`Step ${index} has no instructions property`);
             }
           });
 
@@ -408,6 +420,13 @@ export default function ChatPage() {
 
     fetchFlowRunConversation();
   }, [selectedFlowRunId]);
+
+  // Clear conversation data when a new flow is selected
+  useEffect(() => {
+    if (selectedFlowId) {
+      setConversationData(null);
+    }
+  }, [selectedFlowId]);
 
   const fetchFlowDefinitions = async () => {
     try {
@@ -476,6 +495,7 @@ export default function ChatPage() {
     };
     
     setChatMessages(prev => [...prev, userMessage]);
+    setConversationData(null); // Reset conversation data for new flow
     setInputPrompt('');
     setIsRunning(true);
     
@@ -842,13 +862,13 @@ export default function ChatPage() {
         }
         
         const data = await response.json();
-        console.log('Status response:', data);
+        console.log('Status response:', JSON.stringify(data, null, 2));
         
         // Add debug message to show polling is working
         const debugMsg: ChatMessage = {
           id: `debug_${conversationId}_${Date.now()}`,
           type: 'api_response',
-          content: `🔍 Poll #${pollCount}: Checking status...`,
+          content: `🔍 Poll #${pollCount}: Checking status...\n**Status:** running`,
           timestamp: new Date(),
         };
         setChatMessages(prev => [...prev, debugMsg]);
@@ -859,6 +879,9 @@ export default function ChatPage() {
           const conversation = data.data.conversation;
           console.log(`State: ${conversation.state}, Flow Completed: ${conversation.flow_completed}`);
           
+          // Store conversation data for FlowRun component
+          setConversationData(conversation);
+          
           // Check for completion
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             console.log('✅ FLOW COMPLETED DETECTED!');
@@ -867,7 +890,7 @@ export default function ChatPage() {
             const completionMsg: ChatMessage = {
               id: `completion_${conversationId}_${Date.now()}`,
               type: 'api_response',
-              content: `✅ **FLOW COMPLETED!**\n**State:** ${conversation.state}\n**Time:** ${new Date().toLocaleTimeString()}`,
+              content: `✅ **FLOW COMPLETED!**\n**Status:** ${conversation.state}\n**Time:** ${new Date().toLocaleTimeString()}`,
               timestamp: new Date(),
             };
             
@@ -1137,7 +1160,9 @@ export default function ChatPage() {
                   ref={chatContainerRef}
                   className="flex-1 overflow-y-auto p-6 space-y-4"
                 >
-                  {chatMessages.length === 0 ? (
+                  {conversationData ? (
+                    <FlowRun data={conversationData} />
+                  ) : chatMessages.length === 0 ? (
                     <div className="h-full flex items-center justify-center">
                       <div className="text-center">
                         <p className="text-gray-400 text-sm max-w-md">
