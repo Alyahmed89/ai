@@ -1197,7 +1197,7 @@ export default function ChatPage() {
                   ref={chatContainerRef}
                   className="flex-1 overflow-y-auto p-6 space-y-4"
                 >
-                  {conversationData ? (
+                  {conversationData && (conversationData.flow_steps && conversationData.flow_steps.length > 0 || (conversationData.last_step_response && conversationData.last_step_response.trim() !== '')) ? (
                     <FlowRun data={conversationData} />
                   ) : chatMessages.length === 0 ? (
                     <div className="h-full flex items-center justify-center">
