@@ -26,77 +26,109 @@ interface FlowRunProps {
 }
 
 export const mapConversationToEvents = (conversation: ConversationData | null): ExecutionEvent[] => {
-  if (!conversation) {
+  try {
+    console.log('mapConversationToEvents - Input conversation:', conversation);
+    
+    if (!conversation) {
+      console.log('mapConversationToEvents - Conversation is null or undefined');
+      return [];
+    }
+
+    const events: ExecutionEvent[] = [];
+
+    // Add FLOW_RUNNING event if flow is not completed
+    if (conversation.flow_completed !== true && conversation.state && conversation.state !== 'not_initialized') {
+      console.log('mapConversationToEvents - Adding FLOW_RUNNING event');
+      events.push({
+        key: `FLOW_RUNNING_${Date.now()}`,
+        type: 'FLOW_RUNNING'
+      });
+    }
+
+    // Add STEP_PROMPT and STEP_RESPONSE events for each flow step
+    if (conversation.flow_steps && Array.isArray(conversation.flow_steps)) {
+      console.log(`mapConversationToEvents - Processing ${conversation.flow_steps.length} flow steps`);
+      
+      conversation.flow_steps.forEach((step, index) => {
+        console.log(`mapConversationToEvents - Step ${index + 1}:`, {
+          title: step.title,
+          hasInstructions: !!step.instructions,
+          hasResponse: !!step.response,
+          responseType: typeof step.response,
+          responseValue: step.response,
+          status: step.status
+        });
+        
+        // Add STEP_PROMPT event for step instructions
+        if (step.instructions) {
+          const promptContent = step.title 
+            ? `Step ${index + 1}: ${step.title}\n\n${step.instructions}`
+            : `Step ${index + 1}:\n\n${step.instructions}`;
+          
+          console.log(`mapConversationToEvents - Adding STEP_PROMPT for step ${index + 1}`);
+          events.push({
+            key: `STEP_PROMPT:${step.id || index}:${promptContent}`,
+            type: 'STEP_PROMPT',
+            content: promptContent
+          });
+        }
+
+        // Add STEP_RESPONSE event for step response (if exists and not null)
+        if (step.response && step.response.trim() !== '') {
+          console.log(`mapConversationToEvents - Adding STEP_RESPONSE for step ${index + 1}`);
+          const status = step.status || 'unknown';
+          const responseContent = step.title 
+            ? `Step ${index + 1}: ${step.title}\nStatus: ${status}\n\n${step.response}`
+            : `Step ${index + 1}\nStatus: ${status}\n\n${step.response}`;
+          
+          events.push({
+            key: `STEP_RESPONSE:${step.id || index}:${step.response.substring(0, 50)}`,
+            type: 'STEP_RESPONSE',
+            content: responseContent
+          });
+        } else if (step.response === null || step.response === undefined) {
+          console.log(`mapConversationToEvents - Step ${index + 1} response is null or undefined`);
+        } else if (step.response.trim() === '') {
+          console.log(`mapConversationToEvents - Step ${index + 1} response is empty or whitespace`);
+        }
+      });
+    } else {
+      console.log('mapConversationToEvents - No flow_steps or flow_steps is not an array');
+    }
+
+    // Add STEP_RESPONSE event if last_step_response exists (fallback)
+    if (conversation.last_step_response && conversation.last_step_response.trim() !== '') {
+      console.log('mapConversationToEvents - Adding STEP_RESPONSE from last_step_response');
+      events.push({
+        key: `STEP_RESPONSE:LAST:${conversation.last_step_response.substring(0, 50)}`,
+        type: 'STEP_RESPONSE',
+        content: conversation.last_step_response
+      });
+    } else if (conversation.flow_completed === true && conversation.flow_steps && conversation.flow_steps.length > 0) {
+      // If flow is completed but no last_step_response, add a placeholder response
+      console.log('mapConversationToEvents - Adding placeholder STEP_RESPONSE');
+      events.push({
+        key: 'STEP_RESPONSE_PLACEHOLDER',
+        type: 'STEP_RESPONSE',
+        content: 'Flow completed. Step responses are not available in the current data.'
+      });
+    }
+
+    // Add FLOW_COMPLETED event if flow is completed
+    if (conversation.flow_completed === true) {
+      console.log('mapConversationToEvents - Adding FLOW_COMPLETED event');
+      events.push({
+        key: 'FLOW_COMPLETED',
+        type: 'FLOW_COMPLETED'
+      });
+    }
+
+    console.log('mapConversationToEvents - Returning events:', events.length, 'events');
+    return events;
+  } catch (error) {
+    console.error('mapConversationToEvents - Error:', error);
     return [];
   }
-
-  const events: ExecutionEvent[] = [];
-
-  // Add FLOW_RUNNING event if flow is not completed
-  if (conversation.flow_completed !== true && conversation.state && conversation.state !== 'not_initialized') {
-    events.push({
-      key: `FLOW_RUNNING_${Date.now()}`,
-      type: 'FLOW_RUNNING'
-    });
-  }
-
-  // Add STEP_PROMPT and STEP_RESPONSE events for each flow step
-  if (conversation.flow_steps && Array.isArray(conversation.flow_steps)) {
-    conversation.flow_steps.forEach((step, index) => {
-      // Add STEP_PROMPT event for step instructions
-      if (step.instructions) {
-        const promptContent = step.title 
-          ? `Step ${index + 1}: ${step.title}\n\n${step.instructions}`
-          : `Step ${index + 1}:\n\n${step.instructions}`;
-        
-        events.push({
-          key: `STEP_PROMPT:${step.id || index}:${promptContent}`,
-          type: 'STEP_PROMPT',
-          content: promptContent
-        });
-      }
-
-      // Add STEP_RESPONSE event for step response (if exists and not null)
-      if (step.response && step.response.trim() !== '') {
-        const status = step.status || 'unknown';
-        const responseContent = step.title 
-          ? `Step ${index + 1}: ${step.title}\nStatus: ${status}\n\n${step.response}`
-          : `Step ${index + 1}\nStatus: ${status}\n\n${step.response}`;
-        
-        events.push({
-          key: `STEP_RESPONSE:${step.id || index}:${step.response.substring(0, 50)}`,
-          type: 'STEP_RESPONSE',
-          content: responseContent
-        });
-      }
-    });
-  }
-
-  // Add STEP_RESPONSE event if last_step_response exists (fallback)
-  if (conversation.last_step_response && conversation.last_step_response.trim() !== '') {
-    events.push({
-      key: `STEP_RESPONSE:LAST:${conversation.last_step_response.substring(0, 50)}`,
-      type: 'STEP_RESPONSE',
-      content: conversation.last_step_response
-    });
-  } else if (conversation.flow_completed === true && conversation.flow_steps && conversation.flow_steps.length > 0) {
-    // If flow is completed but no last_step_response, add a placeholder response
-    events.push({
-      key: 'STEP_RESPONSE_PLACEHOLDER',
-      type: 'STEP_RESPONSE',
-      content: 'Flow completed. Step responses are not available in the current data.'
-    });
-  }
-
-  // Add FLOW_COMPLETED event if flow is completed
-  if (conversation.flow_completed === true) {
-    events.push({
-      key: 'FLOW_COMPLETED',
-      type: 'FLOW_COMPLETED'
-    });
-  }
-
-  return events;
 };
 
 const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
