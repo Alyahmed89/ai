@@ -872,7 +872,13 @@ export default function ChatPage() {
             };
             
             // Direct update - no filtering
-            setChatMessages(prev => [...prev, completionMsg]);
+            console.log('Adding completion message:', completionMsg);
+            setChatMessages(prev => {
+              console.log('Previous messages before adding completion:', prev.length);
+              const newMessages = [...prev, completionMsg];
+              console.log('New messages after adding completion:', newMessages.length);
+              return newMessages;
+            });
             
             return true; // Completed
           }
