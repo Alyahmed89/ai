@@ -211,7 +211,7 @@ export class ConversationOrchestratorDO_2026A {
     });
   }
 
-  private emitStepError(stepId: string, error: string | Error): void {
+  private async emitStepError(stepId: string, error: string | Error): Promise<void> {
     // Normalize error for UI rendering
     const normalizedError = this.normalizeError(error);
     
@@ -4790,7 +4790,7 @@ Use the response in your work.`
       // Emit STEP_ERROR event for UI streaming
       if (step) {
         const stepId = step.step_id || step.id || `step-${step.order_index}`;
-        this.emitStepError(stepId, `Command "${commandData.name}" failed: ${error.message}`);
+        await this.emitStepError(stepId, `Command "${commandData.name}" failed: ${error.message}`);
       }
       
       // Add error to conversation history
