@@ -729,6 +729,9 @@ export class ConversationOrchestratorDO_2026A {
         
         // Send output if enabled for current step
         await this.sendStepOutputIfEnabled(this.conversation.current_step, body.response);
+        
+        // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
+        await this.handleStepCompletion(this.conversation.current_step, body.response);
       }
       
       // For flow execution, we just need to move to next step
@@ -3421,6 +3424,8 @@ Use the response in your work.`
               // Send output if enabled for current step
               if (this.conversation.current_step) {
                 await this.sendStepOutputIfEnabled(this.conversation.current_step, `Status: ${parsed.status}`);
+                // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
+                await this.handleStepCompletion(this.conversation.current_step, `Status: ${parsed.status}`);
               }
             } else {
               // Use the full content as response
@@ -3429,6 +3434,8 @@ Use the response in your work.`
               // Send output if enabled for current step
               if (this.conversation.current_step) {
                 await this.sendStepOutputIfEnabled(this.conversation.current_step, content);
+                // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
+                await this.handleStepCompletion(this.conversation.current_step, content);
               }
             }
           } else {
@@ -3438,6 +3445,8 @@ Use the response in your work.`
             // Send output if enabled for current step
             if (this.conversation.current_step) {
               await this.sendStepOutputIfEnabled(this.conversation.current_step, content);
+              // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
+              await this.handleStepCompletion(this.conversation.current_step, content);
             }
           }
         } catch (error) {
@@ -3447,6 +3456,8 @@ Use the response in your work.`
           // Send output if enabled for current step
           if (this.conversation.current_step && this.conversation.pending_event_content) {
             await this.sendStepOutputIfEnabled(this.conversation.current_step, this.conversation.pending_event_content);
+            // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
+            await this.handleStepCompletion(this.conversation.current_step, this.conversation.pending_event_content);
           }
         }
       }
