@@ -75,6 +75,7 @@ export interface ConversationData {
 
   // Flow execution mode
   flow_id?: string; // Flow ID for flow-based execution
+  flow_steps?: ExecutionStepData[]; // Flow steps with execution results
   flow_execution_mode?: boolean; // Flag to indicate flow execution mode
   current_flow_step?: number; // Current step in flow execution
   flow_steps_completed?: number[]; // Array of completed step numbers
@@ -317,6 +318,12 @@ export interface StepData {
   // NEW: Unified endpoint system
   use_endpoints?: string; // JSON array of endpoint configurations
   extra_step?: boolean; // Whether to run extra step loop
+}
+
+// Step data with execution results for in-memory tracking
+export interface ExecutionStepData extends StepData {
+  response?: string;       // AI output for this step
+  status?: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'; // Execution status
 }
 
 // AI token parsing types

@@ -41,14 +41,14 @@ import {
   IDLE_TIMEOUT,
   COMPLETED_CLEANUP_DELAY
 } from '../constants';
-import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, TaskData, Condition, CreateTaskData, SkipTaskData, CommandData, ExecutionEvent, ExecutionEventRecord, FlowInitResponse } from '../types';
+import { CloudflareBindings, ConversationData, ConversationState, OpenHandsEvent, DoneResponseData, ProjectFact, StepData, ExecutionStepData, TaskData, Condition, CreateTaskData, SkipTaskData, CommandData, ExecutionEvent, ExecutionEventRecord, FlowInitResponse } from '../types';
 
 export class ConversationOrchestratorDO_2026A {
   private state: DurableObjectState;
   private env: CloudflareBindings;
   private conversation: ConversationData | null = null;
   private flowRunId: string | null = null;
-  private flowStepsCache: StepData[] | null = null; // Cache for flow steps
+  private flowStepsCache: ExecutionStepData[] | null = null; // Cache for flow steps
   private flowStepsCacheTime: number = 0; // When cache was last updated
   private readonly FLOW_STEPS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
   
@@ -214,6 +214,19 @@ export class ConversationOrchestratorDO_2026A {
   private emitStepError(stepId: string, error: string | Error): void {
     // Normalize error for UI rendering
     const normalizedError = this.normalizeError(error);
+    
+    // Update step status to "failed" if we have a current step
+    if (this.conversation?.flow_steps && this.conversation.current_step) {
+      const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === this.conversation!.current_step!.step_id);
+      if (stepIndex !== -1) {
+        this.conversation.flow_steps[stepIndex].status = 'failed';
+        console.log(`[DO:${this.state.id}] Updated step ${this.conversation.current_step.step_id} status to 'failed' due to error`);
+        
+        // PERSIST: Save conversation state immediately
+        await this.state.storage.put('conversation', this.conversation);
+        console.log(`[DO:${this.state.id}] Persisted conversation with step ${this.conversation.current_step.step_id} status='failed'`);
+      }
+    }
     
     this.emitEvent({
       type: 'STEP_ERROR',
@@ -623,6 +636,11 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleGetState();
     }
     
+    // Get enriched conversation status with execution results
+    if (path === '/status' && request.method === 'GET') {
+      return this.handleStatus();
+    }
+    
     // Stop conversation
     if (path === '/stop' && request.method === 'POST') {
       return this.handleStop();
@@ -780,7 +798,7 @@ export class ConversationOrchestratorDO_2026A {
    * @param flowId The flow ID to load steps for
    * @returns Array of flow steps or null if not configured
    */
-  private async loadFlowSteps(flowId: string): Promise<StepData[] | null> {
+  private async loadFlowSteps(flowId: string): Promise<ExecutionStepData[] | null> {
     if (!this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not configured, cannot load flow steps`);
       return null;
@@ -816,7 +834,7 @@ export class ConversationOrchestratorDO_2026A {
    * Get next step for current flow using cache
    * @returns Next step or null if no more steps
    */
-  private async getNextStep(): Promise<StepData | null> {
+  private async getNextStep(): Promise<ExecutionStepData | null> {
     if (!this.conversation?.flow_id) {
       console.log(`[DO:${this.state.id}] No flow_id in conversation`);
       return null;
@@ -1467,6 +1485,13 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Create ultra-minimal conversation with values from flow definition
+      // Convert steps to ExecutionStepData by adding response and status fields
+      const executionSteps: ExecutionStepData[] = steps.map(step => ({
+        ...step,
+        response: undefined,
+        status: 'pending' as const
+      }));
+      
       this.conversation = {
         state: 'SENDING_STEP',
         initial_user_prompt: initialPrompt,
@@ -1479,7 +1504,7 @@ export class ConversationOrchestratorDO_2026A {
         updated_at: Date.now(),
         project_facts: [],
         flow_id: flow_id,
-        flow_steps: steps,
+        flow_steps: executionSteps,
         current_step_index: 0,
         agent: flowDefinition?.agent || 'openhands', // Set agent from flow definition
         flow_execution_mode: true, // Enable flow execution mode for step-by-step execution
@@ -1487,8 +1512,8 @@ export class ConversationOrchestratorDO_2026A {
       };
       
       // Set current_step if we have steps
-      if (steps && steps.length > 0) {
-        this.conversation.current_step = steps[0];
+      if (executionSteps && executionSteps.length > 0) {
+        this.conversation.current_step = executionSteps[0];
       }
       
       await this.state.storage.put('conversation', this.conversation);
@@ -1974,7 +1999,7 @@ export class ConversationOrchestratorDO_2026A {
   }
 
   // Helper to load flow steps from database with robust schema detection
-  private async loadFlowStepsFromDB(flowId: string): Promise<any[]> {
+  private async loadFlowStepsFromDB(flowId: string): Promise<ExecutionStepData[]> {
     if (!this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not configured`);
       return [];
@@ -2311,6 +2336,20 @@ export class ConversationOrchestratorDO_2026A {
     return new Response(JSON.stringify({
       success: true,
       conversation: this.conversation || { state: 'not_initialized' }
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
+  private handleStatus(): Response {
+    const conversation = this.conversation || { state: 'not_initialized' };
+    
+    return new Response(JSON.stringify({
+      conversation: {
+        state: conversation.state || 'idle',
+        flow_completed: conversation.flow_completed || false,
+        flow_steps: conversation.flow_steps || []
+      }
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -2778,6 +2817,20 @@ Use the response in your work.`
           // Store filtered DeepSeek response
           this.conversation.last_deepseek_response = filteredResponse;
           this.conversation.deepseek_response_pending = false;
+          
+          // IMMEDIATELY: Store response in current step and update status
+          if (this.conversation.current_step && this.conversation.flow_steps) {
+            const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === this.conversation!.current_step!.step_id);
+            if (stepIndex !== -1) {
+              this.conversation.flow_steps[stepIndex].response = filteredResponse;
+              this.conversation.flow_steps[stepIndex].status = 'completed';
+              console.log(`[DO:${this.state.id}] IMMEDIATELY stored response in step ${this.conversation.current_step.step_id} and set status='completed'`);
+              
+              // PERSIST: Save conversation state immediately
+              await this.state.storage.put('conversation', this.conversation);
+              console.log(`[DO:${this.state.id}] Persisted conversation with immediate step response`);
+            }
+          }
           
           // For deepseek-only flows, complete the step immediately
           await this.handleStepCompletion(this.conversation.current_step, filteredResponse);
@@ -3855,10 +3908,22 @@ Use the response in your work.`
       return;
     }
     
-    // Check if this is a flow completion (not error or manual stop)
+    // Update current step status to "failed" if this is an error (not flow completion)
     const isFlowCompletion = reason === 'flow_completed' || 
                             reason === 'terminated_by_condition' ||
                             reason.includes('end_flow');
+    
+    if (!isFlowCompletion && this.conversation?.flow_steps && this.conversation.current_step) {
+      const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === this.conversation!.current_step!.step_id);
+      if (stepIndex !== -1 && this.conversation.flow_steps[stepIndex].status !== 'completed') {
+        this.conversation.flow_steps[stepIndex].status = 'failed';
+        console.log(`[DO:${this.state.id}] Updated step ${this.conversation.current_step.step_id} status to 'failed' due to stopConversation: ${reason}`);
+        
+        // PERSIST: Save conversation state immediately
+        await this.state.storage.put('conversation', this.conversation);
+        console.log(`[DO:${this.state.id}] Persisted conversation with step ${this.conversation.current_step.step_id} status='failed'`);
+      }
+    }
     
     // If flow completed, check for next flow in flow_definitions
     if (isFlowCompletion && this.conversation?.flow_id) {
@@ -4222,6 +4287,19 @@ ${messageContent}`;
     
     // Update current_step to track which step is being executed
     this.conversation.current_step = step;
+    
+    // Update step status in flow_steps array to "running"
+    if (this.conversation.flow_steps) {
+      const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === step.step_id);
+      if (stepIndex !== -1) {
+        this.conversation.flow_steps[stepIndex].status = 'running';
+        console.log(`[DO:${this.state.id}] Updated step ${step.step_id} status to 'running'`);
+        
+        // PERSIST: Save conversation state immediately
+        await this.state.storage.put('conversation', this.conversation);
+        console.log(`[DO:${this.state.id}] Persisted conversation with step ${step.step_id} status='running'`);
+      }
+    }
     
     // Emit STEP_STARTED event for UI streaming
     this.emitStepStarted(step.step_id || step.id || `step-${step.order_index}`, step.title);
@@ -4914,6 +4992,20 @@ Use the response in your work.`
     if (!this.conversation) return;
     
     console.log(`[DO:${this.state.id}] Handling step completion for step: ${step.step_id}`);
+    
+    // Update step status in flow_steps array to "completed" and store response
+    if (this.conversation.flow_steps) {
+      const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === step.step_id);
+      if (stepIndex !== -1) {
+        this.conversation.flow_steps[stepIndex].status = 'completed';
+        this.conversation.flow_steps[stepIndex].response = response;
+        console.log(`[DO:${this.state.id}] Updated step ${step.step_id} status to 'completed' and stored response (${response.length} chars)`);
+        
+        // PERSIST: Save conversation state immediately
+        await this.state.storage.put('conversation', this.conversation);
+        console.log(`[DO:${this.state.id}] Persisted conversation with step ${step.step_id} status='completed' and response`);
+      }
+    }
     
     // ENFORCEMENT INVARIANT: No flow switching in step completion
     // This method should only handle step-to-step transitions within the same flow

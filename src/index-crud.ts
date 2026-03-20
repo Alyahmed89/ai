@@ -582,8 +582,8 @@ app.get('/status/:id', async (c) => {
     
     const conversationDo = c.env.CONVERSATIONS.get(id);
     
-    // Call the Durable Object's get-state endpoint
-    const doResponse = await conversationDo.fetch('http://placeholder/get-state');
+    // Call the Durable Object's status endpoint
+    const doResponse = await conversationDo.fetch('http://placeholder/status');
     
     if (!doResponse.ok) {
       const errorText = await doResponse.text();
@@ -591,8 +591,28 @@ app.get('/status/:id', async (c) => {
       return c.json(errorResponse(`Failed to get conversation status: ${doResponse.status}`, 500));
     }
     
-    const state = await doResponse.json();
-    return c.json(successResponse(state));
+    const data = await doResponse.json();
+    
+    // Return enriched conversation data with execution results
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        conversation: {
+          state: data.conversation.state,
+          flow_completed: data.conversation.flow_completed,
+          flow_steps: (data.conversation.flow_steps || []).map((step: any) => ({
+            id: step.step_id, // Use step_id from StepData interface
+            title: step.title,
+            instructions: step.description || '', // Use description as instructions
+            // 🔥 REQUIRED FIELDS
+            response: step.response || null,
+            status: step.status || "pending"
+          }))
+        }
+      }
+    }), {
+      headers: { "Content-Type": "application/json" }
+    });
     
   } catch (error: any) {
     console.error(`[HTTP:STATUS] Endpoint error: ${error.message}`);
