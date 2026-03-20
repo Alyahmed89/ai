@@ -1170,7 +1170,7 @@ crudApi.post('/flow-runs', async (c) => {
     }
 
     const body = await c.req.json();
-    const { id, flow_id, status, started_at, completed_at } = body;
+    const { id, flow_id, conversation_id, status, started_at, completed_at } = body;
     const created_at = Math.floor(Date.now() / 1000);
 
     // Generate ID if not provided
@@ -1180,6 +1180,7 @@ crudApi.post('/flow-runs', async (c) => {
     const normalizedStartedAt = normalizeForDb(started_at);
     const normalizedCompletedAt = normalizeForDb(completed_at);
     const normalizedFlowId = normalizeForDb(flow_id);
+    const normalizedConversationId = normalizeForDb(conversation_id);
 
     const sql = `
       INSERT INTO flow_runs (
@@ -1191,7 +1192,7 @@ crudApi.post('/flow-runs', async (c) => {
     await db.prepare(sql).bind(
       flowRunId,
       normalizedFlowId,
-      null, // conversation_id
+      normalizedConversationId, // Use normalized value from request
       null, // step_id
       null, // input_prompt
       null, // output_response
