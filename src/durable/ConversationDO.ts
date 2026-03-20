@@ -162,6 +162,8 @@ export class ConversationOrchestratorDO_2026A {
     this.emitEvent({
       type: 'STEP_STARTED',
       stepId,
+      flowRunId: this.flowRunId || '',
+      sequence: this.eventSequence,
       title,
       ts: Date.now()
     });
@@ -171,6 +173,8 @@ export class ConversationOrchestratorDO_2026A {
     this.emitEvent({
       type: 'COMMAND_CALLING',
       stepId,
+      flowRunId: this.flowRunId || '',
+      sequence: this.eventSequence,
       command,
       params,
       ts: Date.now()
@@ -184,6 +188,8 @@ export class ConversationOrchestratorDO_2026A {
     this.emitEvent({
       type: 'COMMAND_RESPONSE',
       stepId,
+      flowRunId: this.flowRunId || '',
+      sequence: this.eventSequence,
       command,
       response: normalizedResponse,
       duration: Date.now() - startTime,
@@ -198,6 +204,8 @@ export class ConversationOrchestratorDO_2026A {
     this.emitEvent({
       type: 'STEP_COMPLETED',
       stepId,
+      flowRunId: this.flowRunId || '',
+      sequence: this.eventSequence,
       result: normalizedResult,
       ts: Date.now()
     });
@@ -210,6 +218,8 @@ export class ConversationOrchestratorDO_2026A {
     this.emitEvent({
       type: 'STEP_ERROR',
       stepId,
+      flowRunId: this.flowRunId || '',
+      sequence: this.eventSequence,
       error: normalizedError,
       ts: Date.now()
     });
@@ -220,6 +230,7 @@ export class ConversationOrchestratorDO_2026A {
       type: 'FLOW_STARTED',
       flowId,
       flowRunId,
+      sequence: this.eventSequence,
       ts: Date.now()
     });
   }
@@ -232,6 +243,7 @@ export class ConversationOrchestratorDO_2026A {
       type: 'FLOW_COMPLETED',
       flowId,
       flowRunId,
+      sequence: this.eventSequence,
       result: normalizedResult,
       ts: Date.now()
     });
