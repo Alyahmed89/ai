@@ -821,268 +821,100 @@ export default function ChatPage() {
   };
 
   const startPollingForResults = (conversationId: string, assistantMessageId: string, userMessage: string = '', restoreInstructions?: () => Promise<void>) => {
-    console.log('=== START POLLING FUNCTION CALLED ===');
-    console.log('conversationId:', conversationId);
-    console.log('assistantMessageId:', assistantMessageId);
-    console.log('userMessage:', userMessage);
+    console.log('=== SIMPLIFIED POLLING STARTED ===');
+    console.log('Conversation ID:', conversationId);
     
     let pollCount = 0;
-    const maxPolls = 30; // 30 polls * 2 seconds = 60 seconds total
-    const pollInterval = 2000; // Poll every 2 seconds
+    const maxPolls = 30;
+    const pollInterval = 2000;
     
-    // Track completed steps and responses to avoid duplicates
-    const completedStepIndices = new Set<string>();
-    
-    // First, check status immediately (flow might already be done)
-    const checkStatusImmediately = async () => {
+    // Create a simple polling function
+    const pollForCompletion = async () => {
       try {
-        console.log('Checking status immediately for conversation:', conversationId);
-        const statusResponse = await fetch(`/api/proxy/status/${conversationId}`);
+        pollCount++;
+        console.log(`Poll #${pollCount} for ${conversationId}`);
         
-        if (!statusResponse.ok) {
-          console.error(`Immediate status check failed: ${statusResponse.status}`);
+        // Fetch status
+        const response = await fetch(`/api/proxy/status/${conversationId}`);
+        if (!response.ok) {
+          console.error(`Status fetch failed: ${response.status}`);
           return false;
         }
         
-        const statusData = await statusResponse.json();
-        console.log('Immediate status data:', statusData);
+        const data = await response.json();
+        console.log('Status response:', data);
         
-        if (statusData.success && statusData.data?.conversation) {
-          const conversation = statusData.data.conversation;
-          console.log('Immediate conversation state:', conversation.state, 'flow_completed:', conversation.flow_completed);
+        // Check if we have valid conversation data
+        if (data.success && data.data?.conversation) {
+          const conversation = data.data.conversation;
+          console.log(`State: ${conversation.state}, Flow Completed: ${conversation.flow_completed}`);
           
-          // If already completed, handle it immediately
+          // Check for completion
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-            console.log('Flow already completed! Updating UI...');
+            console.log('✅ FLOW COMPLETED DETECTED!');
             
-            // Update status message to show completion
-            setChatMessages(prevMessages => {
-              const filteredMessages = prevMessages.filter(msg => 
+            // Update UI to show completion
+            setChatMessages(prev => {
+              // Remove any existing status messages for this conversation
+              const filtered = prev.filter(msg => 
                 !msg.id.startsWith(`status_${conversationId}_`)
               );
               
-              const completionMessage: ChatMessage = {
+              // Add completion message
+              const completionMsg: ChatMessage = {
                 id: `completion_${conversationId}_${Date.now()}`,
                 type: 'api_response',
-                content: `✅ Flow completed immediately!\n**Final State:** ${conversation.state}\n**Completed At:** ${new Date().toLocaleTimeString()}`,
+                content: `✅ **Flow Completed!**\n**State:** ${conversation.state}\n**Time:** ${new Date().toLocaleTimeString()}`,
                 timestamp: new Date(),
               };
               
-              return [...filteredMessages, completionMessage];
+              return [...filtered, completionMsg];
             });
             
-            return true; // Already completed
+            return true; // Completed
+          }
+          
+          // Check if conversation expired
+          if (conversation.state === 'not_initialized') {
+            console.log('Conversation expired/cleared');
+            return true; // Stop polling
           }
         }
+        
+        // Check max polls
+        if (pollCount >= maxPolls) {
+          console.log(`Max polls reached (${maxPolls})`);
+          if (restoreInstructions) {
+            restoreInstructions().catch(err => console.error('Restore failed:', err));
+          }
+          return true; // Stop polling
+        }
+        
+        return false; // Not completed, continue polling
       } catch (error) {
-        console.error('Error in immediate status check:', error);
+        console.error('Polling error:', error);
+        return false;
       }
-      return false;
     };
     
-    // Start with immediate check
-    checkStatusImmediately().then(alreadyCompleted => {
-      if (alreadyCompleted) {
-        console.log('Flow already completed, no need to poll');
+    // Start polling immediately and set up interval
+    pollForCompletion().then(completed => {
+      if (completed) {
+        console.log('Flow completed on first check');
         return;
       }
       
-      // If not completed, start polling
-      console.log('Flow not completed yet, starting polling interval...');
-      const pollIntervalId = setInterval(async () => {
-        try {
-          pollCount++;
-          
-          console.log(`Polling attempt ${pollCount}/${maxPolls} for conversation: ${conversationId}`);
-        
-        try {
-        const statusResponse = await fetch(`/api/proxy/status/${conversationId}`);
-        
-        if (!statusResponse.ok) {
-          console.error(`Status check failed: ${statusResponse.status}`);
-          return;
+      console.log('Starting polling interval...');
+      const intervalId = setInterval(async () => {
+        const completed = await pollForCompletion();
+        if (completed) {
+          console.log('Stopping polling interval');
+          clearInterval(intervalId);
         }
-        
-        const statusData = await statusResponse.json();
-        console.log('Status data received:', statusData);
-        
-        if (statusData.success && statusData.data?.conversation) {
-          const conversation = statusData.data.conversation;
-          
-          // Debug: log conversation state
-          console.log('Polling conversation:', conversationId);
-          console.log('Conversation state:', conversation.state);
-          console.log('Flow completed:', conversation.flow_completed);
-          console.log('Poll count:', pollCount);
-          console.log('Max polls:', maxPolls);
-          console.log('Full conversation data:', conversation);
-          
-          // Get flow steps information
-          const flowSteps = conversation.flow_steps || [];
-          const currentStepIndex = conversation.current_step_index || 0;
-          const lastStepResponse = conversation.last_step_response || '';
-          
-          // Debug: log step data
-          console.log('Flow steps:', flowSteps);
-          if (flowSteps.length > 0 && currentStepIndex < flowSteps.length) {
-            console.log('Step at index', currentStepIndex, ':', flowSteps[currentStepIndex]);
-          }
-          
-          // Add status message showing current progress
-          const statusKey = `status_${conversationId}_${pollCount}`;
-          
-          let statusContent = '';
-          if (conversation.state === 'not_initialized') {
-            // Conversation was never properly initialized - flow likely failed
-            statusContent = `❌ Flow failed to initialize. The conversation was not properly started.`;
-            clearInterval(pollIntervalId);
-            
-            // Restore original step instructions if provided
-            if (restoreInstructions) {
-              console.log('Flow not initialized, restoring original instructions...');
-              restoreInstructions().catch(error => {
-                console.error('Failed to restore instructions:', error);
-              });
-            }
-          } else if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-            // Flow is completed - show completion message
-            statusContent = `✅ Flow completed successfully.`;
-            clearInterval(pollIntervalId);
-            
-            // Restore original step instructions if provided
-            if (restoreInstructions) {
-              console.log('Flow completed, restoring original instructions...');
-              restoreInstructions().catch(error => {
-                console.error('Failed to restore instructions:', error);
-              });
-            }
-          } else {
-            // Flow is still running - show detailed progress
-            const completedSteps = Math.max(0, currentStepIndex);
-            const totalSteps = flowSteps.length;
-            const progress = totalSteps > 0 ? `${completedSteps}/${totalSteps} steps` : 'processing';
-            const currentStep = flowSteps[currentStepIndex];
-            const stepTitle = currentStep?.title || `Step ${currentStepIndex + 1}`;
-            statusContent = `⏳ Flow processing... (${pollCount * 2}s)\n**Current Step:** ${stepTitle}\n**Progress:** ${progress}\n**State:** ${conversation.state || 'RUNNING'}`;
-          }
-          
-          // Create status message
-          const statusMessage: ChatMessage = {
-            id: statusKey,
-            type: 'api_response',
-            content: statusContent,
-            timestamp: new Date(),
-          };
-          
-          // Add status message to chat, replacing previous status if it exists
-          setChatMessages(prev => {
-            // Remove previous status messages for this conversation
-            const filteredMessages = prev.filter(msg => 
-              !msg.id.startsWith(`status_${conversationId}_`)
-            );
-            // Add new status message
-            return [...filteredMessages, statusMessage];
-          });
-          
-          // Check if we have a new step response to display
-          if (lastStepResponse && lastStepResponse.trim()) {
-            // Track responses by their content hash to avoid duplicates
-            const responseHash = btoa(lastStepResponse).substring(0, 32);
-            const responseKey = `response_${responseHash}`;
-            
-            if (!completedStepIndices.has(responseKey)) {
-              // Mark this response as displayed
-              completedStepIndices.add(responseKey);
-
-              // Get current step details (the step that generated this response)
-              const currentStep = flowSteps[currentStepIndex] || flowSteps[Math.max(0, currentStepIndex - 1)];
-              const stepTitle = currentStep?.title || `Step ${currentStepIndex + 1}`;
-              const stepInstructions = currentStep?.description || currentStep?.instructions || '';
-
-              // Replace placeholders with actual user message
-              let stepInstructionsWithUserMessage = stepInstructions || 'Processing step...';
-              if (userMessage) {
-                // Replace {user.message} placeholder
-                if (stepInstructionsWithUserMessage.includes('{user.message}')) {
-                  stepInstructionsWithUserMessage = stepInstructionsWithUserMessage.replace(/\{user\.message\}/g, userMessage);
-                }
-                // Replace {input_prompt} placeholder
-                if (stepInstructionsWithUserMessage.includes('{input_prompt}')) {
-                  stepInstructionsWithUserMessage = stepInstructionsWithUserMessage.replace(/\{input_prompt\}/g, userMessage);
-                }
-              }
-
-              // Create a STEP RESPONSE message
-              const stepResponseMessage: ChatMessage = {
-                id: `${assistantMessageId}_step_response_${Date.now()}`,
-                type: 'assistant',
-                content: `**Response:**\n${lastStepResponse}`,
-                timestamp: new Date(),
-              };
-
-              // Add step response message to chat
-              setChatMessages(prev => {
-                return [...prev, stepResponseMessage];
-              });
-            }
-          }
-          
-          // Stop polling if flow is completed or failed to initialize
-          if (conversation.state === 'not_initialized' || conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-            console.log('Flow completed or not initialized! Stopping polling...');
-            
-            // Update the status message to show completion
-            if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-              setChatMessages(prevMessages => {
-                const filteredMessages = prevMessages.filter(msg => 
-                  !msg.id.startsWith(`status_${conversationId}_`)
-                );
-                
-                const completionMessage: ChatMessage = {
-                  id: `completion_${conversationId}_${Date.now()}`,
-                  type: 'api_response',
-                  content: `✅ Flow completed successfully!\n**Final State:** ${conversation.state}\n**Total Steps:** ${flowSteps.length}\n**Completed At:** ${new Date().toLocaleTimeString()}`,
-                  timestamp: new Date(),
-                };
-                
-                return [...filteredMessages, completionMessage];
-              });
-            }
-            
-            clearInterval(pollIntervalId);
-            // Don't add final completion message - we only show step instructions and responses
-          }
-        }
-      } catch (error) {
-        console.error('Polling error:', error);
-        clearInterval(pollIntervalId);
-        
-        // Restore original step instructions if provided
-        if (restoreInstructions) {
-          console.log('Polling error, restoring original instructions...');
-          restoreInstructions().catch(err => {
-            console.error('Failed to restore instructions:', err);
-          });
-        }
-      }
+      }, pollInterval);
       
-      // Stop polling after max attempts
-      if (pollCount >= maxPolls) {
-        clearInterval(pollIntervalId);
-        // Don't show timeout message - we only show step instructions and responses
-        
-        // Restore original step instructions if provided
-        if (restoreInstructions) {
-          console.log('Polling timeout, restoring original instructions...');
-          restoreInstructions().catch(error => {
-            console.error('Failed to restore instructions:', error);
-          });
-        }
-      }
-    }, pollInterval);
-    
-    // Store interval ID for potential cleanup
-    console.log('Polling interval started with ID:', pollIntervalId);
+      // Store interval ID for cleanup if needed
+      console.log('Polling interval ID:', intervalId);
     });
   };
 
