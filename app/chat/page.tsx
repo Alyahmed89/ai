@@ -971,17 +971,16 @@ export default function ChatPage() {
             
             // Update the status message to show completion
             if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-              setMessages(prevMessages => {
+              setChatMessages(prevMessages => {
                 const filteredMessages = prevMessages.filter(msg => 
                   !msg.id.startsWith(`status_${conversationId}_`)
                 );
                 
-                const completionMessage: Message = {
+                const completionMessage: ChatMessage = {
                   id: `completion_${conversationId}_${Date.now()}`,
-                  role: 'assistant',
+                  type: 'api_response',
                   content: `✅ Flow completed successfully!\n**Final State:** ${conversation.state}\n**Total Steps:** ${flowSteps.length}\n**Completed At:** ${new Date().toLocaleTimeString()}`,
-                  timestamp: new Date().toLocaleTimeString(),
-                  isStatus: true
+                  timestamp: new Date(),
                 };
                 
                 return [...filteredMessages, completionMessage];
