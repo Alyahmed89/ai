@@ -1176,12 +1176,33 @@ crudApi.post('/flow-runs', async (c) => {
     // Generate ID if not provided
     const flowRunId = id || `flow-run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    // Use normalizeForDb to convert undefined to null
+    const normalizedStartedAt = normalizeForDb(started_at);
+    const normalizedCompletedAt = normalizeForDb(completed_at);
+    const normalizedFlowId = normalizeForDb(flow_id);
+
     const sql = `
-      INSERT INTO flow_runs (id, flow_id, status, started_at, completed_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO flow_runs (
+        id, flow_id, conversation_id, step_id, input_prompt, output_response,
+        status, duration_ms, started_at, completed_at, created_at, next_flow_id, stop_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await db.prepare(sql).bind(flowRunId, flow_id, status || 'running', started_at, completed_at, created_at).run();
+    await db.prepare(sql).bind(
+      flowRunId,
+      normalizedFlowId,
+      null, // conversation_id
+      null, // step_id
+      null, // input_prompt
+      null, // output_response
+      status || 'running',
+      0, // duration_ms
+      normalizedStartedAt,
+      normalizedCompletedAt,
+      created_at,
+      null, // next_flow_id
+      null // stop_reason
+    ).run();
     
     return c.json({ message: 'Flow run created successfully', id: flowRunId }, 201);
   } catch (error) {
@@ -1201,13 +1222,16 @@ crudApi.put('/flow-runs/:id', async (c) => {
     const body = await c.req.json();
     const { status, completed_at } = body;
 
+    // Use normalizeForDb to convert undefined to null
+    const normalizedCompletedAt = normalizeForDb(completed_at);
+
     const sql = `
       UPDATE flow_runs 
       SET status = ?, completed_at = ?
       WHERE id = ?
     `;
 
-    const result = await db.prepare(sql).bind(status, completed_at, id).run();
+    const result = await db.prepare(sql).bind(status, normalizedCompletedAt, id).run();
 
     if (result.meta.changes === 0) {
       return c.json({ error: 'Flow run not found' }, 404);

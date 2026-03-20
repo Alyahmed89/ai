@@ -1978,11 +1978,49 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     try {
+      // Try the new schema first (with step_key, title, instructions, order_index)
+      // If that fails, fall back to the old schema (with step_number, prompt)
       const result = await this.env.FLOW_RUNS_DB.prepare(
         'SELECT id as step_id, step_key, title, instructions as description, step_type, order_index, page_key, blocking, auto_fail_on_error, retryable, task_id, input_keys, CASE WHEN output_url IS NOT NULL AND output_url != \'\' THEN 1 ELSE 0 END as output, output_url, output_auth_token, requires_task, dual_agent, ruler_agent, goal_criteria, max_iterations_per_step, expected_response, use_endpoints, extra_step FROM flow_steps WHERE flow_id = ? ORDER BY order_index'
       ).bind(flowId).all();
+
+      // If we got results, return them
+      if (result.results && result.results.length > 0) {
+        return result.results;
+      }
       
-      return result.results || [];
+      // If no results with new schema, try old schema
+      console.log(`[DO:${this.state.id}] No results with new schema, trying old schema`);
+      const oldSchemaResult = await this.env.FLOW_RUNS_DB.prepare(
+        'SELECT id as step_id, step_number as order_index, prompt as description, step_type, expected_response FROM flow_steps WHERE flow_id = ? ORDER BY step_number'
+      ).bind(flowId).all();
+      
+      // Convert old schema results to match expected format
+      const convertedResults = (oldSchemaResult.results || []).map((step: any) => ({
+        ...step,
+        step_key: step.step_id, // Use step_id as step_key
+        title: `Step ${step.order_index}`, // Generate title
+        instructions: step.description, // prompt is already mapped to description
+        // Set defaults for missing columns
+        page_key: null,
+        blocking: false,
+        auto_fail_on_error: false,
+        retryable: false,
+        task_id: null,
+        input_keys: null,
+        output: 0,
+        output_url: null,
+        output_auth_token: null,
+        requires_task: false,
+        dual_agent: false,
+        ruler_agent: false,
+        goal_criteria: null,
+        max_iterations_per_step: null,
+        use_endpoints: null,
+        extra_step: false
+      }));
+      
+      return convertedResults;
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Error loading steps: ${error.message}`);
       return [];
