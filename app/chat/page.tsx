@@ -844,6 +844,11 @@ export default function ChatPage() {
         if (statusData.success && statusData.data?.conversation) {
           const conversation = statusData.data.conversation;
           
+          // Debug: log conversation state
+          console.log('Polling conversation:', conversationId);
+          console.log('Conversation state:', conversation.state);
+          console.log('Flow completed:', conversation.flow_completed);
+          
           // Get flow steps information
           const flowSteps = conversation.flow_steps || [];
           const currentStepIndex = conversation.current_step_index || 0;
