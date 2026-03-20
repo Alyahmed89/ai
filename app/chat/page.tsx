@@ -855,40 +855,49 @@ export default function ChatPage() {
             console.log('Step at index', currentStepIndex, ':', flowSteps[currentStepIndex]);
           }
           
-          // Update the initial assistant message with overall progress
-          setChatMessages(prev => prev.map(msg => {
-            if (msg.id === assistantMessageId) {
-              let content = '';
-              
-              if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-                // Flow is completed - show completion message
-                content = `✅ Flow completed successfully.`;
-                clearInterval(pollIntervalId);
-                
-                // Restore original step instructions if provided
-                if (restoreInstructions) {
-                  console.log('Flow completed, restoring original instructions...');
-                  restoreInstructions().catch(error => {
-                    console.error('Failed to restore instructions:', error);
-                  });
-                }
-              } else {
-                // Flow is still running - show detailed progress
-                const completedSteps = Math.max(0, currentStepIndex);
-                const totalSteps = flowSteps.length;
-                const progress = totalSteps > 0 ? `${completedSteps}/${totalSteps} steps` : 'processing';
-                const currentStep = flowSteps[currentStepIndex];
-                const stepTitle = currentStep?.title || `Step ${currentStepIndex + 1}`;
-                content = `⏳ Flow processing... (${pollCount * 2}s)\n**Current Step:** ${stepTitle}\n**Progress:** ${progress}\n**State:** ${conversation.state || 'RUNNING'}`;
-              }
-              
-              return {
-                ...msg,
-                content: content
-              };
+          // Add status message showing current progress
+          const statusKey = `status_${conversationId}_${pollCount}`;
+          
+          let statusContent = '';
+          if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+            // Flow is completed - show completion message
+            statusContent = `✅ Flow completed successfully.`;
+            clearInterval(pollIntervalId);
+            
+            // Restore original step instructions if provided
+            if (restoreInstructions) {
+              console.log('Flow completed, restoring original instructions...');
+              restoreInstructions().catch(error => {
+                console.error('Failed to restore instructions:', error);
+              });
             }
-            return msg;
-          }));
+          } else {
+            // Flow is still running - show detailed progress
+            const completedSteps = Math.max(0, currentStepIndex);
+            const totalSteps = flowSteps.length;
+            const progress = totalSteps > 0 ? `${completedSteps}/${totalSteps} steps` : 'processing';
+            const currentStep = flowSteps[currentStepIndex];
+            const stepTitle = currentStep?.title || `Step ${currentStepIndex + 1}`;
+            statusContent = `⏳ Flow processing... (${pollCount * 2}s)\n**Current Step:** ${stepTitle}\n**Progress:** ${progress}\n**State:** ${conversation.state || 'RUNNING'}`;
+          }
+          
+          // Create status message
+          const statusMessage: ChatMessage = {
+            id: statusKey,
+            type: 'api_response',
+            content: statusContent,
+            timestamp: new Date(),
+          };
+          
+          // Add status message to chat, replacing previous status if it exists
+          setChatMessages(prev => {
+            // Remove previous status messages for this conversation
+            const filteredMessages = prev.filter(msg => 
+              !msg.id.startsWith(`status_${conversationId}_`)
+            );
+            // Add new status message
+            return [...filteredMessages, statusMessage];
+          });
           
           // Check if we have a new step response to display
           if (lastStepResponse && lastStepResponse.trim()) {
@@ -918,14 +927,6 @@ export default function ChatPage() {
                 }
               }
 
-              // Create a STATUS message showing the current state
-              const statusMessage: ChatMessage = {
-                id: `${assistantMessageId}_status_${Date.now()}`,
-                type: 'api_response',
-                content: `**Status:** ${conversation.state || 'RUNNING'}\n**Step:** ${stepTitle}\n**Progress:** ${currentStepIndex + 1}/${flowSteps.length}`,
-                timestamp: new Date(),
-              };
-
               // Create a STEP RESPONSE message
               const stepResponseMessage: ChatMessage = {
                 id: `${assistantMessageId}_step_response_${Date.now()}`,
@@ -934,17 +935,9 @@ export default function ChatPage() {
                 timestamp: new Date(),
               };
 
-              // Add both messages to chat
+              // Add step response message to chat
               setChatMessages(prev => {
-                let newMessages = [...prev];
-
-                // Add status message
-                newMessages.push(statusMessage);
-
-                // Add step response message
-                newMessages.push(stepResponseMessage);
-
-                return newMessages;
+                return [...prev, stepResponseMessage];
               });
             }
           }
