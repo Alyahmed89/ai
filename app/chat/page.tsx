@@ -844,6 +844,15 @@ export default function ChatPage() {
         const data = await response.json();
         console.log('Status response:', data);
         
+        // Add debug message to show polling is working
+        const debugMsg: ChatMessage = {
+          id: `debug_${conversationId}_${Date.now()}`,
+          type: 'api_response',
+          content: `🔍 Poll #${pollCount}: Checking status...`,
+          timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, debugMsg]);
+        
         // Check if we have valid conversation data
         // Note: The response has data.success (top level) and data.data.success (nested)
         if (data.success && data.data?.success && data.data?.conversation) {
