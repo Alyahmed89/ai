@@ -852,6 +852,7 @@ export default function ChatPage() {
           console.log('Flow completed:', conversation.flow_completed);
           console.log('Poll count:', pollCount);
           console.log('Max polls:', maxPolls);
+          console.log('Full conversation data:', conversation);
           
           // Get flow steps information
           const flowSteps = conversation.flow_steps || [];
