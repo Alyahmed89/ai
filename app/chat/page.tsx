@@ -353,7 +353,17 @@ export default function ChatPage() {
             lastStepResponseLength: conversation.last_step_response?.length || 0,
             lastStepResponsePreview: conversation.last_step_response ? conversation.last_step_response.substring(0, 100) + '...' : 'EMPTY',
             flowCompleted: conversation.flow_completed,
-            state: conversation.state
+            state: conversation.state,
+            conversationId: conversation.id,
+            rawFlowSteps: conversation.flow_steps?.map((step: any, i: number) => ({
+              index: i,
+              title: step.title,
+              hasInstructions: !!step.instructions,
+              instructionsLength: step.instructions?.length || 0,
+              hasResponse: !!step.response,
+              responseLength: step.response?.length || 0,
+              status: step.status
+            }))
           });
           
           // DEBUG: Log step responses
@@ -362,6 +372,8 @@ export default function ChatPage() {
             conversation.flow_steps.forEach((step: any, index: number) => {
               console.log(`  Step ${index + 1}:`, {
                 title: step.title,
+                hasInstructions: !!step.instructions,
+                instructionsPreview: step.instructions ? step.instructions.substring(0, 100) + '...' : 'NO INSTRUCTIONS',
                 hasResponse: !!step.response,
                 responseLength: step.response?.length || 0,
                 responsePreview: step.response ? step.response.substring(0, 100) + '...' : 'NO RESPONSE',
