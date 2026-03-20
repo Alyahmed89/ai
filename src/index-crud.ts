@@ -314,8 +314,14 @@ app.post('/start', async (c) => {
     } else {
       // Check if we should start highest priority flow (when no parameters provided)
       if (!repository && !initial_user_prompt) {
-        console.log(`[HTTP:START] No flow_id provided and no repository/initial_user_prompt - starting highest priority flow`);
+        console.log(`[HTTP:START] No flow_id provided and no repository/initial_user_prompt - automatic flow start temporarily disabled`);
         
+        // TEMPORARILY DISABLED: Automatic flow start
+        // Return error instead of starting flow automatically
+        return c.json(errorResponse('Automatic flow start is temporarily disabled. Please provide flow_id, repository, and initial_user_prompt parameters.', 400));
+        
+        // Original code commented out:
+        /*
         // Start highest priority flow (same logic as GET /start)
         if (!c.env.FLOW_RUNS_DB) {
           return c.json(errorResponse('Database not configured for flow execution', 500));
@@ -388,12 +394,13 @@ app.post('/start', async (c) => {
           console.error(`[HTTP:START] Database error: ${dbError.message}`);
           return c.json(errorResponse(`Database error: ${dbError.message}`, 500));
         }
+        */
       }
       
       // ORIGINAL REPOSITORY-BASED CONVERSATION
       // Validate required fields
       if (!repository || !initial_user_prompt) {
-        return c.json(errorResponse('Need repository and initial_user_prompt (branch is optional), provide flow ID, or send empty JSON {} to start highest priority flow', 400));
+        return c.json(errorResponse('Need repository and initial_user_prompt (branch is optional), or provide flow ID. Automatic flow start is temporarily disabled.', 400));
       }
 
       console.log(`[HTTP:START] Creating conversation for repository: ${repository}`);
@@ -444,7 +451,7 @@ app.post('/start', async (c) => {
 });
 
 // ============================================================================
-// GET /start - Start a flow by priority (default: highest priority)
+// GET /start - Start a flow by priority (default: highest priority) - TEMPORARILY DISABLED
 // ============================================================================
 app.get('/start', async (c) => {
   try {
@@ -452,8 +459,13 @@ app.get('/start', async (c) => {
     const priorityParam = c.req.query('priority');
     const targetPriority = priorityParam ? parseInt(priorityParam) : null;
     
-    console.log(`[HTTP:START:GET] Starting flow${targetPriority !== null ? ` with priority ${targetPriority}` : ' with highest priority'}`);
+    console.log(`[HTTP:START:GET] GET /start endpoint temporarily disabled`);
     
+    // TEMPORARILY DISABLED: Automatic flow start via GET
+    return c.json(errorResponse('GET /start endpoint is temporarily disabled. Use POST /start with flow_id parameter instead.', 400));
+    
+    // Original code commented out:
+    /*
     if (!c.env.FLOW_RUNS_DB) {
       return c.json(errorResponse('Database not configured for flow execution', 500));
     }
@@ -541,6 +553,7 @@ app.get('/start', async (c) => {
       console.error(`[HTTP:START:GET] Database error: ${dbError.message}`);
       return c.json(errorResponse(`Database error: ${dbError.message}`, 500));
     }
+    */
     
   } catch (error: any) {
     console.error(`[HTTP:START:GET] Endpoint error: ${error.message}`);
