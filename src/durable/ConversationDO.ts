@@ -1055,6 +1055,7 @@ export class ConversationOrchestratorDO_2026A {
       let flowContext = null;
       let flowDefinition = null;
       let taskPrompt = initial_user_prompt || `Execute flow: ${flow_id}`;
+      let steps: StepData[] = []; // Initialize steps array
       
       // Variables that might be overridden by flow definition
       let effectiveRepository = repository;
@@ -1097,7 +1098,7 @@ export class ConversationOrchestratorDO_2026A {
           
           // Load first step directly from database (bypass getNextStep which needs conversation)
           const { getFlowSteps } = await import('../services/database');
-          const steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flow_id);
+          steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flow_id);
           currentStep = steps && steps.length > 0 ? steps[0] : null;
           console.log(`[DO:${this.state.id}] First step loaded: ${currentStep ? currentStep.title : 'none'}`);
           
@@ -1278,6 +1279,13 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Initialize conversation for flow execution
+      // Convert steps to ExecutionStepData by adding response and status fields
+      const executionSteps: ExecutionStepData[] = steps ? steps.map(step => ({
+        ...step,
+        response: undefined,
+        status: 'pending' as const
+      })) : [];
+      
       this.conversation = {
         state: 'INIT',
         initial_user_prompt: taskPrompt,
@@ -1290,6 +1298,9 @@ export class ConversationOrchestratorDO_2026A {
         updated_at: Date.now(),
         project_facts: [], // Empty array instead of database query
         flow_id: flow_id, // Store flow ID for flow execution
+        flow_steps: executionSteps, // Store all flow steps with execution data
+        flow_completed: false, // Track if flow execution is complete
+        current_step_index: 0, // Start at first step
         flow_execution_mode: true, // Flag to indicate flow execution mode
         
         // Store flow context for reference
@@ -1310,6 +1321,11 @@ export class ConversationOrchestratorDO_2026A {
         // Set agent from flow definition or default to 'openhands'
         agent: flowDefinition?.agent || 'openhands'
       };
+      
+      // Set current_step if we have steps
+      if (executionSteps && executionSteps.length > 0) {
+        this.conversation.current_step = executionSteps[0];
+      }
       
       await this.state.storage.put('conversation', this.conversation);
       
@@ -1505,6 +1521,7 @@ export class ConversationOrchestratorDO_2026A {
         project_facts: [],
         flow_id: flow_id,
         flow_steps: executionSteps,
+        flow_completed: false, // Track if flow execution is complete
         current_step_index: 0,
         agent: flowDefinition?.agent || 'openhands', // Set agent from flow definition
         flow_execution_mode: true, // Enable flow execution mode for step-by-step execution
