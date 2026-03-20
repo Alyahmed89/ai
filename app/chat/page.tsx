@@ -859,7 +859,19 @@ export default function ChatPage() {
           const statusKey = `status_${conversationId}_${pollCount}`;
           
           let statusContent = '';
-          if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+          if (conversation.state === 'not_initialized') {
+            // Conversation was never properly initialized - flow likely failed
+            statusContent = `❌ Flow failed to initialize. The conversation was not properly started.`;
+            clearInterval(pollIntervalId);
+            
+            // Restore original step instructions if provided
+            if (restoreInstructions) {
+              console.log('Flow not initialized, restoring original instructions...');
+              restoreInstructions().catch(error => {
+                console.error('Failed to restore instructions:', error);
+              });
+            }
+          } else if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             // Flow is completed - show completion message
             statusContent = `✅ Flow completed successfully.`;
             clearInterval(pollIntervalId);
@@ -942,8 +954,8 @@ export default function ChatPage() {
             }
           }
           
-          // Stop polling if flow is completed
-          if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
+          // Stop polling if flow is completed or failed to initialize
+          if (conversation.state === 'not_initialized' || conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             clearInterval(pollIntervalId);
             // Don't add final completion message - we only show step instructions and responses
           }
