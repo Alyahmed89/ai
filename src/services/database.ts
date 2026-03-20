@@ -1283,38 +1283,16 @@ export async function getFlowDefinition(
   agent?: string;
 } | null> {
   try {
-    // First try the flows table with repo column
-    try {
-      const result = await db.prepare(`
-        SELECT id, name, '' as description, max_iterations, repo as repository, branch, COALESCE(agent, 'openhands') as agent
-        FROM flows
-        WHERE id = ?
-      `).bind(flow_id).first();
+    // Use flow_definitions table (primary table)
+    const result = await db.prepare(`
+      SELECT id, name, description, max_iterations, repository, branch, COALESCE(agent, 'openhands') as agent
+      FROM flow_definitions
+      WHERE id = ?
+    `).bind(flow_id).first();
 
-      if (result) {
-        return result as any;
-      }
-    } catch (firstError: any) {
-      // flows table might not exist, that's OK
-      console.log(`[DATABASE] flows table not available or query failed: ${firstError.message}`);
-    }
-
-    // If not found in flows table, try flow_definitions table (if it exists)
-    // Note: This is a fallback in case the table name is different
-    try {
-      const result2 = await db.prepare(`
-        SELECT id, name, description, max_iterations, repository, branch, COALESCE(agent, 'openhands') as agent
-        FROM flow_definitions
-        WHERE id = ?
-      `).bind(flow_id).first();
-
-      if (result2) {
-        console.log(`[DATABASE] Found flow definition in flow_definitions table for ${flow_id}, agent: ${(result2 as any).agent}`);
-        return result2 as any;
-      }
-    } catch (innerError: any) {
-      // flow_definitions table might not exist, that's OK
-      console.log(`[DATABASE] flow_definitions table not available or query failed: ${innerError.message}`);
+    if (result) {
+      console.log(`[DATABASE] Found flow definition in flow_definitions table for ${flow_id}, agent: ${(result as any).agent}`);
+      return result as any;
     }
 
     return null;

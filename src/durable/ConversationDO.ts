@@ -1370,13 +1370,13 @@ export class ConversationOrchestratorDO_2026A {
             }
           } else {
             console.warn(`[DO:${this.state.id}] No flow definition found for ${flow_id} in database. Using placeholder values.`);
-            console.warn(`[DO:${this.state.id}] To fix: Ensure 'flows' or 'flow_definitions' table exists with repository and branch columns.`);
+            console.warn(`[DO:${this.state.id}] To fix: Ensure 'flow_definitions' table exists with repository and branch columns.`);
             // Note: agent will be set to 'openhands' as default when conversation object is created below
           }
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
           console.error(`[DO:${this.state.id}] Database error details: ${error.message}`);
-          console.error(`[DO:${this.state.id}] Using placeholder values. Check if tables exist: 'flows' (with repo, branch columns) or 'flow_definitions'.`);
+          console.error(`[DO:${this.state.id}] Using placeholder values. Check if 'flow_definitions' table exists.`);
           errorContext += `, flow_definition_error: ${error.message}`;
         }
       } else {

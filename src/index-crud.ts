@@ -252,19 +252,8 @@ app.post('/start', async (c) => {
       // Validate flow_id exists in database
       if (c.env.FLOW_RUNS_DB) {
         try {
-          // Try flows table first (for consistency with getFlowDefinition function)
-          let flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows WHERE id = ?').bind(flow_id).first();
-          
-          // If not found in flows, try flow_definitions table (for backward compatibility)
-          if (!flowResult) {
-            try {
-              flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions WHERE id = ?').bind(flow_id).first();
-            } catch (flowDefError: any) {
-              // flow_definitions table might not exist, that's OK - just continue with null
-              console.log(`[HTTP:START:FLOW] flow_definitions table not available: ${flowDefError.message}`);
-              flowResult = null;
-            }
-          }
+          // Use flow_definitions table (primary table)
+          const flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions WHERE id = ?').bind(flow_id).first();
           
           if (!flowResult) {
             return c.json(notFoundResponse(`Flow not found: ${flow_id}`));
@@ -272,7 +261,7 @@ app.post('/start', async (c) => {
           
           // Use flow definition values if not provided in request
           const targetFlowId = flow_id;
-          const targetRepository = repository || (flowResult as any).repo || (flowResult as any).repository;
+          const targetRepository = repository || (flowResult as any).repository;
           const targetBranch = branch || (flowResult as any).branch;
           const targetInitialUserPrompt = initial_user_prompt || (flowResult as any).description || (flowResult as any).name;
           const targetMaxIterations = max_iterations || (flowResult as any).max_iterations;
@@ -333,26 +322,15 @@ app.post('/start', async (c) => {
         }
         
         try {
-          // Get the flow with highest priority - try flows table first (for consistency)
-          let flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
-          
-          // If no flows in flows table, try flow_definitions table (which has priority column)
-          if (!flowResult) {
-            try {
-              flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions ORDER BY priority DESC, created_at DESC LIMIT 1').first();
-            } catch (flowDefError: any) {
-              // flow_definitions table might not exist, that's OK - just continue with null
-              console.log(`[HTTP:START] flow_definitions table not available: ${flowDefError.message}`);
-              flowResult = null;
-            }
-          }
+          // Get the flow with highest priority from flow_definitions table
+          const flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions ORDER BY priority DESC, created_at DESC LIMIT 1').first();
           
           if (!flowResult) {
             return c.json(notFoundResponse('No flows found in database'));
           }
           
           const targetFlowId = (flowResult as any).id;
-          const targetRepository = (flowResult as any).repo || (flowResult as any).repository;
+          const targetRepository = (flowResult as any).repository;
           const targetBranch = (flowResult as any).branch || 'main';
           const targetInitialUserPrompt = (flowResult as any).name || (flowResult as any).description || `Execute flow: ${targetFlowId}`;
           const targetMaxIterations = (flowResult as any).max_iterations || 20;
@@ -491,19 +469,8 @@ app.get('/start', async (c) => {
           return c.json(notFoundResponse(`No flows found with priority ${targetPriority}`));
         }
       } else {
-        // Get the flow with highest priority - try flows table first (for consistency)
-        flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flows ORDER BY created_at DESC LIMIT 1').first();
-        
-        // If no flows in flows table, try flow_definitions table (which has priority column)
-        if (!flowResult) {
-          try {
-            flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions ORDER BY priority DESC, created_at DESC LIMIT 1').first();
-          } catch (flowDefError: any) {
-            // flow_definitions table might not exist, that's OK - just continue with null
-            console.log(`[HTTP:START:GET] flow_definitions table not available: ${flowDefError.message}`);
-            flowResult = null;
-          }
-        }
+        // Get the flow with highest priority from flow_definitions table
+        flowResult = await c.env.FLOW_RUNS_DB.prepare('SELECT * FROM flow_definitions ORDER BY priority DESC, created_at DESC LIMIT 1').first();
         
         if (!flowResult) {
           return c.json(notFoundResponse('No flows found in database'));
@@ -511,7 +478,7 @@ app.get('/start', async (c) => {
       }
       
       const targetFlowId = (flowResult as any).id;
-      const targetRepository = (flowResult as any).repo || (flowResult as any).repository;
+      const targetRepository = (flowResult as any).repository;
       const targetBranch = (flowResult as any).branch || 'main';
       const targetInitialUserPrompt = (flowResult as any).name || (flowResult as any).description || `Execute flow: ${targetFlowId}`;
       const targetMaxIterations = (flowResult as any).max_iterations || 20;
