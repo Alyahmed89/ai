@@ -62,6 +62,13 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
       type: 'STEP_RESPONSE',
       content: conversation.last_step_response
     });
+  } else if (conversation.flow_completed === true && conversation.flow_steps && conversation.flow_steps.length > 0) {
+    // If flow is completed but no last_step_response, add a placeholder response
+    events.push({
+      key: 'STEP_RESPONSE_PLACEHOLDER',
+      type: 'STEP_RESPONSE',
+      content: 'Flow completed. Step responses are not available in the current data.'
+    });
   }
 
   // Add FLOW_COMPLETED event if flow is completed
@@ -76,6 +83,11 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
 };
 
 const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
+  // Debug log to see what data we're receiving
+  React.useEffect(() => {
+    console.log('FlowRun component received data:', JSON.stringify(data, null, 2));
+  }, [data]);
+  
   // Transform conversation data to events
   const events = React.useMemo(() => {
     return mapConversationToEvents(data);

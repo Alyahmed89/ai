@@ -333,7 +333,7 @@ export default function ChatPage() {
         }
 
         const conversationData = await conversationResponse.json();
-        console.log('Conversation data:', JSON.stringify(conversationData, null, 2));
+        console.log('Full API response:', JSON.stringify(conversationData, null, 2));
         
         if (conversationData.success && conversationData.data?.conversation) {
           const conversation = conversationData.data.conversation;
@@ -344,6 +344,17 @@ export default function ChatPage() {
           
           // Store conversation data for FlowRun component
           setConversationData(conversation);
+          
+          // DEBUG: Log conversation data structure
+          console.log('DEBUG - Conversation data structure:', {
+            hasFlowSteps: !!conversation.flow_steps,
+            flowStepsCount: conversation.flow_steps?.length || 0,
+            hasLastStepResponse: !!conversation.last_step_response,
+            lastStepResponseLength: conversation.last_step_response?.length || 0,
+            lastStepResponsePreview: conversation.last_step_response ? conversation.last_step_response.substring(0, 100) + '...' : 'EMPTY',
+            flowCompleted: conversation.flow_completed,
+            state: conversation.state
+          });
           
           // Build chat messages from conversation (for backward compatibility)
           const messages: ChatMessage[] = [];
