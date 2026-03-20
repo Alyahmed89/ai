@@ -853,23 +853,16 @@ export default function ChatPage() {
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             console.log('✅ FLOW COMPLETED DETECTED!');
             
-            // Update UI to show completion
-            setChatMessages(prev => {
-              // Remove any existing status messages for this conversation
-              const filtered = prev.filter(msg => 
-                !msg.id.startsWith(`status_${conversationId}_`)
-              );
-              
-              // Add completion message
-              const completionMsg: ChatMessage = {
-                id: `completion_${conversationId}_${Date.now()}`,
-                type: 'api_response',
-                content: `✅ **Flow Completed!**\n**State:** ${conversation.state}\n**Time:** ${new Date().toLocaleTimeString()}`,
-                timestamp: new Date(),
-              };
-              
-              return [...filtered, completionMsg];
-            });
+            // Update UI to show completion - SIMPLIFIED VERSION
+            const completionMsg: ChatMessage = {
+              id: `completion_${conversationId}_${Date.now()}`,
+              type: 'api_response',
+              content: `✅ **FLOW COMPLETED!**\n**State:** ${conversation.state}\n**Time:** ${new Date().toLocaleTimeString()}`,
+              timestamp: new Date(),
+            };
+            
+            // Direct update - no filtering
+            setChatMessages(prev => [...prev, completionMsg]);
             
             return true; // Completed
           }
