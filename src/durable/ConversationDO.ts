@@ -947,6 +947,7 @@ export class ConversationOrchestratorDO_2026A {
       } else {
         console.log(`[DO:${this.state.id}] No legacy conditions found, using sequential order`);
       }
+    }
     
     // Fall back to sequential steps if no conditional branching
     // First, try to use steps from conversation (they have execution state)
@@ -983,7 +984,7 @@ export class ConversationOrchestratorDO_2026A {
   /**
    * Increment step index and save to conversation state
    */
-  private incrementStepIndex = async (): Promise<void> => {
+  private async incrementStepIndex(): Promise<void> {
     if (!this.conversation) {
       return;
     }
@@ -994,7 +995,7 @@ export class ConversationOrchestratorDO_2026A {
     
     await this.state.storage.put('conversation', this.conversation);
     console.log(`[DO:${this.state.id}] Incremented step index to ${this.conversation.current_step_index}`);
-  };
+  }
   
 
   
