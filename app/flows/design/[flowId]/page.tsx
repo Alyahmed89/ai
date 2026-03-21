@@ -561,9 +561,12 @@ const EdgePopup = ({
     };
   });
 
-  // Get all variables from source node
+  // Get all variables from source node's output_keys
   const sourceNode = nodes.find(n => n.id === edge.source);
-  const sourceVariables = sourceNode?.data?.variables || [];
+  const sourceStep = sourceNode?.data?.step as Step | undefined;
+  const sourceVariables = sourceStep?.output_keys 
+    ? sourceStep.output_keys.split(',').map(key => key.trim()).filter(key => key)
+    : [];
   
   const sourceOptions = [
     { value: 'default', label: 'Always (no condition)' },
@@ -1520,7 +1523,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         {selectedNode && (
           <StepPopup
             node={selectedNode}
-            availableVariables={getAvailableVariables(selectedNode.id, steps)}
+            availableVariables={getAvailableVariables(selectedNode.id, flowSteps)}
             onSave={handleNodeUpdate}
             onClose={() => setSelectedNode(null)}
           />
