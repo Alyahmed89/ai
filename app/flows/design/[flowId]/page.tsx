@@ -228,11 +228,111 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
   );
 };
 
+// Custom Flow Node component for subflows/agents
+const FlowNode = ({ data }: { data: any }) => {
+  const step = data.step as Step;
+  const hasInput = step.input_keys && step.input_keys.trim() !== '';
+  const hasOutput = step.output_keys && step.output_keys.trim() !== '';
+  
+  return (
+    <div 
+      className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border-2 border-purple-600 rounded-lg p-4 w-64 shadow-lg hover:shadow-purple-500/20 transition-all duration-200 cursor-pointer"
+      onDoubleClick={() => {
+        console.log('Double-clicked flow node:', step.id);
+        // In a real implementation, this would open the subflow
+        alert(`Would open subflow: ${step.title}`);
+      }}
+    >
+      {/* Header with flow icon */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center">
+          <div className="text-xl mr-2">🌐</div>
+          <div className="text-sm font-semibold text-white truncate">
+            {step.title}
+          </div>
+        </div>
+        <div className="text-xs bg-purple-700/50 text-purple-300 px-2 py-0.5 rounded">
+          Flow
+        </div>
+      </div>
+      
+      {/* Description */}
+      <div className="text-xs text-gray-300 mb-3 line-clamp-2">
+        {step.instructions.substring(0, 80)}
+        {step.instructions.length > 80 ? '...' : ''}
+      </div>
+      
+      {/* Input/Output indicators */}
+      <div className="flex justify-between text-xs mb-3">
+        {hasInput && (
+          <div className="flex items-center text-green-400">
+            <div className="mr-1">⬇️</div>
+            <span>Input</span>
+          </div>
+        )}
+        {hasOutput && (
+          <div className="flex items-center text-blue-400">
+            <div className="mr-1">⬆️</div>
+            <span>Output</span>
+          </div>
+        )}
+      </div>
+      
+      {/* Variables section */}
+      {hasOutput && step.output_keys && (
+        <div className="mt-2 pt-2 border-t border-purple-700/50">
+          <div className="text-xs text-purple-300 mb-1">Flow Variables:</div>
+          <div className="flex flex-wrap gap-1">
+            {step.output_keys.split(',').slice(0, 3).map((variable: string, index: number) => (
+              <span key={index} className="text-xs bg-purple-800/50 text-purple-200 px-1.5 py-0.5 rounded">
+                {variable.trim()}
+              </span>
+            ))}
+            {step.output_keys.split(',').length > 3 && (
+              <span className="text-xs text-purple-400">+{step.output_keys.split(',').length - 3} more</span>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Double-click hint */}
+      <div className="text-xs text-purple-400/70 mt-2 italic">
+        Double-click to open subflow
+      </div>
+      
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          background: '#9333ea',
+          borderColor: '#7c3aed',
+          borderWidth: '2px',
+          width: '12px',
+          height: '12px',
+        }} 
+      />
+      
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ 
+          background: '#9333ea',
+          borderColor: '#7c3aed',
+          borderWidth: '2px',
+          width: '12px',
+          height: '12px',
+        }} 
+      />
+    </div>
+  );
+};
+
 // Node types configuration
 const nodeTypes = {
   default: CustomNode,
   input: CustomNode,
   output: CustomNode,
+  flow: FlowNode,
 };
 
 // Custom edge component with condition label
@@ -388,9 +488,12 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
           title: step.title,
           step_type: step.step_type,
           order_index: step.order_index,
-          blocking: step.blocking,
-          auto_fail_on_error: step.auto_fail_on_error,
-          retryable: step.retryable,
+          blocking: Boolean(step.blocking),
+          auto_fail_on_error: Boolean(step.auto_fail_on_error),
+          retryable: Boolean(step.retryable),
+          output_keys: step.output_keys || null,
+          input_keys: step.input_keys || null,
+          use_endpoints: step.use_endpoints || null,
         }),
       });
       
@@ -444,19 +547,31 @@ async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<S
 
 // Create nodes from step data
 function createNodesFromSteps(steps: Step[]) {
-  return steps.map((step, index) => ({
-    id: step.id,
-    type: step.type === 'input' ? 'input' : step.type === 'output' ? 'output' : 'default',
-    data: { 
-      label: step.title, 
-      title: step.title,
-      step,
-      instructions: step.instructions,
-      command: step.command || '',
-      await_input: step.await_input || false,
-    },
-    position: { x: 250, y: 25 + (index * 100) },
-  }));
+  return steps.map((step, index) => {
+    // Determine node type based on step_type
+    let nodeType = 'default';
+    if (step.step_type === 'input' || step.type === 'input') {
+      nodeType = 'input';
+    } else if (step.step_type === 'output' || step.type === 'output') {
+      nodeType = 'output';
+    } else if (step.step_type === 'flow' || step.step_type === 'agent') {
+      nodeType = 'flow';
+    }
+    
+    return {
+      id: step.id,
+      type: nodeType,
+      data: { 
+        label: step.title, 
+        title: step.title,
+        step,
+        instructions: step.instructions,
+        command: step.command || '',
+        await_input: step.await_input || false,
+      },
+      position: { x: 250, y: 25 + (index * 100) },
+    };
+  });
 }
 
 // Extract available variables from previous steps
@@ -751,6 +866,7 @@ const StepPopup = ({
   const [command, setCommand] = useState<string>(typeof node.data?.command === 'string' ? node.data.command : '');
   const [awaitInput, setAwaitInput] = useState<boolean>(typeof node.data?.await_input === 'boolean' ? node.data.await_input : false);
   const [outputKeys, setOutputKeys] = useState<string>(typeof node.data?.step?.output_keys === 'string' ? node.data.step.output_keys : '');
+  const [stepType, setStepType] = useState<string>(typeof node.data?.step?.step_type === 'string' ? node.data.step.step_type : 'default');
 
   const handleSave = () => {
     const updatedNode = {
@@ -763,6 +879,7 @@ const StepPopup = ({
         step: {
           ...node.data?.step,
           output_keys: outputKeys,
+          step_type: stepType,
         },
       },
     };
@@ -817,6 +934,28 @@ const StepPopup = ({
               readOnly
               className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-gray-400"
             />
+          </div>
+
+          {/* Step Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Step Type
+            </label>
+            <select
+              value={stepType}
+              onChange={(e) => setStepType(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+            >
+              <option value="default">Regular Step</option>
+              <option value="input">Input Step</option>
+              <option value="output">Output Step</option>
+              <option value="flow">Flow (Agent)</option>
+              <option value="ai">AI Step</option>
+              <option value="command">Command Step</option>
+            </select>
+            <div className="text-xs text-gray-400 mt-1">
+              Flow nodes can be double-clicked to open subflows
+            </div>
           </div>
 
           {/* Instructions with drag-and-drop support */}
@@ -1121,11 +1260,13 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         const step = node.data.step as Step;
         const nodeTitle = node.data.title;
         const nodeInstructions = node.data.instructions;
+        const nodeStepType = node.data.step?.step_type;
         
         return {
           ...step,
           title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
           instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
+          step_type: typeof nodeStepType === 'string' ? nodeStepType : step.step_type,
           // Update other fields from node data if needed
         };
       });
@@ -1273,6 +1414,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       } else if (nodeType === 'output') {
         stepTitle = 'Output Step';
         stepType = 'output';
+      } else if (nodeType === 'flow') {
+        stepTitle = `Flow ${nodes.length + 1}`;
+        stepType = 'flow';
       } else {
         stepTitle = `Step ${nodes.length + 1}`;
         stepType = 'default';
@@ -1490,10 +1634,23 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                       <span>Output Step</span>
                     </div>
                   </div>
+                  <div 
+                    className="px-3 py-2 bg-purple-900/40 hover:bg-purple-800/60 border border-purple-800 rounded cursor-grab active:cursor-grabbing text-purple-200 text-sm transition-colors"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'flow')}
+                  >
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-purple-500 mr-2"></div>
+                      <span>Flow Node (Agent)</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-gray-700">
                   <div className="text-xs text-gray-400">
                     Drag nodes onto canvas to create steps
+                  </div>
+                  <div className="text-xs text-purple-400 mt-1">
+                    Flow nodes can be double-clicked to open subflows
                   </div>
                 </div>
               </Panel>
