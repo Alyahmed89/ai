@@ -28,16 +28,57 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-// Step data structure
+// Import existing flow management components
+import EditFlowModal from '@/components/EditFlowModal';
+import SimpleFlowCreator from '@/components/SimpleFlowCreator';
+
+// Step data structure - matches backend FlowStep
 interface Step {
   id: string;
+  flow_id: string;
+  step_key: string;
   title: string;
+  instructions: string;
+  step_type: string;
+  order_index: number;
+  blocking: number;
+  auto_fail_on_error: number;
+  retryable: number;
+  created_at: string;
+  updated_at: string;
+  task_id: string | null;
+  output_keys: string;
+  output_url: string | null;
+  output_payload_template: string | null;
+  default_next_step: string | null;
+  output_auth_token: string | null;
+  input_keys: string;
+  output: number;
+  default_next_step_id: string | null;
+  step_number: number;
+  requires_task: number;
+  // Additional fields for UI
   description?: string;
-  type: 'input' | 'default' | 'output';
-  instructions?: string;
+  type?: 'input' | 'default' | 'output';
   command?: string;
   await_input?: boolean;
   variables?: string[];
+}
+
+// Flow definition interface - matches backend
+interface FlowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  max_iterations: number;
+  repository: string;
+  branch: string;
+  created_at: string;
+  updated_at: string;
+  next_flow_id: string | null;
+  priority: number;
+  agent: string;
+  system_message?: string;
 }
 
 // Edge data structure with conditions
@@ -202,25 +243,101 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
 // Edge types configuration - needs to be inside FlowDesigner to access state
 // We'll define it inside the FlowDesigner component
 
-// Real word-matching-flow data based on actual flow
-const wordMatchingFlowSteps: Step[] = [
-  { id: '1', title: 'Extract words from prompt', description: 'Parse and extract keywords from user input', type: 'input' },
-  { id: '2', title: 'Search for exact matches', description: 'Find exact word matches in the database', type: 'default' },
-  { id: '3', title: 'Search for partial matches', description: 'Look for partial or fuzzy matches', type: 'default' },
-  { id: '4', title: 'Check synonyms and related terms', description: 'Expand search to synonyms and related concepts', type: 'default' },
-  { id: '5', title: 'Create new words if needed', description: 'Generate new terms if no matches found', type: 'default' },
-  { id: '6', title: 'Analyze and summarize results', description: 'Process and analyze matching results', type: 'default' },
-  { id: '7', title: 'Generate final output and recommendations', description: 'Create final report with recommendations', type: 'output' },
-];
+// Function to fetch flow data from backend
+async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefinition | null, flowSteps: Step[]}> {
+  try {
+    // Fetch flow definition
+    const flowResponse = await fetch(`/api/proxy/api/flow-definitions/${flowId}`);
+    if (!flowResponse.ok) {
+      console.error('Failed to fetch flow definition:', flowResponse.status);
+      return { flowDefinition: null, flowSteps: [] };
+    }
+    
+    const flowData = await flowResponse.json();
+    let flowDefinition: FlowDefinition | null = null;
+    
+    // Check if response has success field (some APIs wrap data)
+    if (flowData.success !== undefined) {
+      if (!flowData.success) {
+        console.error('Failed to fetch flow definition:', flowData.error);
+        return { flowDefinition: null, flowSteps: [] };
+      }
+      flowDefinition = flowData.data;
+    } else {
+      // Direct flow definition object
+      flowDefinition = flowData;
+    }
 
-// Function to get flow data based on flowId
-function getFlowData(flowId: string) {
-  if (flowId === 'word-matching-flow' || flowId.includes('word')) {
-    return wordMatchingFlowSteps;
+    // Fetch flow steps
+    const stepsResponse = await fetch(`/api/proxy/api/flow-steps?flow_id=${flowId}`);
+    if (!stepsResponse.ok) {
+      console.error('Failed to fetch flow steps:', stepsResponse.status);
+      return { flowDefinition, flowSteps: [] };
+    }
+    
+    const stepsData = await stepsResponse.json();
+    
+    // Handle different response formats for steps
+    let stepsArray: any[] = [];
+    if (stepsData.success !== undefined && stepsData.data) {
+      stepsArray = stepsData.data;
+    } else if (Array.isArray(stepsData)) {
+      stepsArray = stepsData;
+    } else if (stepsData.data && Array.isArray(stepsData.data)) {
+      stepsArray = stepsData.data;
+    }
+    
+    // Filter steps for this flow and sort by order_index
+    const flowSteps = stepsArray
+      .filter((step: any) => step.flow_id === flowId)
+      .sort((a: any, b: any) => a.order_index - b.order_index)
+      .map((step: any) => ({
+        ...step,
+        // Add UI-specific fields
+        type: step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default',
+        description: step.instructions.substring(0, 100) + (step.instructions.length > 100 ? '...' : ''),
+      })) as Step[];
+    
+    return { flowDefinition, flowSteps };
+  } catch (error) {
+    console.error('Error fetching flow data:', error);
+    return { flowDefinition: null, flowSteps: [] };
   }
-  
-  // Default flow data
-  return wordMatchingFlowSteps;
+}
+
+// Function to save flow steps to backend
+async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
+  try {
+    // For now, we'll just update existing steps
+    // In a real implementation, we would create/update/delete steps as needed
+    console.log('Would save flow steps:', { flowId, steps });
+    
+    // Example: Update each step
+    for (const step of steps) {
+      const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instructions: step.instructions,
+          title: step.title,
+          step_type: step.step_type,
+          order_index: step.order_index,
+          blocking: step.blocking,
+          auto_fail_on_error: step.auto_fail_on_error,
+          retryable: step.retryable,
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error(`Failed to update step ${step.id}:`, response.status);
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error saving flow steps:', error);
+    return false;
+  }
 }
 
 // Create nodes from step data
@@ -228,7 +345,15 @@ function createNodesFromSteps(steps: Step[]) {
   return steps.map((step, index) => ({
     id: step.id,
     type: step.type === 'input' ? 'input' : step.type === 'output' ? 'output' : 'default',
-    data: { label: step.title, step },
+    data: { 
+      label: step.title, 
+      title: step.title,
+      step,
+      instructions: step.instructions,
+      command: step.command || '',
+      await_input: step.await_input || false,
+      variables: step.variables || [],
+    },
     position: { x: 250, y: 25 + (index * 100) },
   }));
 }
@@ -646,18 +771,58 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   // Get flowId from props or URL params
   const currentFlowId = flowId || params?.flowId as string || 'word-matching-flow';
   
-  // Get flow data based on flowId
-  const flowSteps = getFlowData(currentFlowId);
+  // State for flow data
+  const [flowDefinition, setFlowDefinition] = useState<FlowDefinition | null>(null);
+  const [flowSteps, setFlowSteps] = useState<Step[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
-  // Initialize nodes and edges from flow data
-  const initialNodes = createNodesFromSteps(flowSteps);
-  const initialEdges = createEdgesFromSteps(flowSteps);
-  
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
+  // React Flow state
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [saving, setSaving] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  
+  // State for modals
+  const [showEditFlowModal, setShowEditFlowModal] = useState(false);
+  const [showCreateFlowModal, setShowCreateFlowModal] = useState(false);
+  
+  // Load flow data on mount
+  useEffect(() => {
+    loadFlowData();
+  }, [currentFlowId]);
+  
+  const loadFlowData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const { flowDefinition, flowSteps } = await fetchFlowData(currentFlowId);
+      
+      if (!flowDefinition) {
+        // Flow doesn't exist - show create flow modal
+        setShowCreateFlowModal(true);
+        setError(`Flow "${currentFlowId}" not found. Create a new flow?`);
+      } else {
+        setFlowDefinition(flowDefinition);
+        setFlowSteps(flowSteps);
+        
+        // Create nodes and edges from real data
+        const initialNodes = createNodesFromSteps(flowSteps);
+        const initialEdges = createEdgesFromSteps(flowSteps);
+        
+        setNodes(initialNodes);
+        setEdges(initialEdges);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load flow data');
+      console.error('Error loading flow data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Node types configuration with onClick handler
   const nodeTypes = useCallback(() => ({
@@ -762,17 +927,61 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     ));
   }, []);
 
-  const onSaveFlow = useCallback(() => {
-    const flowData = {
-      nodes,
-      edges,
-    };
-    
-    console.log('Saving flow:', flowData);
-    alert(`Flow saved with ${nodes.length} nodes and ${edges.length} edges`);
-  }, [nodes, edges]);
+  const onSaveFlow = useCallback(async () => {
+    setSaving(true);
+    try {
+      // Convert nodes back to steps
+      const updatedSteps: Step[] = nodes.map(node => {
+        const step = node.data.step as Step;
+        return {
+          ...step,
+          title: node.data.title || step.title,
+          instructions: node.data.instructions || step.instructions,
+          // Update other fields from node data if needed
+        };
+      });
+      
+      // Save to backend
+      const success = await saveFlowSteps(currentFlowId, updatedSteps);
+      
+      if (success) {
+        alert(`Flow saved successfully with ${nodes.length} steps`);
+        // Reload data to ensure we have latest
+        await loadFlowData();
+      } else {
+        alert('Failed to save flow. Check console for errors.');
+      }
+    } catch (err) {
+      console.error('Error saving flow:', err);
+      alert('Error saving flow. See console for details.');
+    } finally {
+      setSaving(false);
+    }
+  }, [nodes, currentFlowId]);
 
 
+
+  // Handle flow created/updated
+  const handleFlowCreated = (newFlowId: string) => {
+    // Refresh the page with the new flow ID
+    router.push(`/flows/design/${newFlowId}`);
+  };
+
+  const handleFlowUpdated = (updatedFlowId: string) => {
+    // Reload flow data
+    loadFlowData();
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-300">Loading flow data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
@@ -780,14 +989,28 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         <div className="mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold mb-2 text-white">Flow Designer</h1>
-            <p className="text-gray-300">Flow ID: <span className="font-mono text-blue-400">{currentFlowId}</span></p>
+            <p className="text-gray-300">
+              Flow: <span className="font-mono text-blue-400">{flowDefinition?.name || currentFlowId}</span>
+              {flowDefinition && (
+                <button
+                  onClick={() => setShowEditFlowModal(true)}
+                  className="ml-4 text-sm text-gray-400 hover:text-white"
+                >
+                  Edit Flow Details
+                </button>
+              )}
+            </p>
+            {flowDefinition?.description && (
+              <p className="text-gray-400 mt-1 max-w-2xl">{flowDefinition.description}</p>
+            )}
           </div>
           <div className="flex gap-4">
             <button
               onClick={onSaveFlow}
-              className="bg-gray-800 hover:bg-gray-700 px-6 py-2 rounded font-medium border border-gray-700 text-gray-100 hover:text-white transition-colors"
+              disabled={saving}
+              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save Flow
+              {saving ? 'Saving...' : 'Save Flow'}
             </button>
             <button
               onClick={() => router.push('/chat')}
@@ -797,6 +1020,24 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             </button>
           </div>
         </div>
+        
+        {error && (
+          <div className="mb-6 bg-red-900/30 border border-red-800 rounded-lg p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-400">Error</h3>
+                <div className="mt-2 text-sm text-red-300">
+                  <p>{error}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Flow Canvas */}
         <div className="flex-1">
@@ -856,6 +1097,26 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             node={selectedNode}
             onSave={handleNodeUpdate}
             onClose={() => setSelectedNode(null)}
+          />
+        )}
+
+        {/* Edit Flow Modal */}
+        {showEditFlowModal && flowDefinition && (
+          <EditFlowModal
+            flowId={flowDefinition.id}
+            onClose={() => setShowEditFlowModal(false)}
+            onFlowUpdated={handleFlowUpdated}
+          />
+        )}
+
+        {/* Create Flow Modal */}
+        {showCreateFlowModal && (
+          <SimpleFlowCreator
+            onClose={() => {
+              setShowCreateFlowModal(false);
+              router.push('/chat'); // Go back to chat if user cancels
+            }}
+            onFlowCreated={handleFlowCreated}
           />
         )}
       </div>
