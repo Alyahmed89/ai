@@ -984,7 +984,7 @@ export class ConversationOrchestratorDO_2026A {
   /**
    * Increment step index and save to conversation state
    */
-  private async incrementStepIndex(): Promise<void> {
+  private async incrementStepIdx(): Promise<void> {
     if (!this.conversation) {
       return;
     }
@@ -995,6 +995,13 @@ export class ConversationOrchestratorDO_2026A {
     
     await this.state.storage.put('conversation', this.conversation);
     console.log(`[DO:${this.state.id}] Incremented step index to ${this.conversation.current_step_index}`);
+  }
+
+  /**
+   * Test method to check syntax
+   */
+  private async testMethod(): Promise<void> {
+    console.log(`[DO:${this.state.id}] Test method`);
   }
   
 
@@ -2642,7 +2649,7 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Started tracking step execution: ${executionResult.execution_step_id}`);
           executionStepId = executionResult.execution_step_id;
           // Increment step index for next iteration
-          await this.incrementStepIndex();
+          await this.incrementStepIdx();
         }
       } catch (trackingError: any) {
         console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);
@@ -3597,11 +3604,11 @@ Use the response in your work.`
           console.log(`[DO:${this.state.id}] Conditional branching matched: updating current_step_index to ${this.conversation.current_step_index} (order_index: ${matchedStep.order_index})`);
         } else {
           // No conditional branching: increment sequentially
-          await this.incrementStepIndex();
+          await this.incrementStepIdx();
         }
       } else {
         // No response for conditional branching: increment sequentially
-        await this.incrementStepIndex();
+        await this.incrementStepIdx();
       }
       
       this.conversation.state = 'SENDING_STEP';
@@ -3955,7 +3962,7 @@ Use the response in your work.`
         }
         
         // Increment step index for next iteration
-        await this.incrementStepIndex();
+        await this.incrementStepIdx();
         
         // Send step command directly to OpenHands (bypassing DeepSeek)
         // Add to conversation messages as if DeepSeek sent it
