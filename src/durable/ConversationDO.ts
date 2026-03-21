@@ -9,9 +9,9 @@ import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidat
 import { resolveStepInstructions } from '../services/stepResolver';
 import { evaluateCondition, loadExecutionData, saveExecutionData } from '../services/conditionEngine';
 import { CommandExecutor } from '../services/commandExecutor';
-import { ConditionEvaluator } from './core/condition-evaluator';
-import { Router } from './core/router';
-import { createExecutionContext } from './core/execution-context';
+import { ConditionEvaluator } from '../core/condition-evaluator';
+import { Router } from '../core/router';
+import { createExecutionContext } from '../core/execution-context';
 import { 
   MAX_ITERATIONS, 
   END_FLOW_TOKEN, 
