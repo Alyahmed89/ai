@@ -53,11 +53,14 @@ interface Step {
   output_payload_template: string | null;
   default_next_step: string | null;
   output_auth_token: string | null;
-  input_keys: string;
+  input_keys: string | null;
   output: number;
   default_next_step_id: string | null;
-  step_number: number;
+  step_number: number | null;
   requires_task: number;
+  use_endpoints: string | null;
+  extra_step: number;
+  page_key: string | null;
   // Additional fields for UI
   description?: string;
   type?: 'input' | 'default' | 'output';
@@ -494,6 +497,8 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
           output_keys: step.output_keys || null,
           input_keys: step.input_keys || null,
           use_endpoints: step.use_endpoints || null,
+          extra_step: step.extra_step || 0,
+          page_key: step.page_key || null,
         }),
       });
       
