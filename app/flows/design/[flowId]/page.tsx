@@ -102,6 +102,22 @@ interface EdgeData extends Record<string, any> {
 // Extended Edge type
 type CustomEdge = Edge<EdgeData>;
 
+// Node data interface
+interface NodeData {
+  label?: string;
+  title?: string;
+  step?: Step;
+  instructions?: string;
+  command?: string;
+  await_input?: boolean;
+  variables?: string[];
+  description?: string;
+  type?: 'input' | 'default' | 'output';
+}
+
+// Extended Node type
+type CustomNode = Node<NodeData>;
+
 // Custom node component for dark mode with enhanced visual indicators
 const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) => void }) => {
   const step = data.step as Step;
@@ -862,27 +878,28 @@ const StepPopup = ({
   onSave, 
   onClose 
 }: { 
-  node: Node;
+  node: CustomNode;
   availableVariables: string[];
-  onSave: (node: Node) => void;
+  onSave: (node: CustomNode) => void;
   onClose: () => void;
 }) => {
-  const [instructions, setInstructions] = useState<string>(typeof node.data?.instructions === 'string' ? node.data.instructions : '');
-  const [command, setCommand] = useState<string>(typeof node.data?.command === 'string' ? node.data.command : '');
-  const [awaitInput, setAwaitInput] = useState<boolean>(typeof node.data?.await_input === 'boolean' ? node.data.await_input : false);
-  const [outputKeys, setOutputKeys] = useState<string>(typeof node.data?.step?.output_keys === 'string' ? node.data.step.output_keys : '');
-  const [stepType, setStepType] = useState<string>(typeof node.data?.step?.step_type === 'string' ? node.data.step.step_type : 'default');
+  const nodeData = node.data as NodeData;
+  const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
+  const [command, setCommand] = useState<string>(typeof nodeData?.command === 'string' ? nodeData.command : '');
+  const [awaitInput, setAwaitInput] = useState<boolean>(typeof nodeData?.await_input === 'boolean' ? nodeData.await_input : false);
+  const [outputKeys, setOutputKeys] = useState<string>(typeof nodeData?.step?.output_keys === 'string' ? nodeData.step.output_keys : '');
+  const [stepType, setStepType] = useState<string>(typeof nodeData?.step?.step_type === 'string' ? nodeData.step.step_type : 'default');
 
   const handleSave = () => {
     const updatedNode = {
       ...node,
       data: {
-        ...node.data,
+        ...nodeData,
         instructions,
         command,
         await_input: awaitInput,
         step: {
-          ...node.data?.step,
+          ...nodeData?.step,
           output_keys: outputKeys,
           step_type: stepType,
         },
@@ -935,7 +952,7 @@ const StepPopup = ({
             </label>
             <input
               type="text"
-              value={typeof node.data?.title === 'string' ? node.data.title : ''}
+              value={typeof nodeData?.title === 'string' ? nodeData.title : ''}
               readOnly
               className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-gray-400"
             />
@@ -1104,10 +1121,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   const [error, setError] = useState<string | null>(null);
   
   // React Flow state
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
-  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [nodes, setNodes] = useState<CustomNode[]>([]);
+  const [edges, setEdges] = useState<CustomEdge[]>([]);
+  const [selectedEdge, setSelectedEdge] = useState<CustomEdge | null>(null);
+  const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
   const [saving, setSaving] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   
@@ -1262,10 +1279,11 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     try {
       // Convert nodes back to steps
       const updatedSteps: Step[] = nodes.map((node): Step => {
-        const step = node.data.step as Step;
-        const nodeTitle = node.data.title;
-        const nodeInstructions = node.data.instructions;
-        const nodeStepType = node.data.step?.step_type;
+        const nodeData = node.data as NodeData;
+        const step = nodeData.step as Step;
+        const nodeTitle = nodeData.title;
+        const nodeInstructions = nodeData.instructions;
+        const nodeStepType = nodeData.step?.step_type;
         
         return {
           ...step,
@@ -1325,7 +1343,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       }
       
       // Create new node for the step
-      const newNode: Node = {
+      const newNode: CustomNode = {
         id: newStep.id,
         type: 'default',
         data: {
@@ -1451,7 +1469,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       }
       
       // Create new node for the step
-      const newNode: Node = {
+      const newNode: CustomNode = {
         id: newStep.id,
         type: nodeType,
         data: {
