@@ -29,8 +29,8 @@ import {
 import '@xyflow/react/dist/style.css';
 
 // Import existing flow management components
-import EditFlowModal from '@/components/EditFlowModal';
-import SimpleFlowCreator from '@/components/SimpleFlowCreator';
+import EditFlowModal from '../../../../components/EditFlowModal';
+import SimpleFlowCreator from '../../../../components/SimpleFlowCreator';
 
 // Step data structure - matches backend FlowStep
 interface Step {
@@ -931,12 +931,15 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     setSaving(true);
     try {
       // Convert nodes back to steps
-      const updatedSteps: Step[] = nodes.map(node => {
+      const updatedSteps: Step[] = nodes.map((node): Step => {
         const step = node.data.step as Step;
+        const nodeTitle = node.data.title;
+        const nodeInstructions = node.data.instructions;
+        
         return {
           ...step,
-          title: node.data.title || step.title,
-          instructions: node.data.instructions || step.instructions,
+          title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
+          instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
           // Update other fields from node data if needed
         };
       });
