@@ -17,6 +17,7 @@ export type ExecutionEvent = {
     stepIndex?: number;
     stepTitle?: string;
     stepStatus?: string;
+    collapsed?: boolean;
   };
 };
 

@@ -217,13 +217,15 @@ const parseChatMessage = (message: ChatMessage): ParsedMessage => {
   };
 };
 
-interface ChatPageProps {
-  initialProjectId?: string;
-  initialFlowId?: string;
-  initialFlowRunId?: string;
-}
-
-export default function ChatPage({ initialProjectId, initialFlowId, initialFlowRunId }: ChatPageProps = {}) {
+// Use any for props to handle both Next.js PageProps and our custom props
+export default function ChatPage(props: any) {
+  // Extract our custom props from props
+  const initialProjectId = props.initialProjectId as string | undefined;
+  const initialFlowId = props.initialFlowId as string | undefined;
+  const initialFlowRunId = props.initialFlowRunId as string | undefined;
+  // Next.js page props (might be Promises)
+  const params = props.params;
+  const searchParams = props.searchParams;
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
