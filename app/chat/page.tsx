@@ -36,6 +36,7 @@ interface FlowRun {
   status: string;
   started_at: string;
   output_response?: string;
+  conversation_id?: string;
 }
 
 interface Task {
@@ -551,6 +552,53 @@ export default function ChatPage() {
     }
   };
 
+  // Poll to find flow run by conversation ID and automatically select it
+  const pollForFlowRunByConversationId = async (conversationId: string, maxAttempts = 20, interval = 1000) => {
+    console.log(`Starting to poll for flow run with conversation_id: ${conversationId}`);
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`Polling attempt ${attempt}/${maxAttempts} for flow run with conversation_id: ${conversationId}`);
+        
+        const response = await fetch('/api/proxy/api/flow-runs');
+        if (!response.ok) throw new Error('Failed to fetch flow runs');
+        
+        const flowRuns = await response.json();
+        
+        // Find flow run with matching conversation_id
+        const matchingFlowRun = flowRuns.find((run: any) => run.conversation_id === conversationId);
+        
+        if (matchingFlowRun) {
+          console.log(`Found matching flow run: ${matchingFlowRun.id} for conversation_id: ${conversationId}`);
+          console.log('Flow run details:', matchingFlowRun);
+          
+          // Automatically select this flow run
+          setSelectedFlowRunId(matchingFlowRun.id);
+          
+          // Update flow runs list
+          const sortedRuns = flowRuns.sort((a: FlowRun, b: FlowRun) => 
+            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+          );
+          setFlowRuns(sortedRuns);
+          
+          console.log(`Automatically selected flow run: ${matchingFlowRun.id}`);
+          return; // Success, stop polling
+        } else {
+          console.log(`No matching flow run found for conversation_id: ${conversationId} (attempt ${attempt}/${maxAttempts})`);
+        }
+      } catch (error) {
+        console.error(`Error polling for flow run (attempt ${attempt}):`, error);
+      }
+      
+      // Wait before next attempt
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, interval));
+      }
+    }
+    
+    console.warn(`Failed to find flow run for conversation_id: ${conversationId} after ${maxAttempts} attempts`);
+  };
+
   const fetchTasks = async () => {
     try {
       const response = await fetch('/api/proxy/api/tasks');
@@ -810,6 +858,9 @@ export default function ChatPage() {
       // Start polling for actual results if we have a conversation ID
       if (conversationId) {
         startPollingForResults(conversationId, assistantMessageId, prompt, restoreOriginalInstructions);
+        
+        // Also start polling to find and select the corresponding flow run
+        pollForFlowRunByConversationId(conversationId);
       }
       
     } catch (error) {
