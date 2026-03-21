@@ -979,12 +979,13 @@ export class ConversationOrchestratorDO_2026A {
     
     return nextStep;
   }
-  
   /**
    * Increment step index and save to conversation state
    */
   private async incrementStepIndex(): Promise<void> {
-    if (!this.conversation) return;
+    if (!this.conversation) {
+      return;
+    }
     
     const currentIndex = this.conversation.current_step_index || 0;
     this.conversation.current_step_index = currentIndex + 1;
@@ -993,6 +994,8 @@ export class ConversationOrchestratorDO_2026A {
     await this.state.storage.put('conversation', this.conversation);
     console.log(`[DO:${this.state.id}] Incremented step index to ${this.conversation.current_step_index}`);
   }
+  
+
   
   /**
    * Load project facts from D1 database
