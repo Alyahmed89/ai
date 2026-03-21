@@ -340,6 +340,42 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
   }
 }
 
+// Function to create a new step
+async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<Step | null> {
+  try {
+    const response = await fetch(`/api/proxy/api/flow-steps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        flow_id: flowId,
+        step_key: stepData.step_key || `step-${Date.now()}`,
+        title: stepData.title || 'New Step',
+        instructions: stepData.instructions || '',
+        step_type: stepData.step_type || 'default',
+        order_index: stepData.order_index || 1,
+        blocking: stepData.blocking || 0,
+        auto_fail_on_error: stepData.auto_fail_on_error || 0,
+        retryable: stepData.retryable || 0,
+        output_keys: stepData.output_keys || '',
+        input_keys: stepData.input_keys || '',
+        output: stepData.output || 0,
+        requires_task: stepData.requires_task || 0,
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to create step:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    return data.data || data;
+  } catch (error) {
+    console.error('Error creating step:', error);
+    return null;
+  }
+}
+
 // Create nodes from step data
 function createNodesFromSteps(steps: Step[]) {
   return steps.map((step, index) => ({
@@ -962,6 +998,96 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     }
   }, [nodes, currentFlowId]);
 
+  // Function to add a new step
+  const handleAddStep = useCallback(async () => {
+    try {
+      // Calculate position for new node (right of existing nodes)
+      const maxX = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) : 250;
+      const maxY = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.y)) : 25;
+      
+      // Create new step data
+      const newStepData: Partial<Step> = {
+        title: `Step ${nodes.length + 1}`,
+        instructions: 'New step instructions...',
+        step_type: 'default',
+        order_index: nodes.length + 1,
+        blocking: 0,
+        auto_fail_on_error: 0,
+        retryable: 0,
+        output_keys: '',
+        input_keys: '',
+        output: 0,
+        requires_task: 0,
+      };
+      
+      // Create step in backend
+      const newStep = await createNewStep(currentFlowId, newStepData);
+      
+      if (!newStep) {
+        alert('Failed to create new step. Check console for errors.');
+        return;
+      }
+      
+      // Create new node for the step
+      const newNode: Node = {
+        id: newStep.id,
+        type: 'default',
+        data: {
+          label: newStep.title,
+          title: newStep.title,
+          step: newStep,
+          instructions: newStep.instructions,
+          command: '',
+          await_input: false,
+          variables: [],
+        },
+        position: { x: maxX + 300, y: maxY + 100 },
+      };
+      
+      // Add new node to the flow
+      setNodes(prevNodes => [...prevNodes, newNode]);
+      
+      // If there are existing nodes, create an edge from the last node to the new one
+      if (nodes.length > 0) {
+        const lastNode = nodes[nodes.length - 1];
+        const newEdge: Edge = {
+          id: `e${lastNode.id}-${newStep.id}`,
+          source: lastNode.id,
+          target: newStep.id,
+          animated: false,
+          style: {
+            stroke: '#3b82f6',
+            strokeWidth: 2,
+          },
+          markerEnd: {
+            type: 'arrowclosed',
+            color: '#3b82f6',
+          },
+          data: {
+            condition: {
+              source: 'default',
+              operator: 'always',
+              value: null,
+            },
+            route: {
+              type: 'step' as const,
+              target_id: newStep.id,
+              context_preservation: 'full' as const,
+            },
+          },
+        };
+        setEdges(prevEdges => [...prevEdges, newEdge]);
+      }
+      
+      // Select the new node to open the step popup
+      setSelectedNode(newNode);
+      
+    } catch (error) {
+      console.error('Error adding new step:', error);
+      alert('Error adding new step. See console for details.');
+    }
+  }, [nodes, currentFlowId]);
+
 
 
   // Handle flow created/updated
@@ -1008,6 +1134,12 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             )}
           </div>
           <div className="flex gap-4">
+            <button
+              onClick={handleAddStep}
+              className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded font-medium text-white transition-colors"
+            >
+              + Add Step
+            </button>
             <button
               onClick={onSaveFlow}
               disabled={saving}
