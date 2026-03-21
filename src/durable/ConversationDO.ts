@@ -981,9 +981,7 @@ export class ConversationOrchestratorDO_2026A {
     return nextStep;
   }
 
-  /**
-   * Increment step index and save to conversation state
-   */
+  // Increment step index and save to conversation state
   private async incrementStepIdx(): Promise<void> {
     if (!this.conversation) {
       return;
