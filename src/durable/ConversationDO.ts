@@ -9,6 +9,9 @@ import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidat
 import { resolveStepInstructions } from '../services/stepResolver';
 import { evaluateCondition, loadExecutionData, saveExecutionData } from '../services/conditionEngine';
 import { CommandExecutor } from '../services/commandExecutor';
+import { ConditionEvaluator } from './core/condition-evaluator';
+import { Router } from './core/router';
+import { createExecutionContext } from './core/execution-context';
 import { 
   MAX_ITERATIONS, 
   END_FLOW_TOKEN, 
@@ -59,6 +62,10 @@ export class ConversationOrchestratorDO_2026A {
   // Command executor
   private commandExecutor: CommandExecutor | null = null;
 
+  // New condition evaluation system
+  private conditionEvaluator: ConditionEvaluator | null = null;
+  private router: Router | null = null;
+
   // Event emission system for UI step streaming
   private eventListeners: ((event: ExecutionEvent) => void)[] = [];
   private eventSequence: number = 0; // Sequence counter for event ordering
@@ -73,6 +80,8 @@ export class ConversationOrchestratorDO_2026A {
     this.flowStepsCacheTime = 0;
     this.flowSwitchHistory = [];
     this.eventSequence = 0;
+    this.conditionEvaluator = null;
+    this.router = null;
   }
   // ==========================================================================
   // EVENT EMISSION SYSTEM
@@ -474,6 +483,21 @@ export class ConversationOrchestratorDO_2026A {
     }
     return this.commandExecutor;
   }
+
+  private async getConditionEvaluator(): Promise<ConditionEvaluator> {
+    if (!this.conditionEvaluator) {
+      this.conditionEvaluator = new ConditionEvaluator();
+    }
+    return this.conditionEvaluator;
+  }
+
+  private async getRouter(): Promise<Router> {
+    if (!this.router) {
+      const evaluator = await this.getConditionEvaluator();
+      this.router = new Router(evaluator);
+    }
+    return this.router;
+  }
   
   /**
    * Get available commands for AI
@@ -661,9 +685,14 @@ export class ConversationOrchestratorDO_2026A {
       return this.handleOpenHandsResponse(request);
     }
     
+    // Resume execution after waiting for input
+    if (path === '/resume' && request.method === 'POST') {
+      return this.handleResume(request);
+    }
+    
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /start-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration', 'POST /openhands-response']
+      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /start-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration', 'POST /openhands-response', 'POST /resume']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
@@ -711,9 +740,9 @@ export class ConversationOrchestratorDO_2026A {
       const body = await request.json() as { response: string };
       console.log(`[DO:${this.state.id}] Received OpenHands response for flow execution`);
       
-      // Store the response for conditional branching
-      this.conversation.last_step_response = body.response;
-      console.log(`[DO:${this.state.id}] Stored response (${body.response.length} chars) for conditional branching`);
+      // Store the response for conditional branching (will be synced with ai_output below)
+      // this.conversation.last_step_response = body.response; // REMOVED - will be set with ai_output sync
+      console.log(`[DO:${this.state.id}] Received response (${body.response.length} chars) for conditional branching`);
       
       // Save OpenHands step run to database
       if (this.conversation.current_step) {
@@ -732,6 +761,24 @@ export class ConversationOrchestratorDO_2026A {
         
         // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
         await this.handleStepCompletion(this.conversation.current_step, body.response);
+        
+        // Update execution context with OpenHands response for new condition system
+        if (this.conversation.execution_context) {
+          // UNIFIED: Store in ai_output with source field (same as DeepSeek)
+          this.conversation.execution_context.ai_output = {
+            response: body.response,
+            intent: '',
+            actions: [],
+            metadata: {},
+            source: 'openhands'
+          };
+          
+          // SYNC: Keep last_step_response in sync with ai_output for legacy compatibility
+          this.conversation.last_step_response = body.response;
+          
+          // Increment step_count AFTER successful completion
+          this.conversation.execution_context.step_count += 1;
+        }
       }
       
       // For flow execution, we just need to move to next step
@@ -857,30 +904,49 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] Checking conditional branching for flow ${flowId}`);
       console.log(`[DO:${this.state.id}] Current step: ${this.conversation.current_step.step_id}, Response length: ${this.conversation.last_step_response.length}`);
       
-      // Use the new conditional branching logic
-      const { getNextStepBasedOnConditions } = await import('../services/database');
-      const nextStep = await getNextStepBasedOnConditions(
-        this.env.FLOW_RUNS_DB,
-        flowId,
-        this.conversation.current_step.step_id,
-        this.conversation.last_step_response
-      );
+      // NEW: Load conditions for routing decision
+      const conditionsQuery = `
+        SELECT fsc.* 
+        FROM flow_step_conditions fsc
+        WHERE fsc.flow_step_id = ?
+        ORDER BY fsc.created_at
+      `;
       
-      if (nextStep) {
-        console.log(`[DO:${this.state.id}] Conditional branching selected step: ${nextStep.title} (order_index: ${nextStep.order_index})`);
+      const conditionsResult = await this.env.FLOW_RUNS_DB.prepare(conditionsQuery).bind(this.conversation.current_step.step_id).all();
+      const conditions = conditionsResult.results as any[];
+      
+      // Skip conditions with source field (handled by routing before getNextStep)
+      const legacyConditions = conditions.filter(c => !c.source);
+      
+      if (legacyConditions.length > 0) {
+        console.log(`[DO:${this.state.id}] Found ${legacyConditions.length} legacy conditions, using legacy conditional branching`);
         
-        // Check for termination condition
-        if (nextStep.order_index === -1) {
-          console.log(`[DO:${this.state.id}] Termination step detected, returning null to end flow`);
-          return null;
+        // Fall back to legacy conditional branching logic
+        const { getNextStepBasedOnConditions } = await import('../services/database');
+        const nextStep = await getNextStepBasedOnConditions(
+          this.env.FLOW_RUNS_DB,
+          flowId,
+          this.conversation.current_step.step_id,
+          this.conversation.last_step_response
+        );
+      
+        if (nextStep) {
+          console.log(`[DO:${this.state.id}] Legacy conditional branching selected step: ${nextStep.title} (order_index: ${nextStep.order_index})`);
+          
+          // Check for termination condition
+          if (nextStep.order_index === -1) {
+            console.log(`[DO:${this.state.id}] Termination step detected, returning null to end flow`);
+            return null;
+          }
+          
+          // Return the matched step - index update will happen in completion handler
+          return nextStep;
+        } else {
+          console.log(`[DO:${this.state.id}] No conditional branching match, using sequential order`);
         }
-        
-        // Return the matched step - index update will happen in completion handler
-        return nextStep;
       } else {
-        console.log(`[DO:${this.state.id}] No conditional branching match, using sequential order`);
+        console.log(`[DO:${this.state.id}] No legacy conditions found, using sequential order`);
       }
-    }
     
     // Fall back to sequential steps if no conditional branching
     // First, try to use steps from conversation (they have execution state)
@@ -2858,6 +2924,23 @@ Use the response in your work.`
           this.conversation.last_deepseek_response = filteredResponse;
           this.conversation.deepseek_response_pending = false;
           
+          // Update execution context with AI output for new condition system
+          if (this.conversation.execution_context) {
+            this.conversation.execution_context.ai_output = {
+              response: filteredResponse,
+              intent: '',
+              actions: [],
+              metadata: {},
+              source: 'deepseek'
+            };
+            
+            // SYNC: Keep last_step_response in sync with ai_output for legacy compatibility
+            this.conversation.last_step_response = filteredResponse;
+            
+            // Increment step_count AFTER successful completion
+            this.conversation.execution_context.step_count += 1;
+          }
+          
           // IMMEDIATELY: Store response in current step and update status
           if (this.conversation.current_step && this.conversation.flow_steps) {
             const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === this.conversation!.current_step!.step_id);
@@ -3569,21 +3652,156 @@ Use the response in your work.`
     if (this.conversation.flow_execution_mode) {
       console.log(`[DO:${this.state.id}] Flow execution mode: Getting next step for flow ${this.conversation.flow_id}`);
       
-      // Get next step from database
-      const nextStep = await this.getNextStep();
+      // Check for routing BEFORE getting next step
+      let route = null;
+      let nextStep = null;
       
-      if (!nextStep) {
-        console.log(`[DO:${this.state.id}] No more steps in flow, completing flow execution`);
-        // Save flow run to database with completed status
-        try {
-          await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
-        } catch (error: any) {
-          console.error(`[DO:${this.state.id}] Error saving flow run to database: ${error.message}`);
+      if (this.conversation.last_step_response && this.conversation.current_step) {
+        console.log(`[DO:${this.state.id}] Checking for routing conditions before getting next step in handleOpenHandsResponse`);
+        
+        // Load conditions for routing decision
+        const conditionsQuery = `
+          SELECT fsc.* 
+          FROM flow_step_conditions fsc
+          WHERE fsc.flow_step_id = ?
+          ORDER BY fsc.created_at
+        `;
+        
+        const conditionsResult = await this.env.FLOW_RUNS_DB.prepare(conditionsQuery).bind(this.conversation.current_step.step_id).all();
+        const conditions = conditionsResult.results as any[];
+        
+        // Check if any condition has source field (new system)
+        if (conditions.some(c => c.source)) {
+          console.log(`[DO:${this.state.id}] Found conditions with source field, evaluating routing`);
+          
+          const routedConditions = conditions.map(c => ({
+            condition: {
+              source: c.source,
+              operator: c.operator,
+              value: c.value
+            },
+            route: {
+              type: c.route_type,
+              target_id: c.target_id,
+              context_preservation: c.context_preservation
+            }
+          }));
+          
+          // Get router and evaluate
+          const router = await this.getRouter();
+          route = router.resolveWithFallback(
+            routedConditions,
+            this.conversation.execution_context
+          );
+          
+          console.log(`[DO:${this.state.id}] Router returned route: ${route.type} -> ${route.target_id}`);
         }
-        // Restart the flow with same payload before stopping
-        await this.restartFlow();
-        await this.stopConversation('flow_completed');
-        return;
+      }
+      
+      // Apply route if exists
+      if (route) {
+        if (route.type === 'flow') {
+          const newFlowId = route.target_id;
+          
+          // 1. Reset flow
+          this.conversation.flow_id = newFlowId;
+          
+          // 2. Reset step index
+          this.conversation.current_step_index = 0;
+          
+          // 3. Reset step tracking
+          this.conversation.flow_steps = [];
+          
+          // 4. Handle context preservation
+          const context = this.conversation.execution_context;
+          
+          if (route.context_preservation === 'none') {
+            this.conversation.execution_context = createExecutionContext(newFlowId, '');
+          }
+          
+          if (route.context_preservation === 'partial') {
+            const newCtx = createExecutionContext(newFlowId, '');
+            
+            for (const [key, val] of context.data.entries()) {
+              if (val?.metadata?.persist) {
+                newCtx.data.set(key, val);
+              }
+            }
+            
+            this.conversation.execution_context = newCtx;
+          }
+          
+          if (route.context_preservation === 'full') {
+            context.flow_id = newFlowId;
+            this.conversation.execution_context = context;
+          }
+          
+          // 5. Reload steps
+          await this.loadFlowSteps();
+          
+          // 6. Get first step of new flow
+          if (this.conversation.flow_steps && this.conversation.flow_steps.length > 0) {
+            nextStep = this.conversation.flow_steps[0];
+            console.log(`[DO:${this.state.id}] Flow transition to ${newFlowId}, first step: ${nextStep.title}`);
+            
+            // Save state after flow switch
+            await this.state.storage.put('conversation', this.conversation);
+          } else {
+            console.log(`[DO:${this.state.id}] No steps in new flow ${newFlowId}, completing flow execution`);
+            await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
+            await this.restartFlow();
+            await this.stopConversation('flow_completed');
+            return;
+          }
+        }
+        
+        if (route.type === 'step') {
+          // Find step by target_id in current flow steps
+          if (this.conversation.flow_steps) {
+            nextStep = this.conversation.flow_steps.find(s => s.step_id === route.target_id);
+            if (nextStep) {
+              console.log(`[DO:${this.state.id}] Step transition to: ${nextStep.title}`);
+              // Update current_step_index to match the found step
+              const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === route.target_id);
+              if (stepIndex !== -1) {
+                this.conversation.current_step_index = stepIndex;
+              }
+            } else {
+              console.log(`[DO:${this.state.id}] Step ${route.target_id} not found in current flow, completing flow execution`);
+              await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
+              await this.restartFlow();
+              await this.stopConversation('flow_completed');
+              return;
+            }
+          } else {
+            console.log(`[DO:${this.state.id}] No flow steps available, completing flow execution`);
+            await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
+            await this.restartFlow();
+            await this.stopConversation('flow_completed');
+            return;
+          }
+        }
+        
+        if (route.type === 'end') {
+          console.log(`[DO:${this.state.id}] Route type is 'end', flow should complete`);
+          await this.saveFlowRunToDatabase('flow_completed_by_route', 'completed');
+          await this.restartFlow();
+          await this.stopConversation('flow_completed');
+          return;
+        }
+      }
+      
+      // If no route, get next step using legacy logic
+      if (!nextStep) {
+        nextStep = await this.getNextStep();
+        
+        if (!nextStep) {
+          console.log(`[DO:${this.state.id}] No more steps in flow, completing flow execution`);
+          await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
+          await this.restartFlow();
+          await this.stopConversation('flow_completed');
+          return;
+        }
       }
       
       // Check if this is a decision step (Step 7 - gap_analysis)
@@ -3885,6 +4103,98 @@ Use the response in your work.`
   // HELPER METHODS
   // ==========================================================================
   
+  /**
+   * Resume execution after waiting for input
+   */
+  private async handleResume(request: Request): Promise<Response> {
+    try {
+      // Check if conversation is in WAITING_FOR_INPUT state
+      if (this.conversation.state !== 'WAITING_FOR_INPUT' || !this.conversation.waiting_for_input) {
+        return new Response(JSON.stringify({
+          error: 'Not waiting for input',
+          current_state: this.conversation.state,
+          waiting_for_input: this.conversation.waiting_for_input
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const body = await request.json() as { input: any };
+      const { input } = body;
+      
+      if (input === undefined) {
+        return new Response(JSON.stringify({
+          error: 'Missing input field in request body'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const { name: inputName, step_id: stepId } = this.conversation.waiting_for_input;
+      
+      console.log(`[DO:${this.state.id}] Resuming execution with input for ${inputName}:`, input);
+
+      // Store input in execution context with metadata
+      if (this.conversation.execution_context) {
+        this.conversation.execution_context.inputs[inputName] = {
+          value: input,
+          metadata: {
+            source: 'user',
+            timestamp: Date.now(),
+            step_id: stepId,
+            input_name: inputName
+          }
+        };
+        
+        // Clear awaiting_input
+        this.conversation.execution_context.awaiting_input = undefined;
+      }
+
+      // Update the paused step with the input result
+      if (this.conversation.flow_steps && this.conversation.current_step) {
+        const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === stepId);
+        if (stepIndex !== -1) {
+          this.conversation.flow_steps[stepIndex].response = `Received input for ${inputName}: ${JSON.stringify(input)}`;
+          this.conversation.flow_steps[stepIndex].status = 'completed';
+          console.log(`[DO:${this.state.id}] Updated step ${stepId} with input result`);
+        }
+      }
+
+      // Clear waiting state
+      this.conversation.state = 'SENDING_STEP';
+      this.conversation.status = 'active';
+      this.conversation.waiting_for_input = undefined;
+
+      // Save state
+      await this.state.storage.put('conversation', this.conversation);
+
+      // Continue execution
+      await this.handleSendingStepState();
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Resumed execution with input for ${inputName}`,
+        input_name: inputName,
+        step_id: stepId
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error in handleResume:`, error);
+      return new Response(JSON.stringify({
+        error: 'Failed to resume execution',
+        details: error.message
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
   /**
    * Handle flow completion by checking flow_definitions.next_flow_id
    * This is the SINGLE AUTHORITY for flow transitions
@@ -4320,18 +4630,177 @@ ${messageContent}`;
       return;
     }
     
-    // Get next step using conditional branching logic
-    const step = await this.getNextStep();
+    // Check for routing BEFORE getting next step
+    let route = null;
+    let step = null;
     
+    if (this.conversation.last_step_response && this.conversation.current_step) {
+      console.log(`[DO:${this.state.id}] Checking for routing conditions before getting next step`);
+      
+      // Load conditions for routing decision
+      const conditionsQuery = `
+        SELECT fsc.* 
+        FROM flow_step_conditions fsc
+        WHERE fsc.flow_step_id = ?
+        ORDER BY fsc.created_at
+      `;
+      
+      const conditionsResult = await this.env.FLOW_RUNS_DB.prepare(conditionsQuery).bind(this.conversation.current_step.step_id).all();
+      const conditions = conditionsResult.results as any[];
+      
+      // Check if any condition has source field (new system)
+      if (conditions.some(c => c.source)) {
+        console.log(`[DO:${this.state.id}] Found conditions with source field, evaluating routing`);
+        
+        const routedConditions = conditions.map(c => ({
+          condition: {
+            source: c.source,
+            operator: c.operator,
+            value: c.value
+          },
+          route: {
+            type: c.route_type,
+            target_id: c.target_id,
+            context_preservation: c.context_preservation
+          }
+        }));
+        
+        // Get router and evaluate
+        const router = await this.getRouter();
+        route = router.resolveWithFallback(
+          routedConditions,
+          this.conversation.execution_context
+        );
+        
+        console.log(`[DO:${this.state.id}] Router returned route: ${route.type} -> ${route.target_id}`);
+      }
+    }
+    
+    // Apply route if exists
+    if (route) {
+      if (route.type === 'flow') {
+        const newFlowId = route.target_id;
+        
+        // 1. Reset flow
+        this.conversation.flow_id = newFlowId;
+        
+        // 2. Reset step index
+        this.conversation.current_step_index = 0;
+        
+        // 3. Reset step tracking
+        this.conversation.flow_steps = [];
+        
+        // 4. Handle context preservation
+        const context = this.conversation.execution_context;
+        
+        if (route.context_preservation === 'none') {
+          this.conversation.execution_context = createExecutionContext(newFlowId, '');
+        }
+        
+        if (route.context_preservation === 'partial') {
+          const newCtx = createExecutionContext(newFlowId, '');
+          
+          for (const [key, val] of context.data.entries()) {
+            if (val?.metadata?.persist) {
+              newCtx.data.set(key, val);
+            }
+          }
+          
+          this.conversation.execution_context = newCtx;
+        }
+        
+        if (route.context_preservation === 'full') {
+          context.flow_id = newFlowId;
+          this.conversation.execution_context = context;
+        }
+        
+        // 5. Reload steps
+        await this.loadFlowSteps();
+        
+        // 6. Get first step of new flow
+        if (this.conversation.flow_steps && this.conversation.flow_steps.length > 0) {
+          step = this.conversation.flow_steps[0];
+          console.log(`[DO:${this.state.id}] Flow transition to ${newFlowId}, first step: ${step.title}`);
+          
+          // Save state after flow switch
+          await this.state.storage.put('conversation', this.conversation);
+        } else {
+          console.log(`[DO:${this.state.id}] No steps in new flow ${newFlowId}`);
+          await this.restartFlow();
+          await this.stopConversation('no_flow_steps');
+          return;
+        }
+      }
+      
+      if (route.type === 'step') {
+        // Find step by target_id in current flow steps
+        if (this.conversation.flow_steps) {
+          step = this.conversation.flow_steps.find(s => s.step_id === route.target_id);
+          if (step) {
+            console.log(`[DO:${this.state.id}] Step transition to: ${step.title}`);
+            // Update current_step_index to match the found step
+            const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === route.target_id);
+            if (stepIndex !== -1) {
+              this.conversation.current_step_index = stepIndex;
+            }
+          } else {
+            console.log(`[DO:${this.state.id}] Step ${route.target_id} not found in current flow`);
+            await this.restartFlow();
+            await this.stopConversation('step_not_found');
+            return;
+          }
+        } else {
+          console.log(`[DO:${this.state.id}] No flow steps available`);
+          await this.restartFlow();
+          await this.stopConversation('no_flow_steps');
+          return;
+        }
+      }
+      
+      if (route.type === 'end') {
+        console.log(`[DO:${this.state.id}] Route type is 'end', flow should complete`);
+        await this.restartFlow();
+        await this.stopConversation('flow_completed_by_route');
+        return;
+      }
+    }
+    
+    // If no route, get next step using legacy logic
     if (!step) {
-      console.log(`[DO:${this.state.id}] No more steps in flow`);
-      // Restart the flow with same payload before stopping
-      await this.restartFlow();
-      await this.stopConversation('flow_completed');
-      return;
+      step = await this.getNextStep();
+      
+      if (!step) {
+        console.log(`[DO:${this.state.id}] No more steps in flow`);
+        await this.restartFlow();
+        await this.stopConversation('flow_completed');
+        return;
+      }
     }
     
     console.log(`[DO:${this.state.id}] Sending step: ${step.title} (order_index: ${step.order_index})`);
+    
+    // Update ExecutionContext for new step
+    if (!this.conversation.execution_context) {
+      // Create new context if none exists
+      this.conversation.execution_context = createExecutionContext(this.conversation.flow_id, step.step_id);
+    } else {
+      // Update existing context with new step_id
+      this.conversation.execution_context.step_id = step.step_id;
+      // DO NOT increment step_count here - only increment AFTER successful completion
+      
+      // SAFE PATTERN: Store previous AI output before clearing (for debugging/fallback)
+      if (this.conversation.execution_context.ai_output) {
+        // Store in data map for reference
+        this.conversation.execution_context.data.set('previous_ai_output', {
+          value: this.conversation.execution_context.ai_output,
+          metadata: { persist: false, timestamp: Date.now() }
+        });
+      }
+      
+      // Clear ai_output for new step (but preserve data, command_results, etc.)
+      this.conversation.execution_context.ai_output = null;
+      this.conversation.execution_context.ai_input = '';
+    }
     
     // Update current_step to track which step is being executed
     this.conversation.current_step = step;
@@ -4569,6 +5038,11 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Final prompt length: ${prompt.length} chars`);
     console.log(`[DO:${this.state.id}] Final prompt preview: ${prompt.substring(0, 200)}...`);
     
+    // Set AI input in execution context for new condition system
+    if (this.conversation.execution_context) {
+      this.conversation.execution_context.ai_input = prompt;
+    }
+    
     // Store debug information for observability
     this.conversation.last_step_debug = {
       step_id: step.step_id,
@@ -4598,6 +5072,8 @@ ${messageContent}`;
       await this.handleStepCompletion(step, "Hello step completed successfully");
       return;
     }
+
+
     
     // Check agent type - if deepseek, call DeepSeek API instead of OpenHands
     if (this.conversation.agent === 'deepseek') {
@@ -4643,6 +5119,23 @@ Use the response in your work.`
           resolvedStep?.api_calls || [] // Pass API calls for database storage, safely handle undefined
         );
         // For errors, we still need to complete the step to move forward
+        // Update execution context with error for new condition system
+        if (this.conversation.execution_context) {
+          this.conversation.execution_context.ai_output = {
+            response: `DeepSeek API error: ${deepseekResult.error}`,
+            intent: '',
+            actions: [],
+            metadata: {},
+            source: 'deepseek_error'
+          };
+          
+          // SYNC: Keep last_step_response in sync with ai_output for legacy compatibility
+          this.conversation.last_step_response = `DeepSeek API error: ${deepseekResult.error}`;
+          
+          // Increment step_count even for errors (step was attempted)
+          this.conversation.execution_context.step_count += 1;
+        }
+        
         await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
         // Check if conversation is still active before scheduling next alarm
         // Check for any active state, not just SENDING_STEP
@@ -4665,6 +5158,23 @@ Use the response in your work.`
         1,
         resolvedStep?.api_calls || [] // Pass API calls for database storage, safely handle undefined
       );
+      
+      // Update execution context with AI output for new condition system
+      if (this.conversation.execution_context) {
+        this.conversation.execution_context.ai_output = {
+          response: response,
+          intent: '',
+          actions: [],
+          metadata: {},
+          source: 'deepseek'
+        };
+        
+        // SYNC: Keep last_step_response in sync with ai_output for legacy compatibility
+        this.conversation.last_step_response = response;
+        
+        // Increment step_count AFTER successful completion
+        this.conversation.execution_context.step_count += 1;
+      }
       
       // Complete the step with DeepSeek response
       await this.handleStepCompletion(step, response);
@@ -4816,6 +5326,18 @@ Use the response in your work.`
       
       // Format result for AI
       const resultMessage = commandExecutor.formatResultForAI(result);
+      
+      // Update execution context with command result for new condition system
+      if (this.conversation.execution_context) {
+        this.conversation.execution_context.command_results.push({
+          name: commandData.name,
+          params: commandData.params,
+          result: result,
+          error: result.error || undefined,
+          success: !result.error,
+          timestamp: Date.now()
+        });
+      }
       
       // Add command result to conversation history
       if (this.conversation.conversation_history) {
@@ -5063,9 +5585,13 @@ Use the response in your work.`
     // 0. Update execution data based on step results
     await this.updateExecutionData(step, response);
     
-    // Store the response for database persistence (same as OpenHands responses)
-    this.conversation.last_step_response = response;
-    console.log(`[DO:${this.state.id}] Stored DeepSeek response (${response.length} chars) for database persistence`);
+    // NOTE: last_step_response is set by the caller (handleDeepSeekResponse or handleOpenHandsResponse)
+    // to keep it in sync with ai_output.response
+    // DO NOT set last_step_response here to avoid duplication
+    
+    // NOTE: ai_output is set by the caller (handleDeepSeekResponse or handleOpenHandsResponse)
+    // DO NOT set ai_output here to avoid duplication
+    // step_count is also incremented by the caller
     
     // 1. Check step conditions (flow transitions removed)
     const stepEvaluation = await this.shouldExecuteStep(step);
@@ -5120,11 +5646,75 @@ Use the response in your work.`
     // 8. Reset step status sent flag for next step
     this.conversation.step_status_sent = false;
     
-    // 8. Continue with next step in current flow
+    // 8. Check if we need to pause for user input
+    // Check both: step.await_input config and AI actions that set awaiting_input
+    const shouldPause = await this.checkAndPauseForInput(step);
+    if (shouldPause) {
+      console.log(`[DO:${this.state.id}] Execution paused for user input`);
+      return;
+    }
+    
+    // 9. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
     // Flow transitions only happen via flow_definitions.next_flow_id
     // when flow completes (next_step == -1)
     await this.moveToNextStep();
+  }
+
+  /**
+   * Check if we need to pause for user input and handle pausing
+   */
+  private async checkAndPauseForInput(step: StepData): Promise<boolean> {
+    const context = this.conversation.execution_context;
+    if (!context) return false;
+
+    // Check for await_input from two sources:
+    // 1. Step config (step.await_input)
+    // 2. AI actions (context.awaiting_input)
+    
+    let inputName: string | undefined;
+    let params: Record<string, any> = {};
+
+    // First check step config
+    if (step.await_input) {
+      inputName = step.await_input.name;
+      params = step.await_input.params || {};
+      console.log(`[DO:${this.state.id}] Step config requests input: ${inputName}`);
+    }
+    
+    // Then check AI actions (overrides step config if both exist)
+    if (context.awaiting_input) {
+      inputName = context.awaiting_input.name;
+      params = context.awaiting_input.params || {};
+      console.log(`[DO:${this.state.id}] AI action requests input: ${inputName}`);
+    }
+
+    if (!inputName) {
+      return false;
+    }
+
+    // Set conversation to WAITING_FOR_INPUT state
+    this.conversation.state = 'WAITING_FOR_INPUT';
+    this.conversation.status = 'paused';
+    this.conversation.waiting_for_input = {
+      name: inputName,
+      params: params,
+      step_id: step.step_id,
+      timestamp: Date.now()
+    };
+
+    // Save await_input step run to database
+    await this.saveStepRunToDatabase(
+      step,
+      `Awaiting input: ${inputName}`,
+      `Waiting for user input: ${inputName}`,
+      'paused'
+    );
+
+    // Save state and stop execution
+    await this.state.storage.put('conversation', this.conversation);
+    console.log(`[DO:${this.state.id}] Execution paused, waiting for input: ${inputName}`);
+    return true;
   }
 
   /**
@@ -5187,7 +5777,7 @@ Use the response in your work.`
         next_flow_id: conditionRow.step_condition_next_flow_id || conditionRow.flow_def_next_flow_id
       };
       
-      // Simple evaluation for flow_step_conditions
+      // Legacy condition evaluation for static/sql engines
       let passes = false;
       const conditionOperator = conditionRow.condition_operator;
       const conditionValue = conditionRow.condition_value;

@@ -12,7 +12,7 @@ export interface CloudflareBindings {
 }
 
 // Conversation state machine
-export type ConversationState = 'INIT' | 'WAITING_OPENHANDS' | 'ITERATION_COMPLETE' | 'AWAITING_NEXT_ITERATION' | 'DONE';
+export type ConversationState = 'INIT' | 'WAITING_OPENHANDS' | 'ITERATION_COMPLETE' | 'AWAITING_NEXT_ITERATION' | 'DONE' | 'WAITING_FOR_INPUT';
 
 // Conversation data (persisted in Durable Object storage)
 export interface ConversationData {
@@ -30,7 +30,7 @@ export interface ConversationData {
   agent?: string; // Agent type: 'openhands' (default) or 'deepseek'
   
   // Current status
-  status: 'active' | 'stopped' | 'error';
+  status: 'active' | 'stopped' | 'error' | 'paused';
   error_message?: string;
   
   // Tracking
@@ -128,6 +128,17 @@ export interface ConversationData {
     }>;
     is_complete: boolean;
     completion_reason: string;
+  };
+
+  // New condition system execution context
+  execution_context?: any;
+
+  // Wait/Resume system for interactive flows
+  waiting_for_input?: {
+    name: string;
+    params?: Record<string, any>;
+    step_id: string;
+    timestamp: number;
   };
 
   // Step status tracking
@@ -318,6 +329,11 @@ export interface StepData {
   // NEW: Unified endpoint system
   use_endpoints?: string; // JSON array of endpoint configurations
   extra_step?: boolean; // Whether to run extra step loop
+  // NEW: Wait/Resume system
+  await_input?: {
+    name: string;
+    params?: Record<string, any>;
+  };
 }
 
 // Step data with execution results for in-memory tracking
