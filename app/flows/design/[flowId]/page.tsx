@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, DragEvent } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ReactFlow,
@@ -25,6 +25,7 @@ import {
   EdgeLabelRenderer,
   getBezierPath,
   EdgeProps,
+  ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -98,9 +99,14 @@ interface EdgeData extends Record<string, any> {
 // Extended Edge type
 type CustomEdge = Edge<EdgeData>;
 
-// Custom node component for dark mode
+// Custom node component for dark mode with enhanced visual indicators
 const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) => void }) => {
   const step = data.step as Step;
+  const hasCommand = data.command && data.command.trim().length > 0;
+  const hasVariables = data.variables && Array.isArray(data.variables) && data.variables.length > 0;
+  const hasInput = step.input_keys && step.input_keys.trim().length > 0;
+  const hasOutput = step.output_keys && step.output_keys.trim().length > 0;
+  const awaitInput = data.await_input === true;
   
   // Determine node colors based on type
   let bgColor = '#1f2937'; // default
@@ -117,13 +123,14 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
   
   return (
     <div 
-      className="px-4 py-3 rounded-lg shadow-lg border cursor-pointer"
+      className="px-4 py-3 rounded-lg shadow-lg border cursor-pointer hover:shadow-xl transition-shadow"
       style={{
         backgroundColor: bgColor,
         borderColor: borderColor,
         borderWidth: '2px',
         color: textColor,
-        minWidth: '200px',
+        minWidth: '220px',
+        maxWidth: '280px',
       }}
       onClick={() => {
         console.log('Node clicked:', step.id, step);
@@ -143,10 +150,69 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
           height: '10px',
         }} 
       />
-      <div className="font-medium text-sm">{step.title}</div>
+      
+      {/* Node header with title and indicators */}
+      <div className="flex justify-between items-start mb-2">
+        <div className="font-medium text-sm truncate">{step.title}</div>
+        <div className="flex items-center space-x-1 ml-2">
+          {awaitInput && (
+            <span className="text-xs bg-yellow-900 text-yellow-200 px-1.5 py-0.5 rounded" title="Awaits user input">
+              ⏳
+            </span>
+          )}
+          {hasCommand && (
+            <span className="text-xs bg-blue-900 text-blue-200 px-1.5 py-0.5 rounded" title="Has command">
+              ⚡
+            </span>
+          )}
+          {hasVariables && (
+            <span className="text-xs bg-purple-900 text-purple-200 px-1.5 py-0.5 rounded" title="Has variables">
+              📦
+            </span>
+          )}
+        </div>
+      </div>
+      
+      {/* Step description */}
       {step.description && (
-        <div className="text-xs text-gray-300 mt-1">{step.description}</div>
+        <div className="text-xs text-gray-300 mt-1 mb-2 line-clamp-2">{step.description}</div>
       )}
+      
+      {/* I/O indicators */}
+      <div className="flex flex-wrap gap-1 mt-2">
+        {hasInput && (
+          <span className="text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded border border-green-800">
+            Input: {step.input_keys.split(',').length > 3 ? 
+              `${step.input_keys.split(',').slice(0, 3).join(',')}...` : 
+              step.input_keys}
+          </span>
+        )}
+        {hasOutput && (
+          <span className="text-xs bg-red-900/50 text-red-300 px-2 py-0.5 rounded border border-red-800">
+            Output: {step.output_keys.split(',').length > 3 ? 
+              `${step.output_keys.split(',').slice(0, 3).join(',')}...` : 
+              step.output_keys}
+          </span>
+        )}
+      </div>
+      
+      {/* Variables preview */}
+      {hasVariables && (
+        <div className="mt-2 pt-2 border-t border-gray-700">
+          <div className="text-xs text-gray-400 mb-1">Variables:</div>
+          <div className="flex flex-wrap gap-1">
+            {data.variables.slice(0, 3).map((variable: string, index: number) => (
+              <span key={index} className="text-xs bg-purple-900/30 text-purple-300 px-1.5 py-0.5 rounded">
+                {variable}
+              </span>
+            ))}
+            {data.variables.length > 3 && (
+              <span className="text-xs text-gray-500">+{data.variables.length - 3} more</span>
+            )}
+          </div>
+        </div>
+      )}
+      
       <Handle 
         type="source" 
         position={Position.Bottom} 
@@ -463,6 +529,10 @@ const EdgePopup = ({
     };
   });
 
+  // Get all variables from source node
+  const sourceNode = nodes.find(n => n.id === edge.source);
+  const sourceVariables = sourceNode?.data?.variables || [];
+  
   const sourceOptions = [
     { value: 'default', label: 'Always (no condition)' },
     { value: 'inputs.approval', label: 'Input: Approval' },
@@ -470,6 +540,10 @@ const EdgePopup = ({
     { value: 'data.user_id', label: 'Data: User ID' },
     { value: 'command.get_tasks.result', label: 'Command: Get Tasks Result' },
     { value: 'ai_output.intent', label: 'AI Output: Intent' },
+    ...sourceVariables.map(variable => ({
+      value: `variables.${variable}`,
+      label: `Variable: ${variable}`
+    }))
   ];
 
   const operatorOptions = [
@@ -547,9 +621,12 @@ const EdgePopup = ({
                 type="text"
                 value={condition.value || ''}
                 onChange={(e) => setCondition({...condition, value: e.target.value})}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                placeholder="Enter value..."
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono"
+                placeholder="Enter value or use {{variable}}..."
               />
+              <div className="text-xs text-gray-400 mt-1">
+                Use <code className="bg-gray-900 px-1 py-0.5 rounded">{"{{variable}}"}</code> syntax for variables from previous steps
+              </div>
             </div>
           )}
 
@@ -668,6 +745,36 @@ const StepPopup = ({
     setVariables(newVariables);
   };
 
+  // Handle drag start for variables
+  const onVariableDragStart = (event: DragEvent, variableName: string) => {
+    event.dataTransfer.setData('text/plain', `{{${variableName}}}`);
+    event.dataTransfer.effectAllowed = 'copy';
+  };
+
+  // Handle drop on instructions textarea
+  const onInstructionsDragOver = (event: DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+
+  const onInstructionsDrop = (event: DragEvent) => {
+    event.preventDefault();
+    const variable = event.dataTransfer.getData('text/plain');
+    if (variable) {
+      const textarea = event.target as HTMLTextAreaElement;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newInstructions = instructions.substring(0, start) + variable + instructions.substring(end);
+      setInstructions(newInstructions);
+      
+      // Focus and set cursor after inserted variable
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + variable.length, start + variable.length);
+      }, 0);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl border border-gray-700 max-h-[80vh] overflow-y-auto">
@@ -687,17 +794,27 @@ const StepPopup = ({
             />
           </div>
 
-          {/* Instructions */}
+          {/* Instructions with drag-and-drop support */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Instructions
-            </label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-sm font-medium text-gray-300">
+                Instructions
+              </label>
+              <div className="text-xs text-gray-400">
+                Drag variables from below into instructions
+              </div>
+            </div>
             <textarea
               value={instructions || ''}
               onChange={(e) => setInstructions(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white min-h-[100px]"
-              placeholder="Enter step instructions..."
+              onDragOver={onInstructionsDragOver}
+              onDrop={onInstructionsDrop}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white min-h-[120px] font-mono text-sm"
+              placeholder="Enter step instructions... Drag variables from below to insert {{variable}} syntax."
             />
+            <div className="text-xs text-gray-400 mt-1">
+              Use <code className="bg-gray-900 px-1 py-0.5 rounded">{"{{variable}}"}</code> syntax for variables
+            </div>
           </div>
 
           {/* Command */}
@@ -746,13 +863,22 @@ const StepPopup = ({
             <div className="space-y-2">
               {variables.map((variable, index) => (
                 <div key={index} className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={variable}
-                    onChange={(e) => updateVariable(index, e.target.value)}
-                    className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                    placeholder="Variable name (e.g., user_id, task_result)..."
-                  />
+                  <div 
+                    className="flex-1 flex items-center bg-gray-700 border border-gray-600 rounded px-3 py-2 cursor-grab active:cursor-grabbing hover:bg-gray-600 transition-colors"
+                    draggable
+                    onDragStart={(e) => onVariableDragStart(e, variable)}
+                  >
+                    <div className="text-purple-300 mr-2">📦</div>
+                    <input
+                      type="text"
+                      value={variable}
+                      onChange={(e) => updateVariable(index, e.target.value)}
+                      className="flex-1 bg-transparent border-none text-white focus:outline-none focus:ring-0"
+                      placeholder="Variable name..."
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="text-xs text-gray-400 ml-2">Drag to instructions</div>
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeVariable(index)}
@@ -765,7 +891,7 @@ const StepPopup = ({
               
               {variables.length === 0 && (
                 <div className="text-gray-400 text-sm italic">
-                  No variables defined. Use {"{{variable}}"} syntax in instructions.
+                  No variables defined. Add variables and drag them into instructions.
                 </div>
               )}
             </div>
@@ -824,6 +950,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   // State for modals
   const [showEditFlowModal, setShowEditFlowModal] = useState(false);
   const [showCreateFlowModal, setShowCreateFlowModal] = useState(false);
+  
+  // Drag and drop state
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [draggingNodeType, setDraggingNodeType] = useState<string | null>(null);
   
   // Load flow data on mount
   useEffect(() => {
@@ -1088,7 +1218,105 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     }
   }, [nodes, currentFlowId]);
 
+  // Drag and drop handlers for React Flow
+  const onDragStart = (event: DragEvent, nodeType: string) => {
+    setDraggingNodeType(nodeType);
+    event.dataTransfer.setData('application/reactflow', nodeType);
+    event.dataTransfer.effectAllowed = 'move';
+  };
 
+  const onDragOver = useCallback((event: DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback(async (event: DragEvent) => {
+    event.preventDefault();
+    
+    if (!reactFlowInstance || !draggingNodeType) return;
+    
+    // Get position where node should be placed
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    
+    try {
+      // Create new step data based on node type
+      const nodeType = draggingNodeType;
+      let stepTitle = '';
+      let stepType = 'default';
+      
+      if (nodeType === 'input') {
+        stepTitle = 'Input Step';
+        stepType = 'input';
+      } else if (nodeType === 'output') {
+        stepTitle = 'Output Step';
+        stepType = 'output';
+      } else {
+        stepTitle = `Step ${nodes.length + 1}`;
+        stepType = 'default';
+      }
+      
+      // Create new step data
+      const newStepData: Partial<Step> = {
+        title: stepTitle,
+        instructions: 'New step instructions...',
+        step_type: stepType,
+        order_index: nodes.length + 1,
+        blocking: 0,
+        auto_fail_on_error: 0,
+        retryable: 0,
+        output_keys: '',
+        input_keys: '',
+        output: 0,
+        requires_task: 0,
+      };
+      
+      // Create step in backend
+      const newStep = await createNewStep(currentFlowId, newStepData);
+      
+      if (!newStep) {
+        alert('Failed to create new step. Check console for errors.');
+        return;
+      }
+      
+      // Create new node for the step
+      const newNode: Node = {
+        id: newStep.id,
+        type: nodeType,
+        data: {
+          label: newStep.title,
+          title: newStep.title,
+          step: newStep,
+          instructions: newStep.instructions,
+          command: '',
+          await_input: false,
+          variables: [],
+        },
+        position,
+      };
+      
+      // Add new node to the flow
+      setNodes(prevNodes => [...prevNodes, newNode]);
+      
+      // Select the new node to open the step popup
+      setSelectedNode(newNode);
+      
+      // Reset dragging state
+      setDraggingNodeType(null);
+      
+    } catch (error) {
+      console.error('Error dropping node:', error);
+      alert('Error creating step. See console for details.');
+      setDraggingNodeType(null);
+    }
+  }, [reactFlowInstance, draggingNodeType, nodes, currentFlowId]);
+
+  // Initialize React Flow instance
+  const onInit = useCallback((instance: ReactFlowInstance) => {
+    setReactFlowInstance(instance);
+  }, []);
 
   // Handle flow created/updated
   const handleFlowCreated = (newFlowId: string) => {
@@ -1179,6 +1407,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           <div 
             ref={reactFlowWrapper}
             className="w-full h-[700px] bg-gray-900 rounded-lg border border-gray-800"
+            onDragOver={onDragOver}
+            onDrop={onDrop}
           >
             <ReactFlow
               nodes={nodes}
@@ -1186,6 +1416,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onInit={onInit}
               fitView
               nodeTypes={nodeTypes()}
               edgeTypes={edgeTypes()}
@@ -1205,6 +1436,48 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                   return '#374151'; // default border
                 }}
               />
+              {/* Node Toolbar - Drag and drop nodes */}
+              <Panel position="top-left" className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-3 border border-gray-700 shadow-lg">
+                <div className="text-sm font-medium text-gray-200 mb-2">Add Nodes</div>
+                <div className="space-y-2">
+                  <div 
+                    className="px-3 py-2 bg-green-900/40 hover:bg-green-800/60 border border-green-800 rounded cursor-grab active:cursor-grabbing text-green-200 text-sm transition-colors"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'input')}
+                  >
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+                      <span>Input Step</span>
+                    </div>
+                  </div>
+                  <div 
+                    className="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded cursor-grab active:cursor-grabbing text-gray-200 text-sm transition-colors"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'default')}
+                  >
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
+                      <span>Regular Step</span>
+                    </div>
+                  </div>
+                  <div 
+                    className="px-3 py-2 bg-red-900/40 hover:bg-red-800/60 border border-red-800 rounded cursor-grab active:cursor-grabbing text-red-200 text-sm transition-colors"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'output')}
+                  >
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+                      <span>Output Step</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <div className="text-xs text-gray-400">
+                    Drag nodes onto canvas to create steps
+                  </div>
+                </div>
+              </Panel>
+
               <Panel position="top-right" className="bg-gray-800/80 backdrop-blur-sm rounded p-2 border border-gray-700">
                 <div className="text-sm text-gray-200">
                   <div>Drag nodes to reposition</div>
