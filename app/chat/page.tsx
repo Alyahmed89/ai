@@ -288,6 +288,32 @@ export default function ChatPage() {
         const flowRunData = await flowRunResponse.json();
         const flowRun = flowRunData.flow_run;
         const conversationId = flowRun.conversation_id;
+        
+        // Extract step runs from flow run data
+        const stepRuns = flowRunData.step_runs || [];
+        console.log('Flow run step_runs:', stepRuns.length, 'steps available');
+        
+        // Transform step_runs into flow_steps format for FlowRun component
+        const transformedFlowSteps = stepRuns.map((stepRun: any, index: number) => {
+          // Extract step title from step_id or prompt
+          let title = stepRun.step_id || `Step ${index + 1}`;
+          if (stepRun.prompt && stepRun.prompt.includes('Execute step:')) {
+            const titleMatch = stepRun.prompt.match(/Execute step:\s*(.+?)\n/);
+            if (titleMatch) {
+              title = titleMatch[1];
+            }
+          }
+          
+          return {
+            id: stepRun.id,
+            title: title,
+            instructions: stepRun.prompt || '',
+            response: stepRun.response || null,
+            status: stepRun.status || 'unknown'
+          };
+        });
+        
+        console.log('Transformed flow steps:', transformedFlowSteps.length);
 
         if (!conversationId) {
           // Show flow run info in chat
@@ -320,7 +346,16 @@ export default function ChatPage() {
               timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
             });
           }
-
+          
+          // Create conversation data with transformed flow steps for FlowRun component
+          const conversationDataForFlowRun = {
+            flow_completed: flowRun.status === 'completed',
+            state: flowRun.status,
+            flow_steps: transformedFlowSteps,
+            last_step_response: flowRun.output_response || ''
+          };
+          
+          setConversationData(conversationDataForFlowRun);
           setChatMessages(messages);
           return;
         }
@@ -340,22 +375,38 @@ export default function ChatPage() {
           console.log('Conversation:', JSON.stringify(conversation, null, 2));
           const flowSteps = conversation.flow_steps || [];
           const lastStepResponse = conversation.last_step_response || '';
-          console.log('Flow steps:', flowSteps.length, 'Last step response:', lastStepResponse);
+          console.log('Flow steps from conversation API:', flowSteps.length, 'Last step response:', lastStepResponse);
           
-          // Store conversation data for FlowRun component
-          setConversationData(conversation);
+          // Merge conversation data with transformed flow steps from step_runs
+          // Use step_runs data if conversation flow_steps is empty
+          const mergedConversation = {
+            ...conversation,
+            flow_steps: flowSteps.length > 0 ? flowSteps : transformedFlowSteps,
+            last_step_response: lastStepResponse || flowRun.output_response || ''
+          };
+          
+          console.log('Merged conversation data:', {
+            hasFlowSteps: !!mergedConversation.flow_steps,
+            flowStepsCount: mergedConversation.flow_steps?.length || 0,
+            hasLastStepResponse: !!mergedConversation.last_step_response,
+            flowCompleted: mergedConversation.flow_completed,
+            state: mergedConversation.state
+          });
+          
+          // Store merged conversation data for FlowRun component
+          setConversationData(mergedConversation);
           
           // DEBUG: Log conversation data structure
           console.log('DEBUG - Conversation data structure:', {
-            hasFlowSteps: !!conversation.flow_steps,
-            flowStepsCount: conversation.flow_steps?.length || 0,
-            hasLastStepResponse: !!conversation.last_step_response,
-            lastStepResponseLength: conversation.last_step_response?.length || 0,
-            lastStepResponsePreview: conversation.last_step_response ? conversation.last_step_response.substring(0, 100) + '...' : 'EMPTY',
-            flowCompleted: conversation.flow_completed,
-            state: conversation.state,
+            hasFlowSteps: !!mergedConversation.flow_steps,
+            flowStepsCount: mergedConversation.flow_steps?.length || 0,
+            hasLastStepResponse: !!mergedConversation.last_step_response,
+            lastStepResponseLength: mergedConversation.last_step_response?.length || 0,
+            lastStepResponsePreview: mergedConversation.last_step_response ? mergedConversation.last_step_response.substring(0, 100) + '...' : 'EMPTY',
+            flowCompleted: mergedConversation.flow_completed,
+            state: mergedConversation.state,
             conversationId: conversation.id,
-            rawFlowSteps: conversation.flow_steps?.map((step: any, i: number) => ({
+            rawFlowSteps: mergedConversation.flow_steps?.map((step: any, i: number) => ({
               index: i,
               title: step.title,
               hasInstructions: !!step.instructions,
@@ -367,9 +418,9 @@ export default function ChatPage() {
           });
           
           // DEBUG: Log step responses
-          if (conversation.flow_steps) {
+          if (mergedConversation.flow_steps) {
             console.log('DEBUG - Step responses:');
-            conversation.flow_steps.forEach((step: any, index: number) => {
+            mergedConversation.flow_steps.forEach((step: any, index: number) => {
               console.log(`  Step ${index + 1}:`, {
                 title: step.title,
                 hasInstructions: !!step.instructions,
@@ -404,7 +455,7 @@ export default function ChatPage() {
           }
 
           // Add flow steps as assistant messages
-          flowSteps.forEach((step: any, index: number) => {
+          mergedConversation.flow_steps.forEach((step: any, index: number) => {
             console.log(`Step ${index}:`, JSON.stringify(step, null, 2));
             if (step.instructions) {
               messages.push({
@@ -419,11 +470,11 @@ export default function ChatPage() {
           });
 
           // Add last step response if available
-          if (lastStepResponse) {
+          if (mergedConversation.last_step_response) {
             messages.push({
               id: `response-${flowRun.id}`,
               type: 'assistant',
-              content: lastStepResponse,
+              content: mergedConversation.last_step_response,
               timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
             });
           }
@@ -447,7 +498,16 @@ export default function ChatPage() {
               timestamp: new Date(flowRun.started_at * 1000)
             });
           }
-
+          
+          // Create conversation data with transformed flow steps for FlowRun component
+          const conversationDataForFlowRun = {
+            flow_completed: flowRun.status === 'completed',
+            state: flowRun.status,
+            flow_steps: transformedFlowSteps,
+            last_step_response: flowRun.output_response || ''
+          };
+          
+          setConversationData(conversationDataForFlowRun);
           setChatMessages(messages);
         }
       } catch (error) {
