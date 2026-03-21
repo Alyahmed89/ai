@@ -183,7 +183,7 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
       
       {/* I/O indicators */}
       <div className="flex flex-wrap gap-1 mt-2">
-        {hasInput && (
+        {hasInput && step.input_keys && (
           <span className="text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded border border-green-800">
             Input: {step.input_keys.split(',').length > 3 ? 
               `${step.input_keys.split(',').slice(0, 3).join(',')}...` : 
