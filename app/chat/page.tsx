@@ -217,7 +217,13 @@ const parseChatMessage = (message: ChatMessage): ParsedMessage => {
   };
 };
 
-export default function ChatPage() {
+interface ChatPageProps {
+  initialProjectId?: string;
+  initialFlowId?: string;
+  initialFlowRunId?: string;
+}
+
+export default function ChatPage({ initialProjectId, initialFlowId, initialFlowRunId }: ChatPageProps = {}) {
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -229,10 +235,10 @@ export default function ChatPage() {
   const [showCreateProjectModal, setShowCreateProjectModal] = useState<boolean>(false);
   const [selectedFlowRun, setSelectedFlowRun] = useState<FlowRun | null>(null);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId || null);
+  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(initialFlowId || null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
+  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(initialFlowRunId || null);
   const [conversationData, setConversationData] = useState<ConversationData | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -270,15 +276,18 @@ export default function ChatPage() {
 
   // Handle flow run selection - fetch conversation messages
   useEffect(() => {
+    console.log('DEBUG: useEffect triggered with selectedFlowRunId:', selectedFlowRunId);
     const fetchFlowRunConversation = async () => {
       if (!selectedFlowRunId) {
         // Clear chat messages when no flow run is selected
+        console.log('DEBUG: No flow run selected, clearing chat');
         setChatMessages([]);
         setConversationData(null);
         return;
       }
 
       try {
+        console.log('DEBUG: Fetching flow run details for:', selectedFlowRunId);
         // Fetch flow run details to get conversation_id
         const flowRunResponse = await fetch(`/api/proxy/api/flow-runs/${selectedFlowRunId}`);
         if (!flowRunResponse.ok) {
@@ -305,12 +314,26 @@ export default function ChatPage() {
             }
           }
           
+          // Extract API calls from step run data
+          let api_calls = [];
+          if (stepRun.api_calls && Array.isArray(stepRun.api_calls)) {
+            api_calls = stepRun.api_calls.map((apiCall: any) => ({
+              endpoint: apiCall.endpoint || apiCall.url || '',
+              method: apiCall.method || 'GET',
+              params: apiCall.params || apiCall.parameters || {},
+              response: apiCall.response || apiCall.result || null,
+              timestamp: apiCall.timestamp || Date.now(),
+              duration: apiCall.duration || 0
+            }));
+          }
+          
           return {
             id: stepRun.id,
             title: title,
             instructions: stepRun.prompt || '',
             response: stepRun.response || null,
-            status: stepRun.status || 'unknown'
+            status: stepRun.status || 'unknown',
+            api_calls: api_calls.length > 0 ? api_calls : undefined
           };
         });
         
@@ -382,6 +405,10 @@ export default function ChatPage() {
           // Use step_runs data if conversation flow_steps is empty
           const mergedConversation = {
             ...conversation,
+            // Override flow_completed and state from flow run data since conversation API
+            // returns incorrect values (not_initialized, false)
+            flow_completed: flowRun.status === 'completed',
+            state: flowRun.status,
             flow_steps: flowSteps.length > 0 ? flowSteps : transformedFlowSteps,
             last_step_response: lastStepResponse || flowRun.output_response || ''
           };
@@ -393,6 +420,11 @@ export default function ChatPage() {
             flowCompleted: mergedConversation.flow_completed,
             state: mergedConversation.state
           });
+          
+          // DEBUG: Show alert with flow steps count
+          if (typeof window !== 'undefined') {
+            console.log('DEBUG ALERT: Flow steps count =', mergedConversation.flow_steps?.length || 0);
+          }
           
           // Store merged conversation data for FlowRun component
           setConversationData(mergedConversation);
@@ -1308,7 +1340,7 @@ export default function ChatPage() {
                   ref={chatContainerRef}
                   className="flex-1 overflow-y-auto p-6 space-y-4"
                 >
-                  {conversationData && (conversationData.flow_steps && conversationData.flow_steps.length > 0 || (conversationData.last_step_response && conversationData.last_step_response.trim() !== '')) ? (
+                  {conversationData ? (
                     <FlowRun data={conversationData} />
                   ) : chatMessages.length === 0 ? (
                     <div className="h-full flex items-center justify-center">

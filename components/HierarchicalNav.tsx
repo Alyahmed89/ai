@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import EditStepModal from './EditStepModal';
 import TaskDetailsModal from './TaskDetailsModal';
 import ApiEndpointsModal from './ApiEndpointsModal';
@@ -105,6 +106,7 @@ export default function HierarchicalNav({
   onEditFlow
 }: HierarchicalNavProps) {
   console.log('HierarchicalNav props:', { onEditFlow, onSelectFlow, onCreateFlow });
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [flows, setFlows] = useState<FlowDefinition[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -113,6 +115,51 @@ export default function HierarchicalNav({
   
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
+  
+  const pathname = usePathname();
+
+  // Parse URL to determine selected project/flow
+  useEffect(() => {
+    console.log('HierarchicalNav - Parsing URL:', pathname);
+    
+    // Check if we're on a project page: /chat/projects/[projectId]
+    const projectMatch = pathname.match(/^\/chat\/projects\/([^\/]+)$/);
+    if (projectMatch) {
+      const projectId = projectMatch[1];
+      console.log('HierarchicalNav - Project selected from URL:', projectId);
+      setSelectedProjectId(projectId);
+      setSelectedFlowId(null);
+      return;
+    }
+    
+    // Check if we're on a flow page: /chat/flows/[flowId]
+    const flowMatch = pathname.match(/^\/chat\/flows\/([^\/]+)$/);
+    if (flowMatch) {
+      const flowId = flowMatch[1];
+      console.log('HierarchicalNav - Flow selected from URL:', flowId);
+      setSelectedFlowId(flowId);
+      setSelectedProjectId(null); // Clear project selection when on flow page
+      return;
+    }
+    
+    // If we're on the main chat page, clear selection
+    if (pathname === '/chat') {
+      setSelectedProjectId(null);
+      setSelectedFlowId(null);
+    }
+  }, [pathname]); // Run when pathname changes
+
+  // Debug logging for data
+  useEffect(() => {
+    console.log('HierarchicalNav data debug:', {
+      projectsCount: projects.length,
+      flowsCount: flows.length,
+      selectedProjectId,
+      selectedFlowId,
+      projects: projects.map(p => ({ id: p.id, name: p.name })),
+      flows: flows.map(f => ({ id: f.id, name: f.name, agent: f.agent }))
+    });
+  }, [projects, flows, selectedProjectId, selectedFlowId]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
 
@@ -255,19 +302,33 @@ export default function HierarchicalNav({
   };
 
   const handleProjectSelect = (projectId: string | null) => {
+    console.log('handleProjectSelect called with projectId:', projectId);
     setSelectedProjectId(projectId);
     setSelectedFlowId(null);
     setSelectedTaskId(null);
     setSelectedFlowRunId(null);
     onSelectProject?.(projectId);
+    
+    // Navigate to chat view with project
+    if (projectId) {
+      console.log('Navigating to /chat/projects/${projectId}');
+      router.push(`/chat/projects/${projectId}`);
+    }
   };
 
   const handleFlowSelect = (flowId: string | null) => {
+    console.log('handleFlowSelect called with flowId:', flowId);
     setSelectedFlowId(flowId);
     setSelectedTaskId(null);
     setSelectedFlowRunId(null);
     setActiveSection('steps'); // Reset to steps when selecting a new flow
     onSelectFlow?.(flowId);
+    
+    // Navigate to chat view with flow
+    if (flowId) {
+      console.log('Navigating to /chat/flows/${flowId}');
+      router.push(`/chat/flows/${flowId}`);
+    }
   };
 
   const handleTaskSelect = (taskId: string | null) => {
@@ -280,6 +341,7 @@ export default function HierarchicalNav({
       if (task) {
         setSelectedTaskDetails(task);
       }
+      // Note: /tasks/[id] route doesn't exist yet, so we show modal instead
     } else {
       setSelectedTaskDetails(null);
     }
@@ -288,6 +350,11 @@ export default function HierarchicalNav({
   const handleFlowRunSelect = (flowRunId: string | null) => {
     setSelectedFlowRunId(flowRunId);
     onSelectFlowRun?.(flowRunId);
+    
+    // Navigate to chat view with flow run
+    if (flowRunId) {
+      router.push(`/chat/flow-run/${flowRunId}`);
+    }
   };
 
   const handleStepSelect = (stepId: string | null) => {
@@ -397,6 +464,10 @@ export default function HierarchicalNav({
                 }`}
               >
                 <div className="flex items-center min-w-0 flex-1">
+                  {/* Project icon */}
+                  <svg className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
                   <span className="truncate">{project.name}</span>
                 </div>
               </button>
@@ -405,7 +476,7 @@ export default function HierarchicalNav({
         </div>
       )}
 
-      {/* Flows Section (shown when project is selected but no flow is selected) */}
+      {/* Flows Section (shown when project is selected) */}
       {selectedProjectId && !selectedFlowId && (
         <div className="p-4 border-b border-gray-800 flex-1">
           <div className="flex items-center justify-between mb-2">
@@ -458,6 +529,10 @@ export default function HierarchicalNav({
                   }`}
                 >
                   <div className="flex items-center min-w-0 flex-1">
+                    {/* Flow icon */}
+                    <svg className="w-4 h-4 mr-2 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
                     <span className="truncate">{flow.name}</span>
                     {flow.agent === 'deepseek' && (
                       <svg className="w-3 h-3 ml-2 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -508,10 +583,10 @@ export default function HierarchicalNav({
                   }`}
                   title="Show Flow Runs"
                 >
-                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  <span>{filteredFlowRuns.length}</span>
+                  <span>Runs: {filteredFlowRuns.length}</span>
                 </button>
                 {/* Step icon - clickable */}
                 <button
@@ -523,10 +598,10 @@ export default function HierarchicalNav({
                   }`}
                   title="Show Steps"
                 >
-                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-                  <span>{filteredSteps.length}</span>
+                  <span>Steps: {filteredSteps.length}</span>
                 </button>
                 {/* Task icon - clickable */}
                 <button
@@ -538,10 +613,10 @@ export default function HierarchicalNav({
                   }`}
                   title="Show Tasks"
                 >
-                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  <span>{filteredTasks.length}</span>
+                  <span>Tasks: {filteredTasks.length}</span>
                 </button>
               </div>
             </div>
