@@ -103,7 +103,7 @@ type CustomEdge = Edge<EdgeData>;
 const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) => void }) => {
   const step = data.step as Step;
   const hasCommand = data.command && data.command.trim().length > 0;
-  const hasVariables = data.variables && Array.isArray(data.variables) && data.variables.length > 0;
+  const hasVariables = step.output_keys && step.output_keys.trim().length > 0;
   const hasInput = step.input_keys && step.input_keys.trim().length > 0;
   const hasOutput = step.output_keys && step.output_keys.trim().length > 0;
   const awaitInput = data.await_input === true;
@@ -196,18 +196,18 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
         )}
       </div>
       
-      {/* Variables preview */}
-      {hasVariables && (
+      {/* Variables preview (from output_keys) */}
+      {hasOutput && step.output_keys && (
         <div className="mt-2 pt-2 border-t border-gray-700">
           <div className="text-xs text-gray-400 mb-1">Variables:</div>
           <div className="flex flex-wrap gap-1">
-            {data.variables.slice(0, 3).map((variable: string, index: number) => (
+            {step.output_keys.split(',').slice(0, 3).map((variable: string, index: number) => (
               <span key={index} className="text-xs bg-purple-900/30 text-purple-300 px-1.5 py-0.5 rounded">
-                {variable}
+                {variable.trim()}
               </span>
             ))}
-            {data.variables.length > 3 && (
-              <span className="text-xs text-gray-500">+{data.variables.length - 3} more</span>
+            {step.output_keys.split(',').length > 3 && (
+              <span className="text-xs text-gray-500">+{step.output_keys.split(',').length - 3} more</span>
             )}
           </div>
         </div>
@@ -454,10 +454,42 @@ function createNodesFromSteps(steps: Step[]) {
       instructions: step.instructions,
       command: step.command || '',
       await_input: step.await_input || false,
-      variables: step.variables || [],
     },
     position: { x: 250, y: 25 + (index * 100) },
   }));
+}
+
+// Extract available variables from previous steps
+function getAvailableVariables(currentStepId: string, steps: Step[]): string[] {
+  const variables: Set<string> = new Set();
+  
+  // Find the current step index
+  const currentStepIndex = steps.findIndex(step => step.id === currentStepId);
+  
+  // If step not found or it's the first step, return empty
+  if (currentStepIndex === -1 || currentStepIndex === 0) {
+    return [];
+  }
+  
+  // Collect output keys from all previous steps
+  for (let i = 0; i < currentStepIndex; i++) {
+    const step = steps[i];
+    if (step.output_keys && step.output_keys.trim()) {
+      // Split by comma and trim each key
+      const keys = step.output_keys.split(',').map(key => key.trim()).filter(key => key);
+      keys.forEach(key => variables.add(key));
+    }
+    
+    // Also check for command-specific variables
+    if (step.command) {
+      // For commands, we might have structured outputs
+      // For now, add the command name as a potential variable source
+      variables.add(`${step.command}_result`);
+      variables.add(`${step.command}_output`);
+    }
+  }
+  
+  return Array.from(variables);
 }
 
 // Create edges connecting all steps in sequence
@@ -703,17 +735,19 @@ const EdgePopup = ({
 // Step popup modal component
 const StepPopup = ({ 
   node, 
+  availableVariables,
   onSave, 
   onClose 
 }: { 
   node: Node;
+  availableVariables: string[];
   onSave: (node: Node) => void;
   onClose: () => void;
 }) => {
   const [instructions, setInstructions] = useState<string>(typeof node.data?.instructions === 'string' ? node.data.instructions : '');
   const [command, setCommand] = useState<string>(typeof node.data?.command === 'string' ? node.data.command : '');
   const [awaitInput, setAwaitInput] = useState<boolean>(typeof node.data?.await_input === 'boolean' ? node.data.await_input : false);
-  const [variables, setVariables] = useState<string[]>(Array.isArray(node.data?.variables) ? node.data.variables : []);
+  const [outputKeys, setOutputKeys] = useState<string>(typeof node.data?.step?.output_keys === 'string' ? node.data.step.output_keys : '');
 
   const handleSave = () => {
     const updatedNode = {
@@ -723,26 +757,14 @@ const StepPopup = ({
         instructions,
         command,
         await_input: awaitInput,
-        variables,
+        step: {
+          ...node.data?.step,
+          output_keys: outputKeys,
+        },
       },
     };
     onSave(updatedNode);
     onClose();
-  };
-
-  const addVariable = () => {
-    setVariables([...variables, '']);
-  };
-
-  const updateVariable = (index: number, value: string) => {
-    const newVariables = [...variables];
-    newVariables[index] = value;
-    setVariables(newVariables);
-  };
-
-  const removeVariable = (index: number) => {
-    const newVariables = variables.filter((_, i) => i !== index);
-    setVariables(newVariables);
   };
 
   // Handle drag start for variables
@@ -845,64 +867,59 @@ const StepPopup = ({
             </label>
           </div>
 
-          {/* Variables */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Variables
+          {/* Available Variables from Previous Steps */}
+          {availableVariables.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Available Variables (Drag into instructions)
               </label>
-              <button
-                type="button"
-                onClick={addVariable}
-                className="text-sm text-blue-400 hover:text-blue-300"
-              >
-                + Add Variable
-              </button>
-            </div>
-            
-            <div className="space-y-2">
-              {variables.map((variable, index) => (
-                <div key={index} className="flex items-center space-x-2">
+              <div className="space-y-2">
+                {availableVariables.map((variable, index) => (
                   <div 
-                    className="flex-1 flex items-center bg-gray-700 border border-gray-600 rounded px-3 py-2 cursor-grab active:cursor-grabbing hover:bg-gray-600 transition-colors"
+                    key={index}
+                    className="flex items-center bg-gray-700 border border-gray-600 rounded px-3 py-2 cursor-grab active:cursor-grabbing hover:bg-gray-600 transition-colors"
                     draggable
                     onDragStart={(e) => onVariableDragStart(e, variable)}
                   >
                     <div className="text-purple-300 mr-2">📦</div>
-                    <input
-                      type="text"
-                      value={variable}
-                      onChange={(e) => updateVariable(index, e.target.value)}
-                      className="flex-1 bg-transparent border-none text-white focus:outline-none focus:ring-0"
-                      placeholder="Variable name..."
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                    <div className="flex-1 text-white font-mono text-sm">
+                      {variable}
+                    </div>
                     <div className="text-xs text-gray-400 ml-2">Drag to instructions</div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => removeVariable(index)}
-                    className="text-red-400 hover:text-red-300 px-2"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              
-              {variables.length === 0 && (
-                <div className="text-gray-400 text-sm italic">
-                  No variables defined. Add variables and drag them into instructions.
-                </div>
-              )}
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Output Keys (Variables this step will produce) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Output Keys (Comma-separated)
+            </label>
+            <input
+              type="text"
+              value={outputKeys || ''}
+              onChange={(e) => setOutputKeys(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono"
+              placeholder="task_id, user_name, result_data..."
+            />
+            <div className="text-xs text-gray-400 mt-1">
+              These keys will be available as variables for subsequent steps
             </div>
           </div>
 
           {/* Variable Syntax Help */}
           <div className="bg-gray-900/50 p-3 rounded border border-gray-700">
-            <h4 className="text-sm font-medium text-gray-300 mb-1">Variable Syntax</h4>
+            <h4 className="text-sm font-medium text-gray-300 mb-1">Variable System</h4>
+            <p className="text-xs text-gray-400 mb-2">
+              • Use <code className="bg-gray-800 px-1 py-0.5 rounded">{"{{variable_name}}"}</code> in instructions
+            </p>
+            <p className="text-xs text-gray-400 mb-2">
+              • Variables come from previous steps' output keys
+            </p>
             <p className="text-xs text-gray-400">
-              Use <code className="bg-gray-800 px-1 py-0.5 rounded">{"{{variable_name}}"}</code> in instructions to reference variables.
-              Example: <code className="bg-gray-800 px-1 py-0.5 rounded">{"Get tasks for {{user_id}}"}</code>
+              • Define output keys above to create variables for next steps
             </p>
           </div>
         </div>
@@ -1503,6 +1520,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         {selectedNode && (
           <StepPopup
             node={selectedNode}
+            availableVariables={getAvailableVariables(selectedNode.id, steps)}
             onSave={handleNodeUpdate}
             onClose={() => setSelectedNode(null)}
           />
