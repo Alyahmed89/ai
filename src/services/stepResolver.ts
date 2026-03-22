@@ -15,6 +15,7 @@ export async function resolveStepInstructions(
     execution_id?: string;
     step_id?: string;
     previous_step_responses?: Record<string, any>; // NEW: Previous step responses for variable substitution
+    inputs?: Record<string, any>; // NEW: Input values for [input:name] placeholders
   }
 ): Promise<{
   instructions: string;
@@ -83,6 +84,11 @@ export async function resolveStepInstructions(
         instructions = injectTaskData(instructions, taskData, step.task_id);
       }
       
+      // Inject input values if available
+      if (context.inputs && Object.keys(context.inputs).length > 0) {
+        instructions = injectInputValues(instructions, context.inputs);
+      }
+      
       // Inject API responses into instructions
       instructions = injectApiResponses(instructions, unifiedResult.api_calls, unifiedResult.variables);
       
@@ -127,6 +133,11 @@ export async function resolveStepInstructions(
       
       if (taskData) {
         instructionsWithTaskData = injectTaskData(instructionsWithTaskData, taskData, step.task_id);
+      }
+      
+      // Inject input values if available
+      if (context.inputs && Object.keys(context.inputs).length > 0) {
+        instructionsWithTaskData = injectInputValues(instructionsWithTaskData, context.inputs);
       }
       
       const resolved = await resolver.resolveStepVariables(
@@ -178,6 +189,11 @@ export async function resolveStepInstructions(
   
   if (taskData) {
     instructions = injectTaskData(instructions, taskData, step.task_id);
+  }
+  
+  // Inject input values if available
+  if (context.inputs && Object.keys(context.inputs).length > 0) {
+    instructions = injectInputValues(instructions, context.inputs);
   }
   
   return {
@@ -1065,6 +1081,31 @@ export function injectApiResponses(
     if (result.includes(placeholder)) {
       result = result.replace(new RegExp(placeholder, 'g'), 
         JSON.stringify(lastCall.response.data, null, 2));
+    }
+  }
+  
+  return result;
+}
+
+// Helper to inject input values into instructions
+export function injectInputValues(
+  instructions: string,
+  inputs: Record<string, any>
+): string {
+  let result = instructions;
+  
+  // Inject [input:name] placeholders
+  const inputRegex = /\[input:([^\]]+)\]/g;
+  const matches = [...result.matchAll(inputRegex)];
+  
+  for (const match of matches) {
+    const fullMatch = match[0];
+    const inputName = match[1];
+    
+    if (inputs[inputName] !== undefined) {
+      const value = inputs[inputName];
+      result = result.replace(new RegExp(fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 
+        typeof value === 'string' ? value : JSON.stringify(value));
     }
   }
   

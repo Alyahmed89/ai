@@ -1460,8 +1460,8 @@ export class ConversationOrchestratorDO_2026A {
   // Ultra-minimal flow execution handler
   private async handleStartFlow(request: Request): Promise<Response> {
     try {
-      const body = await request.json() as { flow_id: string };
-      const { flow_id } = body;
+      const body = await request.json() as { flow_id: string; inputs?: Record<string, any> };
+      const { flow_id, inputs = {} } = body;
       
       if (!flow_id) {
         return new Response(JSON.stringify({ error: 'Need flow_id' }), {
@@ -1565,7 +1565,7 @@ export class ConversationOrchestratorDO_2026A {
           // Import step resolver
           const { resolveStepInstructions } = await import('../services/stepResolver');
           
-          // Resolve step instructions with task data
+          // Resolve step instructions with task data and inputs
           const resolvedStep = await resolveStepInstructions(
             firstStep,
             this.env.FLOW_RUNS_DB,
@@ -1574,7 +1574,8 @@ export class ConversationOrchestratorDO_2026A {
               flow_id: flow_id,
               execution_id: `flow-${Date.now()}`,
               step_id: firstStep.step_id,
-              previous_step_responses: {} // First step has no previous responses
+              previous_step_responses: {}, // First step has no previous responses
+              inputs: inputs // Pass inputs for [input:name] replacement
             }
           );
           
@@ -1621,8 +1622,26 @@ export class ConversationOrchestratorDO_2026A {
         current_step_index: 0,
         agent: flowDefinition?.agent || 'openhands', // Set agent from flow definition
         flow_execution_mode: true, // Enable flow execution mode for step-by-step execution
-        step_status_sent: false // Track if SENDING STEP status has been sent for current step
+        step_status_sent: false, // Track if SENDING STEP status has been sent for current step
+        // Initialize execution context with provided inputs
+        execution_context: createExecutionContext(flow_id, executionSteps[0]?.step_id || 'step-1')
       };
+      
+      // Store provided inputs in execution context
+      if (Object.keys(inputs).length > 0) {
+        for (const [key, value] of Object.entries(inputs)) {
+          this.conversation.execution_context!.inputs[key] = {
+            value,
+            metadata: {
+              source: 'start_endpoint',
+              timestamp: Date.now(),
+              step_id: 'initial',
+              input_name: key
+            }
+          };
+        }
+        console.log(`[DO:${this.state.id}] Stored ${Object.keys(inputs).length} inputs from /start endpoint`);
+      }
       
       // Set current_step if we have steps
       if (executionSteps && executionSteps.length > 0) {
@@ -5701,6 +5720,18 @@ Use the response in your work.`
 
     if (!inputName) {
       return false;
+    }
+
+    // Check if input is already provided (e.g., from /start endpoint)
+    if (context.inputs && context.inputs[inputName] !== undefined) {
+      console.log(`[DO:${this.state.id}] Input ${inputName} already provided, skipping pause`);
+      
+      // Clear awaiting_input if it was set by AI action
+      if (context.awaiting_input) {
+        context.awaiting_input = undefined;
+      }
+      
+      return false; // Don't pause, continue execution
     }
 
     // Set conversation to WAITING_FOR_INPUT state
