@@ -57,6 +57,7 @@ export async function OPTIONS() {
 export async function GET(request: NextRequest) {
   try {
     // For now, return empty list - in production this would query the database
+    // The actual endpoints will be fetched from the backend via proxy
     const response: { success: boolean; data: any[] } = {
       success: true,
       data: []

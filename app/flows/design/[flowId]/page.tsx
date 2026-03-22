@@ -63,7 +63,7 @@ interface Step {
   page_key: string | null;
   // Additional fields for UI
   description?: string;
-  type?: 'input' | 'default' | 'output';
+  type?: 'input' | 'default' | 'output' | 'response';
   command?: string;
   await_input?: boolean;
   variables?: string[];
@@ -103,7 +103,7 @@ interface EdgeData extends Record<string, any> {
 type CustomEdge = Edge<EdgeData>;
 
 // Node data interface
-interface NodeData extends Record<string, any> {
+interface NodeData extends Record<string, unknown> {
   label?: string;
   title?: string;
   step?: Step;
@@ -112,7 +112,7 @@ interface NodeData extends Record<string, any> {
   await_input?: boolean;
   variables?: string[];
   description?: string;
-  type?: 'input' | 'default' | 'output';
+  type?: 'input' | 'default' | 'output' | 'response';
 }
 
 // Extended Node type
@@ -132,12 +132,17 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
   let borderColor = '#374151'; // default
   let textColor = '#f9fafb'; // default
   
-  if (step.type === 'input') {
+  const nodeType = step.type || 'default';
+  
+  if (nodeType === 'input') {
     bgColor = '#064e3b'; // dark green
     borderColor = '#047857'; // green
-  } else if (step.type === 'output') {
+  } else if (nodeType === 'output') {
     bgColor = '#7f1d1d'; // dark red
     borderColor = '#dc2626'; // red
+  } else if (nodeType === 'response') {
+    bgColor = '#713f12'; // dark yellow/brown
+    borderColor = '#d97706'; // amber
   }
   
   return (
@@ -174,6 +179,11 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
       <div className="flex justify-between items-start mb-2">
         <div className="font-medium text-sm truncate">{step.title}</div>
         <div className="flex items-center space-x-1 ml-2">
+          {nodeType === 'response' && (
+            <span className="text-xs bg-yellow-900 text-yellow-200 px-1.5 py-0.5 rounded" title="Response Node - Handles AI responses and loops">
+              🔄
+            </span>
+          )}
           {awaitInput && (
             <span className="text-xs bg-yellow-900 text-yellow-200 px-1.5 py-0.5 rounded" title="Awaits user input">
               ⏳
@@ -478,11 +488,12 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
       .sort((a: any, b: any) => a.order_index - b.order_index)
       .map((step: any) => ({
         ...step,
-        // Add UI-specific fields
-        type: step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default',
+        // Add UI-specific fields - use step_type for type, not order_index
+        type: step.step_type || (step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default'),
         description: step.instructions.substring(0, 100) + (step.instructions.length > 100 ? '...' : ''),
       })) as Step[];
     
+    console.log('Fetched flow steps with types:', flowSteps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type })));
     return { flowDefinition, flowSteps };
   } catch (error) {
     console.error('Error fetching flow data:', error);
@@ -499,27 +510,34 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
     
     // Example: Update each step
     for (const step of steps) {
+      const requestBody = {
+        instructions: step.instructions,
+        title: step.title,
+        step_type: step.step_type,
+        order_index: step.order_index,
+        blocking: Boolean(step.blocking),
+        auto_fail_on_error: Boolean(step.auto_fail_on_error),
+        retryable: Boolean(step.retryable),
+        output_keys: step.output_keys || null,
+        input_keys: step.input_keys || null,
+        use_endpoints: step.use_endpoints || null,
+        extra_step: step.extra_step || 0,
+        page_key: step.page_key || null,
+      };
+      console.log(`Saving step ${step.id}:`, requestBody);
+      
       const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instructions: step.instructions,
-          title: step.title,
-          step_type: step.step_type,
-          order_index: step.order_index,
-          blocking: Boolean(step.blocking),
-          auto_fail_on_error: Boolean(step.auto_fail_on_error),
-          retryable: Boolean(step.retryable),
-          output_keys: step.output_keys || null,
-          input_keys: step.input_keys || null,
-          use_endpoints: step.use_endpoints || null,
-          extra_step: step.extra_step || 0,
-          page_key: step.page_key || null,
-        }),
+        body: JSON.stringify(requestBody),
       });
       
       if (!response.ok) {
         console.error(`Failed to update step ${step.id}:`, response.status);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+      } else {
+        console.log(`Step ${step.id} saved successfully`);
       }
     }
     
@@ -568,6 +586,7 @@ async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<S
 
 // Create nodes from step data
 function createNodesFromSteps(steps: Step[]) {
+  console.log('Creating nodes from steps:', steps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type })));
   return steps.map((step, index) => {
     // Determine node type based on step_type
     let nodeType = 'default';
@@ -577,7 +596,11 @@ function createNodesFromSteps(steps: Step[]) {
       nodeType = 'output';
     } else if (step.step_type === 'flow' || step.step_type === 'agent') {
       nodeType = 'flow';
+    } else if (step.step_type === 'response' || step.type === 'response') {
+      nodeType = 'response';
     }
+    
+    console.log(`Step ${step.id}: step_type=${step.step_type}, type=${step.type}, nodeType=${nodeType}`);
     
     return {
       id: step.id,
@@ -589,6 +612,7 @@ function createNodesFromSteps(steps: Step[]) {
         instructions: step.instructions,
         command: step.command || '',
         await_input: step.await_input || false,
+        type: step.type || step.step_type, // Preserve type for UI
       },
       position: { x: 250, y: 25 + (index * 100) },
     };
@@ -704,16 +728,81 @@ const EdgePopup = ({
     ? sourceStep.output_keys.split(',').map(key => key.trim()).filter(key => key)
     : [];
   
+  // Get all nodes for variable selection (for cross-step conditions)
+  const allSteps = nodes.map(n => n.data?.step as Step | undefined).filter(Boolean);
+  
+  // Collect variables from all steps for cross-step conditions
+  const allVariables: Array<{value: string, label: string, category: string, stepId: string}> = [];
+  
+  allSteps.forEach(step => {
+    if (!step) return;
+    
+    // Add output variables from this step
+    if (step.output_keys) {
+      const vars = step.output_keys.split(',').map(key => key.trim()).filter(key => key);
+      vars.forEach(variable => {
+        allVariables.push({
+          value: `step_${step.id}.output.${variable}`,
+          label: `${step.title}: ${variable}`,
+          category: 'step_output',
+          stepId: step.id
+        });
+      });
+    }
+    
+    // Add input variables from this step
+    if (step.input_keys) {
+      const vars = step.input_keys.split(',').map(key => key.trim()).filter(key => key);
+      vars.forEach(variable => {
+        allVariables.push({
+          value: `step_${step.id}.input.${variable}`,
+          label: `${step.title} (input): ${variable}`,
+          category: 'step_input',
+          stepId: step.id
+        });
+      });
+    }
+    
+    // Add AI response variables (if step has AI output)
+    if (step.step_type === 'ai' || step.step_type === 'response') {
+      allVariables.push({
+        value: `step_${step.id}.ai_response`,
+        label: `${step.title}: AI Response`,
+        category: 'ai_response',
+        stepId: step.id
+      });
+      allVariables.push({
+        value: `step_${step.id}.ai_intent`,
+        label: `${step.title}: AI Intent`,
+        category: 'ai_intent',
+        stepId: step.id
+      });
+    }
+  });
+  
+  // Group variables by category for better organization
+  const groupedVariables = {
+    ai_responses: allVariables.filter(v => v.category === 'ai_response'),
+    ai_intents: allVariables.filter(v => v.category === 'ai_intent'),
+    step_outputs: allVariables.filter(v => v.category === 'step_output'),
+    step_inputs: allVariables.filter(v => v.category === 'step_input'),
+  };
+  
   const sourceOptions = [
-    { value: 'default', label: 'Always (no condition)' },
-    { value: 'inputs.approval', label: 'Input: Approval' },
-    { value: 'inputs.status', label: 'Input: Status' },
-    { value: 'data.user_id', label: 'Data: User ID' },
-    { value: 'command.get_tasks.result', label: 'Command: Get Tasks Result' },
-    { value: 'ai_output.intent', label: 'AI Output: Intent' },
+    { value: 'default', label: 'Always (no condition)', category: 'system' },
+    { value: 'loop_complete', label: 'Loop Complete', category: 'system' },
+    { value: 'max_iterations_reached', label: 'Max Iterations Reached', category: 'system' },
+    { value: 'condition_met', label: 'Condition Met', category: 'system' },
+    { value: 'error_occurred', label: 'Error Occurred', category: 'system' },
+    { value: 'inputs.approval', label: 'Input: Approval', category: 'input' },
+    { value: 'inputs.status', label: 'Input: Status', category: 'input' },
+    { value: 'data.user_id', label: 'Data: User ID', category: 'data' },
+    { value: 'command.get_tasks.result', label: 'Command: Get Tasks Result', category: 'command' },
+    { value: 'ai_output.intent', label: 'AI Output: Intent', category: 'ai' },
     ...sourceVariables.map(variable => ({
       value: `variables.${variable}`,
-      label: `Variable: ${variable}`
+      label: `Variable: ${variable}`,
+      category: 'variable'
     }))
   ];
 
@@ -722,8 +811,18 @@ const EdgePopup = ({
     { value: 'equals', label: 'Equals' },
     { value: 'not_equals', label: 'Not Equals' },
     { value: 'contains', label: 'Contains' },
+    { value: 'not_contains', label: 'Does Not Contain' },
+    { value: 'starts_with', label: 'Starts With' },
+    { value: 'ends_with', label: 'Ends With' },
     { value: 'greater_than', label: 'Greater Than' },
     { value: 'less_than', label: 'Less Than' },
+    { value: 'greater_than_or_equal', label: 'Greater Than or Equal' },
+    { value: 'less_than_or_equal', label: 'Less Than or Equal' },
+    { value: 'is_empty', label: 'Is Empty' },
+    { value: 'is_not_empty', label: 'Is Not Empty' },
+    { value: 'is_true', label: 'Is True' },
+    { value: 'is_false', label: 'Is False' },
+    { value: 'matches_regex', label: 'Matches Regex' },
   ];
 
   const targetNodes = nodes.filter(n => n.id !== edge.source);
@@ -749,19 +848,134 @@ const EdgePopup = ({
           {/* Source */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
-              Source
+              Condition Source
             </label>
-            <select
-              value={condition.source}
-              onChange={(e) => setCondition({...condition, source: e.target.value})}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-            >
-              {sourceOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <div className="mb-2">
+              <div className="text-xs text-gray-400 mb-1">System Conditions</div>
+              <select
+                value={condition.source}
+                onChange={(e) => setCondition({...condition, source: e.target.value})}
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white mb-2"
+              >
+                <optgroup label="System Conditions">
+                  {sourceOptions.filter(opt => opt.category === 'system').map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Input Conditions">
+                  {sourceOptions.filter(opt => opt.category === 'input').map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="AI Conditions">
+                  {sourceOptions.filter(opt => opt.category === 'ai').map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Command Conditions">
+                  {sourceOptions.filter(opt => opt.category === 'command').map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Data Conditions">
+                  {sourceOptions.filter(opt => opt.category === 'data').map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Current Step Variables">
+                  {sourceOptions.filter(opt => opt.category === 'variable').map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+            
+            {/* Advanced Variable Browser */}
+            <div className="mt-4">
+              <div className="text-xs text-gray-400 mb-1">Cross-Step Variables</div>
+              <div className="bg-gray-900 rounded border border-gray-700 p-2 max-h-40 overflow-y-auto">
+                {groupedVariables.ai_responses.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-xs text-yellow-400 font-medium mb-1">AI Responses</div>
+                    {groupedVariables.ai_responses.map(variable => (
+                      <div 
+                        key={variable.value}
+                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        onClick={() => setCondition({...condition, source: variable.value})}
+                      >
+                        {variable.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {groupedVariables.ai_intents.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-xs text-blue-400 font-medium mb-1">AI Intents</div>
+                    {groupedVariables.ai_intents.map(variable => (
+                      <div 
+                        key={variable.value}
+                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        onClick={() => setCondition({...condition, source: variable.value})}
+                      >
+                        {variable.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {groupedVariables.step_outputs.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-xs text-green-400 font-medium mb-1">Step Outputs</div>
+                    {groupedVariables.step_outputs.map(variable => (
+                      <div 
+                        key={variable.value}
+                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        onClick={() => setCondition({...condition, source: variable.value})}
+                      >
+                        {variable.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {groupedVariables.step_inputs.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-xs text-purple-400 font-medium mb-1">Step Inputs</div>
+                    {groupedVariables.step_inputs.map(variable => (
+                      <div 
+                        key={variable.value}
+                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        onClick={() => setCondition({...condition, source: variable.value})}
+                      >
+                        {variable.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {allVariables.length === 0 && (
+                  <div className="text-xs text-gray-500 text-center py-2">
+                    No variables available. Add variables to steps first.
+                  </div>
+                )}
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                Click on a variable to select it as condition source
+              </div>
+            </div>
           </div>
 
           {/* Operator */}
@@ -782,21 +996,33 @@ const EdgePopup = ({
             </select>
           </div>
 
-          {/* Value (if not "always") */}
-          {condition.operator !== 'always' && (
+          {/* Value (if needed) */}
+          {condition.operator !== 'always' && 
+           condition.operator !== 'is_empty' && 
+           condition.operator !== 'is_not_empty' &&
+           condition.operator !== 'is_true' &&
+           condition.operator !== 'is_false' && (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">
-                Value
+                {condition.operator === 'matches_regex' ? 'Regular Expression' : 'Value'}
               </label>
               <input
                 type="text"
                 value={condition.value || ''}
                 onChange={(e) => setCondition({...condition, value: e.target.value})}
                 className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono"
-                placeholder="Enter value or use {{variable}}..."
+                placeholder={
+                  condition.operator === 'matches_regex' ? 'Enter regex pattern...' :
+                  condition.operator === 'contains' ? 'Enter text to check for...' :
+                  'Enter value or use {{variable}}...'
+                }
               />
               <div className="text-xs text-gray-400 mt-1">
-                Use <code className="bg-gray-900 px-1 py-0.5 rounded">{"{{variable}}"}</code> syntax for variables from previous steps
+                {condition.operator === 'matches_regex' ? (
+                  <>Use regex patterns like <code className="bg-gray-900 px-1 py-0.5 rounded">^success$</code> or <code className="bg-gray-900 px-1 py-0.5 rounded">error.*</code></>
+                ) : (
+                  <>Use <code className="bg-gray-900 px-1 py-0.5 rounded">{"{{variable}}"}</code> syntax for variables from previous steps</>
+                )}
               </div>
             </div>
           )}
@@ -884,31 +1110,39 @@ const StepPopup = ({
   onClose: () => void;
 }) => {
   const nodeData = node.data as NodeData;
+  const [stepTitle, setStepTitle] = useState<string>(typeof nodeData?.title === 'string' ? nodeData.title : '');
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
   const [command, setCommand] = useState<string>(typeof nodeData?.command === 'string' ? nodeData.command : '');
   const [awaitInput, setAwaitInput] = useState<boolean>(typeof nodeData?.await_input === 'boolean' ? nodeData.await_input : false);
   const [outputKeys, setOutputKeys] = useState<string>(typeof nodeData?.step?.output_keys === 'string' ? nodeData.step.output_keys : '');
+  const [inputKeys, setInputKeys] = useState<string>(typeof nodeData?.step?.input_keys === 'string' ? nodeData.step.input_keys : '');
   const [stepType, setStepType] = useState<string>(typeof nodeData?.step?.step_type === 'string' ? nodeData.step.step_type : 'default');
 
   const handleSave = () => {
     const currentStep = nodeData?.step;
+    // Ensure stepType is one of the allowed values
+    const validType = (stepType === 'input' || stepType === 'output' || stepType === 'response') ? stepType : 'default';
     const updatedNode = {
       ...node,
       data: {
         ...nodeData,
+        title: stepTitle,
         instructions,
         command,
         await_input: awaitInput,
+        type: validType, // Also update the type field in node data
         step: currentStep ? {
           ...currentStep,
+          title: stepTitle,
           output_keys: outputKeys,
+          input_keys: inputKeys,
           step_type: stepType,
         } : {
           // Create a minimal step object if it doesn't exist
           id: node.id || `step-${Date.now()}`,
           flow_id: '',
           step_key: '',
-          title: nodeData?.title || 'Untitled Step',
+          title: stepTitle || 'Untitled Step',
           instructions: instructions,
           step_type: stepType,
           order_index: 0,
@@ -923,7 +1157,7 @@ const StepPopup = ({
           output_payload_template: null,
           default_next_step: null,
           output_auth_token: null,
-          input_keys: null,
+          input_keys: inputKeys,
           output: 0,
           default_next_step_id: null,
           step_number: null,
@@ -981,9 +1215,9 @@ const StepPopup = ({
             </label>
             <input
               type="text"
-              value={typeof nodeData?.title === 'string' ? nodeData.title : ''}
-              readOnly
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-gray-400"
+              value={stepTitle}
+              onChange={(e) => setStepTitle(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
             />
           </div>
 
@@ -1003,6 +1237,7 @@ const StepPopup = ({
               <option value="flow">Flow (Agent)</option>
               <option value="ai">AI Step</option>
               <option value="command">Command Step</option>
+              <option value="response">Response Node</option>
             </select>
             <div className="text-xs text-gray-400 mt-1">
               Flow nodes can be double-clicked to open subflows
@@ -1085,6 +1320,23 @@ const StepPopup = ({
             </div>
           )}
 
+          {/* Input Keys (Variables this step expects) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Input Keys (Comma-separated)
+            </label>
+            <input
+              type="text"
+              value={inputKeys || ''}
+              onChange={(e) => setInputKeys(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono"
+              placeholder="user_id, task_data, api_key..."
+            />
+            <div className="text-xs text-gray-400 mt-1">
+              These keys must be provided before this step can execute
+            </div>
+          </div>
+
           {/* Output Keys (Variables this step will produce) */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
@@ -1109,10 +1361,13 @@ const StepPopup = ({
               • Use <code className="bg-gray-800 px-1 py-0.5 rounded">{"{{variable_name}}"}</code> in instructions
             </p>
             <p className="text-xs text-gray-400 mb-2">
-              • Variables come from previous steps' output keys
+              • <strong>Input Keys:</strong> Variables this step expects (must be provided before execution)
+            </p>
+            <p className="text-xs text-gray-400 mb-2">
+              • <strong>Output Keys:</strong> Variables this step produces (available for subsequent steps)
             </p>
             <p className="text-xs text-gray-400">
-              • Define output keys above to create variables for next steps
+              • Variables flow from step outputs to step inputs across the workflow
             </p>
           </div>
         </div>
@@ -1313,17 +1568,35 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         const nodeTitle = nodeData.title;
         const nodeInstructions = nodeData.instructions;
         const nodeStepType = nodeData.step?.step_type;
+        const nodeType = nodeData.type;
+        
+        // Map UI type to step_type
+        let finalStepType = typeof nodeStepType === 'string' ? nodeStepType : step.step_type;
+        // Always use nodeType if available to ensure UI changes are saved
+        if (nodeType) {
+          // Map UI type to step_type
+          if (nodeType === 'response') {
+            finalStepType = 'response';
+          } else if (nodeType === 'input') {
+            finalStepType = 'input';
+          } else if (nodeType === 'output') {
+            finalStepType = 'output';
+          } else {
+            finalStepType = 'default';
+          }
+        }
         
         return {
           ...step,
           title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
           instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
-          step_type: typeof nodeStepType === 'string' ? nodeStepType : step.step_type,
+          step_type: finalStepType,
           // Update other fields from node data if needed
         };
       });
       
       // Save to backend
+      console.log('Saving steps:', updatedSteps);
       const success = await saveFlowSteps(currentFlowId, updatedSteps);
       
       if (success) {
@@ -1469,6 +1742,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       } else if (nodeType === 'flow') {
         stepTitle = `Flow ${nodes.length + 1}`;
         stepType = 'flow';
+      } else if (nodeType === 'response') {
+        stepTitle = `Response Node ${nodes.length + 1}`;
+        stepType = 'response';
       } else {
         stepTitle = `Step ${nodes.length + 1}`;
         stepType = 'default';
@@ -1504,7 +1780,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         data: {
           label: newStep.title,
           title: newStep.title,
-          step: newStep,
+          step: {
+            ...newStep,
+            type: stepType as 'input' | 'default' | 'output' | 'response',
+          },
           instructions: newStep.instructions,
           command: '',
           await_input: false,
@@ -1694,6 +1973,16 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                     <div className="flex items-center">
                       <div className="w-3 h-3 rounded-full bg-purple-500 mr-2"></div>
                       <span>Flow Node (Agent)</span>
+                    </div>
+                  </div>
+                  <div 
+                    className="px-3 py-2 bg-yellow-900/40 hover:bg-yellow-800/60 border border-yellow-800 rounded cursor-grab active:cursor-grabbing text-yellow-200 text-sm transition-colors"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, 'response')}
+                  >
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+                      <span>Response Node</span>
                     </div>
                   </div>
                 </div>
