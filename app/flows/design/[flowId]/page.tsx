@@ -650,7 +650,7 @@ function createNodesFromSteps(steps: Step[]) {
     
     return {
       id: step.id,
-      type: nodeType,
+      type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
       data: { 
         label: step.title, 
         title: step.title,
@@ -658,7 +658,7 @@ function createNodesFromSteps(steps: Step[]) {
         instructions: step.instructions,
         command: step.command || '',
         await_input: step.await_input || false,
-        type: nodeType, // Use the mapped nodeType for UI consistency
+        type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition', // Use the mapped nodeType for UI consistency
       },
       position: { x: 250, y: 25 + (index * 150) }, // Increased spacing from 100 to 150px
     };
@@ -1763,11 +1763,11 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: 'default',
+        type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: 'default',
+          type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
           step: newStep,
           instructions: newStep.instructions,
           command: '',
@@ -1888,11 +1888,11 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: nodeType === 'step' ? 'default' : nodeType,
+        type: (nodeType === 'step' ? 'default' : nodeType) as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: nodeType === 'step' ? 'default' : nodeType,
+          type: (nodeType === 'step' ? 'default' : nodeType) as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
           step: {
             ...newStep,
             type: stepType as 'input' | 'default' | 'output' | 'response' | 'condition',
@@ -1978,11 +1978,11 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: 'default',
+        type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: 'default',
+          type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
           step: {
             ...newStep,
             type: 'default' as 'input' | 'default' | 'output' | 'response' | 'condition',
@@ -2086,11 +2086,11 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: nodeType,
+        type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: nodeType,
+          type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
           step: {
             ...newStep,
             type: stepType as 'input' | 'default' | 'output' | 'response' | 'condition',
