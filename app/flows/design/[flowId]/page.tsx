@@ -164,7 +164,7 @@ const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId
         borderColor: borderColor,
         borderWidth: borderWidth,
         borderStyle: borderStyle,
-        borderOpacity: 0.7,
+        opacity: 0.9,
         color: textColor,
         minWidth: '220px',
         maxWidth: '280px',
