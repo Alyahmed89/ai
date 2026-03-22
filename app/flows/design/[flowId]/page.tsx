@@ -1139,12 +1139,12 @@ const NodePopup = ({
 }) => {
   const nodeData = node.data as NodeData;
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
-  const [outputKeys, setOutputKeys] = useState<string>(typeof nodeData?.step?.output_keys === 'string' ? nodeData.step.output_keys : '');
+  const [expectedResponse, setExpectedResponse] = useState<string>('');
   const [selectedCommand, setSelectedCommand] = useState<string>('');
-  const [availableCommands, setAvailableCommands] = useState<Array<{name: string, description: string, parameters: any}>>([]);
+  const [availableCommands, setAvailableCommands] = useState<Array<{name: string, description: string, method: string, parameters: any}>>([]);
   const [loadingCommands, setLoadingCommands] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const outputKeysRef = useRef<HTMLInputElement>(null);
+  const expectedResponseRef = useRef<HTMLTextAreaElement>(null);
   
   // Fetch available commands from API
   useEffect(() => {
@@ -1194,11 +1194,11 @@ const NodePopup = ({
   const handleSave = () => {
     // Read from DOM refs to bypass React state timing issues with automation
     const domInstructions = textareaRef.current?.value || '';
-    const domOutputKeys = outputKeysRef.current?.value || '';
+    const domExpectedResponse = expectedResponseRef.current?.value || '';
     
     console.log('NodePopup handleSave called!');
     console.log('State instructions:', instructions, 'DOM instructions:', domInstructions);
-    console.log('State outputKeys:', outputKeys, 'DOM outputKeys:', domOutputKeys);
+    console.log('State expectedResponse:', expectedResponse, 'DOM expectedResponse:', domExpectedResponse);
     console.log('nodeData:', nodeData);
     
     const currentStep = nodeData?.step;
@@ -1207,10 +1207,11 @@ const NodePopup = ({
       data: {
         ...nodeData,
         instructions: domInstructions, // Use DOM value
+        expectedResponse: domExpectedResponse, // Use DOM value
         step: currentStep ? {
           ...currentStep,
           instructions: domInstructions, // Use DOM value
-          output_keys: domOutputKeys, // Use DOM value
+          // Remove output_keys since we're not using it anymore
         } : {
           // Create a minimal step object if it doesn't exist
           id: node.id || `step-${Date.now()}`,
@@ -1226,7 +1227,7 @@ const NodePopup = ({
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           task_id: null,
-          output_keys: domOutputKeys, // Use DOM value
+          output_keys: '', // Empty since we removed the field
           output_url: null,
           output_payload_template: null,
           default_next_step: null,
@@ -1292,7 +1293,33 @@ const NodePopup = ({
         </div>
         
         <div className="space-y-4">
-          {/* Instructions/condition text area - minimal */}
+          {/* Command Selector with + button */}
+          <div className="flex gap-2">
+            <select
+              value={selectedCommand}
+              onChange={(e) => setSelectedCommand(e.target.value)}
+              className="flex-1 bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+              disabled={loadingCommands}
+            >
+              <option value="">Select a command...</option>
+              {availableCommands.map((cmd) => (
+                <option key={cmd.name} value={cmd.name}>
+                  {cmd.name} ({cmd.method})
+                </option>
+              ))}
+            </select>
+            <button
+              className="px-3 py-2 bg-gray-800/50 border border-gray-600 rounded text-white text-sm hover:bg-gray-700/50 transition-colors"
+              title="Add new command"
+            >
+              +
+            </button>
+          </div>
+          {loadingCommands && (
+            <div className="text-xs text-gray-400">Loading commands...</div>
+          )}
+
+          {/* Instructions/condition text area */}
           <div>
             <textarea
               ref={textareaRef}
@@ -1307,24 +1334,16 @@ const NodePopup = ({
             />
           </div>
 
-          {/* Command Selector */}
+          {/* Expected Response (for all nodes) */}
           <div>
-            <select
-              value={selectedCommand}
-              onChange={(e) => setSelectedCommand(e.target.value)}
-              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
-              disabled={loadingCommands}
-            >
-              <option value="">Select a command...</option>
-              {availableCommands.map((cmd) => (
-                <option key={cmd.name} value={cmd.name}>
-                  {cmd.name} - {cmd.description}
-                </option>
-              ))}
-            </select>
-            {loadingCommands && (
-              <div className="text-xs text-gray-400 mt-1">Loading commands...</div>
-            )}
+            <textarea
+              ref={expectedResponseRef}
+              value={expectedResponse || ''}
+              onChange={(e) => setExpectedResponse(e.target.value)}
+              onInput={(e) => setExpectedResponse(e.currentTarget.value)}
+              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white min-h-[80px] font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
+              placeholder="Expected response (optional)"
+            />
           </div>
 
           {/* Command Parameters - only show when command is selected */}
@@ -1337,31 +1356,35 @@ const NodePopup = ({
                 {commandParameters.map((param, index) => (
                   <div 
                     key={index}
-                    className="inline-flex items-center bg-gray-800/50 border border-gray-600 rounded px-2 py-1 cursor-grab active:cursor-grabbing hover:bg-gray-700/50 transition-colors text-xs"
+                    className="inline-flex items-center bg-white text-gray-900 rounded px-2 py-1 cursor-pointer hover:bg-gray-100 transition-colors text-xs"
                     draggable
                     onDragStart={(e) => onVariableDragStart(e, param)}
-                    title={`Drag {{${param}}} into text`}
+                    title={`Drag ${param} into text`}
+                    style={{ cursor: 'grab' }}
                   >
-                    <div className="text-gray-400 mr-1 text-xs">📦</div>
-                    <div className="text-white font-mono">{`{{${param}}}`}</div>
+                    <div className="font-mono">{param}</div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Output Variables - minimal */}
-          <div>
-            <input
-              ref={outputKeysRef}
-              type="text"
-              value={outputKeys || ''}
-              onChange={(e) => setOutputKeys(e.target.value)}
-              onInput={(e) => setOutputKeys(e.currentTarget.value)}
-              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
-              placeholder="Output variables (comma separated)"
-            />
-          </div>
+          {/* Flow Selection for Response Nodes */}
+          {nodeData?.type === 'response' && (
+            <div>
+              <div className="text-xs text-gray-400 mb-1">
+                Send response to flow:
+              </div>
+              <select
+                className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+              >
+                <option value="">Select target flow...</option>
+                <option value="current">Current Flow</option>
+                <option value="word-matching-flow">Word Matching Flow</option>
+                <option value="other">Other Flow...</option>
+              </select>
+            </div>
+          )}
 
           {/* Minimal save button */}
           <div className="flex justify-end pt-2">
