@@ -1140,8 +1140,54 @@ const NodePopup = ({
   const nodeData = node.data as NodeData;
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
   const [outputKeys, setOutputKeys] = useState<string>(typeof nodeData?.step?.output_keys === 'string' ? nodeData.step.output_keys : '');
+  const [selectedCommand, setSelectedCommand] = useState<string>('');
+  const [availableCommands, setAvailableCommands] = useState<Array<{name: string, description: string, parameters: any}>>([]);
+  const [loadingCommands, setLoadingCommands] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const outputKeysRef = useRef<HTMLInputElement>(null);
+  
+  // Fetch available commands from API
+  useEffect(() => {
+    const fetchCommands = async () => {
+      try {
+        setLoadingCommands(true);
+        const response = await fetch('/api/proxy/api/commands');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.commands) {
+            setAvailableCommands(data.data.commands);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch commands:', error);
+      } finally {
+        setLoadingCommands(false);
+      }
+    };
+    
+    fetchCommands();
+  }, []);
+  
+  // Get parameters for selected command
+  const getCommandParameters = () => {
+    if (!selectedCommand) return [];
+    
+    const command = availableCommands.find(cmd => cmd.name === selectedCommand);
+    if (!command || !command.parameters) return [];
+    
+    try {
+      const params = JSON.parse(command.parameters);
+      if (params.properties) {
+        return Object.keys(params.properties);
+      }
+    } catch (e) {
+      console.error('Failed to parse command parameters:', e);
+    }
+    
+    return [];
+  };
+  
+  const commandParameters = getCommandParameters();
   
   console.log('NodePopup rendered! nodeData?.instructions:', nodeData?.instructions, 'instructions state:', instructions);
 
@@ -1261,21 +1307,46 @@ const NodePopup = ({
             />
           </div>
 
-          {/* Available Variables - minimal inline */}
-          {availableVariables.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {availableVariables.map((variable, index) => (
-                <div 
-                  key={index}
-                  className="inline-flex items-center bg-gray-800/50 border border-gray-600 rounded px-2 py-1 cursor-grab active:cursor-grabbing hover:bg-gray-700/50 transition-colors text-xs"
-                  draggable
-                  onDragStart={(e) => onVariableDragStart(e, variable)}
-                  title={`Drag {{${variable}}} into text`}
-                >
-                  <div className="text-gray-400 mr-1 text-xs">📦</div>
-                  <div className="text-white font-mono">{`{{${variable}}}`}</div>
-                </div>
+          {/* Command Selector */}
+          <div>
+            <select
+              value={selectedCommand}
+              onChange={(e) => setSelectedCommand(e.target.value)}
+              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+              disabled={loadingCommands}
+            >
+              <option value="">Select a command...</option>
+              {availableCommands.map((cmd) => (
+                <option key={cmd.name} value={cmd.name}>
+                  {cmd.name} - {cmd.description}
+                </option>
               ))}
+            </select>
+            {loadingCommands && (
+              <div className="text-xs text-gray-400 mt-1">Loading commands...</div>
+            )}
+          </div>
+
+          {/* Command Parameters - only show when command is selected */}
+          {selectedCommand && commandParameters.length > 0 && (
+            <div>
+              <div className="text-xs text-gray-400 mb-1">
+                Parameters for {selectedCommand}:
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {commandParameters.map((param, index) => (
+                  <div 
+                    key={index}
+                    className="inline-flex items-center bg-gray-800/50 border border-gray-600 rounded px-2 py-1 cursor-grab active:cursor-grabbing hover:bg-gray-700/50 transition-colors text-xs"
+                    draggable
+                    onDragStart={(e) => onVariableDragStart(e, param)}
+                    title={`Drag {{${param}}} into text`}
+                  >
+                    <div className="text-gray-400 mr-1 text-xs">📦</div>
+                    <div className="text-white font-mono">{`{{${param}}}`}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
