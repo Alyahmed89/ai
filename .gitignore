@@ -42,3 +42,8 @@ server.log
 next-env.d.ts
 server2.log
 *.log
+
+# database files
+*.db
+*.sqlite
+*.sqlite3

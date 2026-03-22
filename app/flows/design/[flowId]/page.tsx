@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect, DragEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, DragEvent } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ReactFlow,
@@ -103,7 +103,7 @@ interface EdgeData extends Record<string, any> {
 type CustomEdge = Edge<EdgeData>;
 
 // Node data interface
-interface NodeData extends Record<string, unknown> {
+interface NodeData {
   label?: string;
   title?: string;
   step?: Step;
@@ -113,6 +113,7 @@ interface NodeData extends Record<string, unknown> {
   variables?: string[];
   description?: string;
   type?: 'input' | 'default' | 'output' | 'response';
+  [key: string]: unknown;
 }
 
 // Extended Node type
@@ -122,9 +123,9 @@ type CustomNode = Node<NodeData>;
 const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) => void }) => {
   const step = data.step as Step;
   const hasCommand = data.command && data.command.trim().length > 0;
-  const hasVariables = step.output_keys && step.output_keys.trim().length > 0;
-  const hasInput = step.input_keys && step.input_keys.trim().length > 0;
-  const hasOutput = step.output_keys && step.output_keys.trim().length > 0;
+  const hasVariables = step && step.output_keys && step.output_keys.trim().length > 0;
+  const hasInput = step && step.input_keys && step.input_keys.trim().length > 0;
+  const hasOutput = step && step.output_keys && step.output_keys.trim().length > 0;
   const awaitInput = data.await_input === true;
   
   // Determine node colors based on type
@@ -132,7 +133,7 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
   let borderColor = '#374151'; // default
   let textColor = '#f9fafb'; // default
   
-  const nodeType = step.type || 'default';
+  const nodeType = data.type || (step && step.step_type) || 'default';
   
   if (nodeType === 'input') {
     bgColor = '#064e3b'; // dark green
@@ -260,8 +261,8 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
 // Custom Flow Node component for subflows/agents
 const FlowNode = ({ data }: { data: any }) => {
   const step = data.step as Step;
-  const hasInput = step.input_keys && step.input_keys.trim() !== '';
-  const hasOutput = step.output_keys && step.output_keys.trim() !== '';
+  const hasInput = step && step.input_keys && step.input_keys.trim() !== '';
+  const hasOutput = step && step.output_keys && step.output_keys.trim() !== '';
   
   return (
     <div 
@@ -471,6 +472,8 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
     }
     
     const stepsData = await stepsResponse.json();
+    console.log('Raw steps data from backend:', JSON.stringify(stepsData, null, 2));
+    console.log('Response status:', stepsResponse.status, stepsResponse.ok);
     
     // Handle different response formats for steps
     let stepsArray: any[] = [];
@@ -489,11 +492,19 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
       .map((step: any) => ({
         ...step,
         // Add UI-specific fields - use step_type for type, not order_index
-        type: step.step_type || (step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default'),
+        // Map backend step_type to UI type
+        type: (() => {
+          // If step_type is "processing" and extra_step is 1, it's a response node
+          if (step.step_type === 'processing' && step.extra_step === 1) {
+            return 'response';
+          }
+          // Otherwise use step_type directly
+          return step.step_type || (step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default');
+        })(),
         description: step.instructions.substring(0, 100) + (step.instructions.length > 100 ? '...' : ''),
       })) as Step[];
     
-    console.log('Fetched flow steps with types:', flowSteps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type })));
+    console.log('Fetched flow steps with types:', flowSteps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type, extra_step: s.extra_step })));
     return { flowDefinition, flowSteps };
   } catch (error) {
     console.error('Error fetching flow data:', error);
@@ -524,7 +535,7 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         extra_step: step.extra_step || 0,
         page_key: step.page_key || null,
       };
-      console.log(`Saving step ${step.id}:`, requestBody);
+      console.log(`Saving step ${step.id}:`, JSON.stringify(requestBody, null, 2));
       
       const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
         method: 'PUT',
@@ -598,6 +609,9 @@ function createNodesFromSteps(steps: Step[]) {
       nodeType = 'flow';
     } else if (step.step_type === 'response' || step.type === 'response') {
       nodeType = 'response';
+    } else if (step.step_type === 'processing' && step.extra_step === 1) {
+      // Backward compatibility: processing steps with extra_step=1 are response nodes
+      nodeType = 'response';
     }
     
     console.log(`Step ${step.id}: step_type=${step.step_type}, type=${step.type}, nodeType=${nodeType}`);
@@ -612,7 +626,7 @@ function createNodesFromSteps(steps: Step[]) {
         instructions: step.instructions,
         command: step.command || '',
         await_input: step.await_input || false,
-        type: step.type || step.step_type, // Preserve type for UI
+        type: nodeType, // Use the mapped nodeType for UI consistency
       },
       position: { x: 250, y: 25 + (index * 100) },
     };
@@ -1122,6 +1136,8 @@ const StepPopup = ({
     const currentStep = nodeData?.step;
     // Ensure stepType is one of the allowed values
     const validType = (stepType === 'input' || stepType === 'output' || stepType === 'response') ? stepType : 'default';
+    // Map UI stepType to backend step_type
+    const backendStepType = stepType === 'response' ? 'processing' : stepType;
     const updatedNode = {
       ...node,
       data: {
@@ -1136,7 +1152,8 @@ const StepPopup = ({
           title: stepTitle,
           output_keys: outputKeys,
           input_keys: inputKeys,
-          step_type: stepType,
+          step_type: backendStepType,
+          extra_step: stepType === 'response' ? 1 : currentStep.extra_step || 0,
         } : {
           // Create a minimal step object if it doesn't exist
           id: node.id || `step-${Date.now()}`,
@@ -1144,7 +1161,7 @@ const StepPopup = ({
           step_key: '',
           title: stepTitle || 'Untitled Step',
           instructions: instructions,
-          step_type: stepType,
+          step_type: backendStepType,
           order_index: 0,
           blocking: 0,
           auto_fail_on_error: 0,
@@ -1163,7 +1180,7 @@ const StepPopup = ({
           step_number: null,
           requires_task: 0,
           use_endpoints: null,
-          extra_step: 0,
+          extra_step: stepType === 'response' ? 1 : 0,
           page_key: null,
         },
       },
@@ -1410,6 +1427,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   const [selectedEdge, setSelectedEdge] = useState<CustomEdge | null>(null);
   const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
   const [saving, setSaving] = useState(false);
+  
+  useEffect(() => {
+    console.log('saving state changed:', saving);
+  }, [saving]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   
   // State for modals
@@ -1456,7 +1477,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   };
 
   // Node types configuration with onClick handler
-  const nodeTypes = useCallback(() => ({
+  const nodeTypes = useMemo(() => ({
     default: (props: any) => {
       const handleClick = (nodeId: string) => {
         const node = nodes.find(n => n.id === nodeId);
@@ -1487,10 +1508,30 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       
       return <CustomNode {...props} onClick={handleClick} />;
     },
+    response: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} />;
+    },
+    flow: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      return <FlowNode {...props} onClick={handleClick} />;
+    },
   }), [nodes]);
 
   // Edge types configuration with onClick handler
-  const edgeTypes = useCallback(() => ({
+  const edgeTypes = useMemo(() => ({
     default: (props: any) => {
       const handleClick = (edgeId: string) => {
         const edge = edges.find(e => e.id === edgeId);
@@ -1553,15 +1594,20 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }, []);
 
   const handleNodeUpdate = useCallback((updatedNode: CustomNode) => {
+    console.log('handleNodeUpdate called!', updatedNode.id, updatedNode.data.type);
     setNodes((nds) => nds.map(node => 
       node.id === updatedNode.id ? updatedNode : node
     ));
   }, []);
 
   const onSaveFlow = useCallback(async () => {
-    setSaving(true);
+    console.log('onSaveFlow called!');
     try {
+      console.log('Setting saving to true');
+      setSaving(true);
+      console.log('saving should be true now');
       // Convert nodes back to steps
+      console.log('Nodes:', nodes);
       const updatedSteps: Step[] = nodes.map((node): Step => {
         const nodeData = node.data as NodeData;
         const step = nodeData.step as Step;
@@ -1572,11 +1618,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         
         // Map UI type to step_type
         let finalStepType = typeof nodeStepType === 'string' ? nodeStepType : step.step_type;
+        let extraStep = step.extra_step || 0;
         // Always use nodeType if available to ensure UI changes are saved
         if (nodeType) {
           // Map UI type to step_type
           if (nodeType === 'response') {
-            finalStepType = 'response';
+            finalStepType = 'processing'; // Use 'processing' as backend doesn't have 'response'
+            extraStep = 1; // Mark as extra step (response node)
+            console.log('Response node detected! Setting step_type to "processing" and extra_step to 1');
           } else if (nodeType === 'input') {
             finalStepType = 'input';
           } else if (nodeType === 'output') {
@@ -1591,7 +1640,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
           instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
           step_type: finalStepType,
-          // Update other fields from node data if needed
+          extra_step: extraStep,
+          // Update input/output keys from node data if available
+          input_keys: step.input_keys || null,
+          output_keys: step.output_keys || null,
         };
       });
       
@@ -1600,19 +1652,21 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       const success = await saveFlowSteps(currentFlowId, updatedSteps);
       
       if (success) {
-        alert(`Flow saved successfully with ${nodes.length} steps`);
+        console.log(`Flow saved successfully with ${nodes.length} steps`);
         // Reload data to ensure we have latest
         await loadFlowData();
       } else {
-        alert('Failed to save flow. Check console for errors.');
+        console.error('Failed to save flow. Check console for errors.');
       }
+      console.log('Setting saving to false');
+      setSaving(false);
     } catch (err) {
       console.error('Error saving flow:', err);
       alert('Error saving flow. See console for details.');
-    } finally {
+      console.log('Setting saving to false (error case)');
       setSaving(false);
     }
-  }, [nodes, currentFlowId]);
+  }, [nodes, currentFlowId, setSaving, loadFlowData]);
 
   // Function to add a new step
   const handleAddStep = useCallback(async () => {
@@ -1864,12 +1918,28 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               + Add Step
             </button>
             <button
-              onClick={onSaveFlow}
-              disabled={saving}
-              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={async () => {
+                console.log('Save Flow button clicked!');
+                console.log('onSaveFlow:', onSaveFlow);
+                console.log('typeof onSaveFlow:', typeof onSaveFlow);
+                if (typeof onSaveFlow === 'function') {
+                  console.log('Calling onSaveFlow...');
+                  try {
+                    await onSaveFlow();
+                    console.log('onSaveFlow completed!');
+                  } catch (err) {
+                    console.error('Error in onSaveFlow:', err);
+                  }
+                } else {
+                  console.error('onSaveFlow is not a function!');
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium text-white transition-colors"
             >
               {saving ? 'Saving...' : 'Save Flow'}
             </button>
+            <div className="text-xs text-gray-500 mt-1">saving state: {saving ? 'true' : 'false'}</div>
             <button
               onClick={() => router.push('/chat')}
               className="bg-gray-800 hover:bg-gray-700 px-6 py-2 rounded font-medium border border-gray-700 text-gray-100 hover:text-white transition-colors"
@@ -1913,8 +1983,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               onConnect={onConnect}
               onInit={onInit}
               fitView
-              nodeTypes={nodeTypes()}
-              edgeTypes={edgeTypes()}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
             >
               <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#374151" />
               <Controls />
