@@ -54,6 +54,9 @@ export type ExecutionContext = {
     name: string
     params?: Record<string, any>
   }
+
+  // Flow-to-flow communication
+  callback_url?: string
 }
 
 export function createExecutionContext(flow_id: string, step_id: string): ExecutionContext {

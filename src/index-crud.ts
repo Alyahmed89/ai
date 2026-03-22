@@ -243,7 +243,7 @@ app.get('/health', async (c) => {
 app.post('/start', async (c) => {
   try {
     const body = await c.req.json();
-    const { repository, branch, initial_user_prompt, max_iterations, flow_id, inputs } = body;
+    const { repository, branch, initial_user_prompt, max_iterations, flow_id, inputs, callback_url } = body;
     
     // FLOW-BASED EXECUTION
     if (flow_id) {
@@ -278,7 +278,8 @@ app.post('/start', async (c) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               flow_id: targetFlowId,
-              inputs: inputs || {}
+              inputs: inputs || {},
+              callback_url: callback_url
             })
           });
           

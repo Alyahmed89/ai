@@ -1460,8 +1460,8 @@ export class ConversationOrchestratorDO_2026A {
   // Ultra-minimal flow execution handler
   private async handleStartFlow(request: Request): Promise<Response> {
     try {
-      const body = await request.json() as { flow_id: string; inputs?: Record<string, any> };
-      const { flow_id, inputs = {} } = body;
+      const body = await request.json() as { flow_id: string; inputs?: Record<string, any>; callback_url?: string };
+      const { flow_id, inputs = {}, callback_url } = body;
       
       if (!flow_id) {
         return new Response(JSON.stringify({ error: 'Need flow_id' }), {
@@ -1641,6 +1641,12 @@ export class ConversationOrchestratorDO_2026A {
           };
         }
         console.log(`[DO:${this.state.id}] Stored ${Object.keys(inputs).length} inputs from /start endpoint`);
+      }
+
+      // Store callback_url if provided
+      if (callback_url) {
+        this.conversation.execution_context!.callback_url = callback_url;
+        console.log(`[DO:${this.state.id}] Stored callback_url: ${callback_url}`);
       }
       
       // Set current_step if we have steps
@@ -4274,7 +4280,50 @@ Use the response in your work.`
         }
       }
       
-      if (nextFlowId) {
+      // Check if we have a callback_url to send response to
+      const callbackUrl = this.conversation.execution_context?.callback_url;
+      if (callbackUrl) {
+        console.log(`[DO:${this.state.id}] Sending flow response to callback URL: ${callbackUrl}`);
+        
+        try {
+          // Extract the last response from the flow
+          const lastResponse = getLastFlowResponse(this.conversation.conversation_messages);
+          
+          // Parse the callback URL to extract conversation ID
+          // Expected format: http://placeholder/resume?conversation_id=...
+          const url = new URL(callbackUrl);
+          const conversationId = url.searchParams.get('conversation_id');
+          
+          if (conversationId) {
+            console.log(`[DO:${this.state.id}] Found conversation ID in callback: ${conversationId}`);
+            
+            // Get the parent conversation Durable Object
+            const parentConversationId = this.env.CONVERSATIONS.idFromString(conversationId);
+            const parentConversation = this.env.CONVERSATIONS.get(parentConversationId);
+            
+            // Send resume request to parent conversation with flow response
+            const resumeResponse = await parentConversation.fetch('http://placeholder/resume', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                input: lastResponse,
+                source: `flow_response_${this.conversation.flow_id}`
+              })
+            });
+            
+            if (resumeResponse.ok) {
+              console.log(`[DO:${this.state.id}] Successfully sent response to parent flow`);
+            } else {
+              const errorText = await resumeResponse.text();
+              console.error(`[DO:${this.state.id}] Failed to send response to parent: ${resumeResponse.status} - ${errorText}`);
+            }
+          } else {
+            console.error(`[DO:${this.state.id}] No conversation_id found in callback URL: ${callbackUrl}`);
+          }
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error sending response to callback: ${error.message}`);
+        }
+      } else if (nextFlowId) {
         console.log(`[DO:${this.state.id}] Starting next flow: ${nextFlowId}`);
         await this.startSpecificFlow(nextFlowId);
       }
@@ -5099,6 +5148,43 @@ ${messageContent}`;
         'completed'
       );
       await this.handleStepCompletion(step, "Hello step completed successfully");
+      return;
+    }
+
+    // SPECIAL HANDLING: For 'call_flow' step type, start another flow and wait for response
+    if (step.step_type === 'call_flow') {
+      console.log(`[DO:${this.state.id}] 'call_flow' step type detected`);
+      
+      // Extract target flow ID from step instructions or parameters
+      const targetFlowId = step.instructions?.match(/\[flow:(\w+)\]/)?.[1] || 
+                          step.description?.match(/\[flow:(\w+)\]/)?.[1];
+      
+      if (!targetFlowId) {
+        console.error(`[DO:${this.state.id}] No target flow ID found in call_flow step`);
+        await this.handleStepCompletion(step, "Error: No target flow ID specified");
+        return;
+      }
+
+      console.log(`[DO:${this.state.id}] Starting flow call to: ${targetFlowId}`);
+      
+      // Create callback URL to this flow's /resume endpoint
+      // Note: In production, this would need to be the actual external URL
+      const callbackUrl = `http://placeholder/resume?conversation_id=${this.state.id.toString()}`;
+      
+      // Start the target flow with callback
+      await this.startSpecificFlowWithCallback(targetFlowId, callbackUrl);
+      
+      // Enter WAITING_FOR_INPUT state to wait for response
+      await this.updateConversationState({
+        state: 'WAITING_FOR_INPUT',
+        waiting_for_input: {
+          name: `flow_response_${targetFlowId}`,
+          step_id: step.step_id,
+          timestamp: Date.now()
+        }
+      });
+      
+      console.log(`[DO:${this.state.id}] Waiting for response from flow: ${targetFlowId}`);
       return;
     }
 
@@ -5993,6 +6079,88 @@ Use the response in your work.`
       }
     } catch (error) {
       console.error(`[DO:${this.state.id}] Failed to start specific flow:`, error);
+    }
+  }
+
+  /**
+   * Start a specific flow with callback URL for response return
+   */
+  private async startSpecificFlowWithCallback(flowId: string, callbackUrl: string): Promise<void> {
+    console.log(`[DO:${this.state.id}] Starting flow with callback: ${flowId}, callback: ${callbackUrl}`);
+    
+    // Load flow definition from database
+    if (!this.env.FLOW_RUNS_DB) {
+      console.error(`[DO:${this.state.id}] Database not configured, cannot start flow with callback`);
+      return;
+    }
+    
+    // Load flow definition from flow_definitions table
+    const flow = await this.env.FLOW_RUNS_DB.prepare(`
+      SELECT * FROM flow_definitions WHERE id = ?
+    `).bind(flowId).first();
+    
+    if (!flow) {
+      console.error(`[DO:${this.state.id}] Flow not found: ${flowId}`);
+      return;
+    }
+    
+    // Get first step instructions from flow_steps table
+    const firstStep = await this.env.FLOW_RUNS_DB.prepare(`
+      SELECT instructions FROM flow_steps 
+      WHERE flow_id = ? AND order_index = 1
+      ORDER BY order_index LIMIT 1
+    `).bind(flowId).first();
+    
+    if (!firstStep) {
+      console.error(`[DO:${this.state.id}] First step not found for flow: ${flowId}`);
+      return;
+    }
+    
+    // Prepare the request body for the new flow with callback
+    const requestBody = {
+      flow_id: flowId,
+      repository: flow.repository, // Use repository column (not repo)
+      branch: flow.branch || 'main',
+      initial_user_prompt: firstStep.instructions, // Get from first step instructions
+      max_iterations: flow.max_iterations || 20,
+      callback_url: callbackUrl
+    };
+    
+    try {
+      const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
+      const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
+      
+      // Use /start endpoint instead of /initialize to include callback_url
+      const initResponse = await newConversationStub.fetch('http://placeholder/start-flow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flow_id: flowId,
+          callback_url: callbackUrl
+        })
+      });
+      
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
+        console.error(`[DO:${this.state.id}] Failed to start flow with callback: ${initResponse.status} - ${errorText}`);
+        return;
+      }
+      
+      console.log(`[DO:${this.state.id}] Flow with callback started with ID: ${newConversationIdObj.toString()}`);
+      
+      // Update current flow run with next_flow_id (new conversation ID)
+      if (this.flowRunId) {
+        await updateFlowRunStatus(
+          this.env.FLOW_RUNS_DB, 
+          this.flowRunId, 
+          'flow_called', 
+          'waiting_for_response', 
+          newConversationIdObj.toString(),
+          undefined // outputResponse - not needed for flow chaining
+        );
+      }
+    } catch (error) {
+      console.error(`[DO:${this.state.id}] Failed to start flow with callback:`, error);
     }
   }
 
