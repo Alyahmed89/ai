@@ -164,7 +164,6 @@ const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId
         borderColor: borderColor,
         borderWidth: borderWidth,
         borderStyle: borderStyle,
-        opacity: 0.9,
         color: textColor,
         minWidth: '220px',
         maxWidth: '280px',
@@ -277,68 +276,43 @@ const FlowNode = ({ data }: { data: any }) => {
   
   return (
     <div 
-      className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border-2 border-purple-600 rounded-lg p-4 w-64 shadow-lg hover:shadow-purple-500/20 transition-all duration-200 cursor-pointer"
+      className="bg-gray-900 border border-purple-600 rounded p-3 w-60 cursor-pointer"
       onDoubleClick={() => {
         console.log('Double-clicked flow node:', step.id);
         // In a real implementation, this would open the subflow
         alert(`Would open subflow: ${step.title}`);
       }}
     >
-      {/* Header with flow icon */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Minimal header */}
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center">
-          <div className="text-xl mr-2">🌐</div>
-          <div className="text-sm font-semibold text-white truncate">
+          <div className="text-sm text-white truncate">
             {step.title}
           </div>
         </div>
-        <div className="text-xs bg-purple-700/50 text-purple-300 px-2 py-0.5 rounded">
+        <div className="text-xs text-purple-400">
           Flow
         </div>
       </div>
       
-      {/* Description */}
-      <div className="text-xs text-gray-300 mb-3 line-clamp-2">
-        {step.instructions.substring(0, 80)}
-        {step.instructions.length > 80 ? '...' : ''}
+      {/* Minimal description */}
+      <div className="text-xs text-gray-400 mb-2 line-clamp-2">
+        {step.instructions.substring(0, 60)}
+        {step.instructions.length > 60 ? '...' : ''}
       </div>
       
-      {/* Input/Output indicators */}
-      <div className="flex justify-between text-xs mb-3">
+      {/* Minimal I/O indicators */}
+      <div className="flex justify-between text-xs">
         {hasInput && (
-          <div className="flex items-center text-green-400">
-            <div className="mr-1">⬇️</div>
-            <span>Input</span>
+          <div className="text-green-400">
+            →
           </div>
         )}
         {hasOutput && (
-          <div className="flex items-center text-blue-400">
-            <div className="mr-1">⬆️</div>
-            <span>Output</span>
+          <div className="text-blue-400">
+            ←
           </div>
         )}
-      </div>
-      
-      {/* Variables section */}
-      {hasOutput && step.output_keys && (
-        <div className="mt-2 pt-2 border-t border-purple-700/50">
-          <div className="text-xs text-purple-300 mb-1">Flow Variables:</div>
-          <div className="flex flex-wrap gap-1">
-            {step.output_keys.split(',').slice(0, 3).map((variable: string, index: number) => (
-              <span key={index} className="text-xs bg-purple-800/50 text-purple-200 px-1.5 py-0.5 rounded">
-                {variable.trim()}
-              </span>
-            ))}
-            {step.output_keys.split(',').length > 3 && (
-              <span className="text-xs text-purple-400">+{step.output_keys.split(',').length - 3} more</span>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {/* Double-click hint */}
-      <div className="text-xs text-purple-400/70 mt-2 italic">
-        Double-click to open subflow
       </div>
       
       <Handle 
@@ -1258,86 +1232,75 @@ const NodePopup = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
-      <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800 shadow-2xl">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-semibold text-white">{nodeData?.title || 'Node'}</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-gray-900/90 backdrop-blur-sm rounded-lg p-4 w-full max-w-lg border border-gray-700 shadow-lg">
+        {/* Minimal header with just close button */}
+        <div className="flex justify-end mb-3">
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white text-lg"
+            title="Close"
           >
             ×
           </button>
         </div>
         
-        <div className="space-y-5">
-          {/* Instructions/condition text area */}
+        <div className="space-y-4">
+          {/* Instructions/condition text area - minimal */}
           <div>
             <textarea
               ref={textareaRef}
               value={instructions || ''}
               onChange={(e) => setInstructions(e.target.value)}
-              onInput={(e) => setInstructions(e.currentTarget.value)} // Added for automation compatibility
+              onInput={(e) => setInstructions(e.currentTarget.value)}
               onDragOver={onInstructionsDragOver}
               onDrop={onInstructionsDrop}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white min-h-[120px] font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white min-h-[100px] font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
               placeholder={nodeData?.type === 'condition' ? 'Enter condition (e.g., {{variable}} == "success")' : 'Enter instructions...'}
+              autoFocus
             />
           </div>
 
-          {/* Available Variables */}
+          {/* Available Variables - minimal inline */}
           {availableVariables.length > 0 && (
-            <div>
-              <div className="text-sm text-gray-300 mb-2">Variables (drag into text)</div>
-              <div className="space-y-1">
-                {availableVariables.map((variable, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center bg-gray-800 border border-gray-700 rounded px-3 py-2 cursor-grab active:cursor-grabbing hover:bg-gray-700/50 transition-colors"
-                    draggable
-                    onDragStart={(e) => onVariableDragStart(e, variable)}
-                  >
-                    <div className="text-gray-400 mr-2 text-xs">📦</div>
-                    <div className="flex-1 text-white font-mono text-xs">
-                      {variable}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-1">
+              {availableVariables.map((variable, index) => (
+                <div 
+                  key={index}
+                  className="inline-flex items-center bg-gray-800/50 border border-gray-600 rounded px-2 py-1 cursor-grab active:cursor-grabbing hover:bg-gray-700/50 transition-colors text-xs"
+                  draggable
+                  onDragStart={(e) => onVariableDragStart(e, variable)}
+                  title={`Drag {{${variable}}} into text`}
+                >
+                  <div className="text-gray-400 mr-1 text-xs">📦</div>
+                  <div className="text-white font-mono">{`{{${variable}}}`}</div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Output Keys */}
+          {/* Output Variables - minimal */}
           <div>
-            <div className="text-sm text-gray-300 mb-2">Output variables (comma separated)</div>
             <input
               ref={outputKeysRef}
               type="text"
               value={outputKeys || ''}
               onChange={(e) => setOutputKeys(e.target.value)}
-              onInput={(e) => setOutputKeys(e.currentTarget.value)} // Added for automation compatibility
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
-              placeholder="result, data, output..."
+              onInput={(e) => setOutputKeys(e.currentTarget.value)}
+              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+              placeholder="Output variables (comma separated)"
             />
           </div>
-        </div>
 
-        <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-800">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              console.log('Save button clicked!');
-              handleSave();
-            }}
-            className="px-5 py-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 text-sm font-medium border border-gray-700 transition-colors"
-          >
-            Save
-          </button>
+          {/* Minimal save button */}
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={handleSave}
+              className="px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-sm transition-colors"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>
