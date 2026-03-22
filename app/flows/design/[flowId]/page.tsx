@@ -103,7 +103,7 @@ interface EdgeData extends Record<string, any> {
 type CustomEdge = Edge<EdgeData>;
 
 // Node data interface
-interface NodeData {
+interface NodeData extends Record<string, any> {
   label?: string;
   title?: string;
   step?: Step;
@@ -630,7 +630,7 @@ function getAvailableVariables(currentStepId: string, steps: Step[]): string[] {
 
 // Create edges connecting all steps in sequence
 function createEdgesFromSteps(steps: Step[]) {
-  const edges: Edge[] = [];
+  const edges: CustomEdge[] = [];
   for (let i = 0; i < steps.length - 1; i++) {
     edges.push({
       id: `e${steps[i].id}-${steps[i + 1].id}`,
@@ -669,9 +669,9 @@ const EdgePopup = ({
   onSave, 
   onClose 
 }: { 
-  edge: Edge;
-  nodes: Node[];
-  onSave: (edge: Edge) => void;
+  edge: CustomEdge;
+  nodes: CustomNode[];
+  onSave: (edge: CustomEdge) => void;
   onClose: () => void;
 }) => {
   const [condition, setCondition] = useState(() => {
@@ -891,6 +891,7 @@ const StepPopup = ({
   const [stepType, setStepType] = useState<string>(typeof nodeData?.step?.step_type === 'string' ? nodeData.step.step_type : 'default');
 
   const handleSave = () => {
+    const currentStep = nodeData?.step;
     const updatedNode = {
       ...node,
       data: {
@@ -898,10 +899,38 @@ const StepPopup = ({
         instructions,
         command,
         await_input: awaitInput,
-        step: {
-          ...nodeData?.step,
+        step: currentStep ? {
+          ...currentStep,
           output_keys: outputKeys,
           step_type: stepType,
+        } : {
+          // Create a minimal step object if it doesn't exist
+          id: node.id || `step-${Date.now()}`,
+          flow_id: '',
+          step_key: '',
+          title: nodeData?.title || 'Untitled Step',
+          instructions: instructions,
+          step_type: stepType,
+          order_index: 0,
+          blocking: 0,
+          auto_fail_on_error: 0,
+          retryable: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          task_id: null,
+          output_keys: outputKeys,
+          output_url: null,
+          output_payload_template: null,
+          default_next_step: null,
+          output_auth_token: null,
+          input_keys: null,
+          output: 0,
+          default_next_step_id: null,
+          step_number: null,
+          requires_task: 0,
+          use_endpoints: null,
+          extra_step: 0,
+          page_key: null,
         },
       },
     };
@@ -1133,7 +1162,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   const [showCreateFlowModal, setShowCreateFlowModal] = useState(false);
   
   // Drag and drop state
-  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<CustomNode, CustomEdge> | null>(null);
   const [draggingNodeType, setDraggingNodeType] = useState<string | null>(null);
   
   // Load flow data on mount
@@ -1225,13 +1254,13 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   );
 
   const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds) as CustomEdge[]),
     []
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      const newEdge: Edge = {
+      const newEdge: CustomEdge = {
         id: `e${connection.source}-${connection.target}`,
         source: connection.source!,
         target: connection.target!,
@@ -1262,13 +1291,13 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     []
   );
 
-  const handleEdgeUpdate = useCallback((updatedEdge: Edge) => {
+  const handleEdgeUpdate = useCallback((updatedEdge: CustomEdge) => {
     setEdges((eds) => eds.map(edge => 
       edge.id === updatedEdge.id ? updatedEdge : edge
     ));
   }, []);
 
-  const handleNodeUpdate = useCallback((updatedNode: Node) => {
+  const handleNodeUpdate = useCallback((updatedNode: CustomNode) => {
     setNodes((nds) => nds.map(node => 
       node.id === updatedNode.id ? updatedNode : node
     ));
@@ -1364,7 +1393,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // If there are existing nodes, create an edge from the last node to the new one
       if (nodes.length > 0) {
         const lastNode = nodes[nodes.length - 1];
-        const newEdge: Edge = {
+        const newEdge: CustomEdge = {
           id: `e${lastNode.id}-${newStep.id}`,
           source: lastNode.id,
           target: newStep.id,
@@ -1501,7 +1530,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }, [reactFlowInstance, draggingNodeType, nodes, currentFlowId]);
 
   // Initialize React Flow instance
-  const onInit = useCallback((instance: ReactFlowInstance) => {
+  const onInit = useCallback((instance: ReactFlowInstance<CustomNode, CustomEdge>) => {
     setReactFlowInstance(instance);
   }, []);
 
