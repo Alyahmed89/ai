@@ -699,23 +699,22 @@ export default function ChatPage(props: any) {
       
       for (const step of steps) {
         console.log('Checking step:', step.id, 'instructions:', step.instructions);
-        if (step.instructions && (step.instructions.includes('{input_prompt}') || step.instructions.includes('{user.message}'))) {
+        // Check for new [input:...] format placeholders
+        const inputPlaceholderRegex = /\[input:([^\]]+)\]/g;
+        const hasInputPlaceholders = step.instructions && inputPlaceholderRegex.test(step.instructions);
+        
+        if (step.instructions && hasInputPlaceholders) {
           // Save original instructions
           originalInstructions[step.id] = step.instructions;
           
           // Resolve placeholders
           let resolvedInstructions = step.instructions;
           if (prompt) {
-            // Replace {input_prompt} placeholder
-            if (resolvedInstructions.includes('{input_prompt}')) {
-              resolvedInstructions = resolvedInstructions.replace(/\{input_prompt\}/g, prompt);
-              console.log('Replaced {input_prompt} with:', prompt);
-            }
-            // Replace {user.message} placeholder
-            if (resolvedInstructions.includes('{user.message}')) {
-              resolvedInstructions = resolvedInstructions.replace(/\{user\.message\}/g, prompt);
-              console.log('Replaced {user.message} with:', prompt);
-            }
+            // Replace [input:user_prompt] placeholder with the user's prompt
+            // For now, we'll replace any [input:...] with the user prompt
+            // In a more advanced system, we'd parse the input name and map it to specific values
+            resolvedInstructions = resolvedInstructions.replace(/\[input:([^\]]+)\]/g, prompt);
+            console.log('Replaced [input:...] placeholders with:', prompt);
           }
           
           console.log('Original instructions:', step.instructions);
@@ -833,7 +832,7 @@ export default function ChatPage(props: any) {
       const taskResult = await taskResponse.json();
       const createdTaskId = taskResult.id;
       
-      // Start the flow
+      // Start the flow with inputs
       const flowResponse = await fetch('/api/proxy/start', {
         method: 'POST',
         headers: {
@@ -841,7 +840,9 @@ export default function ChatPage(props: any) {
         },
         body: JSON.stringify({
           flow_id: selectedFlowId,
-          input_prompt: prompt
+          inputs: {
+            user_prompt: prompt
+          }
         }),
       });
       

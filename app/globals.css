@@ -40,3 +40,92 @@ body {
 .custom-scrollbar::-webkit-scrollbar-corner {
   background: #111827;
 }
+
+/* Ensure form elements have dark backgrounds */
+input, textarea, select {
+  background-color: #1f2937 !important; /* gray-800 */
+  color: #f9fafb !important; /* gray-50 */
+  border-color: #4b5563 !important; /* gray-600 */
+}
+
+input:focus, textarea:focus, select:focus {
+  background-color: #374151 !important; /* gray-700 */
+  border-color: #3b82f6 !important; /* blue-500 */
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Ensure modal form elements are dark */
+[class*="bg-gray"] input, 
+[class*="bg-gray"] textarea, 
+[class*="bg-gray"] select {
+  background-color: #111827 !important; /* gray-900 */
+  color: #f9fafb !important;
+  border-color: #374151 !important; /* gray-700 */
+}
+
+[class*="bg-gray"] input:focus, 
+[class*="bg-gray"] textarea:focus, 
+[class*="bg-gray"] select:focus {
+  background-color: #1f2937 !important; /* gray-800 */
+  border-color: #3b82f6 !important;
+}
+
+/* Target all possible form elements in the application */
+.react-flow__node input,
+.react-flow__node textarea,
+.react-flow__node select,
+.react-flow__controls input,
+.react-flow__controls textarea,
+.react-flow__controls select,
+.react-flow__panel input,
+.react-flow__panel textarea,
+.react-flow__panel select {
+  background-color: #1f2937 !important;
+  color: #f9fafb !important;
+  border-color: #4b5563 !important;
+}
+
+/* Ensure nodes themselves don't have white backgrounds */
+.react-flow__node {
+  background-color: transparent !important;
+}
+
+/* Target the specific modal that appears when clicking nodes */
+[role="dialog"] input,
+[role="dialog"] textarea,
+[role="dialog"] select,
+[aria-modal="true"] input,
+[aria-modal="true"] textarea,
+[aria-modal="true"] select {
+  background-color: #111827 !important;
+  color: #f9fafb !important;
+  border-color: #374151 !important;
+}
+
+/* Style dropdown menus */
+select option {
+  background-color: #1f2937 !important;
+  color: #f9fafb !important;
+}
+
+/* Style combobox dropdowns */
+[role="listbox"] {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+}
+
+[role="option"] {
+  background-color: #1f2937 !important;
+  color: #f9fafb !important;
+}
+
+[role="option"]:hover,
+[role="option"]:focus {
+  background-color: #374151 !important;
+}
+
+[role="option"][aria-selected="true"] {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}

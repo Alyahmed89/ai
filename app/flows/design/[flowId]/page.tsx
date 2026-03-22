@@ -121,13 +121,16 @@ interface NodeData {
 type CustomNode = Node<NodeData>;
 
 // Custom node component for dark mode with enhanced visual indicators
-const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId: string) => void; onAddNode?: (nodeId: string, event: React.MouseEvent) => void }) => {
+const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onClick?: (nodeId: string) => void; onAddNode?: (nodeId: string, event: React.MouseEvent) => void; onDeleteNode?: (nodeId: string) => void }) => {
   const step = data.step as Step;
   const hasCommand = data.command && data.command.trim().length > 0;
   const hasVariables = step && step.output_keys && step.output_keys.trim().length > 0;
   const hasInput = step && step.input_keys && step.input_keys.trim().length > 0;
   const hasOutput = step && step.output_keys && step.output_keys.trim().length > 0;
   const awaitInput = data.await_input === true;
+  
+  // State for hover tracking
+  const [isHovered, setIsHovered] = useState(false);
   
   // Determine node colors based on type - Modern minimal palette
   let bgColor = '#0f172a'; // slate-900
@@ -156,9 +159,16 @@ const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId
     borderStyle = 'dashed';
   }
   
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDeleteNode && step.id) {
+      onDeleteNode(step.id);
+    }
+  };
+  
   return (
     <div 
-      className="px-4 py-3 rounded-lg border cursor-pointer transition-all hover:border-opacity-100"
+      className="px-4 py-3 rounded-lg border cursor-pointer transition-all hover:border-opacity-100 relative group"
       style={{
         backgroundColor: bgColor,
         borderColor: borderColor,
@@ -168,6 +178,8 @@ const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId
         minWidth: '220px',
         maxWidth: '280px',
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onClick={() => {
         console.log('Node clicked:', step.id, step);
         if (onClick) {
@@ -191,6 +203,16 @@ const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId
       <div className="flex justify-between items-start">
         <div className="font-medium text-sm truncate">{step.title}</div>
         <div className="flex items-center space-x-1 ml-2">
+          {/* Delete button - appears on hover */}
+          {isHovered && onDeleteNode && (
+            <button
+              onClick={handleDelete}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30"
+              title="Delete this step"
+            >
+              🗑️
+            </button>
+          )}
           {/* Add Step button - draggable for drag-to-create */}
           <button
             onClick={(e) => {
@@ -269,14 +291,26 @@ const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId
 };
 
 // Custom Flow Node component for subflows/agents
-const FlowNode = ({ data }: { data: any }) => {
+const FlowNode = ({ data, onDeleteNode }: { data: any; onDeleteNode?: (nodeId: string) => void }) => {
   const step = data.step as Step;
   const hasInput = step && step.input_keys && step.input_keys.trim() !== '';
   const hasOutput = step && step.output_keys && step.output_keys.trim() !== '';
   
+  // State for hover tracking
+  const [isHovered, setIsHovered] = useState(false);
+  
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDeleteNode && step.id) {
+      onDeleteNode(step.id);
+    }
+  };
+  
   return (
     <div 
-      className="bg-gray-900 border border-purple-600 rounded p-3 w-60 cursor-pointer"
+      className="bg-gray-900 border border-purple-600 rounded p-3 w-60 cursor-pointer relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onDoubleClick={() => {
         console.log('Double-clicked flow node:', step.id);
         // In a real implementation, this would open the subflow
@@ -290,8 +324,20 @@ const FlowNode = ({ data }: { data: any }) => {
             {step.title}
           </div>
         </div>
-        <div className="text-xs text-purple-400">
-          Flow
+        <div className="flex items-center space-x-1">
+          {/* Delete button - appears on hover */}
+          {isHovered && onDeleteNode && (
+            <button
+              onClick={handleDelete}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30"
+              title="Delete this flow node"
+            >
+              🗑️
+            </button>
+          )}
+          <div className="text-xs text-purple-400">
+            Flow
+          </div>
         </div>
       </div>
       
@@ -1143,6 +1189,16 @@ const NodePopup = ({
   const [selectedCommand, setSelectedCommand] = useState<string>('');
   const [availableCommands, setAvailableCommands] = useState<Array<{name: string, description: string, method: string, parameters: any}>>([]);
   const [loadingCommands, setLoadingCommands] = useState(false);
+  const [showCreateCommand, setShowCreateCommand] = useState(false);
+  const [newCommandData, setNewCommandData] = useState({
+    name: '',
+    description: '',
+    method: 'GET' as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+    endpoint: '',
+    parameters: '{}'
+  });
+  const [creatingCommand, setCreatingCommand] = useState(false);
+  const [awaitInput, setAwaitInput] = useState<boolean>(nodeData?.await_input === true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const expectedResponseRef = useRef<HTMLTextAreaElement>(null);
   
@@ -1200,6 +1256,7 @@ const NodePopup = ({
     console.log('State instructions:', instructions, 'DOM instructions:', domInstructions);
     console.log('State expectedResponse:', expectedResponse, 'DOM expectedResponse:', domExpectedResponse);
     console.log('nodeData:', nodeData);
+    console.log('awaitInput:', awaitInput);
     
     const currentStep = nodeData?.step;
     const updatedNode = {
@@ -1208,6 +1265,7 @@ const NodePopup = ({
         ...nodeData,
         instructions: domInstructions, // Use DOM value
         expectedResponse: domExpectedResponse, // Use DOM value
+        await_input: awaitInput,
         step: currentStep ? {
           ...currentStep,
           instructions: domInstructions, // Use DOM value
@@ -1246,6 +1304,67 @@ const NodePopup = ({
     console.log('Updated node to save:', JSON.stringify(updatedNode, null, 2));
     onSave(updatedNode);
     onClose();
+  };
+
+  // Handle new command form input changes
+  const handleNewCommandChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewCommandData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Handle creating a new command
+  const handleCreateCommand = async () => {
+    if (!newCommandData.name.trim() || !newCommandData.endpoint.trim()) {
+      alert('Please fill in command name and endpoint URL');
+      return;
+    }
+
+    setCreatingCommand(true);
+    try {
+      // Simulate API call delay (like in /commands/new page)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log('Creating new command:', {
+        name: newCommandData.name,
+        description: newCommandData.description,
+        method: newCommandData.method,
+        endpoint: newCommandData.endpoint,
+        parameters: newCommandData.parameters
+      });
+      
+      // Add the new command to the available commands list locally
+      const newCommand = {
+        name: newCommandData.name,
+        description: newCommandData.description,
+        method: newCommandData.method,
+        endpoint: newCommandData.endpoint,
+        parameters: newCommandData.parameters,
+        tags: ['custom', 'user_created']
+      };
+      
+      // Update the commands list locally
+      setAvailableCommands(prev => [...prev, newCommand]);
+      
+      // Close the popup and reset form
+      setShowCreateCommand(false);
+      setNewCommandData({
+        name: '',
+        description: '',
+        method: 'GET',
+        endpoint: '',
+        parameters: '{}'
+      });
+      
+      alert('Command created successfully! It will appear in the dropdown.');
+    } catch (error) {
+      console.error('Error creating command:', error);
+      alert('Failed to create command. Please check the console for details.');
+    } finally {
+      setCreatingCommand(false);
+    }
   };
 
   // Handle drag start for variables
@@ -1309,6 +1428,7 @@ const NodePopup = ({
               ))}
             </select>
             <button
+              onClick={() => setShowCreateCommand(true)}
               className="px-3 py-2 bg-gray-800/50 border border-gray-600 rounded text-white text-sm hover:bg-gray-700/50 transition-colors"
               title="Add new command"
             >
@@ -1346,6 +1466,23 @@ const NodePopup = ({
             />
           </div>
 
+          {/* Await User Input Checkbox */}
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="await-input-checkbox"
+              checked={awaitInput}
+              onChange={(e) => setAwaitInput(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900"
+            />
+            <label htmlFor="await-input-checkbox" className="ml-2 text-sm text-gray-300">
+              Requires user prompt input
+            </label>
+            <div className="ml-2 text-xs text-gray-500">
+              (Flow will pause at this step and wait for user input)
+            </div>
+          </div>
+
           {/* Command Parameters - only show when command is selected */}
           {selectedCommand && commandParameters.length > 0 && (
             <div>
@@ -1356,7 +1493,7 @@ const NodePopup = ({
                 {commandParameters.map((param, index) => (
                   <div 
                     key={index}
-                    className="inline-flex items-center bg-white text-gray-900 rounded px-2 py-1 cursor-pointer hover:bg-gray-100 transition-colors text-xs"
+                    className="inline-flex items-center bg-gray-800 text-gray-100 border border-gray-700 rounded px-2 py-1 cursor-pointer hover:bg-gray-700 transition-colors text-xs"
                     draggable
                     onDragStart={(e) => onVariableDragStart(e, param)}
                     title={`Drag ${param} into text`}
@@ -1397,6 +1534,121 @@ const NodePopup = ({
           </div>
         </div>
       </div>
+
+      {/* Command Creation Popup */}
+      {showCreateCommand && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]">
+          <div className="bg-gray-900/95 backdrop-blur-sm rounded-lg p-6 w-full max-w-md border border-gray-700 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-white">Create New Command</h3>
+              <button
+                onClick={() => setShowCreateCommand(false)}
+                className="text-gray-400 hover:text-white text-xl"
+                title="Close"
+                disabled={creatingCommand}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Command Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={newCommandData.name}
+                  onChange={handleNewCommandChange}
+                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+                  placeholder="e.g., create_task"
+                  disabled={creatingCommand}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Description</label>
+                <textarea
+                  name="description"
+                  value={newCommandData.description}
+                  onChange={handleNewCommandChange}
+                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors min-h-[60px]"
+                  placeholder="What does this command do?"
+                  disabled={creatingCommand}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">HTTP Method *</label>
+                <select
+                  name="method"
+                  value={newCommandData.method}
+                  onChange={handleNewCommandChange}
+                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+                  disabled={creatingCommand}
+                >
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Endpoint URL *</label>
+                <input
+                  type="text"
+                  name="endpoint"
+                  value={newCommandData.endpoint}
+                  onChange={handleNewCommandChange}
+                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors font-mono"
+                  placeholder="e.g., /api/tasks"
+                  disabled={creatingCommand}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Parameters (JSON)</label>
+                <textarea
+                  name="parameters"
+                  value={newCommandData.parameters}
+                  onChange={handleNewCommandChange}
+                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors font-mono min-h-[80px]"
+                  placeholder='{"property": "type"}'
+                  disabled={creatingCommand}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  Use JSON schema format for parameters
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowCreateCommand(false)}
+                  className="px-3 py-1.5 bg-gray-700/50 hover:bg-gray-700 text-white rounded text-sm transition-colors"
+                  disabled={creatingCommand}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateCommand}
+                  className="px-3 py-1.5 bg-green-600/80 hover:bg-green-600 text-white rounded text-sm transition-colors flex items-center gap-2"
+                  disabled={creatingCommand}
+                >
+                  {creatingCommand ? (
+                    <>
+                      <span className="animate-spin">⟳</span>
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Command'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1502,144 +1754,6 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     }
   };
 
-  // Node types configuration with onClick handler
-  const nodeTypes = useMemo(() => ({
-    default: (props: any) => {
-      const handleClick = (nodeId: string) => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      };
-      
-      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
-        event.stopPropagation();
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setAddNodeMenu({
-            show: true,
-            sourceNodeId: nodeId,
-            position: { x: event.clientX, y: event.clientY },
-          });
-        }
-      };
-      
-      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
-    },
-    input: (props: any) => {
-      const handleClick = (nodeId: string) => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      };
-      
-      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
-        event.stopPropagation();
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setAddNodeMenu({
-            show: true,
-            sourceNodeId: nodeId,
-            position: { x: event.clientX, y: event.clientY },
-          });
-        }
-      };
-      
-      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
-    },
-    output: (props: any) => {
-      const handleClick = (nodeId: string) => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      };
-      
-      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
-        event.stopPropagation();
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setAddNodeMenu({
-            show: true,
-            sourceNodeId: nodeId,
-            position: { x: event.clientX, y: event.clientY },
-          });
-        }
-      };
-      
-      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
-    },
-    response: (props: any) => {
-      const handleClick = (nodeId: string) => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      };
-      
-      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
-        event.stopPropagation();
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setAddNodeMenu({
-            show: true,
-            sourceNodeId: nodeId,
-            position: { x: event.clientX, y: event.clientY },
-          });
-        }
-      };
-      
-      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
-    },
-    condition: (props: any) => {
-      const handleClick = (nodeId: string) => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      };
-      
-      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
-        event.stopPropagation();
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setAddNodeMenu({
-            show: true,
-            sourceNodeId: nodeId,
-            position: { x: event.clientX, y: event.clientY },
-          });
-        }
-      };
-      
-      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
-    },
-    flow: (props: any) => {
-      const handleClick = (nodeId: string) => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      };
-      
-      return <FlowNode {...props} onClick={handleClick} />;
-    },
-  }), [nodes]);
-
-  // Edge types configuration with onClick handler
-  const edgeTypes = useMemo(() => ({
-    default: (props: any) => {
-      const handleClick = (edgeId: string) => {
-        const edge = edges.find(e => e.id === edgeId);
-        if (edge) {
-          setSelectedEdge(edge);
-        }
-      };
-      
-      return <CustomEdge {...props} onClick={handleClick} />;
-    },
-  }), [edges]);
-
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       setNodes((nds) => {
@@ -1664,6 +1778,161 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     },
     []
   );
+
+  // Function to handle node deletion
+  const handleDeleteNode = useCallback((nodeId: string) => {
+    // Create a remove change for the node
+    const change: NodeChange = {
+      id: nodeId,
+      type: 'remove'
+    };
+    
+    // Trigger the nodes change with remove action
+    onNodesChange([change]);
+    
+    // Also remove from selected node if it's the one being deleted
+    if (selectedNode?.id === nodeId) {
+      setSelectedNode(null);
+    }
+  }, [onNodesChange, selectedNode]);
+
+  // Node types configuration with onClick handler
+  const nodeTypes = useMemo(() => ({
+    default: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} onDeleteNode={handleDeleteNode} />;
+    },
+    input: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} onDeleteNode={handleDeleteNode} />;
+    },
+    output: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} onDeleteNode={handleDeleteNode} />;
+    },
+    response: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} onDeleteNode={handleDeleteNode} />;
+    },
+    condition: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} onDeleteNode={handleDeleteNode} />;
+    },
+    flow: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      return <FlowNode {...props} onClick={handleClick} onDeleteNode={handleDeleteNode} />;
+    },
+  }), [nodes, handleDeleteNode]);
+
+  // Edge types configuration with onClick handler
+  const edgeTypes = useMemo(() => ({
+    default: (props: any) => {
+      const handleClick = (edgeId: string) => {
+        const edge = edges.find(e => e.id === edgeId);
+        if (edge) {
+          setSelectedEdge(edge);
+        }
+      };
+      
+      return <CustomEdge {...props} onClick={handleClick} />;
+    },
+  }), [edges]);
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds) as CustomEdge[]),
