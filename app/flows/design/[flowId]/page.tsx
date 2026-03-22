@@ -63,7 +63,7 @@ interface Step {
   page_key: string | null;
   // Additional fields for UI
   description?: string;
-  type?: 'input' | 'default' | 'output' | 'response';
+  type?: 'input' | 'default' | 'output' | 'response' | 'condition';
   command?: string;
   await_input?: boolean;
   variables?: string[];
@@ -2093,7 +2093,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           type: nodeType,
           step: {
             ...newStep,
-            type: stepType as 'input' | 'default' | 'output' | 'response',
+            type: stepType as 'input' | 'default' | 'output' | 'response' | 'condition',
           },
           instructions: newStep.instructions,
           command: '',
