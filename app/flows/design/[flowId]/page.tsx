@@ -112,7 +112,8 @@ interface NodeData {
   await_input?: boolean;
   variables?: string[];
   description?: string;
-  type?: 'input' | 'default' | 'output' | 'response';
+  condition?: string; // Condition text for condition nodes
+  type?: 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition';
   [key: string]: unknown;
 }
 
@@ -120,7 +121,7 @@ interface NodeData {
 type CustomNode = Node<NodeData>;
 
 // Custom node component for dark mode with enhanced visual indicators
-const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) => void }) => {
+const CustomNode = ({ data, onClick, onAddNode }: { data: any; onClick?: (nodeId: string) => void; onAddNode?: (nodeId: string, event: React.MouseEvent) => void }) => {
   const step = data.step as Step;
   const hasCommand = data.command && data.command.trim().length > 0;
   const hasVariables = step && step.output_keys && step.output_keys.trim().length > 0;
@@ -128,31 +129,42 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
   const hasOutput = step && step.output_keys && step.output_keys.trim().length > 0;
   const awaitInput = data.await_input === true;
   
-  // Determine node colors based on type
-  let bgColor = '#1f2937'; // default
-  let borderColor = '#374151'; // default
-  let textColor = '#f9fafb'; // default
+  // Determine node colors based on type - Modern minimal palette
+  let bgColor = '#0f172a'; // slate-900
+  let borderColor = '#334155'; // slate-700
+  let textColor = '#f8fafc'; // slate-50
+  let borderWidth = '1px';
+  let borderStyle = 'solid';
   
   const nodeType = data.type || (step && step.step_type) || 'default';
   
   if (nodeType === 'input') {
-    bgColor = '#064e3b'; // dark green
-    borderColor = '#047857'; // green
+    bgColor = '#0f172a'; // slate-900
+    borderColor = '#0ea5e9'; // sky-500
   } else if (nodeType === 'output') {
-    bgColor = '#7f1d1d'; // dark red
-    borderColor = '#dc2626'; // red
+    bgColor = '#0f172a'; // slate-900
+    borderColor = '#8b5cf6'; // violet-500
   } else if (nodeType === 'response') {
-    bgColor = '#713f12'; // dark yellow/brown
-    borderColor = '#d97706'; // amber
+    bgColor = '#1e293b'; // slate-800 - slightly lighter background
+    borderColor = '#f59e0b'; // amber-500
+    borderWidth = '2px';
+    borderStyle = 'dashed';
+  } else if (nodeType === 'condition') {
+    bgColor = '#1e293b'; // slate-800 - slightly lighter background
+    borderColor = '#3b82f6'; // blue-500
+    borderWidth = '2px';
+    borderStyle = 'dashed';
   }
   
   return (
     <div 
-      className="px-4 py-3 rounded-lg shadow-lg border cursor-pointer hover:shadow-xl transition-shadow"
+      className="px-4 py-3 rounded-lg border cursor-pointer transition-all hover:border-opacity-100"
       style={{
         backgroundColor: bgColor,
         borderColor: borderColor,
-        borderWidth: '2px',
+        borderWidth: borderWidth,
+        borderStyle: borderStyle,
+        borderOpacity: 0.7,
         color: textColor,
         minWidth: '220px',
         maxWidth: '280px',
@@ -177,71 +189,70 @@ const CustomNode = ({ data, onClick }: { data: any; onClick?: (nodeId: string) =
       />
       
       {/* Node header with title and indicators */}
-      <div className="flex justify-between items-start mb-2">
+      <div className="flex justify-between items-start">
         <div className="font-medium text-sm truncate">{step.title}</div>
         <div className="flex items-center space-x-1 ml-2">
-          {nodeType === 'response' && (
-            <span className="text-xs bg-yellow-900 text-yellow-200 px-1.5 py-0.5 rounded" title="Response Node - Handles AI responses and loops">
-              🔄
+          {/* Add Step button - draggable for drag-to-create */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onAddNode) {
+                onAddNode(step.id, e);
+              }
+            }}
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation();
+              e.dataTransfer.setData('application/node-add', step.id);
+              e.dataTransfer.effectAllowed = 'copy';
+              // Set drag image to a custom indicator
+              const dragIcon = document.createElement('div');
+              dragIcon.textContent = '+';
+              dragIcon.style.position = 'absolute';
+              dragIcon.style.left = '-1000px';
+              dragIcon.style.top = '-1000px';
+              document.body.appendChild(dragIcon);
+              e.dataTransfer.setDragImage(dragIcon, 10, 10);
+              setTimeout(() => document.body.removeChild(dragIcon), 0);
+            }}
+            className="text-xs text-gray-400 opacity-40 hover:opacity-100 hover:text-green-400 transition-opacity cursor-grab active:cursor-grabbing"
+            title="Add step from this node (click or drag)"
+          >
+            +
+          </button>
+          {/* I/O and command indicators as icons - blurry by default, full opacity on hover */}
+          {hasInput && (
+            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title={`Input: ${step.input_keys}`}>
+              →
             </span>
           )}
-          {awaitInput && (
-            <span className="text-xs bg-yellow-900 text-yellow-200 px-1.5 py-0.5 rounded" title="Awaits user input">
-              ⏳
+          {hasOutput && (
+            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title={`Output: ${step.output_keys}`}>
+              ←
             </span>
           )}
           {hasCommand && (
-            <span className="text-xs bg-blue-900 text-blue-200 px-1.5 py-0.5 rounded" title="Has command">
+            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Has command">
               ⚡
             </span>
           )}
-          {hasVariables && (
-            <span className="text-xs bg-purple-900 text-purple-200 px-1.5 py-0.5 rounded" title="Has variables">
-              📦
+          {awaitInput && (
+            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Awaits user input">
+              ⏳
+            </span>
+          )}
+          {nodeType === 'response' && (
+            <span className="text-xs text-yellow-400 opacity-40 hover:opacity-100 transition-opacity" title="Response Node">
+              🔄
+            </span>
+          )}
+          {nodeType === 'condition' && (
+            <span className="text-xs text-blue-400 opacity-40 hover:opacity-100 transition-opacity" title="Condition Node">
+              ⚖️
             </span>
           )}
         </div>
       </div>
-      
-      {/* Step description */}
-      {step.description && (
-        <div className="text-xs text-gray-300 mt-1 mb-2 line-clamp-2">{step.description}</div>
-      )}
-      
-      {/* I/O indicators */}
-      <div className="flex flex-wrap gap-1 mt-2">
-        {hasInput && step.input_keys && (
-          <span className="text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded border border-green-800">
-            Input: {step.input_keys.split(',').length > 3 ? 
-              `${step.input_keys.split(',').slice(0, 3).join(',')}...` : 
-              step.input_keys}
-          </span>
-        )}
-        {hasOutput && (
-          <span className="text-xs bg-red-900/50 text-red-300 px-2 py-0.5 rounded border border-red-800">
-            Output: {step.output_keys.split(',').length > 3 ? 
-              `${step.output_keys.split(',').slice(0, 3).join(',')}...` : 
-              step.output_keys}
-          </span>
-        )}
-      </div>
-      
-      {/* Variables preview (from output_keys) */}
-      {hasOutput && step.output_keys && (
-        <div className="mt-2 pt-2 border-t border-gray-700">
-          <div className="text-xs text-gray-400 mb-1">Variables:</div>
-          <div className="flex flex-wrap gap-1">
-            {step.output_keys.split(',').slice(0, 3).map((variable: string, index: number) => (
-              <span key={index} className="text-xs bg-purple-900/30 text-purple-300 px-1.5 py-0.5 rounded">
-                {variable.trim()}
-              </span>
-            ))}
-            {step.output_keys.split(',').length > 3 && (
-              <span className="text-xs text-gray-500">+{step.output_keys.split(',').length - 3} more</span>
-            )}
-          </div>
-        </div>
-      )}
       
       <Handle 
         type="source" 
@@ -391,7 +402,7 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
   });
 
   const conditionText = data?.condition?.source === 'default' 
-    ? 'always' 
+    ? '' // Empty for "always" conditions - will be added later using condition nodes
     : `${data?.condition?.source} ${data?.condition?.operator} ${data?.condition?.value || ''}`;
 
   return (
@@ -405,33 +416,36 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
           strokeWidth: 2,
         }}
       />
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            background: '#1f2937',
-            border: '1px solid #374151',
-            borderRadius: '4px',
-            padding: '2px 6px',
-            fontSize: '10px',
-            fontWeight: '500',
-            color: '#f9fafb',
-            pointerEvents: 'all',
-            cursor: 'pointer',
-            zIndex: 1000,
-          }}
-          className="hover:bg-gray-800"
-          onClick={() => {
-            console.log('Edge clicked:', id, data);
-            if (onClick) {
-              onClick(id);
-            }
-          }}
-        >
-          {conditionText}
-        </div>
-      </EdgeLabelRenderer>
+      {conditionText && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              background: '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: '3px',
+              padding: '1px 4px',
+              fontSize: '9px',
+              fontWeight: '400',
+              color: '#94a3b8',
+              pointerEvents: 'all',
+              cursor: 'pointer',
+              zIndex: 1000,
+              opacity: 0.8,
+            }}
+            className="hover:opacity-100 hover:border-sky-500"
+            onClick={() => {
+              console.log('Edge clicked:', id, data);
+              if (onClick) {
+                onClick(id);
+              }
+            }}
+          >
+            {conditionText}
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 };
@@ -485,6 +499,8 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
       stepsArray = stepsData.data;
     }
     
+    console.log('Steps array before filtering:', stepsArray.map((s: any) => ({ id: s.id, flow_id: s.flow_id, step_type: s.step_type, extra_step: s.extra_step })));
+    
     // Filter steps for this flow and sort by order_index
     const flowSteps = stepsArray
       .filter((step: any) => step.flow_id === flowId)
@@ -494,12 +510,15 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
         // Add UI-specific fields - use step_type for type, not order_index
         // Map backend step_type to UI type
         type: (() => {
-          // If step_type is "processing" and extra_step is 1, it's a response node
+          // If step_type is "processing" and extra_step is 1, it's a response node (backward compatibility)
           if (step.step_type === 'processing' && step.extra_step === 1) {
+            console.log(`Step ${step.id}: Backward compatibility - processing with extra_step=1 -> response`);
             return 'response';
           }
           // Otherwise use step_type directly
-          return step.step_type || (step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default');
+          const result = step.step_type || (step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default');
+          console.log(`Step ${step.id}: step_type="${step.step_type}", extra_step=${step.extra_step}, mapped to type="${result}"`);
+          return result;
         })(),
         description: step.instructions.substring(0, 100) + (step.instructions.length > 100 ? '...' : ''),
       })) as Step[];
@@ -517,7 +536,7 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
   try {
     // For now, we'll just update existing steps
     // In a real implementation, we would create/update/delete steps as needed
-    console.log('Would save flow steps:', { flowId, steps });
+    console.log('Saving flow steps:', { flowId, steps: steps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, extra_step: s.extra_step, instructions: s.instructions })) });
     
     // Example: Update each step
     for (const step of steps) {
@@ -547,8 +566,16 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         console.error(`Failed to update step ${step.id}:`, response.status);
         const errorText = await response.text();
         console.error('Error response:', errorText);
+        return false;
       } else {
         console.log(`Step ${step.id} saved successfully`);
+        // Log the response to see what the backend returned
+        try {
+          const responseData = await response.json();
+          console.log(`Step ${step.id} response:`, JSON.stringify(responseData, null, 2));
+        } catch (e) {
+          console.log(`Step ${step.id} saved but no JSON response`);
+        }
       }
     }
     
@@ -572,22 +599,25 @@ async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<S
         instructions: stepData.instructions || '',
         step_type: stepData.step_type || 'default',
         order_index: stepData.order_index || 1,
-        blocking: stepData.blocking || 0,
-        auto_fail_on_error: stepData.auto_fail_on_error || 0,
-        retryable: stepData.retryable || 0,
+        blocking: Boolean(stepData.blocking || 0),
+        auto_fail_on_error: Boolean(stepData.auto_fail_on_error || 0),
+        retryable: Boolean(stepData.retryable || 0),
         output_keys: stepData.output_keys || '',
         input_keys: stepData.input_keys || '',
-        output: stepData.output || 0,
-        requires_task: stepData.requires_task || 0,
+        output: Boolean(stepData.output || 0),
+        requires_task: Boolean(stepData.requires_task || 0),
       }),
     });
     
     if (!response.ok) {
       console.error('Failed to create step:', response.status);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
       return null;
     }
     
     const data = await response.json();
+    console.log('Create step response:', data);
     return data.data || data;
   } catch (error) {
     console.error('Error creating step:', error);
@@ -600,7 +630,7 @@ function createNodesFromSteps(steps: Step[]) {
   console.log('Creating nodes from steps:', steps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type })));
   return steps.map((step, index) => {
     // Determine node type based on step_type
-    let nodeType = 'default';
+    let nodeType: 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition' = 'default';
     if (step.step_type === 'input' || step.type === 'input') {
       nodeType = 'input';
     } else if (step.step_type === 'output' || step.type === 'output') {
@@ -609,6 +639,8 @@ function createNodesFromSteps(steps: Step[]) {
       nodeType = 'flow';
     } else if (step.step_type === 'response' || step.type === 'response') {
       nodeType = 'response';
+    } else if (step.step_type === 'condition') {
+      nodeType = 'condition';
     } else if (step.step_type === 'processing' && step.extra_step === 1) {
       // Backward compatibility: processing steps with extra_step=1 are response nodes
       nodeType = 'response';
@@ -628,7 +660,7 @@ function createNodesFromSteps(steps: Step[]) {
         await_input: step.await_input || false,
         type: nodeType, // Use the mapped nodeType for UI consistency
       },
-      position: { x: 250, y: 25 + (index * 100) },
+      position: { x: 250, y: 25 + (index * 150) }, // Increased spacing from 100 to 150px
     };
   });
 }
@@ -854,22 +886,30 @@ const EdgePopup = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md border border-gray-700">
-        <h3 className="text-lg font-semibold text-white mb-4">Edge Condition</h3>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800 shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-semibold text-white">Edge Condition</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white text-lg"
+          >
+            ×
+          </button>
+        </div>
         
-        <div className="space-y-4">
+        <div className="space-y-5">
           {/* Source */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Condition Source
             </label>
-            <div className="mb-2">
-              <div className="text-xs text-gray-400 mb-1">System Conditions</div>
+            <div className="mb-3">
+              <div className="text-xs text-gray-500 mb-2">System Conditions</div>
               <select
                 value={condition.source}
                 onChange={(e) => setCondition({...condition, source: e.target.value})}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white mb-2"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors mb-3"
               >
                 <optgroup label="System Conditions">
                   {sourceOptions.filter(opt => opt.category === 'system').map(opt => (
@@ -917,16 +957,16 @@ const EdgePopup = ({
             </div>
             
             {/* Advanced Variable Browser */}
-            <div className="mt-4">
-              <div className="text-xs text-gray-400 mb-1">Cross-Step Variables</div>
-              <div className="bg-gray-900 rounded border border-gray-700 p-2 max-h-40 overflow-y-auto">
+            <div className="mt-5">
+              <div className="text-xs text-gray-500 mb-2">Cross-Step Variables</div>
+              <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-3 max-h-40 overflow-y-auto">
                 {groupedVariables.ai_responses.length > 0 && (
-                  <div className="mb-2">
-                    <div className="text-xs text-yellow-400 font-medium mb-1">AI Responses</div>
+                  <div className="mb-3">
+                    <div className="text-xs text-yellow-400 font-medium mb-2">AI Responses</div>
                     {groupedVariables.ai_responses.map(variable => (
                       <div 
                         key={variable.value}
-                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
                         onClick={() => setCondition({...condition, source: variable.value})}
                       >
                         {variable.label}
@@ -936,12 +976,12 @@ const EdgePopup = ({
                 )}
                 
                 {groupedVariables.ai_intents.length > 0 && (
-                  <div className="mb-2">
-                    <div className="text-xs text-blue-400 font-medium mb-1">AI Intents</div>
+                  <div className="mb-3">
+                    <div className="text-xs text-blue-400 font-medium mb-2">AI Intents</div>
                     {groupedVariables.ai_intents.map(variable => (
                       <div 
                         key={variable.value}
-                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
                         onClick={() => setCondition({...condition, source: variable.value})}
                       >
                         {variable.label}
@@ -951,12 +991,12 @@ const EdgePopup = ({
                 )}
                 
                 {groupedVariables.step_outputs.length > 0 && (
-                  <div className="mb-2">
-                    <div className="text-xs text-green-400 font-medium mb-1">Step Outputs</div>
+                  <div className="mb-3">
+                    <div className="text-xs text-green-400 font-medium mb-2">Step Outputs</div>
                     {groupedVariables.step_outputs.map(variable => (
                       <div 
                         key={variable.value}
-                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
                         onClick={() => setCondition({...condition, source: variable.value})}
                       >
                         {variable.label}
@@ -966,12 +1006,12 @@ const EdgePopup = ({
                 )}
                 
                 {groupedVariables.step_inputs.length > 0 && (
-                  <div className="mb-2">
-                    <div className="text-xs text-purple-400 font-medium mb-1">Step Inputs</div>
+                  <div className="mb-3">
+                    <div className="text-xs text-purple-400 font-medium mb-2">Step Inputs</div>
                     {groupedVariables.step_inputs.map(variable => (
                       <div 
                         key={variable.value}
-                        className="text-xs text-gray-300 px-2 py-1 hover:bg-gray-800 rounded cursor-pointer mb-1"
+                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
                         onClick={() => setCondition({...condition, source: variable.value})}
                       >
                         {variable.label}
@@ -981,12 +1021,12 @@ const EdgePopup = ({
                 )}
                 
                 {allVariables.length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-2">
+                  <div className="text-xs text-gray-500 text-center py-3">
                     No variables available. Add variables to steps first.
                   </div>
                 )}
               </div>
-              <div className="text-xs text-gray-400 mt-1">
+              <div className="text-xs text-gray-500 mt-2">
                 Click on a variable to select it as condition source
               </div>
             </div>
@@ -994,13 +1034,13 @@ const EdgePopup = ({
 
           {/* Operator */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Operator
             </label>
             <select
               value={condition.operator}
               onChange={(e) => setCondition({...condition, operator: e.target.value})}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
             >
               {operatorOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>
@@ -1017,25 +1057,25 @@ const EdgePopup = ({
            condition.operator !== 'is_true' &&
            condition.operator !== 'is_false' && (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 {condition.operator === 'matches_regex' ? 'Regular Expression' : 'Value'}
               </label>
               <input
                 type="text"
                 value={condition.value || ''}
                 onChange={(e) => setCondition({...condition, value: e.target.value})}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
                 placeholder={
                   condition.operator === 'matches_regex' ? 'Enter regex pattern...' :
                   condition.operator === 'contains' ? 'Enter text to check for...' :
                   'Enter value or use {{variable}}...'
                 }
               />
-              <div className="text-xs text-gray-400 mt-1">
+              <div className="text-xs text-gray-500 mt-2">
                 {condition.operator === 'matches_regex' ? (
-                  <>Use regex patterns like <code className="bg-gray-900 px-1 py-0.5 rounded">^success$</code> or <code className="bg-gray-900 px-1 py-0.5 rounded">error.*</code></>
+                  <>Use regex patterns like <code className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">^success$</code> or <code className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">error.*</code></>
                 ) : (
-                  <>Use <code className="bg-gray-900 px-1 py-0.5 rounded">{"{{variable}}"}</code> syntax for variables from previous steps</>
+                  <>Use <code className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">{"{{variable}}"}</code> syntax for variables from previous steps</>
                 )}
               </div>
             </div>
@@ -1043,13 +1083,13 @@ const EdgePopup = ({
 
           {/* Target */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Target Step
             </label>
             <select
               value={route.target_id}
               onChange={(e) => setRoute({...route, target_id: e.target.value})}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
             >
               {targetNodes.map(node => (
                 <option key={node.id} value={node.id}>
@@ -1061,13 +1101,13 @@ const EdgePopup = ({
 
           {/* Route Type */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Route Type
             </label>
             <select
               value={route.type}
               onChange={(e) => setRoute({...route, type: e.target.value as any})}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
             >
               <option value="step">Step</option>
               <option value="flow">Flow (Agent)</option>
@@ -1077,13 +1117,13 @@ const EdgePopup = ({
 
           {/* Context Preservation */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Context Preservation
             </label>
             <select
               value={route.context_preservation || 'full'}
               onChange={(e) => setRoute({...route, context_preservation: e.target.value as any})}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
             >
               <option value="full">Full Context</option>
               <option value="partial">Partial Context</option>
@@ -1092,16 +1132,16 @@ const EdgePopup = ({
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3 mt-6">
+        <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-800">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white"
+            className="px-5 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+            className="px-5 py-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 text-sm font-medium border border-gray-700 transition-colors"
           >
             Save Condition
           </button>
@@ -1111,8 +1151,8 @@ const EdgePopup = ({
   );
 };
 
-// Step popup modal component
-const StepPopup = ({ 
+// Unified popup modal component for all nodes (steps and conditions)
+const NodePopup = ({ 
   node, 
   availableVariables,
   onSave, 
@@ -1124,44 +1164,41 @@ const StepPopup = ({
   onClose: () => void;
 }) => {
   const nodeData = node.data as NodeData;
-  const [stepTitle, setStepTitle] = useState<string>(typeof nodeData?.title === 'string' ? nodeData.title : '');
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
-  const [command, setCommand] = useState<string>(typeof nodeData?.command === 'string' ? nodeData.command : '');
-  const [awaitInput, setAwaitInput] = useState<boolean>(typeof nodeData?.await_input === 'boolean' ? nodeData.await_input : false);
   const [outputKeys, setOutputKeys] = useState<string>(typeof nodeData?.step?.output_keys === 'string' ? nodeData.step.output_keys : '');
-  const [inputKeys, setInputKeys] = useState<string>(typeof nodeData?.step?.input_keys === 'string' ? nodeData.step.input_keys : '');
-  const [stepType, setStepType] = useState<string>(typeof nodeData?.step?.step_type === 'string' ? nodeData.step.step_type : 'default');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const outputKeysRef = useRef<HTMLInputElement>(null);
+  
+  console.log('NodePopup rendered! nodeData?.instructions:', nodeData?.instructions, 'instructions state:', instructions);
 
   const handleSave = () => {
+    // Read from DOM refs to bypass React state timing issues with automation
+    const domInstructions = textareaRef.current?.value || '';
+    const domOutputKeys = outputKeysRef.current?.value || '';
+    
+    console.log('NodePopup handleSave called!');
+    console.log('State instructions:', instructions, 'DOM instructions:', domInstructions);
+    console.log('State outputKeys:', outputKeys, 'DOM outputKeys:', domOutputKeys);
+    console.log('nodeData:', nodeData);
+    
     const currentStep = nodeData?.step;
-    // Ensure stepType is one of the allowed values
-    const validType = (stepType === 'input' || stepType === 'output' || stepType === 'response') ? stepType : 'default';
-    // Map UI stepType to backend step_type
-    const backendStepType = stepType === 'response' ? 'processing' : stepType;
     const updatedNode = {
       ...node,
       data: {
         ...nodeData,
-        title: stepTitle,
-        instructions,
-        command,
-        await_input: awaitInput,
-        type: validType, // Also update the type field in node data
+        instructions: domInstructions, // Use DOM value
         step: currentStep ? {
           ...currentStep,
-          title: stepTitle,
-          output_keys: outputKeys,
-          input_keys: inputKeys,
-          step_type: backendStepType,
-          extra_step: stepType === 'response' ? 1 : currentStep.extra_step || 0,
+          instructions: domInstructions, // Use DOM value
+          output_keys: domOutputKeys, // Use DOM value
         } : {
           // Create a minimal step object if it doesn't exist
           id: node.id || `step-${Date.now()}`,
           flow_id: '',
           step_key: '',
-          title: stepTitle || 'Untitled Step',
-          instructions: instructions,
-          step_type: backendStepType,
+          title: nodeData?.title || 'Untitled Step',
+          instructions: domInstructions, // Use DOM value
+          step_type: 'default',
           order_index: 0,
           blocking: 0,
           auto_fail_on_error: 0,
@@ -1169,22 +1206,23 @@ const StepPopup = ({
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           task_id: null,
-          output_keys: outputKeys,
+          output_keys: domOutputKeys, // Use DOM value
           output_url: null,
           output_payload_template: null,
           default_next_step: null,
           output_auth_token: null,
-          input_keys: inputKeys,
+          input_keys: null,
           output: 0,
           default_next_step_id: null,
           step_number: null,
           requires_task: 0,
           use_endpoints: null,
-          extra_step: stepType === 'response' ? 1 : 0,
+          extra_step: 0,
           page_key: null,
         },
       },
     };
+    console.log('Updated node to save:', JSON.stringify(updatedNode, null, 2));
     onSave(updatedNode);
     onClose();
   };
@@ -1220,187 +1258,85 @@ const StepPopup = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl border border-gray-700 max-h-[80vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold text-white mb-4">Step Configuration</h3>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800 shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-semibold text-white">{nodeData?.title || 'Node'}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white text-lg"
+          >
+            ×
+          </button>
+        </div>
         
-        <div className="space-y-4">
-          {/* Step Title */}
+        <div className="space-y-5">
+          {/* Instructions/condition text area */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Step Title
-            </label>
-            <input
-              type="text"
-              value={stepTitle}
-              onChange={(e) => setStepTitle(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-            />
-          </div>
-
-          {/* Step Type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Step Type
-            </label>
-            <select
-              value={stepType}
-              onChange={(e) => setStepType(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-            >
-              <option value="default">Regular Step</option>
-              <option value="input">Input Step</option>
-              <option value="output">Output Step</option>
-              <option value="flow">Flow (Agent)</option>
-              <option value="ai">AI Step</option>
-              <option value="command">Command Step</option>
-              <option value="response">Response Node</option>
-            </select>
-            <div className="text-xs text-gray-400 mt-1">
-              Flow nodes can be double-clicked to open subflows
-            </div>
-          </div>
-
-          {/* Instructions with drag-and-drop support */}
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="block text-sm font-medium text-gray-300">
-                Instructions
-              </label>
-              <div className="text-xs text-gray-400">
-                Drag variables from below into instructions
-              </div>
-            </div>
             <textarea
+              ref={textareaRef}
               value={instructions || ''}
               onChange={(e) => setInstructions(e.target.value)}
+              onInput={(e) => setInstructions(e.currentTarget.value)} // Added for automation compatibility
               onDragOver={onInstructionsDragOver}
               onDrop={onInstructionsDrop}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white min-h-[120px] font-mono text-sm"
-              placeholder="Enter step instructions... Drag variables from below to insert {{variable}} syntax."
-            />
-            <div className="text-xs text-gray-400 mt-1">
-              Use <code className="bg-gray-900 px-1 py-0.5 rounded">{"{{variable}}"}</code> syntax for variables
-            </div>
-          </div>
-
-          {/* Command */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Command
-            </label>
-            <input
-              type="text"
-              value={command || ''}
-              onChange={(e) => setCommand(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-              placeholder="Enter command (e.g., get_tasks, analyze_data)..."
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white min-h-[120px] font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+              placeholder={nodeData?.type === 'condition' ? 'Enter condition (e.g., {{variable}} == "success")' : 'Enter instructions...'}
             />
           </div>
 
-          {/* Await Input */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="awaitInput"
-              checked={awaitInput || false}
-              onChange={(e) => setAwaitInput(e.target.checked)}
-              className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded"
-            />
-            <label htmlFor="awaitInput" className="ml-2 text-sm text-gray-300">
-              Await User Input
-            </label>
-          </div>
-
-          {/* Available Variables from Previous Steps */}
+          {/* Available Variables */}
           {availableVariables.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Available Variables (Drag into instructions)
-              </label>
-              <div className="space-y-2">
+              <div className="text-sm text-gray-300 mb-2">Variables (drag into text)</div>
+              <div className="space-y-1">
                 {availableVariables.map((variable, index) => (
                   <div 
                     key={index}
-                    className="flex items-center bg-gray-700 border border-gray-600 rounded px-3 py-2 cursor-grab active:cursor-grabbing hover:bg-gray-600 transition-colors"
+                    className="flex items-center bg-gray-800 border border-gray-700 rounded px-3 py-2 cursor-grab active:cursor-grabbing hover:bg-gray-700/50 transition-colors"
                     draggable
                     onDragStart={(e) => onVariableDragStart(e, variable)}
                   >
-                    <div className="text-purple-300 mr-2">📦</div>
-                    <div className="flex-1 text-white font-mono text-sm">
+                    <div className="text-gray-400 mr-2 text-xs">📦</div>
+                    <div className="flex-1 text-white font-mono text-xs">
                       {variable}
                     </div>
-                    <div className="text-xs text-gray-400 ml-2">Drag to instructions</div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Input Keys (Variables this step expects) */}
+          {/* Output Keys */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Input Keys (Comma-separated)
-            </label>
+            <div className="text-sm text-gray-300 mb-2">Output variables (comma separated)</div>
             <input
-              type="text"
-              value={inputKeys || ''}
-              onChange={(e) => setInputKeys(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono"
-              placeholder="user_id, task_data, api_key..."
-            />
-            <div className="text-xs text-gray-400 mt-1">
-              These keys must be provided before this step can execute
-            </div>
-          </div>
-
-          {/* Output Keys (Variables this step will produce) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Output Keys (Comma-separated)
-            </label>
-            <input
+              ref={outputKeysRef}
               type="text"
               value={outputKeys || ''}
               onChange={(e) => setOutputKeys(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-mono"
-              placeholder="task_id, user_name, result_data..."
+              onInput={(e) => setOutputKeys(e.currentTarget.value)} // Added for automation compatibility
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+              placeholder="result, data, output..."
             />
-            <div className="text-xs text-gray-400 mt-1">
-              These keys will be available as variables for subsequent steps
-            </div>
-          </div>
-
-          {/* Variable Syntax Help */}
-          <div className="bg-gray-900/50 p-3 rounded border border-gray-700">
-            <h4 className="text-sm font-medium text-gray-300 mb-1">Variable System</h4>
-            <p className="text-xs text-gray-400 mb-2">
-              • Use <code className="bg-gray-800 px-1 py-0.5 rounded">{"{{variable_name}}"}</code> in instructions
-            </p>
-            <p className="text-xs text-gray-400 mb-2">
-              • <strong>Input Keys:</strong> Variables this step expects (must be provided before execution)
-            </p>
-            <p className="text-xs text-gray-400 mb-2">
-              • <strong>Output Keys:</strong> Variables this step produces (available for subsequent steps)
-            </p>
-            <p className="text-xs text-gray-400">
-              • Variables flow from step outputs to step inputs across the workflow
-            </p>
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3 mt-6">
+        <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-800">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white"
+            className="px-5 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+            onClick={() => {
+              console.log('Save button clicked!');
+              handleSave();
+            }}
+            className="px-5 py-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 text-sm font-medium border border-gray-700 transition-colors"
           >
-            Save Step
+            Save
           </button>
         </div>
       </div>
@@ -1441,10 +1377,40 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<CustomNode, CustomEdge> | null>(null);
   const [draggingNodeType, setDraggingNodeType] = useState<string | null>(null);
   
+  // Add node menu state
+  const [addNodeMenu, setAddNodeMenu] = useState<{
+    show: boolean;
+    sourceNodeId: string | null;
+    position: { x: number; y: number };
+  }>({
+    show: false,
+    sourceNodeId: null,
+    position: { x: 0, y: 0 },
+  });
+
+  // State for empty flow + button
+  const [showEmptyFlowButton, setShowEmptyFlowButton] = useState(false);
+  
   // Load flow data on mount
   useEffect(() => {
     loadFlowData();
   }, [currentFlowId]);
+
+  // Close add node menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addNodeMenu.show) {
+        setAddNodeMenu({ show: false, sourceNodeId: null, position: { x: 0, y: 0 } });
+      }
+    };
+
+    if (addNodeMenu.show) {
+      document.addEventListener('click', handleClickOutside);
+      return () => {
+        document.removeEventListener('click', handleClickOutside);
+      };
+    }
+  }, [addNodeMenu.show]);
   
   const loadFlowData = async () => {
     setLoading(true);
@@ -1467,6 +1433,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         
         setNodes(initialNodes);
         setEdges(initialEdges);
+        
+        // Show empty flow button if no steps
+        setShowEmptyFlowButton(flowSteps.length === 0);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load flow data');
@@ -1486,7 +1455,19 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         }
       };
       
-      return <CustomNode {...props} onClick={handleClick} />;
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
     },
     input: (props: any) => {
       const handleClick = (nodeId: string) => {
@@ -1496,7 +1477,19 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         }
       };
       
-      return <CustomNode {...props} onClick={handleClick} />;
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
     },
     output: (props: any) => {
       const handleClick = (nodeId: string) => {
@@ -1506,7 +1499,19 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         }
       };
       
-      return <CustomNode {...props} onClick={handleClick} />;
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
     },
     response: (props: any) => {
       const handleClick = (nodeId: string) => {
@@ -1516,7 +1521,41 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         }
       };
       
-      return <CustomNode {...props} onClick={handleClick} />;
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
+    },
+    condition: (props: any) => {
+      const handleClick = (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setSelectedNode(node);
+        }
+      };
+      
+      const handleAddNode = (nodeId: string, event: React.MouseEvent) => {
+        event.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          setAddNodeMenu({
+            show: true,
+            sourceNodeId: nodeId,
+            position: { x: event.clientX, y: event.clientY },
+          });
+        }
+      };
+      
+      return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} />;
     },
     flow: (props: any) => {
       const handleClick = (nodeId: string) => {
@@ -1545,7 +1584,27 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }), [edges]);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    (changes: NodeChange[]) => {
+      setNodes((nds) => {
+        const newNodes = applyNodeChanges(changes, nds);
+        
+        // Clean up edges connected to deleted nodes
+        const deletedNodeIds = changes
+          .filter(change => change.type === 'remove')
+          .map(change => change.id);
+        
+        if (deletedNodeIds.length > 0) {
+          setEdges(prevEdges => 
+            prevEdges.filter(edge => 
+              !deletedNodeIds.includes(edge.source) && 
+              !deletedNodeIds.includes(edge.target)
+            )
+          );
+        }
+        
+        return newNodes;
+      });
+    },
     []
   );
 
@@ -1595,6 +1654,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
 
   const handleNodeUpdate = useCallback((updatedNode: CustomNode) => {
     console.log('handleNodeUpdate called!', updatedNode.id, updatedNode.data.type);
+    console.log('Updated node data:', JSON.stringify(updatedNode.data, null, 2));
     setNodes((nds) => nds.map(node => 
       node.id === updatedNode.id ? updatedNode : node
     ));
@@ -1607,7 +1667,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       setSaving(true);
       console.log('saving should be true now');
       // Convert nodes back to steps
-      console.log('Nodes:', nodes);
+      console.log('Nodes:', nodes.map(n => ({ id: n.id, type: n.data.type, instructions: n.data.instructions, step: n.data.step })));
       const updatedSteps: Step[] = nodes.map((node): Step => {
         const nodeData = node.data as NodeData;
         const step = nodeData.step as Step;
@@ -1616,6 +1676,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         const nodeStepType = nodeData.step?.step_type;
         const nodeType = nodeData.type;
         
+        console.log(`Processing node ${node.id}: nodeInstructions="${nodeInstructions}", step.instructions="${step.instructions}", nodeType="${nodeType}"`);
+        
         // Map UI type to step_type
         let finalStepType = typeof nodeStepType === 'string' ? nodeStepType : step.step_type;
         let extraStep = step.extra_step || 0;
@@ -1623,9 +1685,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         if (nodeType) {
           // Map UI type to step_type
           if (nodeType === 'response') {
-            finalStepType = 'processing'; // Use 'processing' as backend doesn't have 'response'
-            extraStep = 1; // Mark as extra step (response node)
-            console.log('Response node detected! Setting step_type to "processing" and extra_step to 1');
+            finalStepType = 'response'; // Backend now accepts 'response' as step_type
+            extraStep = 0; // No longer need extra_step hack
+            console.log('Response node detected! Setting step_type to "response"');
           } else if (nodeType === 'input') {
             finalStepType = 'input';
           } else if (nodeType === 'output') {
@@ -1643,7 +1705,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           extra_step: extraStep,
           // Update input/output keys from node data if available
           input_keys: step.input_keys || null,
-          output_keys: step.output_keys || null,
+          output_keys: step.output_keys || '',
         };
       });
       
@@ -1705,13 +1767,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         data: {
           label: newStep.title,
           title: newStep.title,
+          type: 'default',
           step: newStep,
           instructions: newStep.instructions,
           command: '',
           await_input: false,
           variables: [],
         },
-        position: { x: maxX + 300, y: maxY + 100 },
+        position: { x: maxX + 400, y: maxY + 150 }, // Increased spacing for new nodes
       };
       
       // Add new node to the flow
@@ -1757,6 +1820,199 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       alert('Error adding new step. See console for details.');
     }
   }, [nodes, currentFlowId]);
+
+  // Function to add a new node from a source node
+  const handleAddNodeFromSource = useCallback(async (sourceNodeId: string, nodeType: 'step' | 'response' | 'condition', dropPosition?: { x: number, y: number }) => {
+    try {
+      // Find source node
+      const sourceNode = nodes.find(n => n.id === sourceNodeId);
+      if (!sourceNode) {
+        console.error('Source node not found:', sourceNodeId);
+        return;
+      }
+
+      // Calculate position for new node
+      let newPosition;
+      if (dropPosition && reactFlowInstance) {
+        // Use drop position (converted from screen to flow coordinates)
+        newPosition = reactFlowInstance.screenToFlowPosition({
+          x: dropPosition.x,
+          y: dropPosition.y,
+        });
+      } else {
+        // Default: to the right of source node
+        newPosition = {
+          x: sourceNode.position.x + 300,
+          y: sourceNode.position.y,
+        };
+      }
+
+      // Determine step type and title based on nodeType
+      let stepType = 'default';
+      let stepTitle = '';
+      
+      if (nodeType === 'response') {
+        stepType = 'response';
+        stepTitle = `Response Node ${nodes.length + 1}`;
+      } else if (nodeType === 'condition') {
+        stepType = 'condition';
+        stepTitle = `Condition ${nodes.length + 1}`;
+      } else {
+        stepType = 'default';
+        stepTitle = `Step ${nodes.length + 1}`;
+      }
+
+      // Create new step data
+      const newStepData: Partial<Step> = {
+        title: stepTitle,
+        instructions: nodeType === 'condition' ? 'Condition expression...' : 'New step instructions...',
+        step_type: stepType,
+        order_index: nodes.length + 1,
+        blocking: 0,
+        auto_fail_on_error: 0,
+        retryable: 0,
+        output_keys: '',
+        input_keys: '',
+        output: 0,
+        requires_task: 0,
+      };
+      
+      // Create step in backend
+      const newStep = await createNewStep(currentFlowId, newStepData);
+      
+      if (!newStep) {
+        alert('Failed to create new step. Check console for errors.');
+        return;
+      }
+      
+      // Create new node for the step
+      const newNode: CustomNode = {
+        id: newStep.id,
+        type: nodeType === 'step' ? 'default' : nodeType,
+        data: {
+          label: newStep.title,
+          title: newStep.title,
+          type: nodeType === 'step' ? 'default' : nodeType,
+          step: {
+            ...newStep,
+            type: stepType as 'input' | 'default' | 'output' | 'response' | 'condition',
+          },
+          instructions: newStep.instructions,
+          command: '',
+          await_input: false,
+          variables: [],
+        },
+        position: newPosition,
+      };
+      
+      // Add new node to the flow
+      setNodes(prevNodes => [...prevNodes, newNode]);
+      
+      // Create edge from source to new node
+      const newEdge: CustomEdge = {
+        id: `e${sourceNodeId}-${newStep.id}`,
+        source: sourceNodeId,
+        target: newStep.id,
+        animated: false,
+        style: {
+          stroke: '#3b82f6',
+          strokeWidth: 2,
+        },
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#3b82f6',
+        },
+        data: {
+          condition: {
+            source: 'default',
+            operator: 'always',
+            value: null,
+          },
+          route: {
+            type: 'step' as const,
+            target_id: newStep.id,
+            context_preservation: 'full' as const,
+          },
+        },
+      };
+      setEdges(prevEdges => [...prevEdges, newEdge]);
+      
+      // Select the new node to open the step popup
+      setSelectedNode(newNode);
+      
+      // Close the menu
+      setAddNodeMenu({ show: false, sourceNodeId: null, position: { x: 0, y: 0 } });
+      
+    } catch (error) {
+      console.error('Error adding new node from source:', error);
+      alert('Error adding new node. See console for details.');
+    }
+  }, [nodes, currentFlowId]);
+
+  // Function to create first step in empty flow
+  const handleCreateFirstStep = useCallback(async () => {
+    try {
+      // Create new step data
+      const newStepData: Partial<Step> = {
+        title: 'Step 1',
+        instructions: 'Enter instructions for the first step...',
+        step_type: 'default',
+        order_index: 1,
+        blocking: 0,
+        auto_fail_on_error: 0,
+        retryable: 0,
+        output_keys: '',
+        input_keys: '',
+        output: 0,
+        requires_task: 0,
+      };
+      
+      // Create step in backend
+      const newStep = await createNewStep(currentFlowId, newStepData);
+      
+      if (!newStep) {
+        alert('Failed to create first step. Check console for errors.');
+        return;
+      }
+      
+      // Create new node for the step
+      const newNode: CustomNode = {
+        id: newStep.id,
+        type: 'default',
+        data: {
+          label: newStep.title,
+          title: newStep.title,
+          type: 'default',
+          step: {
+            ...newStep,
+            type: 'default' as 'input' | 'default' | 'output' | 'response' | 'condition',
+          },
+          instructions: newStep.instructions,
+          command: '',
+          await_input: false,
+          variables: [],
+        },
+        position: { x: 400, y: 300 }, // Center position
+      };
+      
+      // Add new node to the flow
+      setNodes([newNode]);
+      setEdges([]);
+      
+      // Hide empty flow button
+      setShowEmptyFlowButton(false);
+      
+      // Select the new node to open the step popup
+      setSelectedNode(newNode);
+      
+      // Update flow steps
+      setFlowSteps(prev => [...prev, newStep]);
+      
+    } catch (error) {
+      console.error('Error creating first step:', error);
+      alert('Error creating first step. See console for details.');
+    }
+  }, [currentFlowId]);
 
   // Drag and drop handlers for React Flow
   const onDragStart = (event: DragEvent, nodeType: string) => {
@@ -1834,6 +2090,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         data: {
           label: newStep.title,
           title: newStep.title,
+          type: nodeType,
           step: {
             ...newStep,
             type: stepType as 'input' | 'default' | 'output' | 'response',
@@ -1912,12 +2169,6 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           </div>
           <div className="flex gap-4">
             <button
-              onClick={handleAddStep}
-              className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded font-medium text-white transition-colors"
-            >
-              + Add Step
-            </button>
-            <button
               type="button"
               onClick={async () => {
                 console.log('Save Flow button clicked!');
@@ -1935,14 +2186,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                   console.error('onSaveFlow is not a function!');
                 }
               }}
-              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium text-white transition-colors"
+              className="bg-gray-800 hover:bg-gray-700 px-5 py-1.5 rounded-lg font-medium text-gray-200 hover:text-white transition-colors border border-gray-700"
             >
               {saving ? 'Saving...' : 'Save Flow'}
             </button>
             <div className="text-xs text-gray-500 mt-1">saving state: {saving ? 'true' : 'false'}</div>
             <button
               onClick={() => router.push('/chat')}
-              className="bg-gray-800 hover:bg-gray-700 px-6 py-2 rounded font-medium border border-gray-700 text-gray-100 hover:text-white transition-colors"
+              className="bg-gray-800 hover:bg-gray-700 px-5 py-1.5 rounded-lg font-medium border border-gray-700 text-gray-200 hover:text-white transition-colors"
             >
               Back to Chat
             </button>
@@ -1968,13 +2219,28 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         )}
 
         {/* Flow Canvas */}
-        <div className="flex-1">
+        <div className="flex-1 relative">
           <div 
             ref={reactFlowWrapper}
             className="w-full h-[700px] bg-gray-900 rounded-lg border border-gray-800"
             onDragOver={onDragOver}
             onDrop={onDrop}
           >
+            {/* Empty Flow Button */}
+            {showEmptyFlowButton && (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <button
+                  onClick={handleCreateFirstStep}
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold shadow-lg transition-all hover:scale-110"
+                  title="Create first step"
+                >
+                  +
+                </button>
+                <div className="absolute bottom-1/4 text-center text-gray-400 text-sm mt-4">
+                  Click + to create your first step
+                </div>
+              </div>
+            )}
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -1982,100 +2248,107 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onInit={onInit}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const sourceNodeId = e.dataTransfer.getData('application/node-add');
+                if (sourceNodeId && reactFlowInstance) {
+                  const position = reactFlowInstance.screenToFlowPosition({
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                  // Show menu at drop position
+                  setAddNodeMenu({
+                    show: true,
+                    sourceNodeId: sourceNodeId,
+                    position: { x: e.clientX, y: e.clientY },
+                  });
+                }
+              }}
               fitView
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
             >
-              <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#374151" />
+              <Background variant={BackgroundVariant.Dots} gap={20} size={0.5} color="#334155" />
               <Controls />
               <MiniMap 
-                style={{ backgroundColor: '#111827' }}
+                style={{ backgroundColor: '#0f172a' }}
                 nodeColor={(node) => {
-                  if (node.type === 'input') return '#064e3b'; // dark green
-                  if (node.type === 'output') return '#7f1d1d'; // dark red
-                  return '#1f2937'; // default dark gray
+                  if (node.type === 'input') return '#0f172a'; // slate-900
+                  if (node.type === 'output') return '#0f172a'; // slate-900
+                  if (node.type === 'response') return '#0f172a'; // slate-900
+                  if (node.type === 'condition') return '#0f172a'; // slate-900
+                  return '#0f172a'; // default dark
                 }}
                 nodeStrokeColor={(node) => {
-                  if (node.type === 'input') return '#047857'; // green
-                  if (node.type === 'output') return '#dc2626'; // red
-                  return '#374151'; // default border
+                  if (node.type === 'input') return '#0ea5e9'; // sky-500
+                  if (node.type === 'output') return '#8b5cf6'; // violet-500
+                  if (node.type === 'response') return '#f59e0b'; // amber-500
+                  if (node.type === 'condition') return '#3b82f6'; // blue-500
+                  return '#334155'; // default border
                 }}
               />
-              {/* Node Toolbar - Drag and drop nodes */}
-              <Panel position="top-left" className="bg-gray-800/90 backdrop-blur-sm rounded-lg p-3 border border-gray-700 shadow-lg">
-                <div className="text-sm font-medium text-gray-200 mb-2">Add Nodes</div>
-                <div className="space-y-2">
-                  <div 
-                    className="px-3 py-2 bg-green-900/40 hover:bg-green-800/60 border border-green-800 rounded cursor-grab active:cursor-grabbing text-green-200 text-sm transition-colors"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, 'input')}
-                  >
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-                      <span>Input Step</span>
-                    </div>
-                  </div>
-                  <div 
-                    className="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded cursor-grab active:cursor-grabbing text-gray-200 text-sm transition-colors"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, 'default')}
-                  >
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
-                      <span>Regular Step</span>
-                    </div>
-                  </div>
-                  <div 
-                    className="px-3 py-2 bg-red-900/40 hover:bg-red-800/60 border border-red-800 rounded cursor-grab active:cursor-grabbing text-red-200 text-sm transition-colors"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, 'output')}
-                  >
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
-                      <span>Output Step</span>
-                    </div>
-                  </div>
-                  <div 
-                    className="px-3 py-2 bg-purple-900/40 hover:bg-purple-800/60 border border-purple-800 rounded cursor-grab active:cursor-grabbing text-purple-200 text-sm transition-colors"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, 'flow')}
-                  >
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 rounded-full bg-purple-500 mr-2"></div>
-                      <span>Flow Node (Agent)</span>
-                    </div>
-                  </div>
-                  <div 
-                    className="px-3 py-2 bg-yellow-900/40 hover:bg-yellow-800/60 border border-yellow-800 rounded cursor-grab active:cursor-grabbing text-yellow-200 text-sm transition-colors"
-                    draggable
-                    onDragStart={(e) => onDragStart(e, 'response')}
-                  >
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
-                      <span>Response Node</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-gray-700">
-                  <div className="text-xs text-gray-400">
-                    Drag nodes onto canvas to create steps
-                  </div>
-                  <div className="text-xs text-purple-400 mt-1">
-                    Flow nodes can be double-clicked to open subflows
-                  </div>
-                </div>
-              </Panel>
+              {/* Node Toolbar REMOVED - All nodes added via edge drop */}
 
-              <Panel position="top-right" className="bg-gray-800/80 backdrop-blur-sm rounded p-2 border border-gray-700">
-                <div className="text-sm text-gray-200">
-                  <div>Drag nodes to reposition</div>
-                  <div>Connect nodes by dragging from handles</div>
-                  <div className="mt-1 text-xs text-gray-400">Click edge labels to edit conditions</div>
+              <Panel position="top-right" className="bg-gray-900/60 backdrop-blur-sm rounded-lg p-3 border border-gray-800">
+                <div className="text-sm text-gray-300">
+                  <div className="font-medium mb-1">Flow Controls</div>
+                  <div className="text-xs text-gray-400 space-y-0.5">
+                    <div>• Drag nodes to reposition</div>
+                    <div>• Drag + button to create new nodes</div>
+                    <div>• Connect nodes via handles</div>
+                    <div>• Click edge labels to edit</div>
+                  </div>
                 </div>
               </Panel>
             </ReactFlow>
           </div>
         </div>
+
+        {/* Add Node Menu */}
+        {addNodeMenu.show && addNodeMenu.sourceNodeId && (
+          <div 
+            className="fixed z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-2 min-w-[160px]"
+            style={{
+              left: addNodeMenu.position.x,
+              top: addNodeMenu.position.y,
+            }}
+          >
+            <div className="text-xs text-gray-400 mb-1 px-2 pt-1">Add from node:</div>
+            <button
+              onClick={() => handleAddNodeFromSource(addNodeMenu.sourceNodeId!, 'step', addNodeMenu.position)}
+              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md flex items-center"
+            >
+              <span className="mr-2">+</span>
+              Add Step
+            </button>
+            <button
+              onClick={() => handleAddNodeFromSource(addNodeMenu.sourceNodeId!, 'response', addNodeMenu.position)}
+              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md flex items-center"
+            >
+              <span className="mr-2 text-yellow-400">🔄</span>
+              Add Response
+            </button>
+            <button
+              onClick={() => handleAddNodeFromSource(addNodeMenu.sourceNodeId!, 'condition', addNodeMenu.position)}
+              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md flex items-center"
+            >
+              <span className="mr-2 text-blue-400">⚖️</span>
+              Add Condition
+            </button>
+            <div className="border-t border-gray-800 mt-2 pt-2">
+              <button
+                onClick={() => setAddNodeMenu({ show: false, sourceNodeId: null, position: { x: 0, y: 0 } })}
+                className="w-full text-left px-3 py-2 text-sm text-gray-400 hover:bg-gray-800 rounded-md"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Edge Popup */}
         {selectedEdge && (
@@ -2087,9 +2360,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           />
         )}
 
-        {/* Step Popup */}
+        {/* Node Popup */}
         {selectedNode && (
-          <StepPopup
+          <NodePopup
             node={selectedNode}
             availableVariables={getAvailableVariables(selectedNode.id, flowSteps)}
             onSave={handleNodeUpdate}

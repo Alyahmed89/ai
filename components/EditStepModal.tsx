@@ -493,6 +493,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                 <option value="decision">Decision</option>
                 <option value="input">Input</option>
                 <option value="output">Output</option>
+                <option value="response">Response</option>
               </select>
             </div>
 
