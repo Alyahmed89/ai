@@ -20,8 +20,8 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
     await db.prepare(`
       INSERT INTO flow_runs (
         id, flow_id, conversation_id, step_id, input_prompt, input_payload, output_response,
-        status, duration_ms, started_at, completed_at, created_at, next_flow_id, stop_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, duration_ms, started_at, completed_at, created_at, next_flow_id, next_flow_ids, stop_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       flowRun.id,
       flowRun.flow_id || null,
@@ -36,6 +36,7 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
       completed_at,
       flowRun.created_at || now,
       flowRun.next_flow_id || null,
+      flowRun.next_flow_ids ? JSON.stringify(flowRun.next_flow_ids) : null,
       null // stop_reason
     ).run();
 
@@ -61,7 +62,8 @@ export async function updateFlowRunStatus(
   status: FlowRunData['status'],
   stopReason?: string,
   nextFlowId?: string,
-  outputResponse?: string
+  outputResponse?: string,
+  nextFlowIds?: string[]
 ): Promise<{success: boolean; error?: string}> {
   try {
     // Set completed_at for terminal states
@@ -76,6 +78,11 @@ export async function updateFlowRunStatus(
     if (nextFlowId !== undefined) {
       query += `, next_flow_id = ?`;
       bindings.push(nextFlowId || null);
+    }
+    
+    if (nextFlowIds !== undefined) {
+      query += `, next_flow_ids = ?`;
+      bindings.push(nextFlowIds ? JSON.stringify(nextFlowIds) : null);
     }
     
     if (stopReason !== undefined) {

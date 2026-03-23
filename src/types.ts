@@ -251,6 +251,7 @@ export interface FlowRunData {
   duration_ms?: number;
   created_at: number;
   next_flow_id?: string;
+  next_flow_ids?: string[]; // Array of next flow IDs for multiple next flows support
 }
 
 export interface IterationData {

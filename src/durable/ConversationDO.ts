@@ -4306,22 +4306,46 @@ Use the response in your work.`
         lastResponse
       );
       
+      let nextFlowIds: string[] = [];
       let nextFlowId: string | null = null;
       
       if (conditionalNextFlowId) {
         console.log(`[DO:${this.state.id}] Using conditional next flow: ${conditionalNextFlowId}`);
+        nextFlowIds = [conditionalNextFlowId];
         nextFlowId = conditionalNextFlowId;
       } else {
-        // Fall back to static next_flow_id from flow_definitions table
+        // Fall back to static next_flow_id/next_flow_ids from flow_definitions table
         const nextFlow = await this.env.FLOW_RUNS_DB.prepare(`
-          SELECT next_flow_id FROM flow_definitions WHERE id = ?
+          SELECT next_flow_id, next_flow_ids FROM flow_definitions WHERE id = ?
         `).bind(this.conversation.flow_id).first();
         
-        if (nextFlow?.next_flow_id) {
-          console.log(`[DO:${this.state.id}] Using static next flow from flow_definitions: ${nextFlow.next_flow_id}`);
-          nextFlowId = nextFlow.next_flow_id;
+        // Normalize to array: use next_flow_ids if available, fall back to next_flow_id
+        if (nextFlow?.next_flow_ids) {
+          try {
+            // Parse JSON array from next_flow_ids column
+            const parsedIds = JSON.parse(nextFlow.next_flow_ids as string);
+            if (Array.isArray(parsedIds) && parsedIds.every(id => typeof id === 'string')) {
+              nextFlowIds = parsedIds;
+              console.log(`[DO:${this.state.id}] Using next_flow_ids from flow_definitions: ${JSON.stringify(nextFlowIds)}`);
+            } else {
+              console.warn(`[DO:${this.state.id}] Invalid next_flow_ids format, falling back to next_flow_id`);
+            }
+          } catch (error: any) {
+            console.error(`[DO:${this.state.id}] Error parsing next_flow_ids: ${error.message}`);
+          }
+        }
+        
+        // If no next_flow_ids or parsing failed, fall back to next_flow_id
+        if (nextFlowIds.length === 0 && nextFlow?.next_flow_id) {
+          nextFlowIds = [nextFlow.next_flow_id as string];
+          console.log(`[DO:${this.state.id}] Using next_flow_id from flow_definitions: ${nextFlow.next_flow_id}`);
+        }
+        
+        if (nextFlowIds.length > 0) {
+          // Store the first flow ID in nextFlowId for backward compatibility in single flow case
+          nextFlowId = nextFlowIds[0];
         } else {
-          console.log(`[DO:${this.state.id}] No next_flow_id defined in flow_definitions for: ${this.conversation.flow_id}`);
+          console.log(`[DO:${this.state.id}] No next_flow_id or next_flow_ids defined in flow_definitions for: ${this.conversation.flow_id}`);
           console.log(`[DO:${this.state.id}] Flow chain ends here`);
         }
       }
@@ -4369,9 +4393,33 @@ Use the response in your work.`
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error sending response to callback: ${error.message}`);
         }
-      } else if (nextFlowId) {
-        console.log(`[DO:${this.state.id}] Starting next flow: ${nextFlowId}`);
-        await this.startSpecificFlow(nextFlowId, transitionPayload);
+      } else if (nextFlowIds.length > 0) {
+        console.log(`[DO:${this.state.id}] Starting ${nextFlowIds.length} next flow(s): ${JSON.stringify(nextFlowIds)}`);
+        
+        // Update current flow run with all next flow IDs
+        if (this.flowRunId && this.env.FLOW_RUNS_DB) {
+          try {
+            await updateFlowRunStatus(
+              this.env.FLOW_RUNS_DB,
+              this.flowRunId,
+              'new_flow_started',
+              'multiple_next_flows_triggered',
+              nextFlowIds[0], // First flow ID for backward compatibility
+              undefined,
+              nextFlowIds // All flow IDs for multiple flows support
+            );
+            console.log(`[DO:${this.state.id}] Updated flow run with next_flow_ids: ${JSON.stringify(nextFlowIds)}`);
+          } catch (error: any) {
+            console.error(`[DO:${this.state.id}] Error updating flow run with next_flow_ids: ${error.message}`);
+          }
+        }
+        
+        // Start each next flow sequentially (NO parallelism)
+        for (const nextFlowId of nextFlowIds) {
+          console.log(`[DO:${this.state.id}] Starting next flow: ${nextFlowId}`);
+          // Skip flow run update since we already updated it with all nextFlowIds
+          await this.startSpecificFlow(nextFlowId, transitionPayload, true);
+        }
       }
       
       // Mark flow as completed to prevent double execution
@@ -6017,7 +6065,7 @@ Use the response in your work.`
   /**
    * Start a specific flow (with loop prevention)
    */
-  private async startSpecificFlow(flowId: string, inputPayload?: string | null): Promise<void> {
+  private async startSpecificFlow(flowId: string, inputPayload?: string | null, skipFlowRunUpdate: boolean = false): Promise<void> {
     // Check for loops
     this.flowSwitchHistory.push(flowId);
     
@@ -6119,14 +6167,16 @@ Use the response in your work.`
       console.log(`[DO:${this.state.id}] Specific flow started with ID: ${newConversationIdObj.toString()}`);
       
       // Update current flow run with next_flow_id (new conversation ID)
-      if (this.flowRunId) {
+      // Skip if skipFlowRunUpdate is true (e.g., when starting multiple flows)
+      if (this.flowRunId && !skipFlowRunUpdate) {
         await updateFlowRunStatus(
           this.env.FLOW_RUNS_DB, 
           this.flowRunId, 
           'new_flow_started', 
           'next_flow_triggered', 
           newConversationIdObj.toString(),
-          undefined // outputResponse - not needed for flow chaining
+          undefined, // outputResponse - not needed for flow chaining
+          undefined // nextFlowIds - not needed for single flow
         );
       }
     } catch (error) {
@@ -6208,7 +6258,8 @@ Use the response in your work.`
           'flow_called', 
           'waiting_for_response', 
           newConversationIdObj.toString(),
-          undefined // outputResponse - not needed for flow chaining
+          undefined, // outputResponse - not needed for flow chaining
+          undefined // nextFlowIds - not needed for callback flow
         );
       }
     } catch (error) {
@@ -6547,7 +6598,8 @@ Use the response in your work.`
       status: status,
       duration_ms: Date.now() - this.conversation.created_at,
       created_at: this.conversation.created_at,
-      next_flow_id: null // Will be set by startSpecificFlow if chaining occurs
+      next_flow_id: null, // Will be set by startSpecificFlow if chaining occurs
+      next_flow_ids: null // Will be set by handleFlowCompletion if multiple next flows
     };
 
     // Update flow run in database with output_response
@@ -6557,7 +6609,8 @@ Use the response in your work.`
       status, 
       stopReason, 
       null, // nextFlowId
-      this.conversation.last_step_response // outputResponse
+      this.conversation.last_step_response, // outputResponse
+      null // nextFlowIds
     );
     if (!result.success) {
       console.error(`[DO:${this.state.id}] Failed to update flow run: ${result.error}`);
