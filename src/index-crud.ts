@@ -171,6 +171,7 @@ app.get('/', (c) => {
       commands: '/commands',
       health: '/health',
       start: '/start',
+      resume: '/resume',
       attach: '/attach',
       status: '/status/:id'
     }
@@ -679,6 +680,54 @@ app.post('/stop', async (c) => {
     
   } catch (error: any) {
     console.error(`[HTTP:STOP] Endpoint error: ${error.message}`);
+    return c.json(errorResponse(error.message, 500));
+  }
+});
+
+// ============================================================================
+// RESUME ENDPOINT - Resume a conversation waiting for input
+// ============================================================================
+app.post('/resume', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { conversation_id, input, source } = body;
+    
+    if (!conversation_id) {
+      return c.json(errorResponse('Missing conversation_id parameter', 400));
+    }
+    
+    if (!c.env.CONVERSATIONS) {
+      return c.json(errorResponse('Durable Objects not configured', 500));
+    }
+    
+    // Get the Durable Object
+    let id;
+    try {
+      id = c.env.CONVERSATIONS.idFromString(conversation_id);
+    } catch (error) {
+      return c.json(errorResponse('Invalid conversation ID', 400));
+    }
+    
+    const conversationDo = c.env.CONVERSATIONS.get(id);
+    
+    // Call the Durable Object's resume endpoint
+    const doResponse = await conversationDo.fetch('http://placeholder/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input, source })
+    });
+    
+    if (!doResponse.ok) {
+      const errorText = await doResponse.text();
+      console.error(`[HTTP:RESUME] Durable Object error: ${doResponse.status} - ${errorText}`);
+      return c.json(errorResponse(`Failed to resume conversation: ${doResponse.status}`, 500));
+    }
+    
+    const result = await doResponse.json();
+    return c.json(successResponse('Conversation resumed successfully', result));
+    
+  } catch (error: any) {
+    console.error(`[HTTP:RESUME] Endpoint error: ${error.message}`);
     return c.json(errorResponse(error.message, 500));
   }
 });
