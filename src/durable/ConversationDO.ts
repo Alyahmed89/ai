@@ -4299,6 +4299,20 @@ Use the response in your work.`
         }
       }
       
+      // Check for flow chain in inputs (passed from parent flow)
+      let flowChain: string[] = [];
+      if (this.conversation.execution_context?.inputs) {
+        try {
+          const inputs = this.conversation.execution_context.inputs;
+          if (inputs._flow_chain && Array.isArray(inputs._flow_chain)) {
+            flowChain = inputs._flow_chain;
+            console.log(`[DO:${this.state.id}] Found flow chain in inputs: ${JSON.stringify(flowChain)}`);
+          }
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error parsing flow chain from inputs: ${error.message}`);
+        }
+      }
+      
       // Check for conditional next flow based on last response
       const conditionalNextFlowId = await getNextFlowBasedOnConditions(
         this.env.FLOW_RUNS_DB,
@@ -4414,11 +4428,22 @@ Use the response in your work.`
           }
         }
         
-        // Start each next flow sequentially (NO parallelism)
-        for (const nextFlowId of nextFlowIds) {
-          console.log(`[DO:${this.state.id}] Starting next flow: ${nextFlowId}`);
-          // Skip flow run update since we already updated it with all nextFlowIds
-          await this.startSpecificFlow(nextFlowId, transitionPayload, true);
+        // TRUE CHAINING: A → B → C (not fan-out)
+        // Only start ONE next flow at a time, pass remaining chain as metadata
+        
+        // Combine flow chain from inputs with nextFlowIds from flow definition
+        // Priority: flowChain (from parent) > nextFlowIds (from definition)
+        const allNextFlowIds = flowChain.length > 0 ? flowChain : nextFlowIds;
+        
+        if (allNextFlowIds.length > 0) {
+          // Extract first flow ID and remaining chain
+          const [nextFlowId, ...restChain] = allNextFlowIds;
+          
+          console.log(`[DO:${this.state.id}] Starting next flow in chain: ${nextFlowId}`);
+          console.log(`[DO:${this.state.id}] Remaining chain: ${JSON.stringify(restChain)}`);
+          
+          // Start the next flow with current payload and chain metadata
+          await this.startSpecificFlowWithChain(nextFlowId, transitionPayload, restChain, true);
         }
       }
       
@@ -6060,6 +6085,91 @@ Use the response in your work.`
     }
     
     return { execute: true };
+  }
+
+
+
+  /**
+   * Start a specific flow with chain continuation support
+   */
+  private async startSpecificFlowWithChain(flowId: string, inputPayload: string | null, nextFlowIds: string[], skipFlowRunUpdate: boolean = false): Promise<void> {
+    console.log(`[DO:${this.state.id}] Starting flow ${flowId} with chain: ${JSON.stringify(nextFlowIds)}`);
+    
+    // Load flow definition to get repository and other details
+    if (!this.env.FLOW_RUNS_DB) {
+      console.error(`[DO:${this.state.id}] Database not configured, cannot start flow with chain`);
+      return;
+    }
+    
+    const flow = await this.env.FLOW_RUNS_DB.prepare(`
+      SELECT * FROM flow_definitions WHERE id = ?
+    `).bind(flowId).first();
+    
+    if (!flow) {
+      console.error(`[DO:${this.state.id}] Flow not found: ${flowId}`);
+      return;
+    }
+    
+    // Create request body for the new flow
+    const requestBody: any = {
+      flow_id: flowId,
+      repository: (flow as any).repository || '[FLOW]',
+      branch: (flow as any).branch || 'main',
+      initial_user_prompt: (flow as any).name || `Execute flow: ${flowId}`,
+      max_iterations: (flow as any).max_iterations || 20
+    };
+    
+    // Add input payload if provided
+    if (inputPayload) {
+      try {
+        // Parse the payload to add metadata
+        const payloadObj = JSON.parse(inputPayload);
+        payloadObj._flow_chain = nextFlowIds; // Add chain metadata
+        requestBody.inputs = payloadObj;
+      } catch (error) {
+        // If payload is not JSON, create a new payload with chain metadata
+        requestBody.inputs = {
+          _input: inputPayload,
+          _flow_chain: nextFlowIds
+        };
+      }
+    } else if (nextFlowIds.length > 0) {
+      // Even without input payload, we need to pass the chain
+      requestBody.inputs = {
+        _flow_chain: nextFlowIds
+      };
+    }
+    
+    // Create a new Durable Object for this flow
+    const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
+    const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
+    
+    const initResponse = await newConversationStub.fetch('http://placeholder/initialize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (!initResponse.ok) {
+      const errorText = await initResponse.text();
+      console.error(`[DO:${this.state.id}] Failed to start flow with chain: ${initResponse.status} - ${errorText}`);
+      return;
+    }
+    
+    console.log(`[DO:${this.state.id}] Flow with chain started with ID: ${newConversationIdObj.toString()}`);
+    
+    // Update current flow run
+    if (this.flowRunId && !skipFlowRunUpdate) {
+      await updateFlowRunStatus(
+        this.env.FLOW_RUNS_DB, 
+        this.flowRunId, 
+        'new_flow_started', 
+        'next_flow_triggered', 
+        newConversationIdObj.toString(),
+        undefined,
+        undefined
+      );
+    }
   }
 
   /**
