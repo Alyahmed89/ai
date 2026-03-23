@@ -245,6 +245,7 @@ export interface FlowRunData {
   conversation_id: string;
   step_id?: string;
   input_prompt?: string;
+  input_payload?: string | null;
   output_response?: string;
   status: 'active' | 'completed' | 'failed' | 'stopped' | 'new_flow_started';
   duration_ms?: number;
@@ -334,6 +335,8 @@ export interface StepData {
     name: string;
     params?: Record<string, any>;
   };
+  // NEW: Payload export control for flow-to-flow propagation
+  export_payload?: boolean; // Whether to export step output as payload for next flow (default: true)
 }
 
 // Step data with execution results for in-memory tracking

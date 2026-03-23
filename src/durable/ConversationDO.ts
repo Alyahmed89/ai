@@ -2,7 +2,7 @@
 // ALL state management and alarm-driven logic lives here
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
-import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens } from '../utils/parsing';
+import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens, extractStructuredOutput } from '../utils/parsing';
 import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
@@ -1056,8 +1056,9 @@ export class ConversationOrchestratorDO_2026A {
         branch?: string;
         initial_user_prompt: string;
         max_iterations?: number;
+        input_payload?: string;
       };
-      const { repository, branch, initial_user_prompt, max_iterations } = body;
+      const { repository, branch, initial_user_prompt, max_iterations, input_payload } = body;
       
       if (!repository || !initial_user_prompt) {
         return new Response(JSON.stringify({ error: 'Need repository and initial_user_prompt' }), {
@@ -1072,10 +1073,20 @@ export class ConversationOrchestratorDO_2026A {
       // Generate flow run ID
       this.flowRunId = generateFlowRunId();
       
+      // Inject input_payload into prompt if available
+      let finalPrompt = initial_user_prompt;
+      if (input_payload) {
+        console.log(`[DO:${this.state.id}] Injecting input_payload into prompt (${input_payload.length} chars)`);
+        // Keep raw JSON string, don't stringify twice
+        finalPrompt = initial_user_prompt
+          ? `Input Data:\n${input_payload}\n\nUser Prompt:\n${initial_user_prompt}`
+          : `Input Data:\n${input_payload}`;
+      }
+      
       // Initialize conversation - SIMPLIFIED: No database dependencies
       this.conversation = {
         state: 'INIT',
-        initial_user_prompt,
+        initial_user_prompt: finalPrompt,
         iteration: 0,
         repository,
         branch,
@@ -1085,7 +1096,8 @@ export class ConversationOrchestratorDO_2026A {
         updated_at: Date.now(),
         project_facts: [], // Empty array instead of database query
         agent: 'openhands', // Default agent for non-flow initialization
-        step_status_sent: false // Track if SENDING STEP status has been sent for current step
+        step_status_sent: false, // Track if SENDING STEP status has been sent for current step
+        input_payload: input_payload || undefined // Store input payload for flow-to-flow propagation
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -1126,8 +1138,9 @@ export class ConversationOrchestratorDO_2026A {
         branch?: string;
         initial_user_prompt?: string;
         max_iterations?: number;
+        input_payload?: string;
       };
-      const { flow_id, repository, branch, initial_user_prompt, max_iterations } = body;
+      const { flow_id, repository, branch, initial_user_prompt, max_iterations, input_payload } = body;
       
       console.log(`[DO:${this.state.id}] Parsed request: flow_id=${flow_id}`);
       
@@ -1382,9 +1395,19 @@ export class ConversationOrchestratorDO_2026A {
         status: 'pending' as const
       })) : [];
       
+      // Inject input_payload into prompt if available
+      let finalPrompt = taskPrompt;
+      if (input_payload) {
+        console.log(`[DO:${this.state.id}] Injecting input_payload into prompt (${input_payload.length} chars)`);
+        // Keep raw JSON string, don't stringify twice
+        finalPrompt = taskPrompt
+          ? `Input Data:\n${input_payload}\n\nUser Prompt:\n${taskPrompt}`
+          : `Input Data:\n${input_payload}`;
+      }
+      
       this.conversation = {
         state: 'INIT',
-        initial_user_prompt: taskPrompt,
+        initial_user_prompt: finalPrompt,
         iteration: 0,
         repository: effectiveRepository || 'flow/execution',
         branch: effectiveBranch || 'main',
@@ -1397,7 +1420,8 @@ export class ConversationOrchestratorDO_2026A {
         flow_steps: executionSteps, // Store all flow steps with execution data
         flow_completed: false, // Track if flow execution is complete
         current_step_index: 0, // Start at first step
-        flow_execution_mode: true, // Flag to indicate flow execution mode
+        flow_execution_mode: true, // Flag to indicate flow execution mode,
+        input_payload: input_payload || undefined, // Store input payload for flow-to-flow propagation
         
         // Store flow context for reference
         flow_context: flowContext ? {
@@ -4253,6 +4277,28 @@ Use the response in your work.`
       const lastResponse = getLastFlowResponse(this.conversation.conversation_messages);
       console.log(`[DO:${this.state.id}] Last flow response (first 200 chars): ${lastResponse.substring(0, 200)}...`);
       
+      // Get the last step's output payload for flow-to-flow propagation
+      let transitionPayload: string | null = null;
+      if (this.flowRunId) {
+        try {
+          const lastStep = await this.env.FLOW_RUNS_DB.prepare(`
+            SELECT output_payload FROM step_runs 
+            WHERE flow_run_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 1
+          `).bind(this.flowRunId).first();
+          
+          if (lastStep?.output_payload) {
+            transitionPayload = lastStep.output_payload as string;
+            console.log(`[DO:${this.state.id}] Found last step output payload (${transitionPayload.length} chars)`);
+          } else {
+            console.log(`[DO:${this.state.id}] No output_payload found for last step`);
+          }
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] Error getting last step payload: ${error.message}`);
+        }
+      }
+      
       // Check for conditional next flow based on last response
       const conditionalNextFlowId = await getNextFlowBasedOnConditions(
         this.env.FLOW_RUNS_DB,
@@ -4325,7 +4371,7 @@ Use the response in your work.`
         }
       } else if (nextFlowId) {
         console.log(`[DO:${this.state.id}] Starting next flow: ${nextFlowId}`);
-        await this.startSpecificFlow(nextFlowId);
+        await this.startSpecificFlow(nextFlowId, transitionPayload);
       }
       
       // Mark flow as completed to prevent double execution
@@ -5971,7 +6017,7 @@ Use the response in your work.`
   /**
    * Start a specific flow (with loop prevention)
    */
-  private async startSpecificFlow(flowId: string): Promise<void> {
+  private async startSpecificFlow(flowId: string, inputPayload?: string | null): Promise<void> {
     // Check for loops
     this.flowSwitchHistory.push(flowId);
     
@@ -6040,13 +6086,19 @@ Use the response in your work.`
     }
     
     // Prepare the request body for the new flow
-    const requestBody = {
+    const requestBody: any = {
       flow_id: flowId,
       repository: flow.repository, // Use repository column (not repo)
       branch: flow.branch || 'main',
       initial_user_prompt: firstStep.instructions, // Get from first step instructions
       max_iterations: flow.max_iterations || 20
     };
+    
+    // Add input_payload for flow-to-flow propagation if available
+    if (inputPayload !== undefined && inputPayload !== null) {
+      requestBody.input_payload = inputPayload;
+      console.log(`[DO:${this.state.id}] Adding input_payload to next flow (${inputPayload.length} chars)`);
+    }
     
     try {
       const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
@@ -6452,6 +6504,7 @@ Use the response in your work.`
       conversation_id: this.state.id.toString(),
       step_id: null,
       input_prompt: this.conversation.initial_user_prompt,
+      input_payload: this.conversation.input_payload || null,
       output_response: null,
       status: 'active' as const,
       duration_ms: 0,
@@ -6584,6 +6637,12 @@ Use the response in your work.`
     // Get current iteration (step index)
     const iteration = this.conversation.current_step_index || 0;
     
+    // Extract structured output for payload propagation
+    const outputPayload = extractStructuredOutput(response);
+    
+    // Check if step should export payload (default: true)
+    const shouldExportPayload = step.export_payload !== false; // Default to true if not explicitly false
+    
     // Prepare step run data
     const stepRunData = {
       id: generateStepRunId(),
@@ -6600,7 +6659,7 @@ Use the response in your work.`
         task_id: step.task_id,
         output_enabled: step.output
       }),
-      output_payload: undefined, // Can be populated later if needed
+      output_payload: shouldExportPayload ? (outputPayload || null) : null, // Only store if export_payload is not false
       status,
       created_at: Math.floor(Date.now() / 1000),
       duration_ms: 0, // TODO: Calculate actual duration
@@ -6613,6 +6672,11 @@ Use the response in your work.`
       console.error(`[DO:${this.state.id}] Failed to save step run to database: ${result.error}`);
     } else {
       console.log(`[DO:${this.state.id}] Step run saved to database: ${step.step_id}, iteration ${iteration}, attempt ${attempt}`);
+      if (outputPayload && shouldExportPayload) {
+        console.log(`[DO:${this.state.id}] Structured output payload saved (${outputPayload.length} chars)`);
+      } else if (!shouldExportPayload) {
+        console.log(`[DO:${this.state.id}] Step configured with export_payload=false, skipping payload export`);
+      }
     }
   }
 

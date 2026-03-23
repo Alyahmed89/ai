@@ -176,3 +176,24 @@ export function extractPromptsAndResponses(conversation_messages: Array<{role: s
   
   return JSON.stringify(history);
 }
+
+/**
+ * Extract structured output from step response for payload propagation
+ * @param response The step response string
+ * @returns JSON string suitable for output_payload field, or null if no structured output can be extracted
+ */
+export function extractStructuredOutput(response: string): string | null {
+  if (!response || response.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    // Try to parse as JSON first (if response is already JSON)
+    const parsed = JSON.parse(response);
+    // If it's valid JSON, return it as a string
+    return JSON.stringify(parsed);
+  } catch {
+    // Not valid JSON, wrap as simple text object
+    return JSON.stringify({ text: response.trim() });
+  }
+}

@@ -19,15 +19,16 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
     
     await db.prepare(`
       INSERT INTO flow_runs (
-        id, flow_id, conversation_id, step_id, input_prompt, output_response,
+        id, flow_id, conversation_id, step_id, input_prompt, input_payload, output_response,
         status, duration_ms, started_at, completed_at, created_at, next_flow_id, stop_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       flowRun.id,
       flowRun.flow_id || null,
       conversation_id,
       flowRun.step_id || null,
       flowRun.input_prompt || null,
+      flowRun.input_payload || null,
       flowRun.output_response || null,
       flowRun.status || 'active',
       flowRun.duration_ms || 0,
