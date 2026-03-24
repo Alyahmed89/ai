@@ -1657,7 +1657,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       
       return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} onDeleteNode={handleDeleteNode} />;
     },
-    condition: (props: any) => {
+
+    flow: (props: any) => {
       const handleClick = (nodeId: string) => {
         const node = nodes.find(n => n.id === nodeId);
         if (node) {
@@ -1678,16 +1679,6 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       };
       
       return <CustomNode {...props} onClick={handleClick} onAddNode={handleAddNode} onDeleteNode={handleDeleteNode} />;
-    },
-    flow: (props: any) => {
-      const handleClick = (nodeId: string) => {
-        const node = nodes.find(n => n.id === nodeId);
-        if (node) {
-          setSelectedNode(node);
-        }
-      };
-      
-      return <FlowNode {...props} onClick={handleClick} onDeleteNode={handleDeleteNode} />;
     },
   }), [nodes, handleDeleteNode]);
 
@@ -1936,11 +1927,11 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+        type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+          type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow',
           step: newStep,
           instructions: newStep.instructions,
           command: '',
