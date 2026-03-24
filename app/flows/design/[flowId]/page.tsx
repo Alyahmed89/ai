@@ -75,6 +75,71 @@ import {
   ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import dagre from 'dagre';
+
+// Dagre layout configuration
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+const nodeWidth = 250;
+const nodeHeight = 100;
+
+const getLayoutedElements = (nodes: CustomNode[], edges: CustomEdge[], direction = 'TB') => {
+  // If no edges, create a simple grid layout
+  if (edges.length === 0) {
+    const GRID_COLS = 3;
+    const HORIZONTAL_SPACING = 300;
+    const VERTICAL_SPACING = 150;
+    
+    const layoutedNodes = nodes.map((node, index) => {
+      const row = Math.floor(index / GRID_COLS);
+      const col = index % GRID_COLS;
+      
+      return {
+        ...node,
+        position: {
+          x: col * HORIZONTAL_SPACING,
+          y: row * VERTICAL_SPACING,
+        },
+      };
+    });
+    
+    return { nodes: layoutedNodes, edges };
+  }
+  
+  // Use Dagre for connected graphs
+  dagreGraph.setGraph({ rankdir: direction });
+
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  });
+
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  const layoutedNodes = nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    
+    // If node has position from dagre, use it
+    if (nodeWithPosition) {
+      return {
+        ...node,
+        position: {
+          x: nodeWithPosition.x - nodeWidth / 2,
+          y: nodeWithPosition.y - nodeHeight / 2,
+        },
+      };
+    }
+    
+    // Fallback to original position
+    return node;
+  });
+
+  return { nodes: layoutedNodes, edges };
+};
 
 // Import existing flow management components
 import EditFlowModal from '../../../../components/EditFlowModal';
@@ -552,7 +617,7 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         flow_id: flowId,
         instructions: step.instructions,
         title: step.title,
-        step_type: step.step_type,
+        step_type: 'action', // Always set to 'action' as default
         order_index: step.order_index,
         blocking: Boolean(step.blocking),
         auto_fail_on_error: Boolean(step.auto_fail_on_error),
@@ -586,7 +651,7 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
       const requestBody = {
         instructions: step.instructions,
         title: step.title,
-        step_type: step.step_type,
+        step_type: 'action', // Always set to 'action' as default
         order_index: step.order_index,
         blocking: Boolean(step.blocking),
         auto_fail_on_error: Boolean(step.auto_fail_on_error),
@@ -661,7 +726,7 @@ async function saveFlowDAG(
       id: step.id,
       title: step.title || '',
       instructions: step.instructions || '',
-      step_type: step.step_type || 'default',
+      step_type: 'action', // Always set to 'action' as default
       order_index: step.order_index || 1,
       blocking: Boolean(step.blocking || 0),
       auto_fail_on_error: Boolean(step.auto_fail_on_error || 0),
@@ -716,7 +781,7 @@ async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<S
         step_key: stepData.step_key || generateStableId('step'),
         title: stepData.title || 'New Step',
         instructions: stepData.instructions || '',
-        step_type: stepData.step_type || 'default',
+        step_type: 'action', // Always set to 'action' as default
         order_index: stepData.order_index || 1,
         blocking: Boolean(stepData.blocking || 0),
         auto_fail_on_error: Boolean(stepData.auto_fail_on_error || 0),
@@ -1633,6 +1698,11 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
   const [saving, setSaving] = useState(false);
   
+  // Flow run state
+  const [startingFlow, setStartingFlow] = useState(false);
+  const [flowRunId, setFlowRunId] = useState<string | null>(null);
+  const [flowRunError, setFlowRunError] = useState<string | null>(null);
+  
   // Track deleted items for DAG persistence
   const [deletedStepIds, setDeletedStepIds] = useState<string[]>([]);
   const [deletedEdgeIds, setDeletedEdgeIds] = useState<string[]>([]);
@@ -1755,7 +1825,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           }
         }
         
-        setNodes(initialNodes);
+        // Apply Dagre layout for proper node positioning
+        const { nodes: layoutedNodes } = getLayoutedElements(initialNodes, initialEdges);
+        
+        setNodes(layoutedNodes);
         setEdges(initialEdges);
         
         // Show empty flow button if no steps
@@ -2636,7 +2709,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     return (
       <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-500 mx-auto"></div>
           <p className="mt-4 text-neutral-300">Loading flow data...</p>
         </div>
       </div>
@@ -2650,7 +2723,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           <div>
             <h1 className="text-3xl font-bold mb-2 text-white">Flow Designer</h1>
             <p className="text-neutral-300">
-              Flow: <span className="font-mono text-blue-400">{flowDefinition?.name || currentFlowId}</span>
+              Flow: <span className="font-mono text-gray-400">{flowDefinition?.name || currentFlowId}</span>
               {flowDefinition && (
                 <button
                   onClick={() => setShowEditFlowModal(true)}
@@ -2694,7 +2767,151 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             >
               Back to Chat
             </button>
+            <button
+              onClick={() => {
+                const { nodes: layoutedNodes } = getLayoutedElements(nodes, edges);
+                setNodes(layoutedNodes);
+              }}
+              className="bg-gray-700 hover:bg-gray-600 px-5 py-1.5 rounded-lg font-medium border border-gray-600 text-gray-200 hover:text-white transition-colors"
+            >
+              Auto Layout
+            </button>
+            <button
+              onClick={async () => {
+                if (startingFlow) return;
+                
+                setStartingFlow(true);
+                setFlowRunError(null);
+                setFlowRunId(null);
+                
+                try {
+                  console.log('Starting flow:', currentFlowId);
+                  
+                  // Start the flow (same as chat UI)
+                  const flowResponse = await fetch('/api/proxy/start', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      flow_id: currentFlowId,
+                      input_prompt: ''
+                    }),
+                  });
+                  
+                  if (!flowResponse.ok) throw new Error('Failed to start flow');
+                  
+                  const flowResult = await flowResponse.json();
+                  
+                  if (!flowResult.success) {
+                    throw new Error(flowResult.error || 'Failed to start flow execution');
+                  }
+                  
+                  console.log('Flow started successfully:', flowResult);
+                  console.log('Flow result data:', flowResult.data);
+                  console.log('Conversation ID:', flowResult.data?.conversation_id);
+                  
+                  // Get conversation ID from response
+                  const conversationId = flowResult.data?.conversation_id;
+                  
+                  if (conversationId) {
+                    // Poll to find the flow run ID
+                    let attempts = 0;
+                    const maxAttempts = 30; // Increased from 10 to 30
+                    
+                    while (attempts < maxAttempts) {
+                      const flowRunsResponse = await fetch('/api/proxy/api/flow-runs');
+                      if (flowRunsResponse.ok) {
+                        const flowRuns = await flowRunsResponse.json();
+                        console.log(`Polling attempt ${attempts + 1}/${maxAttempts}: Available flow runs:`, flowRuns.length);
+                        
+                        // Try to find the most recent flow run for this flow_id
+                        const flowRunsForThisFlow = flowRuns.filter((run: any) => run.flow_id === currentFlowId);
+                        console.log(`Flow runs for flow ${currentFlowId}:`, flowRunsForThisFlow.length);
+                        
+                        if (flowRunsForThisFlow.length > 0) {
+                          // Sort by created_at (newest first) and take the most recent
+                          const sortedRuns = flowRunsForThisFlow.sort((a: any, b: any) => b.created_at - a.created_at);
+                          const mostRecentRun = sortedRuns[0];
+                          
+                          console.log('Found matching flow run:', mostRecentRun.id, 'created_at:', mostRecentRun.created_at, 'status:', mostRecentRun.status);
+                          setFlowRunId(mostRecentRun.id);
+                          break;
+                        } else {
+                          console.log(`No flow runs found for flow_id: ${currentFlowId}, attempt ${attempts + 1}/${maxAttempts}`);
+                          
+                          // Also check for flow runs with null flow_id that might be ours
+                          const nullFlowIdRuns = flowRuns.filter((run: any) => !run.flow_id);
+                          console.log(`Flow runs with null flow_id:`, nullFlowIdRuns.length);
+                        }
+                      } else {
+                        console.log(`Flow runs API returned ${flowRunsResponse.status}`);
+                      }
+                      
+                      attempts++;
+                      await new Promise(resolve => setTimeout(resolve, 2000)); // Increased from 1s to 2s
+                    }
+                    
+                    if (attempts >= maxAttempts) {
+                      console.log(`Gave up after ${maxAttempts} attempts. No flow run found for flow ${flowId}`);
+                      setFlowRunError(`Flow started but no flow run was created after ${maxAttempts * 2} seconds. Check backend logs.`);
+                    }
+                  }
+                  
+                } catch (error: any) {
+                  console.error('Error starting flow:', error);
+                  setFlowRunError(error.message || 'Failed to start flow');
+                } finally {
+                  setStartingFlow(false);
+                }
+              }}
+              disabled={startingFlow}
+              className="px-5 py-1.5 rounded-lg font-medium border border-green-700 bg-green-600 hover:bg-green-700 text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Start this flow"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {startingFlow ? 'Starting...' : 'Start Flow'}
+            </button>
           </div>
+          
+          {/* Flow run status and link */}
+          {(flowRunId || flowRunError) && (
+            <div className="mt-4 p-4 bg-gray-900/50 border border-gray-800 rounded-lg">
+              {flowRunError ? (
+                <div className="text-red-400 text-sm">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Error: {flowRunError}</span>
+                  </div>
+                </div>
+              ) : flowRunId ? (
+                <div className="text-green-400 text-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Flow started successfully!</span>
+                  </div>
+                  <a 
+                    href={`/chat?flowRun=${flowRunId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors underline"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    View flow run in chat
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
         
         {error && (
@@ -2728,7 +2945,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               <div className="absolute inset-0 flex items-center justify-center z-10">
                 <button
                   onClick={handleCreateFirstStep}
-                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold shadow-lg transition-all hover:scale-110"
+                  className="bg-gray-600 hover:bg-gray-700 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold shadow-lg transition-all hover:scale-110"
                   title="Create first step"
                 >
                   +

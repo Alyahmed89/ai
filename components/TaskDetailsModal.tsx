@@ -51,7 +51,7 @@ export default function TaskDetailsModal({ task, onClose }: TaskDetailsModalProp
       case 'pending':
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
       case 'active':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
       case 'completed':
         return 'bg-green-500/20 text-green-400 border-green-500/30';
       case 'failed':
@@ -82,7 +82,7 @@ export default function TaskDetailsModal({ task, onClose }: TaskDetailsModalProp
         {/* Modal header */}
         <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
           <div className="flex items-center">
-            <svg className="w-5 h-5 text-blue-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
             <h3 className="text-lg font-semibold text-gray-200">Task Details</h3>
@@ -101,7 +101,7 @@ export default function TaskDetailsModal({ task, onClose }: TaskDetailsModalProp
         <div className="px-6 py-4 overflow-y-auto max-h-[calc(90vh-8rem)]">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500"></div>
             </div>
           ) : error ? (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">

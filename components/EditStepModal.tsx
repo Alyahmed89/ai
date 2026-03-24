@@ -53,7 +53,6 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
   const [formData, setFormData] = useState({
     title: '',
     instructions: '',
-    step_type: 'action',
     use_endpoints: '[]', // New field for endpoint configuration
     blocking: 0,
     retryable: 0,
@@ -101,7 +100,6 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
       setFormData({
         title: step.title || '',
         instructions: step.instructions || '',
-        step_type: step.step_type || 'action',
         use_endpoints: step.use_endpoints || '[]',
         blocking: step.blocking || 0,
         retryable: step.retryable || 0,
@@ -332,6 +330,11 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
     setError(null);
     
     try {
+      // Validate that instructions exist
+      if (!formData.instructions.trim()) {
+        throw new Error('Instructions are required');
+      }
+      
       // Generate use_endpoints JSON from endpointConfigs
       const use_endpoints = JSON.stringify(endpointConfigs);
       
@@ -342,7 +345,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
         step_key: step.step_key || '',
         title: formData.title,
         instructions: formData.instructions,
-        step_type: formData.step_type,
+        step_type: 'action', // Always set to 'action' as default
         order_index: step.order_index || 1,
         page_key: step.page_key || null,
         blocking: formData.blocking === 1,
@@ -407,7 +410,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
           </div>
           <div className="flex items-center justify-center py-8">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500 mx-auto"></div>
               <p className="text-neutral-400 mt-4">Loading endpoints...</p>
             </div>
           </div>
@@ -456,7 +459,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                 name="title"
                 value={formData.title}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                 placeholder="Enter step title"
               />
             </div>
@@ -468,7 +471,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                 value={formData.instructions}
                 onChange={handleInputChange}
                 rows={4}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 resize-none"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 resize-none"
                 placeholder="Enter step instructions"
               />
               <p className="text-xs text-neutral-500 mt-1">
@@ -476,21 +479,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
               </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-neutral-400 mb-2">Step Type</label>
-              <select
-                name="step_type"
-                value={formData.step_type}
-                onChange={handleInputChange}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
-              >
-                <option value="action">Action</option>
-                <option value="decision">Decision</option>
-                <option value="input">Input</option>
-                <option value="output">Output</option>
-                <option value="response">Response</option>
-              </select>
-            </div>
+
 
             <div>
               <label className="block text-sm font-medium text-neutral-400 mb-2">Connected Endpoints</label>
@@ -605,7 +594,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                             name="endpoint_id"
                             value={newEndpoint.endpoint_id}
                             onChange={handleNewEndpointChange}
-                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
+                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100 text-sm"
                           >
                             <option value="">Select endpoint</option>
                             {endpoints.map(endpoint => (
@@ -634,7 +623,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                           name="phase"
                           value={newEndpoint.phase}
                           onChange={handleNewEndpointChange}
-                          className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
+                          className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100 text-sm"
                         >
                           <option value="input">Input (provides data to step)</option>
                           <option value="command">Command (executes action)</option>
@@ -646,7 +635,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                         <button
                           type="button"
                           onClick={handleAddEndpoint}
-                          className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm text-white font-medium transition-colors"
+                          className="w-full py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm text-white font-medium transition-colors"
                         >
                           Add Endpoint
                         </button>
@@ -674,7 +663,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="blocking"
                   checked={formData.blocking === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
+                  className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800 rounded"
                 />
                 <label htmlFor="blocking" className="ml-2 text-sm text-neutral-300">
                   Blocking Step
@@ -688,7 +677,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="retryable"
                   checked={formData.retryable === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
+                  className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800 rounded"
                 />
                 <label htmlFor="retryable" className="ml-2 text-sm text-neutral-300">
                   Retryable
@@ -702,7 +691,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="auto_fail_on_error"
                   checked={formData.auto_fail_on_error === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
+                  className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800 rounded"
                 />
                 <label htmlFor="auto_fail_on_error" className="ml-2 text-sm text-neutral-300">
                   Auto Fail on Error
@@ -716,7 +705,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="requires_task"
                   checked={formData.requires_task === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
+                  className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800 rounded"
                 />
                 <label htmlFor="requires_task" className="ml-2 text-sm text-neutral-300">
                   Requires Task
@@ -736,7 +725,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  className="px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
                   {saving && (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -773,7 +762,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="name"
                       value={newEndpointData.name}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., github_user"
                       required
                     />
@@ -785,7 +774,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="description"
                       value={newEndpointData.description}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       placeholder="Brief description"
                     />
                   </div>
@@ -799,7 +788,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="url"
                       value={newEndpointData.url}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., https://api.github.com/users/{username}"
                       required
                     />
@@ -810,7 +799,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="method"
                       value={newEndpointData.method}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                     >
                       <option value="GET">GET</option>
                       <option value="POST">POST</option>
@@ -828,7 +817,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="auth_type"
                       value={newEndpointData.auth_type}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                     >
                       <option value="none">None</option>
                       <option value="bearer">Bearer Token</option>
@@ -843,7 +832,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="auth_value"
                       value={newEndpointData.auth_value}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       placeholder="Token or API key"
                     />
                   </div>
@@ -855,7 +844,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                     name="headers"
                     value={newEndpointData.headers}
                     onChange={handleNewEndpointDataChange}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100 font-mono text-sm"
                     rows={3}
                     placeholder='{"Content-Type": "application/json"}'
                   />
@@ -867,7 +856,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                     name="body_template"
                     value={newEndpointData.body_template}
                     onChange={handleNewEndpointDataChange}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100 font-mono text-sm"
                     rows={3}
                     placeholder='{"username": "{username}"}'
                   />
@@ -881,7 +870,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="query_params"
                       value={newEndpointData.query_params}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., page=1&limit=10"
                     />
                   </div>
@@ -892,7 +881,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="response_path"
                       value={newEndpointData.response_path}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., data.results"
                     />
                   </div>
@@ -906,7 +895,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="timeout_ms"
                       value={newEndpointData.timeout_ms}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       min="1000"
                       step="1000"
                     />
@@ -918,7 +907,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="max_retries"
                       value={newEndpointData.max_retries}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       min="0"
                       max="10"
                     />
@@ -930,7 +919,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       name="retry_delay_ms"
                       value={newEndpointData.retry_delay_ms}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                       min="100"
                       step="100"
                     />

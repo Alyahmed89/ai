@@ -61,7 +61,7 @@ export default function NodesPage() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600"></div>
       </div>
     );
   }
@@ -114,7 +114,7 @@ export default function NodesPage() {
         <h1 className="text-3xl font-bold text-gray-900">Nodes</h1>
         <button
           onClick={fetchNodes}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
         >
           Refresh
         </button>
@@ -133,7 +133,7 @@ export default function NodesPage() {
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
               placeholder="Enter project ID"
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm"
             />
           </div>
           
@@ -145,7 +145,7 @@ export default function NodesPage() {
               id="type-filter"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm"
             >
               <option value="all">All Types</option>
               {uniqueTypes.map(type => (
@@ -162,7 +162,7 @@ export default function NodesPage() {
               id="status-filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm"
             >
               <option value="all">All Statuses</option>
               {uniqueStatuses.map(status => (
@@ -174,13 +174,13 @@ export default function NodesPage() {
           <div className="flex items-end space-x-2">
             <button
               onClick={handleApplyFilters}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
             >
               Apply Filters
             </button>
             <button
               onClick={handleClearFilters}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
             >
               Clear
             </button>
@@ -213,13 +213,13 @@ export default function NodesPage() {
                     <div className="flex items-center">
                       <div className="flex-shrink-0">
                         <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
-                          node.type === 'document' ? 'bg-blue-100' :
+                          node.type === 'document' ? 'bg-gray-100' :
                           node.type === 'code' ? 'bg-green-100' :
                           node.type === 'api' ? 'bg-purple-100' :
                           'bg-gray-100'
                         }`}>
                           <span className={`text-sm font-medium ${
-                            node.type === 'document' ? 'text-blue-800' :
+                            node.type === 'document' ? 'text-gray-800' :
                             node.type === 'code' ? 'text-green-800' :
                             node.type === 'api' ? 'text-purple-800' :
                             'text-gray-800'
@@ -235,7 +235,7 @@ export default function NodesPage() {
                     </div>
                     <div className="ml-2 flex-shrink-0 flex">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        node.type === 'document' ? 'bg-blue-100 text-blue-800' :
+                        node.type === 'document' ? 'bg-gray-100 text-gray-800' :
                         node.type === 'code' ? 'bg-green-100 text-green-800' :
                         node.type === 'api' ? 'bg-purple-100 text-purple-800' :
                         'bg-gray-100 text-gray-800'
@@ -252,7 +252,7 @@ export default function NodesPage() {
                     <span>Updated: {new Date(node.updated_at * 1000).toLocaleDateString()}</span>
                   </div>
                   <div className="mt-2">
-                    <a href={`/nodes/${node.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                    <a href={`/nodes/${node.id}`} className="text-sm font-medium text-gray-600 hover:text-gray-500">
                       View details →
                     </a>
                   </div>

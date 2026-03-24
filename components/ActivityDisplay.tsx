@@ -51,7 +51,7 @@ export default function ActivityDisplay({ activities, onActivityClick }: Activit
         );
       case 'running':
         return (
-          <svg className="w-4 h-4 text-blue-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-gray-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
         );
@@ -74,7 +74,7 @@ export default function ActivityDisplay({ activities, onActivityClick }: Activit
     switch (type) {
       case 'input':
         return (
-          <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
           </svg>
         );
@@ -165,7 +165,7 @@ export default function ActivityDisplay({ activities, onActivityClick }: Activit
                         <div className="flex">
                           <span className="text-gray-400 w-16">Method:</span>
                           <span className={`px-2 py-0.5 rounded text-xs ${
-                            activity.endpoint.method === 'GET' ? 'bg-blue-900/30 text-blue-300' :
+                            activity.endpoint.method === 'GET' ? 'bg-gray-900/30 text-gray-300' :
                             activity.endpoint.method === 'POST' ? 'bg-green-900/30 text-green-300' :
                             activity.endpoint.method === 'PUT' ? 'bg-yellow-900/30 text-yellow-300' :
                             activity.endpoint.method === 'DELETE' ? 'bg-red-900/30 text-red-300' :
@@ -185,7 +185,7 @@ export default function ActivityDisplay({ activities, onActivityClick }: Activit
                   {activity.data && Object.keys(activity.data).length > 0 && (
                     <div className="bg-gray-900/50 rounded p-3">
                       <div className="flex items-center mb-2">
-                        <svg className="w-4 h-4 text-blue-300 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-gray-300 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <span className="text-sm font-medium text-gray-300">Data</span>

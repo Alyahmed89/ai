@@ -294,19 +294,19 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
     switch (event.type) {
       case 'FLOW_RUNNING':
         return (
-          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-lg mb-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center shadow-sm">
-              <span className="text-blue-700 text-lg">⏳</span>
+          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100/50 rounded-lg mb-3">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shadow-sm">
+              <span className="text-gray-700 text-lg">⏳</span>
             </div>
             <div className="flex-1">
               <div className="font-semibold text-gray-900 flex items-center gap-2">
                 Flow Status
-                <span className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
                   LIVE
                 </span>
               </div>
               <div className="mt-1 flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-gray-500 to-gray-600 text-white shadow-sm">
                   RUNNING
                 </span>
                 <span className="text-xs text-gray-600">
@@ -505,14 +505,14 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
 
       case 'STATUS_UPDATE':
         return (
-          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100/30 rounded-xl mb-3 shadow-sm">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-200 to-blue-300 flex items-center justify-center shadow-sm">
-              <span className="text-blue-700 text-lg">📊</span>
+          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100/30 rounded-xl mb-3 shadow-sm">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shadow-sm">
+              <span className="text-gray-700 text-lg">📊</span>
             </div>
             <div className="flex-1">
               <div className="font-semibold text-gray-900 flex items-center justify-between mb-2">
                 <span>Status Update</span>
-                <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full">
                   {event.metadata?.statusType || 'UPDATE'}
                 </span>
               </div>
@@ -543,10 +543,10 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
         <p className="text-gray-600 mb-4 max-w-md mx-auto">
           The flow execution visualization will appear here when a flow is running.
         </p>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left max-w-md mx-auto">
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left max-w-md mx-auto">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <span className="text-blue-600 text-sm">ℹ️</span>
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <span className="text-gray-600 text-sm">ℹ️</span>
             </div>
             <div>
               <div className="font-medium text-gray-900 mb-1">Debug Information</div>
@@ -561,7 +561,7 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
                   <>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">Flow steps:</span>
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
                         {data.flow_steps?.length || 0}
                       </span>
                     </div>
@@ -641,7 +641,7 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
               <>
                 <button
                   onClick={expandAll}
-                  className="text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-full transition-colors"
+                  className="text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors"
                 >
                   Expand All
                 </button>

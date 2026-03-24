@@ -192,14 +192,14 @@ export default function ChatInterface({
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <svg className="w-5 h-5 text-blue-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
             <h2 className="text-lg font-semibold text-gray-200">Chat</h2>
           </div>
           <div className="flex items-center space-x-2">
             {selectedFlowId && (
-              <span className="px-2 py-1 text-xs bg-blue-900/30 text-blue-300 rounded">
+              <span className="px-2 py-1 text-xs bg-gray-900/30 text-gray-300 rounded">
                 Flow: {selectedFlowId.substring(0, 8)}...
               </span>
             )}
@@ -237,7 +237,7 @@ export default function ChatInterface({
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${
                     message.type === 'user'
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-gray-600 text-white'
                       : message.type === 'assistant'
                       ? 'bg-gray-800 text-gray-200'
                       : message.type === 'api_call'
@@ -291,14 +291,14 @@ export default function ChatInterface({
                 onChange={(e) => setInputPrompt(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type your prompt here... (Shift+Enter for new line)"
-                className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-12 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-12 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                 rows={1}
                 disabled={isRunning}
               />
               <button
                 type="submit"
                 disabled={!inputPrompt.trim() || isRunning}
-                className="absolute right-3 bottom-3 p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="absolute right-3 bottom-3 p-2 rounded-lg bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Send message"
               >
                 {isRunning ? (
@@ -318,7 +318,7 @@ export default function ChatInterface({
                 <span>Press Enter to send</span>
                 {isRunning && (
                   <span className="flex items-center">
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500 mr-1"></div>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500 mr-1"></div>
                     Processing...
                   </span>
                 )}

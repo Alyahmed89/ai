@@ -213,7 +213,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
           </div>
           <div className="flex items-center justify-center py-8">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-500 mx-auto"></div>
               <p className="text-neutral-400 mt-4">Loading flow data...</p>
             </div>
           </div>
@@ -262,7 +262,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                 placeholder="Enter flow name"
               />
             </div>
@@ -274,7 +274,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                 value={formData.description}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 resize-none"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 resize-none"
                 placeholder="Enter flow description"
               />
             </div>
@@ -289,7 +289,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                   onChange={handleInputChange}
                   min="1"
                   max="100"
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                 />
               </div>
 
@@ -302,7 +302,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                   onChange={handleInputChange}
                   min="1"
                   max="100"
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                 />
               </div>
             </div>
@@ -315,7 +315,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                     type="radio"
                     checked={formData.agent === 'deepseek'}
                     onChange={() => handleAgentChange('deepseek')}
-                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800"
+                    className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800"
                   />
                   <span className="ml-2 text-sm text-neutral-300">DeepSeek</span>
                 </label>
@@ -324,7 +324,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                     type="radio"
                     checked={formData.agent === 'openhands'}
                     onChange={() => handleAgentChange('openhands')}
-                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800"
+                    className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800"
                   />
                   <span className="ml-2 text-sm text-neutral-300">OpenHands</span>
                 </label>
@@ -341,7 +341,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                   value={formData.system_message}
                   onChange={handleInputChange}
                   rows={3}
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 resize-none"
+                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 resize-none"
                   placeholder="You are an expert software developer..."
                 />
                 <p className="mt-1 text-xs text-neutral-500">
@@ -364,7 +364,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                       <div>
                         <h4 className="text-sm font-medium text-neutral-300">Step {step.order_index}: {step.title}</h4>
                         <div className="flex items-center space-x-2 mt-1">
-                          <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded">{step.step_type}</span>
+                          <span className="text-xs px-2 py-1 bg-gray-500/20 text-gray-400 rounded">{step.step_type}</span>
                           {step.blocking === 1 && (
                             <span className="text-xs px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded">Blocking</span>
                           )}
@@ -423,7 +423,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>

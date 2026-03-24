@@ -50,9 +50,9 @@ input, textarea, select {
 
 input:focus, textarea:focus, select:focus {
   background-color: #374151 !important; /* gray-700 */
-  border-color: #3b82f6 !important; /* blue-500 */
+  border-color: #1a1a1a !important; /* dark grey */
   outline: none !important;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+  box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.2) !important;
 }
 
 /* Ensure modal form elements are dark */
@@ -68,7 +68,7 @@ input:focus, textarea:focus, select:focus {
 [class*="bg-gray"] textarea:focus, 
 [class*="bg-gray"] select:focus {
   background-color: #1f2937 !important; /* gray-800 */
-  border-color: #3b82f6 !important;
+  border-color: #1a1a1a !important; /* dark grey */
 }
 
 /* Target all possible form elements in the application */
@@ -126,6 +126,6 @@ select option {
 }
 
 [role="option"][aria-selected="true"] {
-  background-color: #3b82f6 !important;
+  background-color: #1a1a1a !important; /* dark grey */
   color: white !important;
 }

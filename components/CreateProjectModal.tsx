@@ -85,7 +85,7 @@ export default function CreateProjectModal({ onClose, onProjectCreated }: Create
                 id="projectName"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-neutral-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                 placeholder="Enter project name"
                 autoFocus
                 disabled={loading}
@@ -111,7 +111,7 @@ export default function CreateProjectModal({ onClose, onProjectCreated }: Create
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center"
+              className="px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors flex items-center"
               disabled={loading}
             >
               {loading ? (

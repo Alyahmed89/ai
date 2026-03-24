@@ -436,10 +436,18 @@ export default function HierarchicalNav({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               </button>
+              <button
+                className="text-xs text-amber-400 hover:text-amber-300 flex items-center"
+                title="Tools"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
               {onCreateProject && (
                 <button
                   onClick={onCreateProject}
-                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                  className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
                   title="Create New Project"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -448,7 +456,7 @@ export default function HierarchicalNav({
                 </button>
               )}
               {loading.projects && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
               )}
             </div>
           </div>
@@ -459,7 +467,7 @@ export default function HierarchicalNav({
                 onClick={() => handleProjectSelect(project.id)}
                 className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
                   selectedProjectId === project.id 
-                    ? 'bg-blue-900/30 text-blue-300' 
+                    ? 'bg-gray-900/30 text-gray-300' 
                     : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                 }`}
               >
@@ -490,7 +498,7 @@ export default function HierarchicalNav({
               {onCreateFlow && (
                 <button
                   onClick={onCreateFlow}
-                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                  className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
                   title="Create New Flow"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -499,7 +507,7 @@ export default function HierarchicalNav({
                 </button>
               )}
               {loading.flows && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
               )}
             </div>
           </div>
@@ -524,13 +532,13 @@ export default function HierarchicalNav({
                   onClick={() => handleFlowSelect(flow.id)}
                   className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
                     selectedFlowId === flow.id 
-                      ? 'bg-blue-900/30 text-blue-300' 
+                      ? 'bg-gray-900/30 text-gray-300' 
                       : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                   }`}
                 >
                   <div className="flex items-center min-w-0 flex-1">
                     {/* Flow icon */}
-                    <svg className="w-4 h-4 mr-2 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     <span className="truncate">{flow.name}</span>
@@ -546,7 +554,7 @@ export default function HierarchicalNav({
                       e.stopPropagation();
                       router.push(`/flows/design/${flow.id}`);
                     }}
-                    className="ml-2 text-gray-400 hover:text-blue-400 flex-shrink-0 p-1"
+                    className="ml-2 text-gray-400 hover:text-gray-400 flex-shrink-0 p-1"
                     title="Open Flow Designer"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -577,7 +585,7 @@ export default function HierarchicalNav({
                 {/* Flow designer icon */}
                 <button
                   onClick={() => router.push(`/flows/design/${selectedFlowId}`)}
-                  className="ml-2 text-gray-400 hover:text-blue-400 flex-shrink-0"
+                  className="ml-2 text-gray-400 hover:text-gray-400 flex-shrink-0"
                   title="Open Flow Designer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -603,7 +611,7 @@ export default function HierarchicalNav({
                   onClick={() => setActiveSection('flowRuns')}
                   className={`flex items-center text-xs px-2 py-1 rounded ${
                     activeSection === 'flowRuns'
-                      ? 'bg-blue-900/30 text-blue-300'
+                      ? 'bg-gray-900/30 text-gray-300'
                       : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
                   title="Show Flow Runs"
@@ -618,7 +626,7 @@ export default function HierarchicalNav({
                   onClick={() => setActiveSection('steps')}
                   className={`flex items-center text-xs px-2 py-1 rounded ${
                     activeSection === 'steps'
-                      ? 'bg-blue-900/30 text-blue-300'
+                      ? 'bg-gray-900/30 text-gray-300'
                       : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
                   title="Show Steps"
@@ -633,7 +641,7 @@ export default function HierarchicalNav({
                   onClick={() => setActiveSection('tasks')}
                   className={`flex items-center text-xs px-2 py-1 rounded ${
                     activeSection === 'tasks'
-                      ? 'bg-blue-900/30 text-blue-300'
+                      ? 'bg-gray-900/30 text-gray-300'
                       : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
                   title="Show Tasks"
@@ -662,7 +670,7 @@ export default function HierarchicalNav({
                     {onCreateStep && (
                       <button
                         onClick={onCreateStep}
-                        className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                        className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
                         title="Create New Step"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -671,7 +679,7 @@ export default function HierarchicalNav({
                       </button>
                     )}
                     {loading.steps && (
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
                     )}
                   </div>
                 </div>
@@ -687,7 +695,7 @@ export default function HierarchicalNav({
                         onClick={() => handleStepSelect(step.id)}
                         className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
                           selectedStepId === step.id 
-                            ? 'bg-blue-900/30 text-blue-300' 
+                            ? 'bg-gray-900/30 text-gray-300' 
                             : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                         }`}
                       >
@@ -728,7 +736,7 @@ export default function HierarchicalNav({
                     <span className="text-sm font-medium text-gray-300">Tasks</span>
                   </div>
                   {loading.tasks && (
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
                   )}
                 </div>
               </div>
@@ -740,7 +748,7 @@ export default function HierarchicalNav({
                       onClick={() => handleTaskSelect(task.id)}
                       className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
                         selectedTaskId === task.id 
-                          ? 'bg-blue-900/30 text-blue-300' 
+                          ? 'bg-gray-900/30 text-gray-300' 
                           : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                       }`}
                     >
@@ -766,7 +774,7 @@ export default function HierarchicalNav({
                     <span className="text-sm font-medium text-gray-300">Flow Runs</span>
                   </div>
                   {loading.flowRuns && (
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
                   )}
                 </div>
               </div>
@@ -778,7 +786,7 @@ export default function HierarchicalNav({
                       onClick={() => handleFlowRunSelect(run.id)}
                       className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
                         selectedFlowRunId === run.id 
-                          ? 'bg-blue-900/30 text-blue-300' 
+                          ? 'bg-gray-900/30 text-gray-300' 
                           : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                       }`}
                     >
@@ -786,7 +794,7 @@ export default function HierarchicalNav({
                         <span className="truncate">{run.id.substring(0, 8)}...</span>
                         <div className={`ml-2 w-2 h-2 rounded-full flex-shrink-0 ${
                           run.status === 'active' ? 'bg-green-500' :
-                          run.status === 'completed' ? 'bg-blue-500' :
+                          run.status === 'completed' ? 'bg-gray-500' :
                           'bg-gray-500'
                         }`} />
                       </div>

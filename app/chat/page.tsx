@@ -1169,7 +1169,7 @@ export default function ChatPage(props: any) {
     const getMessageStyles = () => {
       switch (type) {
         case 'user':
-          return 'bg-blue-600 text-white justify-end';
+          return 'bg-gray-600 text-white justify-end';
         case 'status':
           const statusColor = metadata?.statusType === 'completed' ? 'bg-green-600' :
                             metadata?.statusType === 'error' ? 'bg-red-600' :
@@ -1192,7 +1192,7 @@ export default function ChatPage(props: any) {
 
     const getTimestampColor = () => {
       switch (type) {
-        case 'user': return 'text-blue-200';
+        case 'user': return 'text-gray-200';
         case 'status': return 'text-green-200';
         case 'command': return 'text-purple-200';
         case 'response': return metadata?.isThinking ? 'text-gray-400' : 'text-gray-500';
@@ -1267,7 +1267,7 @@ export default function ChatPage(props: any) {
     switch (status?.toLowerCase()) {
       case 'completed': return 'bg-green-500/20 text-green-400';
       case 'failed': return 'bg-red-500/20 text-red-400';
-      case 'running': return 'bg-blue-500/20 text-blue-400';
+      case 'running': return 'bg-gray-500/20 text-gray-400';
       default: return 'bg-gray-500/20 text-gray-400';
     }
   };
@@ -1285,8 +1285,8 @@ export default function ChatPage(props: any) {
     } else if (statusLower === 'running' || statusLower === 'active') {
       return (
         <div className="flex items-center space-x-1">
-          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400"></div>
-          <span className="text-xs text-blue-400">Running</span>
+          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400"></div>
+          <span className="text-xs text-gray-400">Running</span>
         </div>
       );
     } else if (statusLower === 'failed') {
@@ -1376,7 +1376,7 @@ export default function ChatPage(props: any) {
                         onChange={(e) => setInputPrompt(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder={selectedFlowId ? "tell me what you are thinking .." : "Select a flow first to send messages"}
-                        className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-24 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-24 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                         rows={1}
                         disabled={isRunning}
                       />
@@ -1396,7 +1396,7 @@ export default function ChatPage(props: any) {
                         <button
                           type="submit"
                           disabled={!inputPrompt.trim() || isRunning || !selectedFlowId}
-                          className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="p-2 rounded-lg bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           title={!selectedFlowId ? "Select a flow first" : "Send message"}
                         >
                           {isRunning ? (
@@ -1550,7 +1550,7 @@ export default function ChatPage(props: any) {
                           key={message.id}
                           className={`p-3 rounded-lg ${
                             message.type === 'user'
-                              ? 'bg-blue-600/20 border border-blue-600/30'
+                              ? 'bg-gray-600/20 border border-gray-600/30'
                               : message.type === 'assistant'
                               ? 'bg-gray-800 border border-gray-700'
                               : message.type === 'api_call'

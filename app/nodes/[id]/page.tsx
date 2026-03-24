@@ -61,7 +61,7 @@ export default function NodeDetailPage() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600"></div>
       </div>
     );
   }
@@ -100,7 +100,7 @@ export default function NodeDetailPage() {
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'document': return 'bg-blue-100 text-blue-800';
+      case 'document': return 'bg-gray-100 text-gray-800';
       case 'code': return 'bg-green-100 text-green-800';
       case 'api': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -110,7 +110,7 @@ export default function NodeDetailPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-green-100 text-green-800';
-      case 'completed': return 'bg-blue-100 text-blue-800';
+      case 'completed': return 'bg-gray-100 text-gray-800';
       case 'archived': return 'bg-gray-100 text-gray-800';
       default: return 'bg-yellow-100 text-yellow-800';
     }
@@ -119,7 +119,7 @@ export default function NodeDetailPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <a href="/nodes" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+        <a href="/nodes" className="text-sm font-medium text-gray-600 hover:text-gray-500">
           ← Back to Nodes
         </a>
       </div>
@@ -149,7 +149,7 @@ export default function NodeDetailPage() {
               onClick={() => setActiveTab('details')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'details'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-500 text-gray-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -159,7 +159,7 @@ export default function NodeDetailPage() {
               onClick={() => setActiveTab('children')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'children'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-500 text-gray-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -169,7 +169,7 @@ export default function NodeDetailPage() {
               onClick={() => setActiveTab('links')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'links'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-500 text-gray-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -179,7 +179,7 @@ export default function NodeDetailPage() {
               onClick={() => setActiveTab('relationships')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'relationships'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-500 text-gray-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -189,7 +189,7 @@ export default function NodeDetailPage() {
               onClick={() => setActiveTab('dependencies')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'dependencies'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-500 text-gray-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >

@@ -229,7 +229,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                   type="text"
                   value={flowName}
                   onChange={(e) => setFlowName(e.target.value)}
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                   placeholder="Enter flow name"
                 />
               </div>
@@ -244,7 +244,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                       type="radio"
                       checked={agent === 'deepseek'}
                       onChange={() => setAgent('deepseek')}
-                      className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800"
+                      className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800"
                     />
                     <span className="ml-2 text-sm text-neutral-300">DeepSeek</span>
                   </label>
@@ -253,7 +253,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                       type="radio"
                       checked={agent === 'openhands'}
                       onChange={() => setAgent('openhands')}
-                      className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800"
+                      className="h-4 w-4 text-gray-500 focus:ring-gray-500 border-neutral-600 bg-neutral-800"
                     />
                     <span className="ml-2 text-sm text-neutral-300">OpenHands</span>
                   </label>
@@ -268,7 +268,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                   <textarea
                     value={systemMessage}
                     onChange={(e) => setSystemMessage(e.target.value)}
-                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
+                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
                     rows={3}
                     placeholder="You are an expert software developer..."
                   />
@@ -281,7 +281,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
               <div className="pt-4 border-t border-neutral-800">
                 <button
                   onClick={() => setStep('steps')}
-                  className="w-full inline-flex justify-center items-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  className="w-full inline-flex justify-center items-center px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
                 >
                   Next: Add Steps
                   <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -315,7 +315,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                         <textarea
                           value={stepItem.instructions}
                           onChange={(e) => updateStep(stepItem.id, 'instructions', e.target.value)}
-                          className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
+                          className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 text-sm"
                           rows={2}
                           placeholder="What should this step do?"
                         />
@@ -329,7 +329,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                           <select
                             value={stepItem.inputEndpointId}
                             onChange={(e) => updateStep(stepItem.id, 'inputEndpointId', e.target.value)}
-                            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
+                            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 text-sm"
                           >
                             <option value="">Select input endpoint</option>
                             {endpoints.map(endpoint => (
@@ -347,7 +347,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                           <select
                             value={stepItem.outputEndpointId}
                             onChange={(e) => updateStep(stepItem.id, 'outputEndpointId', e.target.value)}
-                            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
+                            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 text-sm"
                           >
                             <option value="">Select output endpoint</option>
                             {endpoints.map(endpoint => (
@@ -367,7 +367,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
                           type="text"
                           value={stepItem.condition}
                           onChange={(e) => updateStep(stepItem.id, 'condition', e.target.value)}
-                          className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
+                          className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 text-sm"
                           placeholder="e.g., response.status === 'success'"
                         />
                       </div>
@@ -378,7 +378,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
 
               <button
                 onClick={addStep}
-                className="w-full inline-flex justify-center items-center px-4 py-2 border border-neutral-700 text-sm font-medium rounded-lg text-neutral-300 bg-neutral-800 hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                className="w-full inline-flex justify-center items-center px-4 py-2 border border-neutral-700 text-sm font-medium rounded-lg text-neutral-300 bg-neutral-800 hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
               >
                 <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -389,7 +389,7 @@ export default function SimpleFlowCreator({ onClose, onFlowCreated }: SimpleFlow
               <div className="pt-4 border-t border-neutral-800 flex justify-between">
                 <button
                   onClick={() => setStep('flow')}
-                  className="inline-flex items-center px-4 py-2 border border-neutral-700 text-sm font-medium rounded-lg text-neutral-300 bg-neutral-800 hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  className="inline-flex items-center px-4 py-2 border border-neutral-700 text-sm font-medium rounded-lg text-neutral-300 bg-neutral-800 hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
                 >
                   <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />

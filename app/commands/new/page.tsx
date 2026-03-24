@@ -144,7 +144,7 @@ export default function NewCommandPage() {
     <div className="min-h-screen bg-gray-950 text-gray-200 p-4">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <a href="/chat" className="inline-flex items-center text-blue-400 hover:text-blue-300 mb-6">
+          <a href="/chat" className="inline-flex items-center text-gray-400 hover:text-gray-300 mb-6">
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
@@ -175,7 +175,7 @@ export default function NewCommandPage() {
           <form onSubmit={handleSubmit}>
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-6 mb-6">
               <div className="flex items-center mb-6">
-                <svg className="w-5 h-5 text-blue-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <h2 className="text-xl font-semibold text-gray-200">Command Details</h2>
@@ -201,7 +201,7 @@ export default function NewCommandPage() {
                     type="text"
                     value={command.name}
                     onChange={(e) => handleCommandChange('name', e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                     placeholder="e.g., get_user_data"
                     required
                   />
@@ -215,7 +215,7 @@ export default function NewCommandPage() {
                   <textarea
                     value={command.description}
                     onChange={(e) => handleCommandChange('description', e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                     placeholder="What does this command do?"
                     rows={3}
                     required
@@ -230,7 +230,7 @@ export default function NewCommandPage() {
                     <select
                       value={command.method}
                       onChange={(e) => handleCommandChange('method', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                     >
                       <option value="GET">GET</option>
                       <option value="POST">POST</option>
@@ -248,7 +248,7 @@ export default function NewCommandPage() {
                       type="text"
                       value={command.endpoint}
                       onChange={(e) => handleCommandChange('endpoint', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                       placeholder="e.g., /api/users/{id}"
                       required
                     />
@@ -261,7 +261,7 @@ export default function NewCommandPage() {
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-6 mb-6">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center">
-                  <svg className="w-5 h-5 text-blue-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
                   </svg>
                   <h2 className="text-xl font-semibold text-gray-200">Parameters</h2>
@@ -305,7 +305,7 @@ export default function NewCommandPage() {
                           type="text"
                           value={param.name}
                           onChange={(e) => handleParameterChange(index, 'name', e.target.value)}
-                          className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                           placeholder="e.g., userId"
                         />
                       </div>
@@ -317,7 +317,7 @@ export default function NewCommandPage() {
                         <select
                           value={param.type}
                           onChange={(e) => handleParameterChange(index, 'type', e.target.value)}
-                          className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                         >
                           <option value="string">String</option>
                           <option value="integer">Integer</option>
@@ -337,7 +337,7 @@ export default function NewCommandPage() {
                         type="text"
                         value={param.description || ''}
                         onChange={(e) => handleParameterChange(index, 'description', e.target.value)}
-                        className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                         placeholder="Description of this parameter"
                       />
                     </div>
@@ -351,7 +351,7 @@ export default function NewCommandPage() {
                           type="text"
                           value={param.default || ''}
                           onChange={(e) => handleParameterChange(index, 'default', e.target.value)}
-                          className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="block w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                           placeholder="Optional default value"
                         />
                       </div>
@@ -361,7 +361,7 @@ export default function NewCommandPage() {
                           type="checkbox"
                           checked={param.required || false}
                           onChange={(e) => handleParameterChange(index, 'required', e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-600 rounded bg-gray-700"
+                          className="h-4 w-4 text-gray-600 focus:ring-gray-500 border-gray-600 rounded bg-gray-700"
                           id={`required-${index}`}
                         />
                         <label htmlFor={`required-${index}`} className="ml-2 text-gray-300">

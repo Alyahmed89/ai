@@ -46,7 +46,7 @@ export default function NodeLinks({ nodeId }: NodeLinksProps) {
 
   const getLinkTypeColor = (type: string) => {
     switch (type) {
-      case 'reference': return 'bg-blue-100 text-blue-800';
+      case 'reference': return 'bg-gray-100 text-gray-800';
       case 'dependency': return 'bg-green-100 text-green-800';
       case 'related': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -56,7 +56,7 @@ export default function NodeLinks({ nodeId }: NodeLinksProps) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
       </div>
     );
   }
