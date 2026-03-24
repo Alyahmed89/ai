@@ -1264,9 +1264,8 @@ const NodePopup = ({
   const [awaitInput, setAwaitInput] = useState<boolean>(nodeData?.await_input === true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
-  // Flow selection state (reusing EdgePopup pattern)
+  // Simple flow selection state
   const [availableFlows, setAvailableFlows] = useState<Array<{id: string, name: string}>>([]);
-  const [loadingFlows, setLoadingFlows] = useState(false);
   const [selectedFlowId, setSelectedFlowId] = useState<string>(
     nodeData?.step?.next_flow_id || ''
   );
@@ -1293,25 +1292,20 @@ const NodePopup = ({
     fetchCommands();
   }, []);
   
-  // Fetch available flows from backend (reusing EdgePopup logic)
+  // Fetch available flows from backend (simple version like /chat page)
   useEffect(() => {
     const fetchFlows = async () => {
       try {
-        setLoadingFlows(true);
-        const response = await fetch('/api/proxy/api/flows');
+        const response = await fetch('/api/proxy/api/flow-definitions');
         if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data?.flows) {
-            setAvailableFlows(data.data.flows.map((flow: any) => ({
-              id: flow.id,
-              name: flow.name || `Flow ${flow.id}`
-            })));
-          }
+          const flows = await response.json();
+          setAvailableFlows(flows.map((flow: any) => ({
+            id: flow.id,
+            name: flow.name || `Flow ${flow.id}`
+          })));
         }
       } catch (error) {
         console.error('Failed to fetch flows:', error);
-      } finally {
-        setLoadingFlows(false);
       }
     };
     
@@ -1540,7 +1534,6 @@ const NodePopup = ({
               value={selectedFlowId}
               onChange={(e) => setSelectedFlowId(e.target.value)}
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
-              disabled={loadingFlows}
             >
               <option value="">Default Next Flow (optional)</option>
               {availableFlows.map(flow => (
@@ -1549,9 +1542,6 @@ const NodePopup = ({
                 </option>
               ))}
             </select>
-            {loadingFlows && (
-              <div className="text-xs text-neutral-400 mt-1">Loading flows...</div>
-            )}
           </div>
 
           {/* Instructions/condition text area */}
