@@ -520,9 +520,28 @@ crudApi.delete('/flow-steps/:id', async (c) => {
     // Check if the error is due to missing flows table (foreign key constraint)
     const errorMessage = error.message || '';
     if (errorMessage.includes('no such table: main.flows') || errorMessage.includes('no such table: flows')) {
-      // Try alternative approach: update the step to mark it as deleted or use a different method
-      // For now, return a more helpful error message
-      return c.json(errorResponse('Cannot delete step due to database schema issue. Foreign key constraint references non-existent flows table. Please use bulk update endpoint instead.', 500));
+      // Try workaround: create dummy flows table, delete step, then drop dummy table
+      try {
+        const db = c.env.FLOW_RUNS_DB;
+        const id = c.req.param('id');
+        
+        // Create dummy flows table if it doesn't exist
+        await db.prepare('CREATE TABLE IF NOT EXISTS flows (id TEXT PRIMARY KEY)').run();
+        
+        // Delete step
+        const result = await db.prepare('DELETE FROM flow_steps WHERE id = ?').bind(id).run();
+        
+        // Drop dummy flows table
+        await db.prepare('DROP TABLE IF EXISTS flows').run();
+        
+        if (result.meta.changes === 0) {
+          return c.json(notFoundResponse('Flow step not found'));
+        }
+
+        return c.json(successResponse({ message: 'Flow step deleted successfully (using workaround)' }));
+      } catch (innerError) {
+        return c.json(errorResponse(`Cannot delete step due to database schema issue. Foreign key constraint references non-existent flows table. Error: ${innerError.message}`, 500));
+      }
     }
     return c.json(errorResponse(handleDbError(error).error, 500));
   }
@@ -2956,21 +2975,28 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
         const errorMessage = error.message || '';
         if (errorMessage.includes('no such table: main.flows') || errorMessage.includes('no such table: flows')) {
           console.log("flows table doesn't exist, foreign key constraint error when preparing DELETE statement");
-          // Try alternative approach: delete using rowid
+          console.log("Using workaround: create dummy flows table, delete steps, then drop dummy table");
+          
+          // Workaround: create dummy flows table, delete steps, then drop dummy table
           try {
-            // Try to delete each step individually using rowid
-            for (const stepId of deleted_step_ids) {
-              const deleteSql = `
-                DELETE FROM flow_steps 
-                WHERE rowid = (
-                  SELECT rowid FROM flow_steps WHERE id = ?
-                )
-              `;
-              statements.push(db.prepare(deleteSql).bind(stepId));
-            }
-            console.log("Using rowid-based DELETE as workaround for foreign key constraint");
+            // Create dummy flows table if it doesn't exist
+            statements.push(
+              db.prepare("CREATE TABLE IF NOT EXISTS flows (id TEXT PRIMARY KEY)")
+            );
+            
+            // Delete steps
+            statements.push(
+              db.prepare(`DELETE FROM flow_steps WHERE id IN (${placeholders})`).bind(...deleted_step_ids)
+            );
+            
+            // Drop dummy flows table
+            statements.push(
+              db.prepare("DROP TABLE IF EXISTS flows")
+            );
+            
+            console.log("Using dummy flows table workaround for foreign key constraint");
           } catch (innerError) {
-            console.log("Rowid-based DELETE also failed:", innerError.message);
+            console.log("Dummy flows table workaround also failed:", innerError.message);
             // If this also fails, we can't delete the steps
             // We'll continue without deleting them
           }
