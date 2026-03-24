@@ -173,6 +173,43 @@ export const flowConditionUpdateSchema = flowConditionCreateSchema.partial().ext
   id: z.string().min(1, 'id is required for update'),
 });
 
+// Flow Edge Schema (for DAG/FlowReact support)
+export const flowEdgeSchema = z.object({
+  id: idSchema,
+  flow_id: z.string().min(1, 'flow_id is required'),
+  source_step_id: z.string().min(1, 'source_step_id is required'),
+  target_step_id: z.string().min(1, 'target_step_id is required'),
+  edge_type: z.enum(['next', 'success', 'error', 'retry', 'fallback', 'conditional']).default('next'),
+  condition: z.string().optional().nullable().default(null),
+  route: z.string().optional().nullable().default(null),
+  weight: z.number().default(1.0),
+  metadata: z.string().optional().nullable().default(null),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+
+// Flow Edge Create Schema
+export const flowEdgeCreateSchema = flowEdgeSchema.omit({ 
+  created_at: true, 
+  updated_at: true 
+}).extend({
+  id: idSchema,
+});
+
+// Flow Edge Update Schema
+export const flowEdgeUpdateSchema = flowEdgeCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update'),
+});
+
+// Flow Steps Update Payload (for bulk updates from FlowReact)
+export const flowStepsUpdatePayloadSchema = z.object({
+  flow_id: z.string().min(1, 'flow_id is required'),
+  steps: z.array(flowStepUpdateSchema),
+  edges: z.array(flowEdgeCreateSchema),
+  deleted_step_ids: z.array(z.string()).optional().default([]),
+  deleted_edge_ids: z.array(z.string()).optional().default([]),
+});
+
 // API Response Schema
 export const apiResponseSchema = z.object({
   success: z.boolean(),

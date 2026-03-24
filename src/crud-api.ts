@@ -12,6 +12,9 @@ import {
   flowStepConditionUpdateSchema,
   flowConditionCreateSchema,
   flowConditionUpdateSchema,
+  flowEdgeCreateSchema,
+  flowEdgeUpdateSchema,
+  flowStepsUpdatePayloadSchema,
   validateSchema 
 } from './schemas';
 import {
@@ -2801,6 +2804,294 @@ crudApi.post('/execute-step', async (c) => {
   } catch (error) {
     console.error('Error executing step:', error);
     return c.json(errorResponse('Internal server error', 500));
+  }
+});
+
+// Helper function to recalculate step order based on edges (topological sort)
+async function recalculateStepOrder(db: any, flowId: string): Promise<void> {
+  // Get all steps for this flow
+  const stepsResult = await db.prepare('SELECT id FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
+  const steps = stepsResult.results || [];
+  
+  // Get all edges for this flow
+  const edgesResult = await db.prepare('SELECT source_step_id, target_step_id FROM flow_edges WHERE flow_id = ? AND edge_type = ?').bind(flowId, 'next').all();
+  const edges = edgesResult.results || [];
+  
+  // Build adjacency list
+  const graph: Record<string, string[]> = {};
+  const inDegree: Record<string, number> = {};
+  
+  // Initialize
+  for (const step of steps) {
+    graph[step.id] = [];
+    inDegree[step.id] = 0;
+  }
+  
+  // Build graph
+  for (const edge of edges) {
+    if (graph[edge.source_step_id] && graph[edge.target_step_id]) {
+      graph[edge.source_step_id].push(edge.target_step_id);
+      inDegree[edge.target_step_id]++;
+    }
+  }
+  
+  // Find nodes with no incoming edges (sources)
+  const queue: string[] = [];
+  for (const step of steps) {
+    if (inDegree[step.id] === 0) {
+      queue.push(step.id);
+    }
+  }
+  
+  // Topological sort
+  const sortedSteps: string[] = [];
+  let orderIndex = 0;
+  
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    sortedSteps.push(current);
+    
+    // Update order_index in database
+    await db.prepare('UPDATE flow_steps SET order_index = ? WHERE id = ?').bind(orderIndex, current).run();
+    orderIndex++;
+    
+    // Decrease in-degree of neighbors
+    for (const neighbor of graph[current] || []) {
+      inDegree[neighbor]--;
+      if (inDegree[neighbor] === 0) {
+        queue.push(neighbor);
+      }
+    }
+  }
+  
+  // Handle cycles or disconnected nodes (assign high order_index)
+  for (const step of steps) {
+    if (!sortedSteps.includes(step.id)) {
+      await db.prepare('UPDATE flow_steps SET order_index = ? WHERE id = ?').bind(orderIndex + 1000, step.id).run();
+      orderIndex++;
+    }
+  }
+}
+
+// Bulk update flow steps and edges (for FlowReact)
+crudApi.put('/flows/:flowId/steps', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const flowId = c.req.param('flowId');
+    const body = await c.req.json();
+    
+    // Validate with Zod
+    const validation = validateSchema(flowStepsUpdatePayloadSchema, { ...body, flow_id: flowId });
+    if (!validation.success) {
+      return c.json(validationErrorResponse(validation.error));
+    }
+    
+    const validatedData = validation.data!;
+    const { steps, edges, deleted_step_ids = [], deleted_edge_ids = [] } = validatedData;
+    
+    // Start transaction
+    await db.prepare('BEGIN TRANSACTION').run();
+    
+    try {
+      // 1. Delete orphaned edges
+      if (deleted_edge_ids.length > 0) {
+        const placeholders = deleted_edge_ids.map(() => '?').join(',');
+        await db.prepare(`DELETE FROM flow_edges WHERE id IN (${placeholders})`).bind(...deleted_edge_ids).run();
+      }
+      
+      // 2. Delete orphaned steps
+      if (deleted_step_ids.length > 0) {
+        const placeholders = deleted_step_ids.map(() => '?').join(',');
+        await db.prepare(`DELETE FROM flow_steps WHERE id IN (${placeholders})`).bind(...deleted_step_ids).run();
+      }
+      
+      // 3. Update existing steps and create new ones
+      for (const step of steps) {
+        if (step.id) {
+          // Check if step exists
+          const existingStep = await db.prepare('SELECT id FROM flow_steps WHERE id = ?').bind(step.id).first();
+          
+          if (existingStep) {
+            // Update existing step
+            const updates: string[] = [];
+            const bindings: any[] = [];
+            
+            if (step.flow_id !== undefined) {
+              updates.push('flow_id = ?');
+              bindings.push(step.flow_id);
+            }
+            if (step.step_key !== undefined) {
+              updates.push('step_key = ?');
+              bindings.push(step.step_key);
+            }
+            if (step.title !== undefined) {
+              updates.push('title = ?');
+              bindings.push(step.title);
+            }
+            if (step.instructions !== undefined) {
+              updates.push('instructions = ?');
+              bindings.push(step.instructions);
+            }
+            if (step.step_type !== undefined) {
+              updates.push('step_type = ?');
+              bindings.push(step.step_type);
+            }
+            if (step.order_index !== undefined) {
+              updates.push('order_index = ?');
+              bindings.push(step.order_index);
+            }
+            if (step.page_key !== undefined) {
+              updates.push('page_key = ?');
+              bindings.push(dbValue(step.page_key));
+            }
+            if (step.blocking !== undefined) {
+              updates.push('blocking = ?');
+              bindings.push(getBoolean(step.blocking, true));
+            }
+            if (step.auto_fail_on_error !== undefined) {
+              updates.push('auto_fail_on_error = ?');
+              bindings.push(getBoolean(step.auto_fail_on_error, true));
+            }
+            if (step.retryable !== undefined) {
+              updates.push('retryable = ?');
+              bindings.push(getBoolean(step.retryable, false));
+            }
+            if (step.task_id !== undefined) {
+              updates.push('task_id = ?');
+              bindings.push(dbValue(step.task_id));
+            }
+            if (step.output_keys !== undefined) {
+              updates.push('output_keys = ?');
+              bindings.push(dbValue(step.output_keys));
+            }
+            if (step.output_url !== undefined) {
+              updates.push('output_url = ?');
+              bindings.push(dbValue(step.output_url));
+            }
+            if (step.output_payload_template !== undefined) {
+              updates.push('output_payload_template = ?');
+              bindings.push(dbValue(step.output_payload_template));
+            }
+            if (step.default_next_step !== undefined) {
+              updates.push('default_next_step = ?');
+              bindings.push(dbValue(step.default_next_step));
+            }
+            if (step.output_auth_token !== undefined) {
+              updates.push('output_auth_token = ?');
+              bindings.push(dbValue(step.output_auth_token));
+            }
+            if (step.input_keys !== undefined) {
+              updates.push('input_keys = ?');
+              bindings.push(dbValue(step.input_keys));
+            }
+            if (step.output !== undefined) {
+              updates.push('output = ?');
+              bindings.push(getBoolean(step.output, false));
+            }
+            
+            // Always update updated_at
+            updates.push('updated_at = CURRENT_TIMESTAMP');
+            
+            if (updates.length > 1) { // More than just updated_at
+              const sql = `UPDATE flow_steps SET ${updates.join(', ')} WHERE id = ?`;
+              bindings.push(step.id);
+              await db.prepare(sql).bind(...bindings.map(normalizeForDb)).run();
+            }
+          } else {
+            // Create new step
+            const stepId = step.id;
+            const sql = `
+              INSERT INTO flow_steps (
+                id, flow_id, step_key, title, instructions, step_type, order_index,
+                page_key, blocking, auto_fail_on_error, retryable, task_id,
+                output_keys, output_url, output_payload_template, default_next_step,
+                output_auth_token, input_keys, output, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `;
+
+            const bindings = [
+              stepId,
+              step.flow_id || flowId,
+              step.step_key || `step-${Date.now()}`,
+              step.title || 'Untitled Step',
+              step.instructions || '',
+              step.step_type || 'manual',
+              step.order_index || 0,
+              dbValue(step.page_key),
+              getBoolean(step.blocking, true),
+              getBoolean(step.auto_fail_on_error, true),
+              getBoolean(step.retryable, false),
+              dbValue(step.task_id),
+              dbValue(step.output_keys),
+              dbValue(step.output_url),
+              dbValue(step.output_payload_template),
+              dbValue(step.default_next_step),
+              dbValue(step.output_auth_token),
+              dbValue(step.input_keys),
+              getBoolean(step.output, false)
+            ];
+            
+            await db.prepare(sql).bind(...bindings.map(normalizeForDb)).run();
+          }
+        }
+      }
+      
+      // 4. Update edges (delete all existing edges for this flow and recreate)
+      // First, delete all existing edges for this flow
+      await db.prepare('DELETE FROM flow_edges WHERE flow_id = ?').bind(flowId).run();
+      
+      // Then, insert new edges
+      for (const edge of edges) {
+        const edgeId = edge.id || `edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        const sql = `
+          INSERT INTO flow_edges (
+            id, flow_id, source_step_id, target_step_id, edge_type,
+            condition, route, weight, metadata, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `;
+
+        const bindings = [
+          edgeId,
+          flowId,
+          edge.source_step_id,
+          edge.target_step_id,
+          edge.edge_type || 'next',
+          dbValue(edge.condition),
+          dbValue(edge.route),
+          edge.weight || 1.0,
+          dbValue(edge.metadata)
+        ];
+        
+        await db.prepare(sql).bind(...bindings.map(normalizeForDb)).run();
+      }
+      
+      // 5. Recalculate order_index based on edges (topological sort)
+      await recalculateStepOrder(db, flowId);
+      
+      // Commit transaction
+      await db.prepare('COMMIT').run();
+      
+      return c.json(successResponse({ 
+        message: 'Flow steps and edges updated successfully',
+        steps_updated: steps.length,
+        edges_updated: edges.length,
+        steps_deleted: deleted_step_ids.length,
+        edges_deleted: deleted_edge_ids.length
+      }));
+      
+    } catch (error) {
+      // Rollback on error
+      await db.prepare('ROLLBACK').run();
+      throw error;
+    }
+    
+  } catch (error) {
+    return c.json(errorResponse(handleDbError(error).error, 500));
   }
 });
 
