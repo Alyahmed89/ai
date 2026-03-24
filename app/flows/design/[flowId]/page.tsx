@@ -271,20 +271,30 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
   });
 
   const conditionText = data?.condition?.source === 'default' 
-    ? '' // Empty for "always" conditions - will be added later using condition nodes
+    ? 'Always' // Show "Always" for default conditions
     : `${data?.condition?.source} ${data?.condition?.operator} ${data?.condition?.value || ''}`;
 
   return (
     <>
-      <BaseEdge
-        path={edgePath}
-        markerEnd={markerEnd}
-        style={{
-          ...style,
-          stroke: '#3b82f6',
-          strokeWidth: 2,
+      <g
+        onClick={() => {
+          console.log('Edge clicked (on path):', id, data);
+          if (onClick) {
+            onClick(id);
+          }
         }}
-      />
+        style={{ cursor: 'pointer' }}
+      >
+        <BaseEdge
+          path={edgePath}
+          markerEnd={markerEnd}
+          style={{
+            ...style,
+            stroke: '#3b82f6',
+            strokeWidth: 2,
+          }}
+        />
+      </g>
       {conditionText && (
         <EdgeLabelRenderer>
           <div
@@ -305,7 +315,7 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
             }}
             className="hover:opacity-100 hover:border-sky-500"
             onClick={() => {
-              console.log('Edge clicked:', id, data);
+              console.log('Edge clicked (on label):', id, data);
               if (onClick) {
                 onClick(id);
               }
@@ -323,7 +333,7 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
 // We'll define it inside the FlowDesigner component
 
 // Function to fetch flow data from backend
-async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefinition | null, flowSteps: Step[]}> {
+async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefinition | null, flowSteps: Step[], flowEdges?: any[]}> {
   try {
     // Fetch flow definition
     const flowResponse = await fetch(`/api/proxy/api/flow-definitions/${flowId}`);
@@ -347,7 +357,54 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
       flowDefinition = flowData;
     }
 
-    // Fetch flow steps
+    // Try to fetch complete DAG from new endpoint first
+    try {
+      const dagResponse = await fetch(`/api/proxy/api/flows/${flowId}/steps`);
+      if (dagResponse.ok) {
+        const dagData = await dagResponse.json();
+        console.log('Fetched DAG data from new endpoint:', dagData);
+        
+        // Handle different response formats
+        let dagResult: any = dagData;
+        if (dagData.success !== undefined && dagData.data) {
+          dagResult = dagData.data;
+        }
+        
+        // Extract steps and edges from DAG response
+        const stepsArray = dagResult.steps || [];
+        const edgesArray = dagResult.edges || [];
+        
+        console.log('DAG steps:', stepsArray.map((s: any) => ({ id: s.id, title: s.title })));
+        console.log('DAG edges:', edgesArray.map((e: any) => ({ id: e.id, source: e.source_step_id, target: e.target_step_id })));
+        
+        // Process steps
+        const flowSteps = stepsArray
+          .sort((a: any, b: any) => a.order_index - b.order_index)
+          .map((step: any) => ({
+            ...step,
+            // Add UI-specific fields
+            type: (() => {
+              // If step_type is "processing" and extra_step is 1, it's a response node (backward compatibility)
+              if (step.step_type === 'processing' && step.extra_step === 1) {
+                console.log(`Step ${step.id}: Backward compatibility - processing with extra_step=1 -> response`);
+                return 'response';
+              }
+              // Otherwise use step_type directly
+              const result = step.step_type || (step.order_index === 1 ? 'input' : step.order_index === stepsArray.length ? 'output' : 'default');
+              console.log(`Step ${step.id}: step_type="${step.step_type}", extra_step=${step.extra_step}, mapped to type="${result}"`);
+              return result;
+            })(),
+            description: step.instructions?.substring(0, 100) + (step.instructions?.length > 100 ? '...' : ''),
+          })) as Step[];
+        
+        console.log('Fetched flow steps with types:', flowSteps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type, extra_step: s.extra_step })));
+        return { flowDefinition, flowSteps, flowEdges: edgesArray };
+      }
+    } catch (dagError) {
+      console.log('New DAG endpoint not available, falling back to old endpoint:', dagError);
+    }
+
+    // Fallback: Fetch flow steps from old endpoint
     const stepsResponse = await fetch(`/api/proxy/api/flow-steps?flow_id=${flowId}`);
     if (!stepsResponse.ok) {
       console.error('Failed to fetch flow steps:', stepsResponse.status);
@@ -525,6 +582,90 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
   }
 }
 
+// Function to save complete DAG (steps and edges) to backend using new endpoint
+async function saveFlowDAG(
+  flowId: string, 
+  steps: Step[], 
+  edges: CustomEdge[], 
+  deletedStepIds: string[] = [], 
+  deletedEdgeIds: string[] = []
+): Promise<boolean> {
+  try {
+    console.log('Saving flow DAG:', { 
+      flowId, 
+      stepsCount: steps.length, 
+      edgesCount: edges.length,
+      deletedStepIds,
+      deletedEdgeIds
+    });
+    
+    // Prepare edges for backend
+    const backendEdges = edges.map(edge => ({
+      id: edge.id,
+      source_step_id: edge.source,
+      target_step_id: edge.target,
+      condition: edge.data?.condition || {
+        source: 'default',
+        operator: 'always',
+        value: null,
+      },
+      route: edge.data?.route || {
+        type: 'step',
+        target_id: edge.target,
+        context_preservation: 'full',
+      },
+      type: edge.type || 'default',
+    }));
+    
+    // Prepare steps for backend (ensure they have correct structure)
+    const backendSteps = steps.map(step => ({
+      id: step.id,
+      title: step.title || '',
+      instructions: step.instructions || '',
+      step_type: step.step_type || 'default',
+      order_index: step.order_index || 1,
+      blocking: Boolean(step.blocking || 0),
+      auto_fail_on_error: Boolean(step.auto_fail_on_error || 0),
+      retryable: Boolean(step.retryable || 0),
+      output_keys: step.output_keys || '',
+      input_keys: step.input_keys || '',
+      use_endpoints: step.use_endpoints || null,
+      extra_step: step.extra_step || 0,
+      page_key: step.page_key || null,
+      default_next_step_id: step.default_next_step_id || null,
+    }));
+    
+    const payload = {
+      steps: backendSteps,
+      edges: backendEdges,
+      deleted_step_ids: deletedStepIds,
+      deleted_edge_ids: deletedEdgeIds,
+    };
+    
+    console.log('Sending DAG payload:', payload);
+    
+    const response = await fetch(`/api/proxy/api/flows/${flowId}/steps`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to save flow DAG:', response.status);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      return false;
+    }
+    
+    const data = await response.json();
+    console.log('Flow DAG saved successfully:', data);
+    return true;
+  } catch (error) {
+    console.error('Error saving flow DAG:', error);
+    return false;
+  }
+}
+
 // Function to create a new step
 async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<Step | null> {
   try {
@@ -639,34 +780,43 @@ function getAvailableVariables(currentStepId: string, steps: Step[]): string[] {
 // Create edges connecting all steps in sequence
 function createEdgesFromSteps(steps: Step[]) {
   const edges: CustomEdge[] = [];
-  for (let i = 0; i < steps.length - 1; i++) {
-    edges.push({
-      id: `e${steps[i].id}-${steps[i + 1].id}`,
-      source: steps[i].id,
-      target: steps[i + 1].id,
-      animated: i === 0, // Animate first connection
-      style: {
-        stroke: '#3b82f6', // Blue color for edges
-        strokeWidth: 2,
-      },
-      markerEnd: {
-        type: 'arrowclosed',
-        color: '#3b82f6',
-      },
-      data: {
-        condition: {
-          source: 'default',
-          operator: 'always',
-          value: null,
+  
+  // Create a map of step IDs to steps for easy lookup
+  const stepMap = new Map<string, Step>();
+  steps.forEach(step => stepMap.set(step.id, step));
+  
+  // Create edges based on default_next_step_id connections
+  steps.forEach(step => {
+    if (step.default_next_step_id && stepMap.has(step.default_next_step_id)) {
+      edges.push({
+        id: `e${step.id}-${step.default_next_step_id}`,
+        source: step.id,
+        target: step.default_next_step_id,
+        animated: false,
+        style: {
+          stroke: '#3b82f6', // Blue color for edges
+          strokeWidth: 2,
         },
-        route: {
-          type: 'step' as const,
-          target_id: steps[i + 1].id,
-          context_preservation: 'full' as const,
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#3b82f6',
         },
-      },
-    });
-  }
+        data: {
+          condition: {
+            source: 'default',
+            operator: 'always',
+            value: null,
+          },
+          route: {
+            type: 'step' as const,
+            target_id: step.default_next_step_id,
+            context_preservation: 'full' as const,
+          },
+        },
+      });
+    }
+  });
+  
   return edges;
 }
 
@@ -1444,6 +1594,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
   const [saving, setSaving] = useState(false);
   
+  // Track deleted items for DAG persistence
+  const [deletedStepIds, setDeletedStepIds] = useState<string[]>([]);
+  const [deletedEdgeIds, setDeletedEdgeIds] = useState<string[]>([]);
+  
   useEffect(() => {
     console.log('saving state changed:', saving);
   }, [saving]);
@@ -1497,7 +1651,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     setError(null);
     
     try {
-      const { flowDefinition, flowSteps } = await fetchFlowData(currentFlowId);
+      const { flowDefinition, flowSteps, flowEdges } = await fetchFlowData(currentFlowId);
       
       if (!flowDefinition) {
         // Flow doesn't exist - show create flow modal
@@ -1507,9 +1661,46 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         setFlowDefinition(flowDefinition);
         setFlowSteps(flowSteps);
         
-        // Create nodes and edges from real data
+        // Create nodes from steps
         const initialNodes = createNodesFromSteps(flowSteps);
-        const initialEdges = createEdgesFromSteps(flowSteps);
+        
+        // Create edges: use flowEdges if available, otherwise create from steps
+        let initialEdges: CustomEdge[] = [];
+        if (flowEdges && flowEdges.length > 0) {
+          // Convert backend edges to React Flow edges
+          initialEdges = flowEdges.map((edge: any) => ({
+            id: edge.id,
+            source: edge.source_step_id,
+            target: edge.target_step_id,
+            animated: false,
+            style: {
+              stroke: '#3b82f6',
+              strokeWidth: 2,
+            },
+            markerEnd: {
+              type: 'arrowclosed',
+              color: '#3b82f6',
+            },
+            data: {
+              condition: edge.condition || {
+                source: 'default',
+                operator: 'always',
+                value: null,
+              },
+              route: edge.route || {
+                type: 'step',
+                target_id: edge.target_step_id,
+                context_preservation: 'full',
+              },
+            },
+            type: edge.type || 'default',
+          }));
+          console.log('Created edges from backend DAG:', initialEdges);
+        } else {
+          // Fallback: create edges from step connections
+          initialEdges = createEdgesFromSteps(flowSteps);
+          console.log('Created edges from step connections (fallback):', initialEdges);
+        }
         
         setNodes(initialNodes);
         setEdges(initialEdges);
@@ -1557,6 +1748,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       id: nodeId,
       type: 'remove'
     };
+    
+    // Track deleted step ID
+    setDeletedStepIds(prev => [...prev, nodeId]);
     
     // Trigger the nodes change with remove action
     onNodesChange([change]);
@@ -1697,7 +1891,18 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }), [edges]);
 
   const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds) as CustomEdge[]),
+    (changes: EdgeChange[]) => {
+      // Track deleted edge IDs
+      const deletedIds = changes
+        .filter(change => change.type === 'remove')
+        .map(change => change.id);
+      
+      if (deletedIds.length > 0) {
+        setDeletedEdgeIds(prev => [...prev, ...deletedIds]);
+      }
+      
+      setEdges((eds) => applyEdgeChanges(changes, eds) as CustomEdge[]);
+    },
     []
   );
 
@@ -1857,6 +2062,19 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         const newOrderIndex = orderIndexMap.get(node.id) || step.order_index || 1;
         console.log(`Node ${node.id}: old order_index=${step.order_index}, new order_index=${newOrderIndex}`);
         
+        // Find outgoing edges for this node to set default_next_step_id
+        let defaultNextStepId: string | null = null;
+        const outgoingEdges = edges.filter(edge => edge.source === node.id);
+        if (outgoingEdges.length > 0) {
+          // Use the first outgoing edge's target as the default next step
+          // Note: This assumes unconditional edges. For conditional edges, we might need more complex logic
+          const firstEdge = outgoingEdges[0];
+          if (firstEdge.data?.route?.type === 'step') {
+            defaultNextStepId = firstEdge.data.route.target_id;
+          }
+        }
+        console.log(`Node ${node.id}: outgoing edges=${outgoingEdges.length}, default_next_step_id=${defaultNextStepId}`);
+        
         return {
           ...step,
           title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
@@ -1867,18 +2085,23 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           // Update input/output keys from node data if available
           input_keys: step.input_keys || null,
           output_keys: step.output_keys || '',
+          // Save edge connection
+          default_next_step_id: defaultNextStepId,
         };
       });
       
       // Sort steps by order_index for consistency
       updatedSteps.sort((a, b) => a.order_index - b.order_index);
       
-      // Save to backend
-      console.log('Saving steps:', updatedSteps);
-      const success = await saveFlowSteps(currentFlowId, updatedSteps);
+      // Save complete DAG to backend
+      console.log('Saving DAG:', { steps: updatedSteps, edges, deletedStepIds, deletedEdgeIds });
+      const success = await saveFlowDAG(currentFlowId, updatedSteps, edges, deletedStepIds, deletedEdgeIds);
       
       if (success) {
-        console.log(`Flow saved successfully with ${nodes.length} steps`);
+        console.log(`Flow saved successfully with ${nodes.length} steps and ${edges.length} edges`);
+        // Clear deletion tracking after successful save
+        setDeletedStepIds([]);
+        setDeletedEdgeIds([]);
         // Reload data to ensure we have latest
         await loadFlowData();
       } else {
