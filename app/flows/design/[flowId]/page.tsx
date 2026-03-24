@@ -10,6 +10,45 @@ const generateStableId = (prefix: string = 'step'): string => {
   const random = Math.floor(Math.random() * 1000000);
   return `${prefix}-${timestamp}-${random}`;
 };
+
+// LocalStorage helper functions for edge persistence
+const getStoredEdges = (flowId: string): CustomEdge[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const key = `flow_edges_${flowId}`;
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const edges = JSON.parse(stored);
+      console.log(`Loaded ${edges.length} edges from localStorage for flow ${flowId}`);
+      return edges;
+    }
+  } catch (error) {
+    console.error('Error loading edges from localStorage:', error);
+  }
+  return [];
+};
+
+const storeEdges = (flowId: string, edges: CustomEdge[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `flow_edges_${flowId}`;
+    localStorage.setItem(key, JSON.stringify(edges));
+    console.log(`Stored ${edges.length} edges to localStorage for flow ${flowId}`);
+  } catch (error) {
+    console.error('Error storing edges to localStorage:', error);
+  }
+};
+
+const clearStoredEdges = (flowId: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `flow_edges_${flowId}`;
+    localStorage.removeItem(key);
+    console.log(`Cleared stored edges for flow ${flowId}`);
+  } catch (error) {
+    console.error('Error clearing edges from localStorage:', error);
+  }
+};
 import {
   ReactFlow,
   Node,
@@ -450,10 +489,10 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
       })) as Step[];
     
     console.log('Fetched flow steps with types:', flowSteps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type, extra_step: s.extra_step })));
-    return { flowDefinition, flowSteps };
+    return { flowDefinition, flowSteps, flowEdges: [] };
   } catch (error) {
     console.error('Error fetching flow data:', error);
-    return { flowDefinition: null, flowSteps: [] };
+    return { flowDefinition: null, flowSteps: [], flowEdges: [] };
   }
 }
 
@@ -1645,6 +1684,13 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       };
     }
   }, [addNodeMenu.show]);
+
+  // Save edges to localStorage whenever they change
+  useEffect(() => {
+    if (currentFlowId && edges.length > 0) {
+      storeEdges(currentFlowId, edges);
+    }
+  }, [edges, currentFlowId]);
   
   const loadFlowData = async () => {
     setLoading(true);
@@ -1664,7 +1710,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         // Create nodes from steps
         const initialNodes = createNodesFromSteps(flowSteps);
         
-        // Create edges: use flowEdges if available, otherwise create from steps
+        // Create edges: use flowEdges if available, otherwise try localStorage, otherwise create from steps
         let initialEdges: CustomEdge[] = [];
         if (flowEdges && flowEdges.length > 0) {
           // Convert backend edges to React Flow edges
@@ -1697,9 +1743,16 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           }));
           console.log('Created edges from backend DAG:', initialEdges);
         } else {
-          // Fallback: create edges from step connections
-          initialEdges = createEdgesFromSteps(flowSteps);
-          console.log('Created edges from step connections (fallback):', initialEdges);
+          // Try to load edges from localStorage
+          const storedEdges = getStoredEdges(currentFlowId);
+          if (storedEdges.length > 0) {
+            initialEdges = storedEdges;
+            console.log('Loaded edges from localStorage:', initialEdges);
+          } else {
+            // Final fallback: create edges from step connections
+            initialEdges = createEdgesFromSteps(flowSteps);
+            console.log('Created edges from step connections (fallback):', initialEdges);
+          }
         }
         
         setNodes(initialNodes);
@@ -2099,6 +2152,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       
       if (success) {
         console.log(`Flow saved successfully with ${nodes.length} steps and ${edges.length} edges`);
+        // Also save edges to localStorage for persistence
+        storeEdges(currentFlowId, edges);
         // Clear deletion tracking after successful save
         setDeletedStepIds([]);
         setDeletedEdgeIds([]);
