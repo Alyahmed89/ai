@@ -180,6 +180,8 @@ interface Step {
   command?: string;
   await_input?: boolean;
   variables?: string[];
+  // Default next flow for step-level routing (edge always overrides)
+  next_flow_id?: string | null;
 }
 
 // Flow definition interface - matches backend
@@ -627,6 +629,8 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         use_endpoints: step.use_endpoints || null,
         extra_step: step.extra_step || 0,
         page_key: step.page_key || null,
+        // Include next_flow_id if present
+        next_flow_id: step.next_flow_id || null,
       };
       
       const response = await fetch(`/api/proxy/api/flow-steps`, {
@@ -661,6 +665,8 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         use_endpoints: step.use_endpoints || null,
         extra_step: step.extra_step || 0,
         page_key: step.page_key || null,
+        // Include next_flow_id if present
+        next_flow_id: step.next_flow_id || null,
       };
       
       const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
@@ -737,6 +743,8 @@ async function saveFlowDAG(
       extra_step: step.extra_step || 0,
       page_key: step.page_key || null,
       default_next_step_id: step.default_next_step_id || null,
+      // Include next_flow_id if present
+      next_flow_id: step.next_flow_id || null,
     }));
     
     const payload = {
@@ -790,6 +798,8 @@ async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<S
         input_keys: stepData.input_keys || '',
         output: Boolean(stepData.output || 0),
         requires_task: Boolean(stepData.requires_task || 0),
+        // Include next_flow_id if present
+        next_flow_id: stepData.next_flow_id || null,
       }),
     });
     
@@ -1254,6 +1264,13 @@ const NodePopup = ({
   const [awaitInput, setAwaitInput] = useState<boolean>(nodeData?.await_input === true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
+  // Flow selection state (reusing EdgePopup pattern)
+  const [availableFlows, setAvailableFlows] = useState<Array<{id: string, name: string}>>([]);
+  const [loadingFlows, setLoadingFlows] = useState(false);
+  const [selectedFlowId, setSelectedFlowId] = useState<string>(
+    nodeData?.step?.next_flow_id || ''
+  );
+  
   // Fetch available commands from API
   useEffect(() => {
     const fetchCommands = async () => {
@@ -1274,6 +1291,31 @@ const NodePopup = ({
     };
     
     fetchCommands();
+  }, []);
+  
+  // Fetch available flows from backend (reusing EdgePopup logic)
+  useEffect(() => {
+    const fetchFlows = async () => {
+      try {
+        setLoadingFlows(true);
+        const response = await fetch('/api/proxy/api/flows');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.flows) {
+            setAvailableFlows(data.data.flows.map((flow: any) => ({
+              id: flow.id,
+              name: flow.name || `Flow ${flow.id}`
+            })));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch flows:', error);
+      } finally {
+        setLoadingFlows(false);
+      }
+    };
+    
+    fetchFlows();
   }, []);
   
   // Get parameters for selected command
@@ -1318,7 +1360,8 @@ const NodePopup = ({
         step: currentStep ? {
           ...currentStep,
           instructions: domInstructions, // Use DOM value
-          // Remove output_keys since we're not using it anymore
+          // Store next_flow_id (empty string becomes null for backend)
+          next_flow_id: selectedFlowId || null,
         } : {
           // Create a minimal step object if it doesn't exist
           id: node.id || generateStableId('step'),
@@ -1347,6 +1390,8 @@ const NodePopup = ({
           use_endpoints: null,
           extra_step: 0,
           page_key: null,
+          // Store next_flow_id for new steps
+          next_flow_id: selectedFlowId || null,
         },
       },
     };
@@ -1488,6 +1533,26 @@ const NodePopup = ({
           {loadingCommands && (
             <div className="text-xs text-neutral-400">Loading commands...</div>
           )}
+
+          {/* Default Next Flow Selection (optional) - ABOVE instructions */}
+          <div>
+            <select
+              value={selectedFlowId}
+              onChange={(e) => setSelectedFlowId(e.target.value)}
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
+              disabled={loadingFlows}
+            >
+              <option value="">Default Next Flow (optional)</option>
+              {availableFlows.map(flow => (
+                <option key={flow.id} value={flow.id}>
+                  {flow.name}
+                </option>
+              ))}
+            </select>
+            {loadingFlows && (
+              <div className="text-xs text-neutral-400 mt-1">Loading flows...</div>
+            )}
+          </div>
 
           {/* Instructions/condition text area */}
           <div>
