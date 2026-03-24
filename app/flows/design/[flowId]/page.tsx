@@ -2,6 +2,14 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo, DragEvent } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+
+// Stable ID generator
+const generateStableId = (prefix: string = 'step'): string => {
+  // Use a counter and timestamp to ensure uniqueness and stability
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000000);
+  return `${prefix}-${timestamp}-${random}`;
+};
 import {
   ReactFlow,
   Node,
@@ -32,6 +40,7 @@ import '@xyflow/react/dist/style.css';
 // Import existing flow management components
 import EditFlowModal from '../../../../components/EditFlowModal';
 import SimpleFlowCreator from '../../../../components/SimpleFlowCreator';
+import Modal from '../../../../components/ui/Modal';
 
 // Step data structure - matches backend FlowStep
 interface Step {
@@ -129,35 +138,14 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
   const hasOutput = step && step.output_keys && step.output_keys.trim().length > 0;
   const awaitInput = data.await_input === true;
   
-  // State for hover tracking
-  const [isHovered, setIsHovered] = useState(false);
-  
-  // Determine node colors based on type - Modern minimal palette
-  let bgColor = '#0f172a'; // slate-900
-  let borderColor = '#334155'; // slate-700
-  let textColor = '#f8fafc'; // slate-50
-  let borderWidth = '1px';
-  let borderStyle = 'solid';
+  // Single node type styling - Black/white/gray only
+  const bgColor = '#000000'; // black
+  const borderColor = '#666666'; // gray
+  const textColor = '#ffffff'; // white
+  const borderWidth = '1px';
+  const borderStyle = 'solid';
   
   const nodeType = data.type || (step && step.step_type) || 'default';
-  
-  if (nodeType === 'input') {
-    bgColor = '#0f172a'; // slate-900
-    borderColor = '#0ea5e9'; // sky-500
-  } else if (nodeType === 'output') {
-    bgColor = '#0f172a'; // slate-900
-    borderColor = '#8b5cf6'; // violet-500
-  } else if (nodeType === 'response') {
-    bgColor = '#1e293b'; // slate-800 - slightly lighter background
-    borderColor = '#f59e0b'; // amber-500
-    borderWidth = '2px';
-    borderStyle = 'dashed';
-  } else if (nodeType === 'condition') {
-    bgColor = '#1e293b'; // slate-800 - slightly lighter background
-    borderColor = '#3b82f6'; // blue-500
-    borderWidth = '2px';
-    borderStyle = 'dashed';
-  }
   
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -168,18 +156,16 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
   
   return (
     <div 
-      className="px-4 py-3 rounded-lg border cursor-pointer transition-all hover:border-opacity-100 relative group"
+      className="px-3 py-2 rounded border cursor-pointer relative"
       style={{
         backgroundColor: bgColor,
         borderColor: borderColor,
         borderWidth: borderWidth,
         borderStyle: borderStyle,
         color: textColor,
-        minWidth: '220px',
-        maxWidth: '280px',
+        minWidth: '180px',
+        maxWidth: '240px',
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       onClick={() => {
         console.log('Node clicked:', step.id, step);
         if (onClick) {
@@ -191,9 +177,9 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
         type="target" 
         position={Position.Top} 
         style={{ 
-          background: '#3b82f6',
-          borderColor: '#1e40af',
-          borderWidth: '2px',
+          background: '#666666',
+          borderColor: '#999999',
+          borderWidth: '1px',
           width: '10px',
           height: '10px',
         }} 
@@ -201,13 +187,13 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
       
       {/* Node header with title and indicators */}
       <div className="flex justify-between items-start">
-        <div className="font-medium text-sm truncate">{step.title}</div>
+        <div className="font-thin text-sm truncate">{step.title}</div>
         <div className="flex items-center space-x-1 ml-2">
-          {/* Delete button - appears on hover */}
-          {isHovered && onDeleteNode && (
+          {/* Delete button - always visible */}
+          {onDeleteNode && (
             <button
               onClick={handleDelete}
-              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30"
+              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30 opacity-70 hover:opacity-100"
               title="Delete this step"
             >
               🗑️
@@ -236,39 +222,39 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
               e.dataTransfer.setDragImage(dragIcon, 10, 10);
               setTimeout(() => document.body.removeChild(dragIcon), 0);
             }}
-            className="text-xs text-gray-400 opacity-40 hover:opacity-100 hover:text-green-400 transition-opacity cursor-grab active:cursor-grabbing"
+            className="text-xs text-neutral-400 opacity-40 hover:opacity-100 hover:text-green-400 transition-opacity cursor-grab active:cursor-grabbing"
             title="Add step from this node (click or drag)"
           >
             +
           </button>
           {/* I/O and command indicators as icons - blurry by default, full opacity on hover */}
           {hasInput && (
-            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title={`Input: ${step.input_keys}`}>
+            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title={`Input: ${step.input_keys}`}>
               →
             </span>
           )}
           {hasOutput && (
-            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title={`Output: ${step.output_keys}`}>
+            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title={`Output: ${step.output_keys}`}>
               ←
             </span>
           )}
           {hasCommand && (
-            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Has command">
+            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title="Has command">
               ⚡
             </span>
           )}
           {awaitInput && (
-            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Awaits user input">
+            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title="Awaits user input">
               ⏳
             </span>
           )}
           {nodeType === 'response' && (
-            <span className="text-xs text-yellow-400 opacity-40 hover:opacity-100 transition-opacity" title="Response Node">
+            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Response Node">
               🔄
             </span>
           )}
           {nodeType === 'condition' && (
-            <span className="text-xs text-blue-400 opacity-40 hover:opacity-100 transition-opacity" title="Condition Node">
+            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Condition Node">
               ⚖️
             </span>
           )}
@@ -279,9 +265,9 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
         type="source" 
         position={Position.Bottom} 
         style={{ 
-          background: '#3b82f6',
-          borderColor: '#1e40af',
-          borderWidth: '2px',
+          background: '#666666',
+          borderColor: '#999999',
+          borderWidth: '1px',
           width: '10px',
           height: '10px',
         }} 
@@ -296,9 +282,6 @@ const FlowNode = ({ data, onDeleteNode }: { data: any; onDeleteNode?: (nodeId: s
   const hasInput = step && step.input_keys && step.input_keys.trim() !== '';
   const hasOutput = step && step.output_keys && step.output_keys.trim() !== '';
   
-  // State for hover tracking
-  const [isHovered, setIsHovered] = useState(false);
-  
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onDeleteNode && step.id) {
@@ -308,9 +291,7 @@ const FlowNode = ({ data, onDeleteNode }: { data: any; onDeleteNode?: (nodeId: s
   
   return (
     <div 
-      className="bg-gray-900 border border-purple-600 rounded p-3 w-60 cursor-pointer relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className="bg-black border border-gray-600 rounded p-2 w-48 cursor-pointer relative"
       onDoubleClick={() => {
         console.log('Double-clicked flow node:', step.id);
         // In a real implementation, this would open the subflow
@@ -320,29 +301,29 @@ const FlowNode = ({ data, onDeleteNode }: { data: any; onDeleteNode?: (nodeId: s
       {/* Minimal header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center">
-          <div className="text-sm text-white truncate">
+          <div className="text-sm font-thin text-white truncate">
             {step.title}
           </div>
         </div>
         <div className="flex items-center space-x-1">
-          {/* Delete button - appears on hover */}
-          {isHovered && onDeleteNode && (
+          {/* Delete button - always visible */}
+          {onDeleteNode && (
             <button
               onClick={handleDelete}
-              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30"
+              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30 opacity-70 hover:opacity-100"
               title="Delete this flow node"
             >
               🗑️
             </button>
           )}
-          <div className="text-xs text-purple-400">
+          <div className="text-xs text-gray-400 font-thin">
             Flow
           </div>
         </div>
       </div>
       
       {/* Minimal description */}
-      <div className="text-xs text-gray-400 mb-2 line-clamp-2">
+      <div className="text-xs text-gray-400 font-thin mb-2 line-clamp-2">
         {step.instructions.substring(0, 60)}
         {step.instructions.length > 60 ? '...' : ''}
       </div>
@@ -614,7 +595,7 @@ async function createNewStep(flowId: string, stepData: Partial<Step>): Promise<S
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         flow_id: flowId,
-        step_key: stepData.step_key || `step-${Date.now()}`,
+        step_key: stepData.step_key || generateStableId('step'),
         title: stepData.title || 'New Step',
         instructions: stepData.instructions || '',
         step_type: stepData.step_type || 'default',
@@ -906,268 +887,69 @@ const EdgePopup = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
-      <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800 shadow-2xl">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-semibold text-white">Edge Condition</h3>
+    <Modal onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-thin">Edge</h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-lg"
+            className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
           >
-            ×
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M6 18 L18 6 M6 6 l12 12" />
+            </svg>
           </button>
         </div>
         
         <div className="space-y-5">
-          {/* Source */}
+          {/* Simplified form */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Condition Source
-            </label>
-            <div className="mb-3">
-              <div className="text-xs text-gray-500 mb-2">System Conditions</div>
-              <select
-                value={condition.source}
-                onChange={(e) => setCondition({...condition, source: e.target.value})}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors mb-3"
-              >
-                <optgroup label="System Conditions">
-                  {sourceOptions.filter(opt => opt.category === 'system').map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Input Conditions">
-                  {sourceOptions.filter(opt => opt.category === 'input').map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="AI Conditions">
-                  {sourceOptions.filter(opt => opt.category === 'ai').map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Command Conditions">
-                  {sourceOptions.filter(opt => opt.category === 'command').map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Data Conditions">
-                  {sourceOptions.filter(opt => opt.category === 'data').map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Current Step Variables">
-                  {sourceOptions.filter(opt => opt.category === 'variable').map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
-            
-            {/* Advanced Variable Browser */}
-            <div className="mt-5">
-              <div className="text-xs text-gray-500 mb-2">Cross-Step Variables</div>
-              <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-3 max-h-40 overflow-y-auto">
-                {groupedVariables.ai_responses.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs text-yellow-400 font-medium mb-2">AI Responses</div>
-                    {groupedVariables.ai_responses.map(variable => (
-                      <div 
-                        key={variable.value}
-                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
-                        onClick={() => setCondition({...condition, source: variable.value})}
-                      >
-                        {variable.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {groupedVariables.ai_intents.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs text-blue-400 font-medium mb-2">AI Intents</div>
-                    {groupedVariables.ai_intents.map(variable => (
-                      <div 
-                        key={variable.value}
-                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
-                        onClick={() => setCondition({...condition, source: variable.value})}
-                      >
-                        {variable.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {groupedVariables.step_outputs.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs text-green-400 font-medium mb-2">Step Outputs</div>
-                    {groupedVariables.step_outputs.map(variable => (
-                      <div 
-                        key={variable.value}
-                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
-                        onClick={() => setCondition({...condition, source: variable.value})}
-                      >
-                        {variable.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {groupedVariables.step_inputs.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs text-purple-400 font-medium mb-2">Step Inputs</div>
-                    {groupedVariables.step_inputs.map(variable => (
-                      <div 
-                        key={variable.value}
-                        className="text-xs text-gray-300 px-3 py-2 hover:bg-gray-700/50 rounded-lg cursor-pointer mb-1 transition-colors"
-                        onClick={() => setCondition({...condition, source: variable.value})}
-                      >
-                        {variable.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {allVariables.length === 0 && (
-                  <div className="text-xs text-gray-500 text-center py-3">
-                    No variables available. Add variables to steps first.
-                  </div>
-                )}
-              </div>
-              <div className="text-xs text-gray-500 mt-2">
-                Click on a variable to select it as condition source
-              </div>
-            </div>
+            <select
+              value={condition.source}
+              onChange={(e) => setCondition({...condition, source: e.target.value})}
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
+            >
+              <option value="default">Always (no condition)</option>
+            </select>
           </div>
 
-          {/* Operator */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Operator
-            </label>
             <select
               value={condition.operator}
               onChange={(e) => setCondition({...condition, operator: e.target.value})}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
             >
-              {operatorOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
+              <option value="always">Always</option>
             </select>
           </div>
 
-          {/* Value (if needed) */}
-          {condition.operator !== 'always' && 
-           condition.operator !== 'is_empty' && 
-           condition.operator !== 'is_not_empty' &&
-           condition.operator !== 'is_true' &&
-           condition.operator !== 'is_false' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                {condition.operator === 'matches_regex' ? 'Regular Expression' : 'Value'}
-              </label>
-              <input
-                type="text"
-                value={condition.value || ''}
-                onChange={(e) => setCondition({...condition, value: e.target.value})}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
-                placeholder={
-                  condition.operator === 'matches_regex' ? 'Enter regex pattern...' :
-                  condition.operator === 'contains' ? 'Enter text to check for...' :
-                  'Enter value or use {{variable}}...'
-                }
-              />
-              <div className="text-xs text-gray-500 mt-2">
-                {condition.operator === 'matches_regex' ? (
-                  <>Use regex patterns like <code className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">^success$</code> or <code className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">error.*</code></>
-                ) : (
-                  <>Use <code className="bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">{"{{variable}}"}</code> syntax for variables from previous steps</>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Target */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Target Step
-            </label>
             <select
               value={route.target_id}
-              onChange={(e) => setRoute({...route, target_id: e.target.value})}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+              onChange={(e) => setRoute({...route, target_id: e.target.value })}
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
             >
-              {targetNodes.map(node => (
-                <option key={node.id} value={node.id}>
-                  {typeof node.data?.title === 'string' ? node.data.title : node.id}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Route Type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Route Type
-            </label>
-            <select
-              value={route.type}
-              onChange={(e) => setRoute({...route, type: e.target.value as any})}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
-            >
-              <option value="step">Step</option>
-              <option value="flow">Flow (Agent)</option>
-              <option value="end">End</option>
-            </select>
-          </div>
-
-          {/* Context Preservation */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Context Preservation
-            </label>
-            <select
-              value={route.context_preservation || 'full'}
-              onChange={(e) => setRoute({...route, context_preservation: e.target.value as any})}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
-            >
-              <option value="full">Full Context</option>
-              <option value="partial">Partial Context</option>
-              <option value="none">No Context</option>
+              <option value="test">Test Node</option>
             </select>
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-800">
+        <div className="flex justify-end space-x-2 mt-6 pt-4 border-t border-gray-800">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+            className="px-3 py-1.5 text-gray-400 hover:text-white rounded hover:bg-gray-800 text-sm font-thin border border-gray-700 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-5 py-2.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 text-sm font-medium border border-gray-700 transition-colors"
+            className="px-3 py-1.5 bg-black text-white rounded hover:bg-gray-900 text-sm font-thin border border-gray-700 transition-colors"
           >
-            Save Condition
+            Save
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -1272,7 +1054,7 @@ const NodePopup = ({
           // Remove output_keys since we're not using it anymore
         } : {
           // Create a minimal step object if it doesn't exist
-          id: node.id || `step-${Date.now()}`,
+          id: node.id || generateStableId('step'),
           flow_id: '',
           step_key: '',
           title: nodeData?.title || 'Untitled Step',
@@ -1398,16 +1180,17 @@ const NodePopup = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-900/90 backdrop-blur-sm rounded-lg p-4 w-full max-w-lg border border-gray-700 shadow-lg">
-        {/* Minimal header with just close button */}
-        <div className="flex justify-end mb-3">
+    <Modal onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-thin">Node</h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-lg"
-            title="Close"
+            className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
           >
-            ×
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
         
@@ -1417,10 +1200,10 @@ const NodePopup = ({
             <select
               value={selectedCommand}
               onChange={(e) => setSelectedCommand(e.target.value)}
-              className="flex-1 bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+              className="flex-1 bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
               disabled={loadingCommands}
             >
-              <option value="">Select a command...</option>
+              <option value="">command...</option>
               {availableCommands.map((cmd) => (
                 <option key={cmd.name} value={cmd.name}>
                   {cmd.name} ({cmd.method})
@@ -1429,14 +1212,14 @@ const NodePopup = ({
             </select>
             <button
               onClick={() => setShowCreateCommand(true)}
-              className="px-3 py-2 bg-gray-800/50 border border-gray-600 rounded text-white text-sm hover:bg-gray-700/50 transition-colors"
+              className="px-3 py-2 bg-black border border-gray-600 rounded text-white text-sm font-thin hover:bg-gray-900 transition-colors"
               title="Add new command"
             >
               +
             </button>
           </div>
           {loadingCommands && (
-            <div className="text-xs text-gray-400">Loading commands...</div>
+            <div className="text-xs text-neutral-400">Loading commands...</div>
           )}
 
           {/* Instructions/condition text area */}
@@ -1448,8 +1231,8 @@ const NodePopup = ({
               onInput={(e) => setInstructions(e.currentTarget.value)}
               onDragOver={onInstructionsDragOver}
               onDrop={onInstructionsDrop}
-              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white min-h-[100px] font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
-              placeholder={nodeData?.type === 'condition' ? 'Enter condition (e.g., {{variable}} == "success")' : 'Enter instructions...'}
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white min-h-[80px] font-thin text-sm placeholder:italic focus:border-gray-500 focus:outline-none"
+              placeholder={nodeData?.type === 'condition' ? 'condition (e.g., {{variable}} == "success")' : 'instructions...'}
               autoFocus
             />
           </div>
@@ -1461,8 +1244,8 @@ const NodePopup = ({
               value={expectedResponse || ''}
               onChange={(e) => setExpectedResponse(e.target.value)}
               onInput={(e) => setExpectedResponse(e.currentTarget.value)}
-              className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white min-h-[80px] font-mono text-sm focus:border-blue-500 focus:outline-none transition-colors"
-              placeholder="Expected response (optional)"
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white min-h-[60px] font-thin text-sm placeholder:italic focus:border-gray-500 focus:outline-none"
+              placeholder="expected response..."
             />
           </div>
 
@@ -1473,33 +1256,30 @@ const NodePopup = ({
               id="await-input-checkbox"
               checked={awaitInput}
               onChange={(e) => setAwaitInput(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900"
+              className="h-3 w-3 rounded border-gray-600 bg-black text-gray-400 focus:ring-gray-500"
             />
-            <label htmlFor="await-input-checkbox" className="ml-2 text-sm text-gray-300">
-              Requires user prompt input
+            <label htmlFor="await-input-checkbox" className="ml-2 text-sm text-gray-300 font-thin">
+              requires user input
             </label>
-            <div className="ml-2 text-xs text-gray-500">
-              (Flow will pause at this step and wait for user input)
-            </div>
           </div>
 
           {/* Command Parameters - only show when command is selected */}
           {selectedCommand && commandParameters.length > 0 && (
             <div>
-              <div className="text-xs text-gray-400 mb-1">
-                Parameters for {selectedCommand}:
+              <div className="text-xs text-gray-400 mb-1 font-thin">
+                parameters for {selectedCommand}:
               </div>
               <div className="flex flex-wrap gap-1">
                 {commandParameters.map((param, index) => (
                   <div 
                     key={index}
-                    className="inline-flex items-center bg-gray-800 text-gray-100 border border-gray-700 rounded px-2 py-1 cursor-pointer hover:bg-gray-700 transition-colors text-xs"
+                    className="inline-flex items-center bg-black text-gray-100 border border-gray-700 rounded px-2 py-1 cursor-pointer hover:bg-gray-900 transition-colors text-xs font-thin"
                     draggable
                     onDragStart={(e) => onVariableDragStart(e, param)}
                     title={`Drag ${param} into text`}
                     style={{ cursor: 'grab' }}
                   >
-                    <div className="font-mono">{param}</div>
+                    <div>{param}</div>
                   </div>
                 ))}
               </div>
@@ -1509,13 +1289,10 @@ const NodePopup = ({
           {/* Flow Selection for Response Nodes */}
           {nodeData?.type === 'response' && (
             <div>
-              <div className="text-xs text-gray-400 mb-1">
-                Send response to flow:
-              </div>
               <select
-                className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+                className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
               >
-                <option value="">Select target flow...</option>
+                <option value="">target flow...</option>
                 <option value="current">Current Flow</option>
                 <option value="word-matching-flow">Word Matching Flow</option>
                 <option value="other">Other Flow...</option>
@@ -1527,7 +1304,7 @@ const NodePopup = ({
           <div className="flex justify-end pt-2">
             <button
               onClick={handleSave}
-              className="px-3 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-sm transition-colors"
+              className="px-3 py-1.5 bg-black text-white rounded hover:bg-gray-900 text-sm font-thin border border-gray-700 transition-colors"
             >
               Save
             </button>
@@ -1537,53 +1314,51 @@ const NodePopup = ({
 
       {/* Command Creation Popup */}
       {showCreateCommand && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]">
-          <div className="bg-gray-900/95 backdrop-blur-sm rounded-lg p-6 w-full max-w-md border border-gray-700 shadow-xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium text-white">Create New Command</h3>
+        <Modal onClose={() => setShowCreateCommand(false)}>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-thin">New Command</h3>
               <button
                 onClick={() => setShowCreateCommand(false)}
-                className="text-gray-400 hover:text-white text-xl"
-                title="Close"
+                className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
                 disabled={creatingCommand}
               >
-                ×
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Command Name *</label>
                 <input
                   type="text"
                   name="name"
                   value={newCommandData.name}
                   onChange={handleNewCommandChange}
-                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
-                  placeholder="e.g., create_task"
+                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none"
+                  placeholder="command name..."
                   disabled={creatingCommand}
                 />
               </div>
               
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Description</label>
                 <textarea
                   name="description"
                   value={newCommandData.description}
                   onChange={handleNewCommandChange}
-                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors min-h-[60px]"
-                  placeholder="What does this command do?"
+                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none min-h-[60px]"
+                  placeholder="description..."
                   disabled={creatingCommand}
                 />
               </div>
               
               <div>
-                <label className="block text-xs text-gray-400 mb-1">HTTP Method *</label>
                 <select
                   name="method"
                   value={newCommandData.method}
                   onChange={handleNewCommandChange}
-                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors"
+                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
                   disabled={creatingCommand}
                 >
                   <option value="GET">GET</option>
@@ -1595,44 +1370,39 @@ const NodePopup = ({
               </div>
               
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Endpoint URL *</label>
                 <input
                   type="text"
                   name="endpoint"
                   value={newCommandData.endpoint}
                   onChange={handleNewCommandChange}
-                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors font-mono"
-                  placeholder="e.g., /api/tasks"
+                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none"
+                  placeholder="endpoint url..."
                   disabled={creatingCommand}
                 />
               </div>
               
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Parameters (JSON)</label>
                 <textarea
                   name="parameters"
                   value={newCommandData.parameters}
                   onChange={handleNewCommandChange}
-                  className="w-full bg-gray-800/50 border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 focus:outline-none transition-colors font-mono min-h-[80px]"
-                  placeholder='{"property": "type"}'
+                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none min-h-[80px]"
+                  placeholder='parameters json...'
                   disabled={creatingCommand}
                 />
-                <div className="text-xs text-gray-500 mt-1">
-                  Use JSON schema format for parameters
-                </div>
               </div>
               
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowCreateCommand(false)}
-                  className="px-3 py-1.5 bg-gray-700/50 hover:bg-gray-700 text-white rounded text-sm transition-colors"
+                  className="px-3 py-1.5 text-gray-400 hover:text-white rounded hover:bg-gray-800 text-sm font-thin border border-gray-700 transition-colors"
                   disabled={creatingCommand}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleCreateCommand}
-                  className="px-3 py-1.5 bg-green-600/80 hover:bg-green-600 text-white rounded text-sm transition-colors flex items-center gap-2"
+                  className="px-3 py-1.5 bg-black text-white rounded hover:bg-gray-900 text-sm font-thin border border-gray-700 transition-colors flex items-center gap-2"
                   disabled={creatingCommand}
                 >
                   {creatingCommand ? (
@@ -1641,15 +1411,15 @@ const NodePopup = ({
                       Creating...
                     </>
                   ) : (
-                    'Create Command'
+                    'Create'
                   )}
                 </button>
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
-    </div>
+    </Modal>
   );
 };
 
@@ -1968,6 +1738,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         },
       };
       setEdges((eds) => [...eds, newEdge]);
+      setSelectedEdge(newEdge);
     },
     []
   );
@@ -2463,34 +2234,34 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-300">Loading flow data...</p>
+          <p className="mt-4 text-neutral-300">Loading flow data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100">
       <div className="p-6">
         <div className="mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold mb-2 text-white">Flow Designer</h1>
-            <p className="text-gray-300">
+            <p className="text-neutral-300">
               Flow: <span className="font-mono text-blue-400">{flowDefinition?.name || currentFlowId}</span>
               {flowDefinition && (
                 <button
                   onClick={() => setShowEditFlowModal(true)}
-                  className="ml-4 text-sm text-gray-400 hover:text-white"
+                  className="ml-4 text-sm text-neutral-400 hover:text-white"
                 >
                   Edit Flow Details
                 </button>
               )}
             </p>
             {flowDefinition?.description && (
-              <p className="text-gray-400 mt-1 max-w-2xl">{flowDefinition.description}</p>
+              <p className="text-neutral-400 mt-1 max-w-2xl">{flowDefinition.description}</p>
             )}
           </div>
           <div className="flex gap-4">
@@ -2512,14 +2283,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                   console.error('onSaveFlow is not a function!');
                 }
               }}
-              className="bg-gray-800 hover:bg-gray-700 px-5 py-1.5 rounded-lg font-medium text-gray-200 hover:text-white transition-colors border border-gray-700"
+              className="bg-neutral-800 hover:bg-neutral-700 px-5 py-1.5 rounded-lg font-medium text-neutral-200 hover:text-white transition-colors border border-neutral-700"
             >
               {saving ? 'Saving...' : 'Save Flow'}
             </button>
-            <div className="text-xs text-gray-500 mt-1">saving state: {saving ? 'true' : 'false'}</div>
+            <div className="text-xs text-neutral-500 mt-1">saving state: {saving ? 'true' : 'false'}</div>
             <button
               onClick={() => router.push('/chat')}
-              className="bg-gray-800 hover:bg-gray-700 px-5 py-1.5 rounded-lg font-medium border border-gray-700 text-gray-200 hover:text-white transition-colors"
+              className="bg-neutral-800 hover:bg-neutral-700 px-5 py-1.5 rounded-lg font-medium border border-neutral-700 text-neutral-200 hover:text-white transition-colors"
             >
               Back to Chat
             </button>
@@ -2548,7 +2319,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         <div className="flex-1 relative">
           <div 
             ref={reactFlowWrapper}
-            className="w-full h-[700px] bg-gray-900 rounded-lg border border-gray-800"
+            className="w-full h-[700px] bg-neutral-900 rounded-lg border border-neutral-800"
             onDragOver={onDragOver}
             onDrop={onDrop}
           >
@@ -2562,7 +2333,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                 >
                   +
                 </button>
-                <div className="absolute bottom-1/4 text-center text-gray-400 text-sm mt-4">
+                <div className="absolute bottom-1/4 text-center text-neutral-400 text-sm mt-4">
                   Click + to create your first step
                 </div>
               </div>
@@ -2619,10 +2390,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               />
               {/* Node Toolbar REMOVED - All nodes added via edge drop */}
 
-              <Panel position="top-right" className="bg-gray-900/60 backdrop-blur-sm rounded-lg p-3 border border-gray-800">
-                <div className="text-sm text-gray-300">
+              <Panel position="top-right" className="bg-neutral-900/60 backdrop-blur-sm rounded-lg p-3 border border-neutral-800">
+                <div className="text-sm text-neutral-300">
                   <div className="font-medium mb-1">Flow Controls</div>
-                  <div className="text-xs text-gray-400 space-y-0.5">
+                  <div className="text-xs text-neutral-400 space-y-0.5">
                     <div>• Drag nodes to reposition</div>
                     <div>• Drag + button to create new nodes</div>
                     <div>• Connect nodes via handles</div>
@@ -2637,38 +2408,38 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         {/* Add Node Menu */}
         {addNodeMenu.show && addNodeMenu.sourceNodeId && (
           <div 
-            className="fixed z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-2 min-w-[160px]"
+            className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-lg p-2 min-w-[160px]"
             style={{
               left: addNodeMenu.position.x,
               top: addNodeMenu.position.y,
             }}
           >
-            <div className="text-xs text-gray-400 mb-1 px-2 pt-1">Add from node:</div>
+            <div className="text-xs text-neutral-400 mb-1 px-2 pt-1">Add from node:</div>
             <button
               onClick={() => handleAddNodeFromSource(addNodeMenu.sourceNodeId!, 'step', addNodeMenu.position)}
-              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md flex items-center"
+              className="w-full text-left px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 rounded-md flex items-center"
             >
               <span className="mr-2">+</span>
               Add Step
             </button>
             <button
               onClick={() => handleAddNodeFromSource(addNodeMenu.sourceNodeId!, 'response', addNodeMenu.position)}
-              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md flex items-center"
+              className="w-full text-left px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 rounded-md flex items-center"
             >
               <span className="mr-2 text-yellow-400">🔄</span>
               Add Response
             </button>
             <button
               onClick={() => handleAddNodeFromSource(addNodeMenu.sourceNodeId!, 'condition', addNodeMenu.position)}
-              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md flex items-center"
+              className="w-full text-left px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 rounded-md flex items-center"
             >
               <span className="mr-2 text-blue-400">⚖️</span>
               Add Condition
             </button>
-            <div className="border-t border-gray-800 mt-2 pt-2">
+            <div className="border-t border-neutral-800 mt-2 pt-2">
               <button
                 onClick={() => setAddNodeMenu({ show: false, sourceNodeId: null, position: { x: 0, y: 0 } })}
-                className="w-full text-left px-3 py-2 text-sm text-gray-400 hover:bg-gray-800 rounded-md"
+                className="w-full text-left px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-800 rounded-md"
               >
                 Cancel
               </button>

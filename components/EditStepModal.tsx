@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Modal from './ui/Modal';
 
 interface Endpoint {
   id: string;
@@ -391,50 +392,44 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-800">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-100">Edit Step</h3>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="text-gray-400 mt-4">Loading endpoints...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-gray-800">
+      <Modal onClose={onClose}>
+        <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-100">Edit Step: {step.title || 'Step'}</h3>
+            <h3 className="text-lg font-semibold">Edit Step</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors"
+              className="text-neutral-400 hover:text-white p-2 rounded-lg hover:bg-neutral-800 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="text-neutral-400 mt-4">Loading endpoints...</p>
+            </div>
+          </div>
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-6">
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="space-y-6 max-h-[70vh] overflow-y-auto">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold">Edit Step: {step.title || 'Step'}</h3>
+          <button
+            onClick={onClose}
+            className="text-neutral-400 hover:text-white p-2 rounded-lg hover:bg-neutral-800 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
           {error && (
             <div className="mb-4 bg-red-900/30 border border-red-800 rounded-lg p-4">
               <div className="flex">
@@ -455,39 +450,39 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Step Title</label>
+              <label className="block text-sm font-medium text-neutral-400 mb-2">Step Title</label>
               <input
                 type="text"
                 name="title"
                 value={formData.title}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                 placeholder="Enter step title"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Instructions</label>
+              <label className="block text-sm font-medium text-neutral-400 mb-2">Instructions</label>
               <textarea
                 name="instructions"
                 value={formData.instructions}
                 onChange={handleInputChange}
                 rows={4}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 resize-none"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 resize-none"
                 placeholder="Enter step instructions"
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Use <code className="text-gray-400">{'{api.<endpoint_name>.response.*}'}</code> to reference endpoint responses. Example: <code className="text-gray-400">{'{api.tasks_pending.response.id}'}</code>
+              <p className="text-xs text-neutral-500 mt-1">
+                Use <code className="text-neutral-400">{'{api.<endpoint_name>.response.*}'}</code> to reference endpoint responses. Example: <code className="text-neutral-400">{'{api.tasks_pending.response.id}'}</code>
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Step Type</label>
+              <label className="block text-sm font-medium text-neutral-400 mb-2">Step Type</label>
               <select
                 name="step_type"
                 value={formData.step_type}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
               >
                 <option value="action">Action</option>
                 <option value="decision">Decision</option>
@@ -498,15 +493,15 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Connected Endpoints</label>
-              <div className="mb-4 p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
-                <p className="text-sm text-gray-400 mb-3">
+              <label className="block text-sm font-medium text-neutral-400 mb-2">Connected Endpoints</label>
+              <div className="mb-4 p-4 bg-neutral-800/50 border border-neutral-700 rounded-lg">
+                <p className="text-sm text-neutral-400 mb-3">
                   Configure endpoints used by this step. Each endpoint can be used for input, command, or output phases.
                 </p>
                 
                 <div className="space-y-3">
                   {endpointConfigs.length === 0 ? (
-                    <div className="text-center py-4 text-gray-500 text-sm">
+                    <div className="text-center py-4 text-neutral-500 text-sm">
                       No endpoints configured yet. Click "Add Endpoint" to connect endpoints.
                     </div>
                   ) : (
@@ -517,36 +512,36 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       const keys = endpointKeys[config.endpoint_id] || [];
                       
                       return (
-                        <div key={index} className="bg-gray-800/30 rounded-lg border border-gray-700 overflow-hidden">
+                        <div key={index} className="bg-neutral-800/30 rounded-lg border border-neutral-700 overflow-hidden">
                           <div className="flex items-center justify-between p-3">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-200">
+                                <span className="text-sm font-medium text-neutral-200">
                                   {endpointName}
                                 </span>
-                                <span className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">
+                                <span className="text-xs px-2 py-1 rounded bg-neutral-700 text-neutral-300">
                                   {config.phase}
                                 </span>
                               </div>
-                              <div className="text-xs text-gray-400 mt-1">
+                              <div className="text-xs text-neutral-400 mt-1">
                                 {endpoint?.url || config.endpoint_id}
                               </div>
-                              <div className="text-xs text-gray-500 mt-2">
-                                Use in instructions: <code className="text-gray-300">{`{api.${endpointName}.response.*}`}</code>
+                              <div className="text-xs text-neutral-500 mt-2">
+                                Use in instructions: <code className="text-neutral-300">{`{api.${endpointName}.response.*}`}</code>
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleShowKeys(config.endpoint_id, endpointName)}
-                                className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 hover:text-white transition-colors"
+                                className="text-xs px-3 py-1 bg-neutral-700 hover:bg-neutral-600 rounded text-neutral-300 hover:text-white transition-colors"
                               >
                                 {isShowingKeys ? 'Hide Keys' : 'Show Keys'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveEndpoint(index)}
-                                className="text-gray-400 hover:text-red-400 p-1 rounded hover:bg-gray-700"
+                                className="text-neutral-400 hover:text-red-400 p-1 rounded hover:bg-neutral-700"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -556,17 +551,17 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                           </div>
                           
                           {isShowingKeys && keys.length > 0 && (
-                            <div className="border-t border-gray-700 p-3 bg-gray-900/50">
-                              <div className="text-xs font-medium text-gray-400 mb-2">Available response keys:</div>
+                            <div className="border-t border-neutral-700 p-3 bg-neutral-900/50">
+                              <div className="text-xs font-medium text-neutral-400 mb-2">Available response keys:</div>
                               <div className="flex flex-wrap gap-2">
                                 {keys.map((key, keyIndex) => (
-                                  <div key={keyIndex} className="text-xs px-2 py-1 bg-gray-800 rounded border border-gray-700 text-gray-300">
+                                  <div key={keyIndex} className="text-xs px-2 py-1 bg-neutral-800 rounded border border-neutral-700 text-neutral-300">
                                     <code>{key}</code>
                                   </div>
                                 ))}
                               </div>
-                              <div className="text-xs text-gray-500 mt-3">
-                                Use in instructions: <code className="text-gray-300">{`{api.${endpointName}.response.${keys[0] || 'field_name'}}`}</code>
+                              <div className="text-xs text-neutral-500 mt-3">
+                                Use in instructions: <code className="text-neutral-300">{`{api.${endpointName}.response.${keys[0] || 'field_name'}}`}</code>
                               </div>
                             </div>
                           )}
@@ -581,7 +576,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                     <button
                       type="button"
                       onClick={() => setShowAddEndpoint(true)}
-                      className="w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 hover:text-white transition-colors flex items-center justify-center gap-2"
+                      className="w-full py-2 px-4 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg text-sm text-neutral-300 hover:text-white transition-colors flex items-center justify-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -589,13 +584,13 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       Add Endpoint
                     </button>
                   ) : (
-                    <div className="space-y-3 p-3 bg-gray-800/30 rounded-lg border border-gray-700">
+                    <div className="space-y-3 p-3 bg-neutral-800/30 rounded-lg border border-neutral-700">
                       <div className="flex justify-between items-center">
-                        <h4 className="text-sm font-medium text-gray-300">Add New Endpoint</h4>
+                        <h4 className="text-sm font-medium text-neutral-300">Add New Endpoint</h4>
                         <button
                           type="button"
                           onClick={() => setShowAddEndpoint(false)}
-                          className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-700"
+                          className="text-neutral-400 hover:text-white p-1 rounded hover:bg-neutral-700"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -604,13 +599,13 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       </div>
                       
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1">Endpoint</label>
+                        <label className="block text-xs font-medium text-neutral-400 mb-1">Endpoint</label>
                         <div className="flex gap-2">
                           <select
                             name="endpoint_id"
                             value={newEndpoint.endpoint_id}
                             onChange={handleNewEndpointChange}
-                            className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100 text-sm"
+                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
                           >
                             <option value="">Select endpoint</option>
                             {endpoints.map(endpoint => (
@@ -634,12 +629,12 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                       </div>
                       
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1">Phase</label>
+                        <label className="block text-xs font-medium text-neutral-400 mb-1">Phase</label>
                         <select
                           name="phase"
                           value={newEndpoint.phase}
                           onChange={handleNewEndpointChange}
-                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100 text-sm"
+                          className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 text-sm"
                         >
                           <option value="input">Input (provides data to step)</option>
                           <option value="command">Command (executes action)</option>
@@ -662,11 +657,11 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
               </div>
               
               <div className="mt-4">
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-neutral-500">
                   <strong>How to use endpoints in instructions:</strong> Reference endpoint responses using{' '}
-                  <code className="text-gray-300">{`{api.<endpoint_name>.response.<field>}`}</code>. For example:{' '}
-                  <code className="text-gray-300">{`{api.github_user.response.name}`}</code> or{' '}
-                  <code className="text-gray-300">{`{api.internal_task.response.id}`}</code>
+                  <code className="text-neutral-300">{`{api.<endpoint_name>.response.<field>}`}</code>. For example:{' '}
+                  <code className="text-neutral-300">{`{api.github_user.response.name}`}</code> or{' '}
+                  <code className="text-neutral-300">{`{api.internal_task.response.id}`}</code>
                 </p>
               </div>
             </div>
@@ -679,9 +674,9 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="blocking"
                   checked={formData.blocking === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800 rounded"
+                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
                 />
-                <label htmlFor="blocking" className="ml-2 text-sm text-gray-300">
+                <label htmlFor="blocking" className="ml-2 text-sm text-neutral-300">
                   Blocking Step
                 </label>
               </div>
@@ -693,9 +688,9 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="retryable"
                   checked={formData.retryable === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800 rounded"
+                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
                 />
-                <label htmlFor="retryable" className="ml-2 text-sm text-gray-300">
+                <label htmlFor="retryable" className="ml-2 text-sm text-neutral-300">
                   Retryable
                 </label>
               </div>
@@ -707,9 +702,9 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="auto_fail_on_error"
                   checked={formData.auto_fail_on_error === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800 rounded"
+                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
                 />
-                <label htmlFor="auto_fail_on_error" className="ml-2 text-sm text-gray-300">
+                <label htmlFor="auto_fail_on_error" className="ml-2 text-sm text-neutral-300">
                   Auto Fail on Error
                 </label>
               </div>
@@ -721,19 +716,19 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                   name="requires_task"
                   checked={formData.requires_task === 1}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800 rounded"
+                  className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800 rounded"
                 />
-                <label htmlFor="requires_task" className="ml-2 text-sm text-gray-300">
+                <label htmlFor="requires_task" className="ml-2 text-sm text-neutral-300">
                   Requires Task
                 </label>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-gray-800">
+            <div className="pt-4 border-t border-neutral-800">
               <div className="flex justify-end space-x-3">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors"
                   disabled={saving}
                 >
                   Cancel
@@ -752,47 +747,45 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Create Endpoint Modal */}
-      {showCreateEndpoint && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-white">Create New Endpoint</h3>
-                <button
-                  onClick={() => setShowCreateEndpoint(false)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+        {/* Create Endpoint Modal */}
+        {showCreateEndpoint && (
+          <Modal onClose={() => setShowCreateEndpoint(false)}>
+          <div className="space-y-6 max-h-[70vh] overflow-y-auto">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Create New Endpoint</h3>
+              <button
+                onClick={() => setShowCreateEndpoint(false)}
+                className="text-neutral-400 hover:text-white p-2 rounded-lg hover:bg-neutral-800 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Name *</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Name *</label>
                     <input
                       type="text"
                       name="name"
                       value={newEndpointData.name}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., github_user"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Description</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Description</label>
                     <input
                       type="text"
                       name="description"
                       value={newEndpointData.description}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       placeholder="Brief description"
                     />
                   </div>
@@ -800,24 +793,24 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">URL *</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">URL *</label>
                     <input
                       type="text"
                       name="url"
                       value={newEndpointData.url}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., https://api.github.com/users/{username}"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Method *</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Method *</label>
                     <select
                       name="method"
                       value={newEndpointData.method}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                     >
                       <option value="GET">GET</option>
                       <option value="POST">POST</option>
@@ -830,12 +823,12 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Auth Type</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Auth Type</label>
                     <select
                       name="auth_type"
                       value={newEndpointData.auth_type}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                     >
                       <option value="none">None</option>
                       <option value="bearer">Bearer Token</option>
@@ -844,37 +837,37 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Auth Value</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Auth Value</label>
                     <input
                       type="password"
                       name="auth_value"
                       value={newEndpointData.auth_value}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       placeholder="Token or API key"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Headers (JSON)</label>
+                  <label className="block text-sm font-medium text-neutral-400 mb-1">Headers (JSON)</label>
                   <textarea
                     name="headers"
                     value={newEndpointData.headers}
                     onChange={handleNewEndpointDataChange}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 font-mono text-sm"
                     rows={3}
                     placeholder='{"Content-Type": "application/json"}'
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Body Template (JSON)</label>
+                  <label className="block text-sm font-medium text-neutral-400 mb-1">Body Template (JSON)</label>
                   <textarea
                     name="body_template"
                     value={newEndpointData.body_template}
                     onChange={handleNewEndpointDataChange}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100 font-mono text-sm"
                     rows={3}
                     placeholder='{"username": "{username}"}'
                   />
@@ -882,24 +875,24 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Query Parameters</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Query Parameters</label>
                     <input
                       type="text"
                       name="query_params"
                       value={newEndpointData.query_params}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., page=1&limit=10"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Response Path</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Response Path</label>
                     <input
                       type="text"
                       name="response_path"
                       value={newEndpointData.response_path}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       placeholder="e.g., data.results"
                     />
                   </div>
@@ -907,48 +900,48 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Timeout (ms)</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Timeout (ms)</label>
                     <input
                       type="number"
                       name="timeout_ms"
                       value={newEndpointData.timeout_ms}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       min="1000"
                       step="1000"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Max Retries</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Max Retries</label>
                     <input
                       type="number"
                       name="max_retries"
                       value={newEndpointData.max_retries}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       min="0"
                       max="10"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Retry Delay (ms)</label>
+                    <label className="block text-sm font-medium text-neutral-400 mb-1">Retry Delay (ms)</label>
                     <input
                       type="number"
                       name="retry_delay_ms"
                       value={newEndpointData.retry_delay_ms}
                       onChange={handleNewEndpointDataChange}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                      className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                       min="100"
                       step="100"
                     />
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-gray-800">
+                <div className="pt-4 border-t border-neutral-800">
                   <div className="flex justify-end space-x-3">
                     <button
                       onClick={() => setShowCreateEndpoint(false)}
-                      className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors"
                     >
                       Cancel
                     </button>
@@ -965,9 +958,8 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
+          </Modal>
+        )}
+      </Modal>
   );
 }

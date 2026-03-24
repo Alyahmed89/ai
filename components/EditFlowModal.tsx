@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Modal from './ui/Modal';
 
 interface FlowDefinition {
   id: string;
@@ -197,50 +198,44 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-800">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-100">Edit Flow</h3>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="text-gray-400 mt-4">Loading flow data...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-gray-800">
+      <Modal onClose={onClose}>
+        <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-100">Edit Flow: {flowDefinition?.name || flowId}</h3>
+            <h3 className="text-lg font-semibold">Edit Flow</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors"
+              className="text-neutral-400 hover:text-white p-2 rounded-lg hover:bg-neutral-800 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="text-neutral-400 mt-4">Loading flow data...</p>
+            </div>
+          </div>
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-6">
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="space-y-6 max-h-[70vh] overflow-y-auto">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold">Edit Flow: {flowDefinition?.name || flowId}</h3>
+          <button
+            onClick={onClose}
+            className="text-neutral-400 hover:text-white p-2 rounded-lg hover:bg-neutral-800 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
           {error && (
             <div className="mb-4 bg-red-900/30 border border-red-800 rounded-lg p-4">
               <div className="flex">
@@ -261,32 +256,32 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Flow Name</label>
+              <label className="block text-sm font-medium text-neutral-400 mb-2">Flow Name</label>
               <input
                 type="text"
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                 placeholder="Enter flow name"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
+              <label className="block text-sm font-medium text-neutral-400 mb-2">Description</label>
               <textarea
                 name="description"
                 value={formData.description}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 resize-none"
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 resize-none"
                 placeholder="Enter flow description"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Max Iterations</label>
+                <label className="block text-sm font-medium text-neutral-400 mb-2">Max Iterations</label>
                 <input
                   type="number"
                   name="max_iterations"
@@ -294,12 +289,12 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                   onChange={handleInputChange}
                   min="1"
                   max="100"
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Priority</label>
+                <label className="block text-sm font-medium text-neutral-400 mb-2">Priority</label>
                 <input
                   type="number"
                   name="priority"
@@ -307,38 +302,38 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                   onChange={handleInputChange}
                   min="1"
                   max="100"
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100"
+                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Agent</label>
+              <label className="block text-sm font-medium text-neutral-400 mb-2">Agent</label>
               <div className="flex space-x-4">
                 <label className="inline-flex items-center">
                   <input
                     type="radio"
                     checked={formData.agent === 'deepseek'}
                     onChange={() => handleAgentChange('deepseek')}
-                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800"
+                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800"
                   />
-                  <span className="ml-2 text-sm text-gray-300">DeepSeek</span>
+                  <span className="ml-2 text-sm text-neutral-300">DeepSeek</span>
                 </label>
                 <label className="inline-flex items-center">
                   <input
                     type="radio"
                     checked={formData.agent === 'openhands'}
                     onChange={() => handleAgentChange('openhands')}
-                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-600 bg-gray-800"
+                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-neutral-600 bg-neutral-800"
                   />
-                  <span className="ml-2 text-sm text-gray-300">OpenHands</span>
+                  <span className="ml-2 text-sm text-neutral-300">OpenHands</span>
                 </label>
               </div>
             </div>
 
             {formData.agent === 'deepseek' && (
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
+                <label className="block text-sm font-medium text-neutral-400 mb-2">
                   System Message (DeepSeek only)
                 </label>
                 <textarea
@@ -346,10 +341,10 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                   value={formData.system_message}
                   onChange={handleInputChange}
                   rows={3}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 resize-none"
+                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-neutral-100 resize-none"
                   placeholder="You are an expert software developer..."
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-neutral-500">
                   Optional system message for DeepSeek agent. This will be included in the flow definition.
                 </p>
               </div>
@@ -358,16 +353,16 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
             {/* Flow Steps Section */}
             <div>
               <div className="flex justify-between items-center mb-2">
-                <label className="block text-sm font-medium text-gray-400">Flow Steps</label>
-                <span className="text-xs text-gray-500">{flowSteps.length} step(s)</span>
+                <label className="block text-sm font-medium text-neutral-400">Flow Steps</label>
+                <span className="text-xs text-neutral-500">{flowSteps.length} step(s)</span>
               </div>
               
               <div className="space-y-3">
                 {flowSteps.map((step, index) => (
-                  <div key={step.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                  <div key={step.id} className="bg-neutral-800 border border-neutral-700 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-3">
                       <div>
-                        <h4 className="text-sm font-medium text-gray-300">Step {step.order_index}: {step.title}</h4>
+                        <h4 className="text-sm font-medium text-neutral-300">Step {step.order_index}: {step.title}</h4>
                         <div className="flex items-center space-x-2 mt-1">
                           <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded">{step.step_type}</span>
                           {step.blocking === 1 && (
@@ -382,22 +377,22 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                     
                     <div className="space-y-2">
                       <div>
-                        <label className="block text-xs text-gray-400 mb-1">Instructions</label>
-                        <div className="text-sm text-gray-300 bg-gray-900/50 p-3 rounded border border-gray-700 whitespace-pre-wrap">
+                        <label className="block text-xs text-neutral-400 mb-1">Instructions</label>
+                        <div className="text-sm text-neutral-300 bg-neutral-900/50 p-3 rounded border border-neutral-700 whitespace-pre-wrap">
                           {step.instructions}
                         </div>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Step Key</label>
-                          <div className="text-sm text-gray-300 bg-gray-900/50 p-2 rounded border border-gray-700">
+                          <label className="block text-xs text-neutral-400 mb-1">Step Key</label>
+                          <div className="text-sm text-neutral-300 bg-neutral-900/50 p-2 rounded border border-neutral-700">
                             {step.step_key}
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Order</label>
-                          <div className="text-sm text-gray-300 bg-gray-900/50 p-2 rounded border border-gray-700">
+                          <label className="block text-xs text-neutral-400 mb-1">Order</label>
+                          <div className="text-sm text-neutral-300 bg-neutral-900/50 p-2 rounded border border-neutral-700">
                             {step.order_index}
                           </div>
                         </div>
@@ -407,9 +402,9 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
                 ))}
                 
                 {flowSteps.length === 0 && (
-                  <div className="text-center py-6 border border-dashed border-gray-700 rounded-lg">
-                    <p className="text-gray-400 text-sm">No steps defined for this flow</p>
-                    <p className="text-gray-500 text-xs mt-1">Add steps via the API or backend interface</p>
+                  <div className="text-center py-6 border border-dashed border-neutral-700 rounded-lg">
+                    <p className="text-neutral-400 text-sm">No steps defined for this flow</p>
+                    <p className="text-neutral-500 text-xs mt-1">Add steps via the API or backend interface</p>
                   </div>
                 )}
               </div>
@@ -417,11 +412,11 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
           </div>
         </div>
         
-        <div className="p-6 border-t border-gray-800 flex justify-end space-x-3">
+        <div className="pt-6 flex justify-end space-x-3">
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
@@ -438,7 +433,6 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
             ) : 'Save Changes'}
           </button>
         </div>
-      </div>
-    </div>
+      </Modal>
   );
 }

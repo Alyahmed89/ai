@@ -47,3 +47,9 @@ server2.log
 *.db
 *.sqlite
 *.sqlite3
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
