@@ -72,7 +72,7 @@ interface Step {
   page_key: string | null;
   // Additional fields for UI
   description?: string;
-  type?: 'input' | 'default' | 'output' | 'response' | 'condition';
+  type?: 'input' | 'default' | 'output' | 'response';
   command?: string;
   await_input?: boolean;
   variables?: string[];
@@ -122,29 +122,16 @@ interface NodeData {
   variables?: string[];
   description?: string;
   condition?: string; // Condition text for condition nodes
-  type?: 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition';
+  type?: 'input' | 'default' | 'output' | 'response' | 'flow';
   [key: string]: unknown;
 }
 
 // Extended Node type
 type CustomNode = Node<NodeData>;
 
-// Custom node component for dark mode with enhanced visual indicators
+// Simplified node component with single primary type
 const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onClick?: (nodeId: string) => void; onAddNode?: (nodeId: string, event: React.MouseEvent) => void; onDeleteNode?: (nodeId: string) => void }) => {
   const step = data.step as Step;
-  const hasCommand = data.command && data.command.trim().length > 0;
-  const hasVariables = step && step.output_keys && step.output_keys.trim().length > 0;
-  const hasInput = step && step.input_keys && step.input_keys.trim().length > 0;
-  const hasOutput = step && step.output_keys && step.output_keys.trim().length > 0;
-  const awaitInput = data.await_input === true;
-  
-  // Single node type styling - Black/white/gray only
-  const bgColor = '#000000'; // black
-  const borderColor = '#666666'; // gray
-  const textColor = '#ffffff'; // white
-  const borderWidth = '1px';
-  const borderStyle = 'solid';
-  
   const nodeType = data.type || (step && step.step_type) || 'default';
   
   const handleDelete = (e: React.MouseEvent) => {
@@ -156,13 +143,13 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
   
   return (
     <div 
-      className="px-3 py-2 rounded border cursor-pointer relative"
+      className="px-3 py-2 rounded border cursor-pointer relative group"
       style={{
-        backgroundColor: bgColor,
-        borderColor: borderColor,
-        borderWidth: borderWidth,
-        borderStyle: borderStyle,
-        color: textColor,
+        backgroundColor: '#000000', // black
+        borderColor: '#666666', // gray
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        color: '#ffffff', // white
         minWidth: '180px',
         maxWidth: '240px',
       }}
@@ -185,21 +172,24 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
         }} 
       />
       
-      {/* Node header with title and indicators */}
+      {/* Node header - title hidden, only controls visible */}
       <div className="flex justify-between items-start">
-        <div className="font-thin text-sm truncate">{step.title}</div>
+        {/* Hidden title placeholder */}
+        <div className="font-thin text-sm truncate italic text-gray-400">
+          {step.instructions ? step.instructions.substring(0, 30) + (step.instructions.length > 30 ? '...' : '') : 'Step'}
+        </div>
         <div className="flex items-center space-x-1 ml-2">
-          {/* Delete button - always visible */}
+          {/* Delete button - visible on hover only */}
           {onDeleteNode && (
             <button
               onClick={handleDelete}
-              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30 opacity-70 hover:opacity-100"
+              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30 opacity-0 group-hover:opacity-100"
               title="Delete this step"
             >
               🗑️
             </button>
           )}
-          {/* Add Step button - draggable for drag-to-create */}
+          {/* Add Step button */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -212,7 +202,6 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
               e.stopPropagation();
               e.dataTransfer.setData('application/node-add', step.id);
               e.dataTransfer.effectAllowed = 'copy';
-              // Set drag image to a custom indicator
               const dragIcon = document.createElement('div');
               dragIcon.textContent = '+';
               dragIcon.style.position = 'absolute';
@@ -227,37 +216,6 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
           >
             +
           </button>
-          {/* I/O and command indicators as icons - blurry by default, full opacity on hover */}
-          {hasInput && (
-            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title={`Input: ${step.input_keys}`}>
-              →
-            </span>
-          )}
-          {hasOutput && (
-            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title={`Output: ${step.output_keys}`}>
-              ←
-            </span>
-          )}
-          {hasCommand && (
-            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title="Has command">
-              ⚡
-            </span>
-          )}
-          {awaitInput && (
-            <span className="text-xs text-neutral-400 opacity-40 hover:opacity-100 transition-opacity" title="Awaits user input">
-              ⏳
-            </span>
-          )}
-          {nodeType === 'response' && (
-            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Response Node">
-              🔄
-            </span>
-          )}
-          {nodeType === 'condition' && (
-            <span className="text-xs text-gray-400 opacity-40 hover:opacity-100 transition-opacity" title="Condition Node">
-              ⚖️
-            </span>
-          )}
         </div>
       </div>
       
@@ -276,105 +234,15 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
   );
 };
 
-// Custom Flow Node component for subflows/agents
-const FlowNode = ({ data, onDeleteNode }: { data: any; onDeleteNode?: (nodeId: string) => void }) => {
-  const step = data.step as Step;
-  const hasInput = step && step.input_keys && step.input_keys.trim() !== '';
-  const hasOutput = step && step.output_keys && step.output_keys.trim() !== '';
-  
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onDeleteNode && step.id) {
-      onDeleteNode(step.id);
-    }
-  };
-  
-  return (
-    <div 
-      className="bg-black border border-gray-600 rounded p-2 w-48 cursor-pointer relative"
-      onDoubleClick={() => {
-        console.log('Double-clicked flow node:', step.id);
-        // In a real implementation, this would open the subflow
-        alert(`Would open subflow: ${step.title}`);
-      }}
-    >
-      {/* Minimal header */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center">
-          <div className="text-sm font-thin text-white truncate">
-            {step.title}
-          </div>
-        </div>
-        <div className="flex items-center space-x-1">
-          {/* Delete button - always visible */}
-          {onDeleteNode && (
-            <button
-              onClick={handleDelete}
-              className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30 opacity-70 hover:opacity-100"
-              title="Delete this flow node"
-            >
-              🗑️
-            </button>
-          )}
-          <div className="text-xs text-gray-400 font-thin">
-            Flow
-          </div>
-        </div>
-      </div>
-      
-      {/* Minimal description */}
-      <div className="text-xs text-gray-400 font-thin mb-2 line-clamp-2">
-        {step.instructions.substring(0, 60)}
-        {step.instructions.length > 60 ? '...' : ''}
-      </div>
-      
-      {/* Minimal I/O indicators */}
-      <div className="flex justify-between text-xs">
-        {hasInput && (
-          <div className="text-green-400">
-            →
-          </div>
-        )}
-        {hasOutput && (
-          <div className="text-blue-400">
-            ←
-          </div>
-        )}
-      </div>
-      
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        style={{ 
-          background: '#9333ea',
-          borderColor: '#7c3aed',
-          borderWidth: '2px',
-          width: '12px',
-          height: '12px',
-        }} 
-      />
-      
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        style={{ 
-          background: '#9333ea',
-          borderColor: '#7c3aed',
-          borderWidth: '2px',
-          width: '12px',
-          height: '12px',
-        }} 
-      />
-    </div>
-  );
-};
 
-// Node types configuration
+
+// Node types configuration - only one primary type
 const nodeTypes = {
   default: CustomNode,
+  // All nodes use the same component
   input: CustomNode,
   output: CustomNode,
-  flow: FlowNode,
+  flow: CustomNode, // Use same component for flow nodes too
 };
 
 // Custom edge component with condition label
@@ -535,12 +403,90 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
 // Function to save flow steps to backend
 async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
   try {
-    // For now, we'll just update existing steps
-    // In a real implementation, we would create/update/delete steps as needed
     console.log('Saving flow steps:', { flowId, steps: steps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, extra_step: s.extra_step, instructions: s.instructions })) });
     
-    // Example: Update each step
-    for (const step of steps) {
+    // First, get existing steps to determine which ones need to be created/updated/deleted
+    const existingStepsResponse = await fetch(`/api/proxy/api/flow-steps?flow_id=${flowId}`);
+    if (!existingStepsResponse.ok) {
+      console.error('Failed to fetch existing steps:', existingStepsResponse.status);
+      return false;
+    }
+    
+    const existingStepsData = await existingStepsResponse.json();
+    const existingSteps = existingStepsData.success ? existingStepsData.data?.steps || [] : [];
+    console.log('Existing steps:', existingSteps.map((s: any) => s.id));
+    
+    // Create sets for comparison
+    const existingStepIds = new Set(existingSteps.map((s: any) => s.id));
+    const newStepIds = new Set(steps.map(s => s.id));
+    
+    // Steps to delete (exist in backend but not in current UI)
+    const stepsToDelete = existingSteps.filter((s: any) => !newStepIds.has(s.id));
+    
+    // Steps to create (exist in UI but not in backend)
+    const stepsToCreate = steps.filter(s => !existingStepIds.has(s.id));
+    
+    // Steps to update (exist in both)
+    const stepsToUpdate = steps.filter(s => existingStepIds.has(s.id));
+    
+    console.log(`CRUD operations: Create=${stepsToCreate.length}, Update=${stepsToUpdate.length}, Delete=${stepsToDelete.length}`);
+    
+    // Delete steps
+    for (const step of stepsToDelete) {
+      console.log(`Deleting step ${step.id}`);
+      const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (!response.ok) {
+        console.error(`Failed to delete step ${step.id}:`, response.status);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        return false;
+      } else {
+        console.log(`Step ${step.id} deleted successfully`);
+      }
+    }
+    
+    // Create steps
+    for (const step of stepsToCreate) {
+      console.log(`Creating step ${step.id}`);
+      const requestBody = {
+        flow_id: flowId,
+        instructions: step.instructions,
+        title: step.title,
+        step_type: step.step_type,
+        order_index: step.order_index,
+        blocking: Boolean(step.blocking),
+        auto_fail_on_error: Boolean(step.auto_fail_on_error),
+        retryable: Boolean(step.retryable),
+        output_keys: step.output_keys || null,
+        input_keys: step.input_keys || null,
+        use_endpoints: step.use_endpoints || null,
+        extra_step: step.extra_step || 0,
+        page_key: step.page_key || null,
+      };
+      
+      const response = await fetch(`/api/proxy/api/flow-steps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+      
+      if (!response.ok) {
+        console.error(`Failed to create step ${step.id}:`, response.status);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        return false;
+      } else {
+        console.log(`Step ${step.id} created successfully`);
+      }
+    }
+    
+    // Update steps
+    for (const step of stepsToUpdate) {
+      console.log(`Updating step ${step.id}`);
       const requestBody = {
         instructions: step.instructions,
         title: step.title,
@@ -555,7 +501,6 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         extra_step: step.extra_step || 0,
         page_key: step.page_key || null,
       };
-      console.log(`Saving step ${step.id}:`, JSON.stringify(requestBody, null, 2));
       
       const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
         method: 'PUT',
@@ -569,14 +514,7 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         console.error('Error response:', errorText);
         return false;
       } else {
-        console.log(`Step ${step.id} saved successfully`);
-        // Log the response to see what the backend returned
-        try {
-          const responseData = await response.json();
-          console.log(`Step ${step.id} response:`, JSON.stringify(responseData, null, 2));
-        } catch (e) {
-          console.log(`Step ${step.id} saved but no JSON response`);
-        }
+        console.log(`Step ${step.id} updated successfully`);
       }
     }
     
@@ -631,7 +569,7 @@ function createNodesFromSteps(steps: Step[]) {
   console.log('Creating nodes from steps:', steps.map(s => ({ id: s.id, title: s.title, step_type: s.step_type, type: s.type })));
   return steps.map((step, index) => {
     // Determine node type based on step_type
-    let nodeType: 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition' = 'default';
+    let nodeType: 'input' | 'default' | 'output' | 'response' | 'flow' = 'default';
     if (step.step_type === 'input' || step.type === 'input') {
       nodeType = 'input';
     } else if (step.step_type === 'output' || step.type === 'output') {
@@ -640,18 +578,17 @@ function createNodesFromSteps(steps: Step[]) {
       nodeType = 'flow';
     } else if (step.step_type === 'response' || step.type === 'response') {
       nodeType = 'response';
-    } else if (step.step_type === 'condition') {
-      nodeType = 'condition';
     } else if (step.step_type === 'processing' && step.extra_step === 1) {
       // Backward compatibility: processing steps with extra_step=1 are response nodes
       nodeType = 'response';
     }
+    // Note: condition nodes are removed from frontend for now
     
     console.log(`Step ${step.id}: step_type=${step.step_type}, type=${step.type}, nodeType=${nodeType}`);
     
     return {
       id: step.id,
-      type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+      type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow',
       data: { 
         label: step.title, 
         title: step.title,
@@ -659,7 +596,7 @@ function createNodesFromSteps(steps: Step[]) {
         instructions: step.instructions,
         command: step.command || '',
         await_input: step.await_input || false,
-        type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition', // Use the mapped nodeType for UI consistency
+        type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow', // Use the mapped nodeType for UI consistency
       },
       position: { x: 250, y: 25 + (index * 150) }, // Increased spacing from 100 to 150px
     };
@@ -765,8 +702,37 @@ const EdgePopup = ({
       type: 'step' as const,
       target_id: edge.target,
       context_preservation: 'full' as const,
+      flow_id: null as string | null,
     };
   });
+  
+  const [availableFlows, setAvailableFlows] = useState<Array<{id: string, name: string}>>([]);
+  const [loadingFlows, setLoadingFlows] = useState(false);
+
+  // Fetch available flows from backend
+  useEffect(() => {
+    const fetchFlows = async () => {
+      try {
+        setLoadingFlows(true);
+        const response = await fetch('/api/proxy/api/flows');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.flows) {
+            setAvailableFlows(data.data.flows.map((flow: any) => ({
+              id: flow.id,
+              name: flow.name || `Flow ${flow.id}`
+            })));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch flows:', error);
+      } finally {
+        setLoadingFlows(false);
+      }
+    };
+    
+    fetchFlows();
+  }, []);
 
   // Get all variables from source node's output_keys
   const sourceNode = nodes.find(n => n.id === edge.source);
@@ -902,7 +868,7 @@ const EdgePopup = ({
         </div>
         
         <div className="space-y-5">
-          {/* Simplified form */}
+          {/* Condition Source */}
           <div>
             <select
               value={condition.source}
@@ -910,9 +876,13 @@ const EdgePopup = ({
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
             >
               <option value="default">Always (no condition)</option>
+              <option value="condition_met">Condition Met</option>
+              <option value="error_occurred">Error Occurred</option>
+              <option value="loop_complete">Loop Complete</option>
             </select>
           </div>
 
+          {/* Condition Operator */}
           <div>
             <select
               value={condition.operator}
@@ -920,16 +890,64 @@ const EdgePopup = ({
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
             >
               <option value="always">Always</option>
+              <option value="equals">Equals</option>
+              <option value="not_equals">Not Equals</option>
+              <option value="contains">Contains</option>
             </select>
           </div>
 
+          {/* Condition Value (if not "always") */}
+          {condition.operator !== 'always' && (
+            <div>
+              <input
+                type="text"
+                value={condition.value || ''}
+                onChange={(e) => setCondition({...condition, value: e.target.value})}
+                className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin placeholder:italic focus:border-gray-500 focus:outline-none"
+                placeholder="condition value..."
+              />
+            </div>
+          )}
+
+          {/* Target Node Selection */}
           <div>
             <select
               value={route.target_id}
-              onChange={(e) => setRoute({...route, target_id: e.target.value })}
+              onChange={(e) => setRoute({...route, target_id: e.target.value, type: 'step' })}
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
             >
-              <option value="test">Test Node</option>
+              <option value="">Select target node...</option>
+              {nodes
+                .filter(n => n.id !== edge.source)
+                .map(node => (
+                  <option key={node.id} value={node.id}>
+                    {node.data?.step?.title || `Node ${node.id}`}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* Response to Another Flow Selection */}
+          <div>
+            <select
+              value={route.flow_id || ''}
+              onChange={(e) => {
+                const flowId = e.target.value;
+                setRoute({
+                  ...route,
+                  type: flowId ? 'flow' as const : 'step' as const,
+                  flow_id: flowId || null,
+                });
+              }}
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
+              disabled={loadingFlows}
+            >
+              <option value="">Response to another flow (optional)...</option>
+              {availableFlows.map(flow => (
+                <option key={flow.id} value={flow.id}>
+                  {flow.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -967,7 +985,6 @@ const NodePopup = ({
 }) => {
   const nodeData = node.data as NodeData;
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
-  const [expectedResponse, setExpectedResponse] = useState<string>('');
   const [selectedCommand, setSelectedCommand] = useState<string>('');
   const [availableCommands, setAvailableCommands] = useState<Array<{name: string, description: string, method: string, parameters: any}>>([]);
   const [loadingCommands, setLoadingCommands] = useState(false);
@@ -982,7 +999,6 @@ const NodePopup = ({
   const [creatingCommand, setCreatingCommand] = useState(false);
   const [awaitInput, setAwaitInput] = useState<boolean>(nodeData?.await_input === true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const expectedResponseRef = useRef<HTMLTextAreaElement>(null);
   
   // Fetch available commands from API
   useEffect(() => {
@@ -1032,11 +1048,9 @@ const NodePopup = ({
   const handleSave = () => {
     // Read from DOM refs to bypass React state timing issues with automation
     const domInstructions = textareaRef.current?.value || '';
-    const domExpectedResponse = expectedResponseRef.current?.value || '';
     
     console.log('NodePopup handleSave called!');
     console.log('State instructions:', instructions, 'DOM instructions:', domInstructions);
-    console.log('State expectedResponse:', expectedResponse, 'DOM expectedResponse:', domExpectedResponse);
     console.log('nodeData:', nodeData);
     console.log('awaitInput:', awaitInput);
     
@@ -1046,7 +1060,6 @@ const NodePopup = ({
       data: {
         ...nodeData,
         instructions: domInstructions, // Use DOM value
-        expectedResponse: domExpectedResponse, // Use DOM value
         await_input: awaitInput,
         step: currentStep ? {
           ...currentStep,
@@ -1232,20 +1245,8 @@ const NodePopup = ({
               onDragOver={onInstructionsDragOver}
               onDrop={onInstructionsDrop}
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white min-h-[80px] font-thin text-sm placeholder:italic focus:border-gray-500 focus:outline-none"
-              placeholder={nodeData?.type === 'condition' ? 'condition (e.g., {{variable}} == "success")' : 'instructions...'}
+              placeholder="instructions..."
               autoFocus
-            />
-          </div>
-
-          {/* Expected Response (for all nodes) */}
-          <div>
-            <textarea
-              ref={expectedResponseRef}
-              value={expectedResponse || ''}
-              onChange={(e) => setExpectedResponse(e.target.value)}
-              onInput={(e) => setExpectedResponse(e.currentTarget.value)}
-              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white min-h-[60px] font-thin text-sm placeholder:italic focus:border-gray-500 focus:outline-none"
-              placeholder="expected response..."
             />
           </div>
 
@@ -1763,7 +1764,74 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       console.log('Setting saving to true');
       setSaving(true);
       console.log('saving should be true now');
-      // Convert nodes back to steps
+      
+      // First, recalculate order_index based on edge connections
+      console.log('Recalculating order_index based on edge connections...');
+      console.log('Edges:', edges.map(e => ({ source: e.source, target: e.target })));
+      
+      // Create a map of node dependencies based on edges
+      const nodeDependencies = new Map<string, string[]>();
+      const nodeReverseDependencies = new Map<string, string[]>();
+      
+      // Initialize maps
+      nodes.forEach(node => {
+        nodeDependencies.set(node.id, []);
+        nodeReverseDependencies.set(node.id, []);
+      });
+      
+      // Build dependency graph from edges
+      edges.forEach(edge => {
+        if (edge.data?.route?.type === 'step') {
+          // Only consider step-to-step edges for order calculation
+          const sourceDeps = nodeDependencies.get(edge.source) || [];
+          nodeDependencies.set(edge.source, [...sourceDeps, edge.target]);
+          
+          const targetReverseDeps = nodeReverseDependencies.get(edge.target) || [];
+          nodeReverseDependencies.set(edge.target, [...targetReverseDeps, edge.source]);
+        }
+      });
+      
+      // Find nodes with no incoming edges (start nodes)
+      const startNodes = nodes.filter(node => {
+        const reverseDeps = nodeReverseDependencies.get(node.id) || [];
+        return reverseDeps.length === 0;
+      });
+      
+      console.log('Start nodes:', startNodes.map(n => n.id));
+      
+      // Perform topological sort to determine order
+      const visited = new Set<string>();
+      const order: string[] = [];
+      
+      const visit = (nodeId: string) => {
+        if (visited.has(nodeId)) return;
+        visited.add(nodeId);
+        
+        const dependencies = nodeDependencies.get(nodeId) || [];
+        dependencies.forEach(depId => visit(depId));
+        
+        order.push(nodeId);
+      };
+      
+      // Visit all start nodes first
+      startNodes.forEach(node => visit(node.id));
+      
+      // Visit any remaining nodes (in case of disconnected components)
+      nodes.forEach(node => {
+        if (!visited.has(node.id)) {
+          visit(node.id);
+        }
+      });
+      
+      console.log('Topological order:', order);
+      
+      // Create a map from node ID to order_index (1-based)
+      const orderIndexMap = new Map<string, number>();
+      order.forEach((nodeId, index) => {
+        orderIndexMap.set(nodeId, index + 1);
+      });
+      
+      // Convert nodes back to steps with updated order_index
       console.log('Nodes:', nodes.map(n => ({ id: n.id, type: n.data.type, instructions: n.data.instructions, step: n.data.step })));
       const updatedSteps: Step[] = nodes.map((node): Step => {
         const nodeData = node.data as NodeData;
@@ -1794,17 +1862,25 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           }
         }
         
+        // Get the recalculated order_index
+        const newOrderIndex = orderIndexMap.get(node.id) || step.order_index || 1;
+        console.log(`Node ${node.id}: old order_index=${step.order_index}, new order_index=${newOrderIndex}`);
+        
         return {
           ...step,
           title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
           instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
           step_type: finalStepType,
           extra_step: extraStep,
+          order_index: newOrderIndex,
           // Update input/output keys from node data if available
           input_keys: step.input_keys || null,
           output_keys: step.output_keys || '',
         };
       });
+      
+      // Sort steps by order_index for consistency
+      updatedSteps.sort((a, b) => a.order_index - b.order_index);
       
       // Save to backend
       console.log('Saving steps:', updatedSteps);
@@ -1825,7 +1901,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       console.log('Setting saving to false (error case)');
       setSaving(false);
     }
-  }, [nodes, currentFlowId, setSaving, loadFlowData]);
+  }, [nodes, edges, currentFlowId, setSaving, loadFlowData]);
 
   // Function to add a new step
   const handleAddStep = useCallback(async () => {
@@ -1919,7 +1995,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }, [nodes, currentFlowId]);
 
   // Function to add a new node from a source node
-  const handleAddNodeFromSource = useCallback(async (sourceNodeId: string, nodeType: 'step' | 'response' | 'condition', dropPosition?: { x: number, y: number }) => {
+  const handleAddNodeFromSource = useCallback(async (sourceNodeId: string, nodeType: 'step' | 'response', dropPosition?: { x: number, y: number }) => {
     try {
       // Find source node
       const sourceNode = nodes.find(n => n.id === sourceNodeId);
@@ -1928,6 +2004,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         return;
       }
 
+      // Get source node's order_index
+      const sourceStep = sourceNode.data?.step as Step | undefined;
+      const sourceOrderIndex = sourceStep?.order_index || 1;
+      
       // Calculate position for new node
       let newPosition;
       if (dropPosition && reactFlowInstance) {
@@ -1950,21 +2030,21 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       
       if (nodeType === 'response') {
         stepType = 'response';
-        stepTitle = `Response Node ${nodes.length + 1}`;
-      } else if (nodeType === 'condition') {
-        stepType = 'condition';
-        stepTitle = `Condition ${nodes.length + 1}`;
+        stepTitle = `Response Node`;
       } else {
         stepType = 'default';
-        stepTitle = `Step ${nodes.length + 1}`;
+        stepTitle = `Step`;
       }
 
-      // Create new step data
+      // Calculate new order_index (insert after source node)
+      const newOrderIndex = sourceOrderIndex + 1;
+      
+      // Create new step data with correct order_index
       const newStepData: Partial<Step> = {
         title: stepTitle,
-        instructions: nodeType === 'condition' ? 'Condition expression...' : 'New step instructions...',
+        instructions: 'New step instructions...',
         step_type: stepType,
-        order_index: nodes.length + 1,
+        order_index: newOrderIndex,
         blocking: 0,
         auto_fail_on_error: 0,
         retryable: 0,
@@ -1985,14 +2065,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: (nodeType === 'step' ? 'default' : nodeType) as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+        type: (nodeType === 'step' ? 'default' : nodeType) as 'input' | 'default' | 'output' | 'response' | 'flow',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: (nodeType === 'step' ? 'default' : nodeType) as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+          type: (nodeType === 'step' ? 'default' : nodeType) as 'input' | 'default' | 'output' | 'response' | 'flow',
           step: {
             ...newStep,
-            type: stepType as 'input' | 'default' | 'output' | 'response' | 'condition',
+            type: stepType as 'input' | 'default' | 'output' | 'response',
           },
           instructions: newStep.instructions,
           command: '',
@@ -2002,37 +2082,88 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         position: newPosition,
       };
       
-      // Add new node to the flow
-      setNodes(prevNodes => [...prevNodes, newNode]);
+      // Find and redirect edges from source node
+      const edgesFromSource = edges.filter(edge => edge.source === sourceNodeId);
       
-      // Create edge from source to new node
-      const newEdge: CustomEdge = {
-        id: `e${sourceNodeId}-${newStep.id}`,
-        source: sourceNodeId,
-        target: newStep.id,
-        animated: false,
-        style: {
-          stroke: '#3b82f6',
-          strokeWidth: 2,
-        },
-        markerEnd: {
-          type: 'arrowclosed',
-          color: '#3b82f6',
-        },
-        data: {
-          condition: {
-            source: 'default',
-            operator: 'always',
-            value: null,
+      // Update nodes: insert new node and update order_index for subsequent nodes
+      setNodes(prevNodes => {
+        // Find source node to get its order_index
+        const sourceNode = prevNodes.find(n => n.id === sourceNodeId);
+        if (!sourceNode) return [...prevNodes, newNode];
+        
+        // Update order_index for all nodes with order_index >= newOrderIndex (increment by 1)
+        // Exclude the source node itself
+        const updatedNodes = prevNodes.map(node => {
+          if (node.id === sourceNodeId) return node; // Don't update source node
+          
+          const nodeStep = node.data?.step as Step | undefined;
+          if (nodeStep && nodeStep.order_index >= newOrderIndex) {
+            // This node needs its order_index incremented
+            const updatedStep = {
+              ...nodeStep,
+              order_index: nodeStep.order_index + 1,
+            };
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                step: updatedStep,
+              },
+            };
+          }
+          return node;
+        });
+        
+        // Add new node to the end (order doesn't matter for display, order_index does)
+        return [...updatedNodes, newNode];
+      });
+      
+      // Update edges: redirect edges from source to come from new node instead
+      setEdges(prevEdges => {
+        let updatedEdges = [...prevEdges];
+        
+        // Redirect all edges from source node to come from new node instead
+        edgesFromSource.forEach(edge => {
+          const edgeIndex = updatedEdges.findIndex(e => e.id === edge.id);
+          if (edgeIndex !== -1) {
+            updatedEdges[edgeIndex] = {
+              ...updatedEdges[edgeIndex],
+              source: newNode.id,
+              id: `e${newNode.id}-${edge.target}`,
+            };
+          }
+        });
+        
+        // Create new edge from source to new node
+        const newEdge: CustomEdge = {
+          id: `e${sourceNodeId}-${newStep.id}`,
+          source: sourceNodeId,
+          target: newStep.id,
+          animated: false,
+          style: {
+            stroke: '#3b82f6',
+            strokeWidth: 2,
           },
-          route: {
-            type: 'step' as const,
-            target_id: newStep.id,
-            context_preservation: 'full' as const,
+          markerEnd: {
+            type: 'arrowclosed',
+            color: '#3b82f6',
           },
-        },
-      };
-      setEdges(prevEdges => [...prevEdges, newEdge]);
+          data: {
+            condition: {
+              source: 'default',
+              operator: 'always',
+              value: null,
+            },
+            route: {
+              type: 'step' as const,
+              target_id: newStep.id,
+              context_preservation: 'full' as const,
+            },
+          },
+        };
+        
+        return [...updatedEdges, newEdge];
+      });
       
       // Select the new node to open the step popup
       setSelectedNode(newNode);
@@ -2044,7 +2175,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       console.error('Error adding new node from source:', error);
       alert('Error adding new node. See console for details.');
     }
-  }, [nodes, currentFlowId]);
+  }, [nodes, edges, currentFlowId, reactFlowInstance]);
 
   // Function to create first step in empty flow
   const handleCreateFirstStep = useCallback(async () => {
@@ -2075,14 +2206,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+        type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+          type: 'default' as 'input' | 'default' | 'output' | 'response' | 'flow',
           step: {
             ...newStep,
-            type: 'default' as 'input' | 'default' | 'output' | 'response' | 'condition',
+            type: 'default' as 'input' | 'default' | 'output' | 'response',
           },
           instructions: newStep.instructions,
           command: '',
@@ -2183,14 +2314,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Create new node for the step
       const newNode: CustomNode = {
         id: newStep.id,
-        type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+        type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow',
         data: {
           label: newStep.title,
           title: newStep.title,
-          type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow' | 'condition',
+          type: nodeType as 'input' | 'default' | 'output' | 'response' | 'flow',
           step: {
             ...newStep,
-            type: stepType as 'input' | 'default' | 'output' | 'response' | 'condition',
+            type: stepType as 'input' | 'default' | 'output' | 'response',
           },
           instructions: newStep.instructions,
           command: '',
@@ -2377,14 +2508,12 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                   if (node.type === 'input') return '#0f172a'; // slate-900
                   if (node.type === 'output') return '#0f172a'; // slate-900
                   if (node.type === 'response') return '#0f172a'; // slate-900
-                  if (node.type === 'condition') return '#0f172a'; // slate-900
                   return '#0f172a'; // default dark
                 }}
                 nodeStrokeColor={(node) => {
                   if (node.type === 'input') return '#0ea5e9'; // sky-500
                   if (node.type === 'output') return '#8b5cf6'; // violet-500
                   if (node.type === 'response') return '#f59e0b'; // amber-500
-                  if (node.type === 'condition') return '#3b82f6'; // blue-500
                   return '#334155'; // default border
                 }}
               />
@@ -2428,13 +2557,6 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             >
               <span className="mr-2 text-yellow-400">🔄</span>
               Add Response
-            </button>
-            <button
-              onClick={() => handleAddNodeFromSource(addNodeMenu.sourceNodeId!, 'condition', addNodeMenu.position)}
-              className="w-full text-left px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 rounded-md flex items-center"
-            >
-              <span className="mr-2 text-blue-400">⚖️</span>
-              Add Condition
             </button>
             <div className="border-t border-neutral-800 mt-2 pt-2">
               <button
