@@ -2900,18 +2900,20 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
     const validatedData = validation.data!;
     const { steps, edges, deleted_step_ids = [], deleted_edge_ids = [] } = validatedData;
     
+    // Log for debugging
+    console.log("DELETING STEPS", deleted_step_ids);
+    console.log("DELETING EDGES", deleted_edge_ids);
+    console.log("REMAINING STEPS COUNT", steps.length);
+    console.log("NEW EDGES COUNT", edges.length);
+    
     // Collect all statements for batch execution
     const statements = [];
     
-    // 1. Delete orphaned edges
-    if (deleted_edge_ids.length > 0) {
-      const placeholders = deleted_edge_ids.map(() => '?').join(',');
-      statements.push(
-        db.prepare(`DELETE FROM flow_edges WHERE id IN (${placeholders})`).bind(...deleted_edge_ids)
-      );
-    }
+    // CRITICAL FIX: Delete ALL edges first to avoid foreign key constraints
+    // This must happen before deleting steps
+    statements.push(db.prepare('DELETE FROM flow_edges WHERE flow_id = ?').bind(flowId));
     
-    // 2. Delete orphaned steps
+    // 1. Delete orphaned steps (edges already deleted, so no foreign key issues)
     if (deleted_step_ids.length > 0) {
       const placeholders = deleted_step_ids.map(() => '?').join(',');
       statements.push(
@@ -2919,14 +2921,20 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
       );
     }
     
+    // Note: deleted_edge_ids is not needed since we delete all edges above
+    // Edges will be recreated from the edges array later
+    
     // First, check which steps already exist
     const stepIds = steps.filter(step => step.id).map(step => step.id);
     let existingStepIds: string[] = [];
+    
+    console.log("Checking existing steps from IDs:", stepIds);
     
     if (stepIds.length > 0) {
       const placeholders = stepIds.map(() => '?').join(',');
       const existingStepsResult = await db.prepare(`SELECT id FROM flow_steps WHERE id IN (${placeholders})`).bind(...stepIds).all();
       existingStepIds = (existingStepsResult.results || []).map((row: any) => row.id);
+      console.log("Found existing step IDs:", existingStepIds);
     }
     
     // 3. Update existing steps and create new ones
@@ -3057,11 +3065,7 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
       }
     }
     
-    // 4. Update edges (delete all existing edges for this flow and recreate)
-    // First, delete all existing edges for this flow
-    statements.push(db.prepare('DELETE FROM flow_edges WHERE flow_id = ?').bind(flowId));
-    
-    // Then, insert new edges
+    // 4. Insert new edges (all old edges were already deleted at the beginning)
     for (const edge of edges) {
       const edgeId = edge.id || `edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
@@ -3106,7 +3110,7 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
         steps_updated: steps.length,
         edges_updated: edges.length,
         steps_deleted: deleted_step_ids.length,
-        edges_deleted: deleted_edge_ids.length
+        edges_deleted: edges.length // All edges are recreated, so count of new edges
       }));
       
     } catch (error) {
