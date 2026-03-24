@@ -1270,6 +1270,9 @@ const NodePopup = ({
     nodeData?.step?.next_flow_id || ''
   );
   
+  // Track if we've already auto-inserted [input:message]
+  const hasAutoInsertedRef = useRef(false);
+  
   // Fetch available commands from API
   useEffect(() => {
     const fetchCommands = async () => {
@@ -1312,6 +1315,15 @@ const NodePopup = ({
     fetchFlows();
   }, []);
   
+  // When component mounts with existing next_flow_id, ensure [input:message] is in instructions
+  useEffect(() => {
+    if (selectedFlowId && instructions && !instructions.includes('[input:message]') && !hasAutoInsertedRef.current) {
+      const newInstructions = instructions.trim() + '\n\n[input:message]';
+      setInstructions(newInstructions);
+      hasAutoInsertedRef.current = true;
+    }
+  }, [selectedFlowId, instructions]);
+  
   // Get parameters for selected command
   const getCommandParameters = () => {
     if (!selectedCommand) return [];
@@ -1332,6 +1344,19 @@ const NodePopup = ({
   };
   
   const commandParameters = getCommandParameters();
+  
+  // Handle flow selection change with auto-insertion of [input:message]
+  const handleFlowChange = (flowId: string) => {
+    setSelectedFlowId(flowId);
+    
+    // If a flow is selected and instructions don't already contain [input:message],
+    // auto-insert it at the end
+    if (flowId && instructions && !instructions.includes('[input:message]')) {
+      const newInstructions = instructions.trim() + '\n\n[input:message]';
+      setInstructions(newInstructions);
+      hasAutoInsertedRef.current = true;
+    }
+  };
   
   console.log('NodePopup rendered! nodeData?.instructions:', nodeData?.instructions, 'instructions state:', instructions);
 
@@ -1532,7 +1557,7 @@ const NodePopup = ({
           <div>
             <select
               value={selectedFlowId}
-              onChange={(e) => setSelectedFlowId(e.target.value)}
+              onChange={(e) => handleFlowChange(e.target.value)}
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
             >
               <option value="">Default Next Flow (optional)</option>
@@ -1542,6 +1567,13 @@ const NodePopup = ({
                 </option>
               ))}
             </select>
+            <div className="text-xs text-neutral-400 mt-1">
+              {selectedFlowId ? (
+                <span>Step output will be available as <code className="bg-gray-800 px-1 rounded">[input:message]</code> in target flow</span>
+              ) : (
+                <span>Select a flow to route execution after this step completes</span>
+              )}
+            </div>
           </div>
 
           {/* Instructions/condition text area */}
