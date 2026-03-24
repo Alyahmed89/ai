@@ -2945,22 +2945,8 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Payload to DeepSeek (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
           console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
           
-          // Build messages for DeepSeek
-          const availableCommands = await this.getAvailableCommands();
+          // Build messages for DeepSeek WITHOUT system message
           const messages = [
-            {
-              role: 'system',
-              content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
-
-CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
-
-IMPORTANT: The step title may include a step number like "Step 2: Search for exact matches". Do NOT use this step number to calculate or report progress. Progress tracking is handled by the system, not by you.
-
-${availableCommands}
-
-The system will execute the command and return the results.
-Use the response in your work.`
-            },
             {
               role: 'user',
               content: this.conversation.initial_user_prompt
@@ -3026,8 +3012,7 @@ Use the response in your work.`
           console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
           console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
           
-          // Build initial conversation messages with available commands
-          const availableCommands = await this.getAvailableCommands();
+          // Build initial conversation messages WITHOUT system message
           const initialMessages = buildInitialMessages(
             this.conversation.initial_user_prompt,
             {
@@ -3035,14 +3020,8 @@ Use the response in your work.`
               branch: this.conversation.branch,
               iteration: this.conversation.iteration,
               max_iterations: this.conversation.max_iterations
-            },
-            // System message for flow execution with command format instructions
-            `You are an AI assistant executing a workflow step.
-
-${availableCommands}
-
-The system will execute the command and return the results.
-Use the response in your work.`
+            }
+            // No system message - DeepSeek will execute step directly
           );
           
           // Store initial messages in conversation
@@ -3079,8 +3058,7 @@ Use the response in your work.`
     // Normal flow: send to DeepSeek
     console.log(`[DO:${this.state.id}] INIT state: Sending to DeepSeek`);
     
-    // Build initial conversation messages with available commands
-    const availableCommands = await this.getAvailableCommands();
+    // Build initial conversation messages WITHOUT system message
     const initialMessages = buildInitialMessages(
       this.conversation.initial_user_prompt,
       {
@@ -3088,16 +3066,8 @@ Use the response in your work.`
         branch: this.conversation.branch,
         iteration: this.conversation.iteration,
         max_iterations: this.conversation.max_iterations
-      },
-      // System message for flow execution with command format instructions
-      `You are an AI assistant executing a workflow step.
-
-CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
-
-${availableCommands}
-
-The system will execute the command and return the results.
-Use the response in your work.`
+      }
+      // No system message - DeepSeek will execute step directly
     );
     
     // Store initial messages in conversation
@@ -5315,22 +5285,8 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Flow ID: ${this.conversation.flow_id}, Step: ${this.conversation.current_flow_step}`);
       console.log(`[DO:${this.state.id}] Prompt preview: ${prompt.substring(0, 200)}...`);
       
-      // Build messages for DeepSeek with available commands
-      const availableCommands = await this.getAvailableCommands();
+      // Build messages for DeepSeek WITHOUT system message
       const messages = [
-        {
-          role: 'system',
-          content: `You are an AI assistant executing a flow step. Execute the following step instruction and respond with the expected format.
-
-CRITICAL INSTRUCTION: Do NOT include status messages like "**Status:**" or "**Progress:**" in your response. The system will handle status updates automatically. Just execute the step and return the result.
-
-IMPORTANT: The step title may include a step number like "Step 2: Search for exact matches". Do NOT use this step number to calculate or report progress. Progress tracking is handled by the system, not by you.
-
-${availableCommands}
-
-The system will execute the command and return the results.
-Use the response in your work.`
-        },
         { role: 'user', content: prompt }
       ];
       
