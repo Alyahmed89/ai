@@ -651,7 +651,11 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
     
     // Update steps
     for (const step of stepsToUpdate) {
-      console.log(`Updating step ${step.id}`);
+      console.log(`=== Updating step ${step.id} ===`);
+      console.log(`  instructions: "${step.instructions}"`);
+      console.log(`  next_flow_id: "${step.next_flow_id}"`);
+      console.log(`  step_type: "${step.step_type}"`);
+      
       const requestBody = {
         instructions: step.instructions,
         title: step.title,
@@ -669,11 +673,16 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         next_flow_id: step.next_flow_id || null,
       };
       
+      console.log('  Request body:', requestBody);
+      
       const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       });
+      
+      console.log(`  Response status: ${response.status}`);
+      console.log(`  Response ok: ${response.ok}`);
       
       if (!response.ok) {
         console.error(`Failed to update step ${step.id}:`, response.status);
@@ -681,7 +690,8 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         console.error('Error response:', errorText);
         return false;
       } else {
-        console.log(`Step ${step.id} updated successfully`);
+        const responseData = await response.json();
+        console.log(`Step ${step.id} updated successfully:`, responseData);
       }
     }
     
@@ -730,19 +740,28 @@ async function saveFlowDAG(
     // Prepare steps for backend (ensure they have correct structure)
     const backendSteps = steps.map(step => ({
       id: step.id,
+      flow_id: flowId, // CRITICAL: Add flow_id to each step
+      step_key: step.step_key || step.id, // Use step_key if available, fallback to id
       title: step.title || '',
       instructions: step.instructions || '',
-      step_type: 'action', // Always set to 'action' as default
+      step_type: step.step_type || 'action', // Use actual step_type, not hardcoded
       order_index: step.order_index || 1,
+      page_key: step.page_key || null,
       blocking: Boolean(step.blocking || 0),
       auto_fail_on_error: Boolean(step.auto_fail_on_error || 0),
       retryable: Boolean(step.retryable || 0),
-      output_keys: step.output_keys || '',
-      input_keys: step.input_keys || '',
+      output_keys: step.output_keys || null,
+      output_url: step.output_url || null,
+      output_payload_template: step.output_payload_template || null,
+      default_next_step: step.default_next_step || null,
+      output_auth_token: step.output_auth_token || null,
+      input_keys: step.input_keys || null,
+      output: step.output || 0,
+      default_next_step_id: step.default_next_step_id || null,
+      step_number: step.step_number || null,
+      requires_task: step.requires_task || 0,
       use_endpoints: step.use_endpoints || null,
       extra_step: step.extra_step || 0,
-      page_key: step.page_key || null,
-      default_next_step_id: step.default_next_step_id || null,
       // Include next_flow_id if present
       next_flow_id: step.next_flow_id || null,
     }));
@@ -754,13 +773,21 @@ async function saveFlowDAG(
       deleted_edge_ids: deletedEdgeIds,
     };
     
-    console.log('Sending DAG payload:', payload);
+    console.log('=== SENDING DAG PAYLOAD ===');
+    console.log('Full payload:', JSON.stringify(payload, null, 2));
+    console.log('Steps in payload:', payload.steps.length);
+    console.log('Edges in payload:', payload.edges.length);
+    console.log('Deleted step IDs:', payload.deleted_step_ids);
+    console.log('Deleted edge IDs:', payload.deleted_edge_ids);
     
     const response = await fetch(`/api/proxy/api/flows/${flowId}/steps`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    
+    console.log('Response status:', response.status);
+    console.log('Response ok:', response.ok);
     
     if (!response.ok) {
       console.error('Failed to save flow DAG:', response.status);
@@ -2160,15 +2187,30 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }, []);
 
   const handleNodeUpdate = useCallback((updatedNode: CustomNode) => {
-    console.log('handleNodeUpdate called!', updatedNode.id, updatedNode.data.type);
-    console.log('Updated node data:', JSON.stringify(updatedNode.data, null, 2));
-    setNodes((nds) => nds.map(node => 
-      node.id === updatedNode.id ? updatedNode : node
-    ));
+    console.log('=== handleNodeUpdate START ===');
+    console.log('Updated node ID:', updatedNode.id);
+    console.log('Updated node type:', updatedNode.data.type);
+    console.log('Updated node instructions:', updatedNode.data.instructions);
+    console.log('Updated node step.next_flow_id:', updatedNode.data.step?.next_flow_id);
+    console.log('Full updated node data:', JSON.stringify(updatedNode.data, null, 2));
+    
+    setNodes((nds) => {
+      const newNodes = nds.map(node => 
+        node.id === updatedNode.id ? updatedNode : node
+      );
+      console.log('New nodes after update:', newNodes.map(n => ({ id: n.id, instructions: n.data.instructions, next_flow_id: n.data.step?.next_flow_id })));
+      console.log('=== handleNodeUpdate END ===');
+      return newNodes;
+    });
   }, []);
 
   const onSaveFlow = useCallback(async () => {
-    console.log('onSaveFlow called!');
+    console.log('=== onSaveFlow START ===');
+    console.log('Current nodes count:', nodes.length);
+    console.log('Current edges count:', edges.length);
+    console.log('Current flow ID:', currentFlowId);
+    console.log('Nodes state:', nodes.map(n => ({ id: n.id, instructions: n.data.instructions, next_flow_id: n.data.step?.next_flow_id })));
+    
     try {
       console.log('Setting saving to true');
       setSaving(true);
@@ -2241,7 +2283,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       });
       
       // Convert nodes back to steps with updated order_index
-      console.log('Nodes:', nodes.map(n => ({ id: n.id, type: n.data.type, instructions: n.data.instructions, step: n.data.step })));
+      console.log('=== Converting nodes to steps ===');
+      console.log('Nodes:', nodes.map(n => ({ 
+        id: n.id, 
+        type: n.data.type, 
+        instructions: n.data.instructions, 
+        step: n.data.step,
+        step_next_flow_id: n.data.step?.next_flow_id 
+      })));
       const updatedSteps: Step[] = nodes.map((node): Step => {
         const nodeData = node.data as NodeData;
         const step = nodeData.step as Step;
@@ -2250,7 +2299,12 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         const nodeStepType = nodeData.step?.step_type;
         const nodeType = nodeData.type;
         
-        console.log(`Processing node ${node.id}: nodeInstructions="${nodeInstructions}", step.instructions="${step.instructions}", nodeType="${nodeType}"`);
+        console.log(`=== Processing node ${node.id} ===`);
+        console.log(`  nodeInstructions="${nodeInstructions}"`);
+        console.log(`  step.instructions="${step.instructions}"`);
+        console.log(`  nodeType="${nodeType}"`);
+        console.log(`  step.next_flow_id="${step.next_flow_id}"`);
+        console.log(`  nodeData.step?.next_flow_id="${nodeData.step?.next_flow_id}"`);
         
         // Map UI type to step_type
         let finalStepType = typeof nodeStepType === 'string' ? nodeStepType : step.step_type;
@@ -2288,7 +2342,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         }
         console.log(`Node ${node.id}: outgoing edges=${outgoingEdges.length}, default_next_step_id=${defaultNextStepId}`);
         
-        return {
+        const finalStep = {
           ...step,
           title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
           instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
@@ -2300,14 +2354,33 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           output_keys: step.output_keys || '',
           // Save edge connection
           default_next_step_id: defaultNextStepId,
+          // CRITICAL: Include next_flow_id from step object
+          next_flow_id: step.next_flow_id || null,
         };
+        
+        console.log(`  Final step for node ${node.id}:`, {
+          instructions: finalStep.instructions,
+          next_flow_id: finalStep.next_flow_id,
+          step_type: finalStep.step_type
+        });
+        
+        return finalStep;
       });
       
       // Sort steps by order_index for consistency
       updatedSteps.sort((a, b) => a.order_index - b.order_index);
       
       // Save complete DAG to backend
-      console.log('Saving DAG:', { steps: updatedSteps, edges, deletedStepIds, deletedEdgeIds });
+      console.log('=== SAVING DAG ===');
+      console.log('Steps to save:', updatedSteps.map(s => ({ 
+        id: s.id, 
+        instructions: s.instructions, 
+        next_flow_id: s.next_flow_id,
+        step_type: s.step_type 
+      })));
+      console.log('Edges to save:', edges.length);
+      console.log('Deleted step IDs:', deletedStepIds);
+      console.log('Deleted edge IDs:', deletedEdgeIds);
       const success = await saveFlowDAG(currentFlowId, updatedSteps, edges, deletedStepIds, deletedEdgeIds);
       
       if (success) {
