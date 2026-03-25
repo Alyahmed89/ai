@@ -113,11 +113,11 @@ export default function DebugPanelAggressive() {
     };
     
     // 2. Intercept XMLHttpRequest - ALSO AGGRESSIVE
-    XMLHttpRequest.prototype.open = function(method: string, url: string | URL, ...args: any[]) {
+    XMLHttpRequest.prototype.open = function(method: string, url: string | URL, async?: boolean, username?: string | null, password?: string | null) {
       (this as any)._debugMethod = method;
       (this as any)._debugUrl = url.toString();
       (this as any)._debugStartTime = Date.now();
-      return originalXHROpen.apply(this, [method, url, ...args]);
+      return originalXHROpen.call(this, method, url, async ?? true, username, password);
     };
     
     XMLHttpRequest.prototype.send = function(body?: any) {
