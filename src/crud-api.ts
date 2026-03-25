@@ -2948,19 +2948,73 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
     
     // Collect all statements for batch execution
     const statements = [];
+    // Track which statements are step deletions (critical operations)
+    const stepDeletionStatements = new Set();
     
-    // CRITICAL FIX: Delete ALL edges first to avoid foreign key constraints
+    // CRITICAL FIX: Delete ALL related data first to avoid foreign key constraints
     // This must happen before deleting steps
-    // Note: flow_edges table might not exist in some databases
-    // We'll try to prepare the statement, but if it fails, we'll skip it
+    // Note: Some tables might not exist in some databases
+    // Check if tables exist before trying to delete
+    
+    // 1. Delete from flow_edges if table exists
     try {
+      db.prepare('SELECT 1 FROM flow_edges LIMIT 1');
       statements.push(db.prepare('DELETE FROM flow_edges WHERE flow_id = ?').bind(flowId));
+      console.log("flow_edges table exists, will delete edges for flow", flowId);
     } catch (error) {
       const errorMessage = error.message || '';
       if (errorMessage.includes('no such table: flow_edges')) {
-        console.log("flow_edges table doesn't exist, skipping edge deletion");
+        console.log("flow_edges table doesn't exist, no edges to delete");
       } else {
         throw error;
+      }
+    }
+    
+    // 2. Delete from flow_conditions if table exists (we fixed the schema, but check anyway)
+    try {
+      db.prepare('SELECT 1 FROM flow_conditions LIMIT 1');
+      statements.push(db.prepare('DELETE FROM flow_conditions WHERE flow_id = ?').bind(flowId));
+      console.log("flow_conditions table exists, will delete conditions for flow", flowId);
+    } catch (error) {
+      const errorMessage = error.message || '';
+      if (errorMessage.includes('no such table: flow_conditions')) {
+        console.log("flow_conditions table doesn't exist, no conditions to delete");
+      } else {
+        throw error;
+      }
+    }
+    
+    // Delete related data for deleted steps BEFORE deleting the steps themselves
+    // This avoids foreign key constraint issues
+    if (deleted_step_ids.length > 0) {
+      // Delete from flow_step_conditions for deleted steps
+      try {
+        db.prepare('SELECT 1 FROM flow_step_conditions LIMIT 1');
+        const placeholders = deleted_step_ids.map(() => '?').join(',');
+        statements.push(db.prepare(`DELETE FROM flow_step_conditions WHERE flow_step_id IN (${placeholders})`).bind(...deleted_step_ids));
+        console.log("Deleting flow_step_conditions for", deleted_step_ids.length, "steps");
+      } catch (error) {
+        const errorMessage = error.message || '';
+        if (errorMessage.includes('no such table: flow_step_conditions')) {
+          console.log("flow_step_conditions table doesn't exist, no conditions to delete");
+        } else {
+          throw error;
+        }
+      }
+      
+      // Delete from flow_step_tags for deleted steps
+      try {
+        db.prepare('SELECT 1 FROM flow_step_tags LIMIT 1');
+        const placeholders = deleted_step_ids.map(() => '?').join(',');
+        statements.push(db.prepare(`DELETE FROM flow_step_tags WHERE step_id IN (${placeholders})`).bind(...deleted_step_ids));
+        console.log("Deleting flow_step_tags for", deleted_step_ids.length, "steps");
+      } catch (error) {
+        const errorMessage = error.message || '';
+        if (errorMessage.includes('no such table: flow_step_tags')) {
+          console.log("flow_step_tags table doesn't exist, no tags to delete");
+        } else {
+          throw error;
+        }
       }
     }
     
@@ -2968,26 +3022,32 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
     if (deleted_step_ids.length > 0) {
       const placeholders = deleted_step_ids.map(() => '?').join(',');
       try {
-        statements.push(
-          db.prepare(`DELETE FROM flow_steps WHERE id IN (${placeholders})`).bind(...deleted_step_ids)
-        );
+        const deleteStatement = db.prepare(`DELETE FROM flow_steps WHERE id IN (${placeholders})`).bind(...deleted_step_ids);
+        statements.push(deleteStatement);
+        stepDeletionStatements.add(deleteStatement);
       } catch (error) {
         const errorMessage = error.message || '';
         if (errorMessage.includes('no such table: main.flows') || errorMessage.includes('no such table: flows')) {
           console.log("flows table doesn't exist, foreign key constraint error when preparing DELETE statement");
           console.log("Using workaround: create dummy flows table, delete steps, then drop dummy table");
           
-          // Workaround: create dummy flows table, delete steps, then drop dummy table
+          // Workaround: create dummy flows table, insert the flow ID, delete steps, then drop dummy table
           try {
             // Create dummy flows table if it doesn't exist
             statements.push(
               db.prepare("CREATE TABLE IF NOT EXISTS flows (id TEXT PRIMARY KEY)")
             );
             
-            // Delete steps
+            // Insert the flow ID into the dummy table to satisfy foreign key constraint
+            // Use INSERT OR IGNORE in case the flow ID already exists (from previous attempt)
             statements.push(
-              db.prepare(`DELETE FROM flow_steps WHERE id IN (${placeholders})`).bind(...deleted_step_ids)
+              db.prepare("INSERT OR IGNORE INTO flows (id) VALUES (?)").bind(flowId)
             );
+            
+            // Delete steps
+            const deleteStatement = db.prepare(`DELETE FROM flow_steps WHERE id IN (${placeholders})`).bind(...deleted_step_ids);
+            statements.push(deleteStatement);
+            stepDeletionStatements.add(deleteStatement);
             
             // Drop dummy flows table
             statements.push(
@@ -3196,39 +3256,115 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
     
     try {
       // Execute statements individually to handle missing tables gracefully
+      let stepDeletionFailed = false;
+      let stepDeletionError = null;
+      
       for (const statement of statements) {
         try {
           await statement.run();
         } catch (error) {
-          // Check if error is due to missing flow_edges table
           const errorMessage = error.message || '';
+          
+          // Check if this is a step deletion statement
+          const isStepDeletion = stepDeletionStatements.has(statement);
+          
+          // Check if error is due to missing flow_edges table
           if (errorMessage.includes('no such table: flow_edges')) {
             console.log("flow_edges table doesn't exist, skipping edge operations");
             // Continue without this statement
             continue;
           }
           // Check if error is due to missing flows table (foreign key constraint)
-          if (errorMessage.includes('no such table: main.flows') || errorMessage.includes('no such table: flows')) {
+          else if (errorMessage.includes('no such table: main.flows') || errorMessage.includes('no such table: flows')) {
             console.log("flows table doesn't exist, foreign key constraint error");
-            // This is a more serious error - we can't delete steps due to foreign key constraint
-            // We'll try to continue, but the deletion might fail
-            // For now, we'll skip this statement and hope other operations succeed
-            continue;
+            
+            if (isStepDeletion) {
+              // Step deletion failed due to foreign key constraint
+              stepDeletionFailed = true;
+              stepDeletionError = error;
+              console.error("CRITICAL: Step deletion failed due to foreign key constraint:", errorMessage);
+              // Try an alternative approach: delete steps one by one with individual transactions
+              // This might work if the constraint is per-row
+              console.log("Attempting alternative deletion approach...");
+              
+              // Don't continue the loop - we'll handle this after
+              break;
+            } else {
+              // For non-step-deletion statements, we can skip
+              continue;
+            }
           }
           // Re-throw other errors
-          throw error;
+          else {
+            throw error;
+          }
+        }
+      }
+      
+      // If step deletion failed, try alternative approach
+      if (stepDeletionFailed && deleted_step_ids.length > 0) {
+        console.log("Trying alternative step deletion approach...");
+        let successfullyDeleted = 0;
+        
+        for (const stepId of deleted_step_ids) {
+          try {
+            // Try to delete step individually
+            await db.prepare('DELETE FROM flow_steps WHERE id = ?').bind(stepId).run();
+            successfullyDeleted++;
+            console.log(`Successfully deleted step ${stepId}`);
+          } catch (individualError) {
+            const errorMessage = individualError.message || '';
+            console.error(`Failed to delete step ${stepId}:`, errorMessage);
+            
+            // If it's a foreign key constraint error, try the dummy table approach directly
+            if (errorMessage.includes('no such table: main.flows') || errorMessage.includes('no such table: flows')) {
+              try {
+                // Create dummy flows table
+                await db.prepare("CREATE TABLE IF NOT EXISTS flows (id TEXT PRIMARY KEY)").run();
+                // Insert flow ID
+                await db.prepare("INSERT OR IGNORE INTO flows (id) VALUES (?)").bind(flowId).run();
+                // Delete step
+                await db.prepare('DELETE FROM flow_steps WHERE id = ?').bind(stepId).run();
+                // Drop dummy table
+                await db.prepare("DROP TABLE IF EXISTS flows").run();
+                successfullyDeleted++;
+                console.log(`Successfully deleted step ${stepId} using direct dummy table approach`);
+              } catch (dummyError) {
+                console.error(`Even dummy table approach failed for step ${stepId}:`, dummyError.message);
+              }
+            }
+          }
+        }
+        
+        if (successfullyDeleted < deleted_step_ids.length) {
+          console.error(`Only deleted ${successfullyDeleted} out of ${deleted_step_ids.length} steps`);
+          // We'll continue and let verification handle reporting the error
         }
       }
       
       // Execute recalculateStepOrder separately (it does its own database operations)
       await recalculateStepOrder(db, flowId);
       
+      // Verify that steps were actually deleted
+      if (deleted_step_ids.length > 0) {
+        const placeholders = deleted_step_ids.map(() => '?').join(',');
+        const checkResult = await db.prepare(`SELECT COUNT(*) as count FROM flow_steps WHERE id IN (${placeholders})`).bind(...deleted_step_ids).first();
+        const stillExist = checkResult?.count || 0;
+        
+        if (stillExist > 0) {
+          console.error(`Failed to delete ${stillExist} steps. They still exist in the database.`);
+          // We should throw an error or at least report this
+          return c.json(errorResponse(`Failed to delete ${stillExist} steps. Foreign key constraint may be preventing deletion.`, 500));
+        }
+      }
+      
       return c.json(successResponse({ 
         message: 'Flow steps and edges updated successfully',
         steps_updated: steps.length,
         edges_updated: edges.length,
         steps_deleted: deleted_step_ids.length,
-        edges_deleted: edges.length // All edges are recreated, so count of new edges
+        edges_deleted: edges.length, // All edges are recreated, so count of new edges
+        verified_deletion: deleted_step_ids.length > 0 // Indicate we verified deletion
       }));
       
     } catch (error) {
