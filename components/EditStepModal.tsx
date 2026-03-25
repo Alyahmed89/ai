@@ -38,6 +38,21 @@ interface FlowStep {
   requires_task: number;
 }
 
+interface FlowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  max_iterations: number;
+  repository: string;
+  branch: string;
+  created_at: string;
+  updated_at: string;
+  next_flow_id: string | null;
+  priority: number;
+  agent: string;
+  system_message?: string;
+}
+
 interface EditStepModalProps {
   step: FlowStep;
   onClose: () => void;
@@ -46,9 +61,11 @@ interface EditStepModalProps {
 
 export default function EditStepModal({ step, onClose, onStepUpdated }: EditStepModalProps) {
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
+  const [flows, setFlows] = useState<FlowDefinition[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showFlowList, setShowFlowList] = useState(false);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -118,6 +135,7 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
     }
     
     fetchEndpoints();
+    fetchFlows();
   }, [step]);
 
 
@@ -133,6 +151,18 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
       }
     } catch (err) {
       console.error('Failed to fetch endpoints:', err);
+    }
+  };
+
+  const fetchFlows = async () => {
+    try {
+      const response = await fetch('/api/proxy/api/flow-definitions');
+      if (response.ok) {
+        const data = await response.json();
+        setFlows(data);
+      }
+    } catch (error) {
+      console.error('Error fetching flows:', error);
     }
   };
 
@@ -393,6 +423,35 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
     }
   };
 
+  const handleDeleteStep = async () => {
+    if (!confirm('Are you sure you want to delete this step? This action cannot be undone.')) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/proxy/api/flow-steps/${step.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        onStepUpdated(step.id);
+        onClose();
+      } else {
+        throw new Error(data.error || 'Failed to delete step');
+      }
+    } catch (err) {
+      console.error('Error deleting step:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete step');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <Modal onClose={onClose}>
@@ -479,7 +538,68 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
               </p>
             </div>
 
-
+            {/* Flow List Section */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-neutral-400">Flow List</label>
+                <button
+                  type="button"
+                  onClick={() => setShowFlowList(!showFlowList)}
+                  className="text-xs text-neutral-400 hover:text-neutral-300 flex items-center"
+                >
+                  {showFlowList ? 'Hide' : 'Show'} Flows
+                  <svg className={`w-3 h-3 ml-1 transition-transform ${showFlowList ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+              
+              {showFlowList && (
+                <div className="mb-4 p-4 bg-neutral-800/50 border border-neutral-700 rounded-lg max-h-60 overflow-y-auto">
+                  <p className="text-sm text-neutral-400 mb-3">
+                    Available flows in the system. Current flow: <span className="text-neutral-300 font-medium">{step.flow_id}</span>
+                  </p>
+                  
+                  <div className="space-y-2">
+                    {flows.length === 0 ? (
+                      <div className="text-center py-4 text-neutral-500 text-sm">
+                        No flows found
+                      </div>
+                    ) : (
+                      flows.map(flow => (
+                        <div 
+                          key={flow.id}
+                          className={`p-3 rounded border ${
+                            flow.id === step.flow_id 
+                              ? 'bg-neutral-700/30 border-neutral-600' 
+                              : 'bg-neutral-800/30 border-neutral-700'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-neutral-200">
+                                {flow.name}
+                              </div>
+                              <div className="text-xs text-neutral-400 mt-1">
+                                ID: {flow.id}
+                              </div>
+                              <div className="text-xs text-neutral-500 mt-1">
+                                Agent: {flow.agent} • Steps: {flow.max_iterations}
+                              </div>
+                            </div>
+                            {flow.id === step.flow_id && (
+                              <span className="text-xs px-2 py-1 rounded bg-neutral-700 text-neutral-300">
+                                Current
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-neutral-400 mb-2">Connected Endpoints</label>
@@ -714,24 +834,39 @@ export default function EditStepModal({ step, onClose, onStepUpdated }: EditStep
             </div>
 
             <div className="pt-4 border-t border-neutral-800">
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 text-sm font-medium text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors"
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {saving && (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  )}
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
+              <div className="flex justify-between">
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleDeleteStep}
+                    disabled={saving}
+                    className="px-4 py-2 text-sm font-medium text-red-300 hover:text-red-100 bg-red-900/20 hover:bg-red-900/40 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete Step
+                  </button>
+                </div>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={onClose}
+                    className="px-4 py-2 text-sm font-medium text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors"
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {saving && (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    )}
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

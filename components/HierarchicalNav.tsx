@@ -170,6 +170,9 @@ export default function HierarchicalNav({
   const [editingStep, setEditingStep] = useState<FlowStep | null>(null);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<Task | null>(null);
   const [showApiEndpointsModal, setShowApiEndpointsModal] = useState(false);
+  const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [stepToDelete, setStepToDelete] = useState<string | null>(null);
   
   const [loading, setLoading] = useState({
     projects: false,
@@ -360,6 +363,125 @@ export default function HierarchicalNav({
   const handleStepSelect = (stepId: string | null) => {
     setSelectedStepId(stepId);
     onSelectStep?.(stepId);
+  };
+
+  const handleCreateStep = async () => {
+    if (!selectedFlowId) {
+      alert('Please select a flow first');
+      return;
+    }
+
+    try {
+      // Create a new step
+      const newStep = {
+        flow_id: selectedFlowId,
+        step_key: `step_${Date.now()}`,
+        title: 'New Step',
+        instructions: 'New step instructions...',
+        step_type: 'default',
+        order_index: filteredSteps.length,
+        page_key: null,
+        blocking: false,
+        auto_fail_on_error: false,
+        retryable: false,
+        output_keys: '[]',
+        output_url: null,
+        output_payload_template: null,
+        default_next_step: null,
+        output_auth_token: null,
+        input_keys: '[]',
+        use_endpoints: '[]',
+        output: false,
+        default_next_step_id: null,
+        step_number: null,
+        requires_task: false
+      };
+
+      const response = await fetch('/api/proxy/api/flow-steps', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newStep)
+      });
+
+      if (!response.ok) throw new Error('Failed to create step');
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Refresh steps
+        fetchFlowSteps();
+        // Open the new step for editing
+        if (data.data && data.data.id) {
+          // Find the newly created step - convert booleans back to numbers for FlowStep interface
+          const createdStep = {
+            ...newStep,
+            id: data.data.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            task_id: null,
+            // Convert booleans to numbers for FlowStep interface
+            blocking: newStep.blocking ? 1 : 0,
+            auto_fail_on_error: newStep.auto_fail_on_error ? 1 : 0,
+            retryable: newStep.retryable ? 1 : 0,
+            output: newStep.output ? 1 : 0,
+            requires_task: newStep.requires_task ? 1 : 0
+          };
+          setEditingStep(createdStep as FlowStep);
+        }
+      } else {
+        throw new Error(data.error || 'Failed to create step');
+      }
+    } catch (error) {
+      console.error('Error creating step:', error);
+      alert(`Failed to create step: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleDeleteStep = async (stepId: string) => {
+    setShowDeleteConfirm(true);
+    setStepToDelete(stepId);
+  };
+
+  const confirmDeleteStep = async () => {
+    if (!stepToDelete) return;
+
+    setDeletingStepId(stepToDelete);
+    setShowDeleteConfirm(false);
+    
+    try {
+      const response = await fetch(`/api/proxy/api/flow-steps/${stepToDelete}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) throw new Error('Failed to delete step');
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Refresh steps
+        fetchFlowSteps();
+        // Clear selection if deleted step was selected
+        if (selectedStepId === stepToDelete) {
+          setSelectedStepId(null);
+          onSelectStep?.(null);
+        }
+      } else {
+        throw new Error(data.error || 'Failed to delete step');
+      }
+    } catch (error) {
+      console.error('Error deleting step:', error);
+      alert(`Failed to delete step: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeletingStepId(null);
+      setStepToDelete(null);
+    }
+  };
+
+  const cancelDeleteStep = () => {
+    setShowDeleteConfirm(false);
+    setStepToDelete(null);
   };
 
   // Filter tasks by selected flow
@@ -667,17 +789,15 @@ export default function HierarchicalNav({
                     <span className="text-sm font-medium text-gray-300">Steps</span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    {onCreateStep && (
-                      <button
-                        onClick={onCreateStep}
-                        className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
-                        title="Create New Step"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                      </button>
-                    )}
+                    <button
+                      onClick={handleCreateStep}
+                      className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
+                      title="Create New Step"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
                     {loading.steps && (
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
                     )}
@@ -704,19 +824,36 @@ export default function HierarchicalNav({
                         </div>
                       </button>
                       
-                      {/* Edit button - visible on hover */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingStep(step);
-                        }}
-                        className="invisible group-hover:visible text-gray-400 hover:text-gray-300 ml-1 p-1 flex-shrink-0"
-                        title="Edit Step"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      {/* Action buttons - visible on hover */}
+                      <div className="invisible group-hover:visible flex items-center ml-1">
+                        {/* Edit button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingStep(step);
+                          }}
+                          className="text-gray-400 hover:text-gray-300 p-1 flex-shrink-0"
+                          title="Edit Step"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        
+                        {/* Delete button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteStep(step.id);
+                          }}
+                          className="text-gray-400 hover:text-red-400 p-1 flex-shrink-0"
+                          title="Delete Step"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
