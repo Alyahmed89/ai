@@ -1889,45 +1889,53 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     try {
       setSaving(true);
       
-      // Convert nodes to steps for saving
-      const updatedSteps: Step[] = nodes.map((node): Step => {
-        const nodeData = node.data as NodeData;
-        const step = nodeData.step as Step;
-        const nodeTitle = nodeData.title;
-        const nodeInstructions = nodeData.instructions;
-        const nodeStepType = nodeData.step?.step_type;
-        const nodeType = nodeData.type;
-        
-        // Map UI type to step_type
-        let finalStepType = typeof nodeStepType === 'string' ? nodeStepType : step.step_type;
-        let extraStep = step.extra_step || 0;
-        
-        if (nodeType) {
-          if (nodeType === 'response') {
-            finalStepType = 'response';
-            extraStep = 0;
-          } else if (nodeType === 'input') {
-            finalStepType = 'input';
-          } else if (nodeType === 'output') {
-            finalStepType = 'output';
-          } else {
-            finalStepType = 'default';
+      // Convert nodes to steps for saving, EXCLUDING deleted steps
+      const updatedSteps: Step[] = nodes
+        .filter(node => {
+          const nodeData = node.data as NodeData;
+          const step = nodeData.step as Step;
+          // Keep only nodes whose step ID is NOT in deletedStepIds
+          // Also handle cases where step might be undefined
+          return step && step.id && !deletedStepIds.includes(step.id);
+        })
+        .map((node): Step => {
+          const nodeData = node.data as NodeData;
+          const step = nodeData.step as Step;
+          const nodeTitle = nodeData.title;
+          const nodeInstructions = nodeData.instructions;
+          const nodeStepType = nodeData.step?.step_type;
+          const nodeType = nodeData.type;
+          
+          // Map UI type to step_type
+          let finalStepType = typeof nodeStepType === 'string' ? nodeStepType : step.step_type;
+          let extraStep = step.extra_step || 0;
+          
+          if (nodeType) {
+            if (nodeType === 'response') {
+              finalStepType = 'response';
+              extraStep = 0;
+            } else if (nodeType === 'input') {
+              finalStepType = 'input';
+            } else if (nodeType === 'output') {
+              finalStepType = 'output';
+            } else {
+              finalStepType = 'default';
+            }
           }
-        }
-        
-        return {
-          ...step,
-          title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
-          instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
-          step_type: finalStepType,
-          extra_step: extraStep,
-          order_index: step.order_index || 1,
-          input_keys: step.input_keys || null,
-          output_keys: step.output_keys || '',
-          default_next_step_id: step.default_next_step_id || null,
-          next_flow_id: step.next_flow_id || null,
-        };
-      });
+          
+          return {
+            ...step,
+            title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
+            instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
+            step_type: finalStepType,
+            extra_step: extraStep,
+            order_index: step.order_index || 1,
+            input_keys: step.input_keys || null,
+            output_keys: step.output_keys || '',
+            default_next_step_id: step.default_next_step_id || null,
+            next_flow_id: step.next_flow_id || null,
+          };
+        });
       
       // Sort steps by order_index for consistency
       updatedSteps.sort((a, b) => a.order_index - b.order_index);
@@ -2384,7 +2392,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         orderIndexMap.set(nodeId, index + 1);
       });
       
-      // Convert nodes back to steps with updated order_index
+      // Convert nodes back to steps with updated order_index, EXCLUDING deleted steps
       console.log('=== Converting nodes to steps ===');
       console.log('Nodes:', nodes.map(n => ({ 
         id: n.id, 
@@ -2393,7 +2401,15 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         step: n.data.step,
         step_next_flow_id: n.data.step?.next_flow_id 
       })));
-      const updatedSteps: Step[] = nodes.map((node): Step => {
+      const updatedSteps: Step[] = nodes
+        .filter(node => {
+          const nodeData = node.data as NodeData;
+          const step = nodeData.step as Step;
+          // Keep only nodes whose step ID is NOT in deletedStepIds
+          // Also handle cases where step might be undefined
+          return step && step.id && !deletedStepIds.includes(step.id);
+        })
+        .map((node): Step => {
         const nodeData = node.data as NodeData;
         const step = nodeData.step as Step;
         const nodeTitle = nodeData.title;
