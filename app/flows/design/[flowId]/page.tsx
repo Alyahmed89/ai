@@ -76,6 +76,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
+import DebugPanelAggressive from '@/app/components/DebugPanelAggressive';
 
 // Dagre layout configuration
 const dagreGraph = new dagre.graphlib.Graph();
@@ -711,13 +712,14 @@ async function saveFlowDAG(
   deletedEdgeIds: string[] = []
 ): Promise<boolean> {
   try {
-    console.log('Saving flow DAG:', { 
-      flowId, 
-      stepsCount: steps.length, 
-      edgesCount: edges.length,
-      deletedStepIds,
-      deletedEdgeIds
-    });
+    console.log('=== SAVE FLOW DAG CALLED ===');
+    console.log('Flow ID:', flowId);
+    console.log('Steps count:', steps.length);
+    console.log('Edges count:', edges.length);
+    console.log('Deleted step IDs:', deletedStepIds);
+    console.log('Deleted edge IDs:', deletedEdgeIds);
+    console.log('Steps IDs:', steps.map(s => s.id));
+    console.log('Edges source->target:', edges.map(e => `${e.source}->${e.target}`));
     
     // Prepare edges for backend
     const backendEdges = edges.map(edge => ({
@@ -756,10 +758,10 @@ async function saveFlowDAG(
       default_next_step: step.default_next_step || null,
       output_auth_token: step.output_auth_token || null,
       input_keys: step.input_keys || null,
-      output: step.output || 0,
+      output: Boolean(step.output || 0), // FIX: Convert to boolean (was number)
       default_next_step_id: step.default_next_step_id || null,
       step_number: step.step_number || null,
-      requires_task: step.requires_task || 0,
+      requires_task: Boolean(step.requires_task || 0), // Also fix this boolean
       use_endpoints: step.use_endpoints || null,
       extra_step: step.extra_step || 0,
       // Include next_flow_id if present
@@ -1877,7 +1879,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }, [edges, currentFlowId]);
 
   // Function to auto-save flow changes
-  const autoSaveFlow = useCallback(async () => {
+  const autoSaveFlow = useCallback(async (deletedStepIdsOverride?: string[], deletedEdgeIdsOverride?: string[]) => {
     if (saving || !currentFlowId || nodes.length === 0) {
       console.log('Auto-save skipped:', { saving, currentFlowId, nodesCount: nodes.length });
       return;
@@ -1886,6 +1888,17 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     console.log('=== AUTO-SAVE START ===');
     console.log('Auto-saving flow with', nodes.length, 'nodes and', edges.length, 'edges');
     
+    // Use overridden values if provided, otherwise use state
+    const currentDeletedStepIds = deletedStepIdsOverride || deletedStepIds;
+    const currentDeletedEdgeIds = deletedEdgeIdsOverride || deletedEdgeIds;
+    
+    console.log('Current deletedStepIds:', currentDeletedStepIds);
+    console.log('Current deletedEdgeIds:', currentDeletedEdgeIds);
+    
+    // Debug: List all node IDs
+    console.log('All node IDs:', nodes.map(n => n.id));
+    console.log('All step IDs from node data:', nodes.map(n => (n.data as NodeData)?.step?.id).filter(Boolean));
+    
     try {
       setSaving(true);
       
@@ -1893,7 +1906,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       const updatedSteps: Step[] = nodes
         .filter(node => {
           const step = (node.data as NodeData)?.step as Step;
-          return step?.id && !deletedStepIds.includes(step.id);
+          return step?.id && !currentDeletedStepIds.includes(step.id);
         })
         .map((node): Step => {
           const nodeData = node.data as NodeData;
@@ -1938,7 +1951,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       updatedSteps.sort((a, b) => a.order_index - b.order_index);
       
       // Save complete DAG to backend
-      const success = await saveFlowDAG(currentFlowId, updatedSteps, edges, deletedStepIds, deletedEdgeIds);
+      const success = await saveFlowDAG(currentFlowId, updatedSteps, edges, currentDeletedStepIds, currentDeletedEdgeIds);
       
       if (success) {
         console.log('Auto-save successful');
@@ -2071,8 +2084,19 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       type: 'remove'
     };
     
-    // Track deleted step ID
-    setDeletedStepIds(prev => [...prev, nodeId]);
+    // Track deleted step ID - use functional update to ensure we get latest
+    setDeletedStepIds(prev => {
+      const updated = [...prev, nodeId];
+      console.log('Updated deletedStepIds in handleDeleteNode:', updated);
+      
+      // Schedule auto-save AFTER state is updated, passing the updated deletedStepIds
+      setTimeout(() => {
+        console.log('Auto-saving after node deletion, deletedStepIds includes:', updated);
+        autoSaveFlow(updated, deletedEdgeIds);
+      }, 100); // Short delay to ensure React processes the state update
+      
+      return updated;
+    });
     
     // Trigger the nodes change with remove action
     onNodesChange([change]);
@@ -2081,12 +2105,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     if (selectedNode?.id === nodeId) {
       setSelectedNode(null);
     }
-    
-    // Auto-save after deleting node
-    setTimeout(() => {
-      autoSaveFlow();
-    }, 100);
-  }, [onNodesChange, selectedNode, autoSaveFlow]);
+  }, [onNodesChange, selectedNode, autoSaveFlow, deletedEdgeIds]);
 
   // Node types configuration with onClick handler
   const nodeTypes = useMemo(() => ({
@@ -3379,6 +3398,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             onFlowCreated={handleFlowCreated}
           />
         )}
+
+        {/* Debug Panel for API Requests */}
+        <DebugPanelAggressive />
       </div>
     </div>
   );
