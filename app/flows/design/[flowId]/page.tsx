@@ -1158,6 +1158,22 @@ const EdgePopup = ({
     { value: 'data.user_id', label: 'Data: User ID', category: 'data' },
     { value: 'command.get_tasks.result', label: 'Command: Get Tasks Result', category: 'command' },
     { value: 'ai_output.intent', label: 'AI Output: Intent', category: 'ai' },
+    // Add flows as condition sources
+    ...availableFlows.map(flow => ({
+      value: `flow.${flow.id}.status`,
+      label: `Flow: ${flow.name} Status`,
+      category: 'flow'
+    })),
+    ...availableFlows.map(flow => ({
+      value: `flow.${flow.id}.result`,
+      label: `Flow: ${flow.name} Result`,
+      category: 'flow'
+    })),
+    ...availableFlows.map(flow => ({
+      value: `flow.${flow.id}.output`,
+      label: `Flow: ${flow.name} Output`,
+      category: 'flow'
+    })),
     ...sourceVariables.map(variable => ({
       value: `variables.${variable}`,
       label: `Variable: ${variable}`,
@@ -1221,10 +1237,11 @@ const EdgePopup = ({
               onChange={(e) => setCondition({...condition, source: e.target.value})}
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
             >
-              <option value="default">Always (no condition)</option>
-              <option value="condition_met">Condition Met</option>
-              <option value="error_occurred">Error Occurred</option>
-              <option value="loop_complete">Loop Complete</option>
+              {sourceOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -1235,10 +1252,11 @@ const EdgePopup = ({
               onChange={(e) => setCondition({...condition, operator: e.target.value})}
               className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
             >
-              <option value="always">Always</option>
-              <option value="equals">Equals</option>
-              <option value="not_equals">Not Equals</option>
-              <option value="contains">Contains</option>
+              {operatorOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
