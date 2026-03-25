@@ -1875,6 +1875,83 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       storeEdges(currentFlowId, edges);
     }
   }, [edges, currentFlowId]);
+
+  // Function to auto-save flow changes
+  const autoSaveFlow = useCallback(async () => {
+    if (saving || !currentFlowId || nodes.length === 0) {
+      console.log('Auto-save skipped:', { saving, currentFlowId, nodesCount: nodes.length });
+      return;
+    }
+
+    console.log('=== AUTO-SAVE START ===');
+    console.log('Auto-saving flow with', nodes.length, 'nodes and', edges.length, 'edges');
+    
+    try {
+      setSaving(true);
+      
+      // Convert nodes to steps for saving
+      const updatedSteps: Step[] = nodes.map((node): Step => {
+        const nodeData = node.data as NodeData;
+        const step = nodeData.step as Step;
+        const nodeTitle = nodeData.title;
+        const nodeInstructions = nodeData.instructions;
+        const nodeStepType = nodeData.step?.step_type;
+        const nodeType = nodeData.type;
+        
+        // Map UI type to step_type
+        let finalStepType = typeof nodeStepType === 'string' ? nodeStepType : step.step_type;
+        let extraStep = step.extra_step || 0;
+        
+        if (nodeType) {
+          if (nodeType === 'response') {
+            finalStepType = 'response';
+            extraStep = 0;
+          } else if (nodeType === 'input') {
+            finalStepType = 'input';
+          } else if (nodeType === 'output') {
+            finalStepType = 'output';
+          } else {
+            finalStepType = 'default';
+          }
+        }
+        
+        return {
+          ...step,
+          title: typeof nodeTitle === 'string' ? nodeTitle : step.title,
+          instructions: typeof nodeInstructions === 'string' ? nodeInstructions : step.instructions,
+          step_type: finalStepType,
+          extra_step: extraStep,
+          order_index: step.order_index || 1,
+          input_keys: step.input_keys || null,
+          output_keys: step.output_keys || '',
+          default_next_step_id: step.default_next_step_id || null,
+          next_flow_id: step.next_flow_id || null,
+        };
+      });
+      
+      // Sort steps by order_index for consistency
+      updatedSteps.sort((a, b) => a.order_index - b.order_index);
+      
+      // Save complete DAG to backend
+      const success = await saveFlowDAG(currentFlowId, updatedSteps, edges, deletedStepIds, deletedEdgeIds);
+      
+      if (success) {
+        console.log('Auto-save successful');
+        // Clear deletion tracking after successful save
+        setDeletedStepIds([]);
+        setDeletedEdgeIds([]);
+        // Also save edges to localStorage for persistence
+        storeEdges(currentFlowId, edges);
+      } else {
+        console.error('Auto-save failed');
+      }
+    } catch (err) {
+      console.error('Error in auto-save:', err);
+    } finally {
+      setSaving(false);
+      console.log('=== AUTO-SAVE END ===');
+    }
+  }, [nodes, edges, currentFlowId, saving, deletedStepIds, deletedEdgeIds, setSaving, setDeletedStepIds, setDeletedEdgeIds, storeEdges]);
   
   const loadFlowData = async () => {
     setLoading(true);
@@ -1999,7 +2076,12 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     if (selectedNode?.id === nodeId) {
       setSelectedNode(null);
     }
-  }, [onNodesChange, selectedNode]);
+    
+    // Auto-save after deleting node
+    setTimeout(() => {
+      autoSaveFlow();
+    }, 100);
+  }, [onNodesChange, selectedNode, autoSaveFlow]);
 
   // Node types configuration with onClick handler
   const nodeTypes = useMemo(() => ({
@@ -2139,11 +2221,16 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       
       if (deletedIds.length > 0) {
         setDeletedEdgeIds(prev => [...prev, ...deletedIds]);
+        
+        // Auto-save after deleting edges
+        setTimeout(() => {
+          autoSaveFlow();
+        }, 100);
       }
       
       setEdges((eds) => applyEdgeChanges(changes, eds) as CustomEdge[]);
     },
-    []
+    [autoSaveFlow]
   );
 
   const onConnect = useCallback(
@@ -2176,15 +2263,25 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       };
       setEdges((eds) => [...eds, newEdge]);
       setSelectedEdge(newEdge);
+      
+      // Auto-save after adding edge
+      setTimeout(() => {
+        autoSaveFlow();
+      }, 100);
     },
-    []
+    [autoSaveFlow]
   );
 
   const handleEdgeUpdate = useCallback((updatedEdge: CustomEdge) => {
     setEdges((eds) => eds.map(edge => 
       edge.id === updatedEdge.id ? updatedEdge : edge
     ));
-  }, []);
+    
+    // Auto-save after updating edge
+    setTimeout(() => {
+      autoSaveFlow();
+    }, 100);
+  }, [autoSaveFlow]);
 
   const handleNodeUpdate = useCallback((updatedNode: CustomNode) => {
     console.log('=== handleNodeUpdate START ===');
@@ -2202,7 +2299,12 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       console.log('=== handleNodeUpdate END ===');
       return newNodes;
     });
-  }, []);
+    
+    // Auto-save after updating node
+    setTimeout(() => {
+      autoSaveFlow();
+    }, 100);
+  }, [autoSaveFlow]);
 
   const onSaveFlow = useCallback(async () => {
     console.log('=== onSaveFlow START ===');
@@ -2490,11 +2592,16 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Select the new node to open the step popup
       setSelectedNode(newNode);
       
+      // Auto-save after adding step
+      setTimeout(() => {
+        autoSaveFlow();
+      }, 100);
+      
     } catch (error) {
       console.error('Error adding new step:', error);
       alert('Error adding new step. See console for details.');
     }
-  }, [nodes, currentFlowId]);
+  }, [nodes, currentFlowId, autoSaveFlow]);
 
   // Function to add a new node from a source node
   const handleAddNodeFromSource = useCallback(async (sourceNodeId: string, nodeType: 'step' | 'response', dropPosition?: { x: number, y: number }) => {
@@ -2673,11 +2780,16 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Close the menu
       setAddNodeMenu({ show: false, sourceNodeId: null, position: { x: 0, y: 0 } });
       
+      // Auto-save after adding node
+      setTimeout(() => {
+        autoSaveFlow();
+      }, 100);
+      
     } catch (error) {
       console.error('Error adding new node from source:', error);
       alert('Error adding new node. See console for details.');
     }
-  }, [nodes, edges, currentFlowId, reactFlowInstance]);
+  }, [nodes, edges, currentFlowId, reactFlowInstance, autoSaveFlow]);
 
   // Function to create first step in empty flow
   const handleCreateFirstStep = useCallback(async () => {
