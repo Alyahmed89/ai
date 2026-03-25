@@ -1892,11 +1892,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       // Convert nodes to steps for saving, EXCLUDING deleted steps
       const updatedSteps: Step[] = nodes
         .filter(node => {
-          const nodeData = node.data as NodeData;
-          const step = nodeData.step as Step;
-          // Keep only nodes whose step ID is NOT in deletedStepIds
-          // Also handle cases where step might be undefined
-          return step && step.id && !deletedStepIds.includes(step.id);
+          const step = (node.data as NodeData)?.step as Step;
+          return step?.id && !deletedStepIds.includes(step.id);
         })
         .map((node): Step => {
           const nodeData = node.data as NodeData;
