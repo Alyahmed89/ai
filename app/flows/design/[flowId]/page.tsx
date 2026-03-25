@@ -49,6 +49,47 @@ const clearStoredEdges = (flowId: string) => {
     console.error('Error clearing edges from localStorage:', error);
   }
 };
+
+// LocalStorage helper functions for next_flow_id persistence
+const getStoredNextFlowIds = (flowId: string): Record<string, string | null> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const key = `flow_next_flow_ids_${flowId}`;
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const nextFlowIds = JSON.parse(stored);
+      console.log(`Loaded next_flow_ids for ${Object.keys(nextFlowIds).length} steps from localStorage for flow ${flowId}`);
+      return nextFlowIds;
+    }
+  } catch (error) {
+    console.error('Error loading next_flow_ids from localStorage:', error);
+  }
+  return {};
+};
+
+const storeNextFlowId = (flowId: string, stepId: string, nextFlowId: string | null) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `flow_next_flow_ids_${flowId}`;
+    const stored = getStoredNextFlowIds(flowId);
+    const updated = { ...stored, [stepId]: nextFlowId };
+    localStorage.setItem(key, JSON.stringify(updated));
+    console.log(`Stored next_flow_id for step ${stepId}: ${nextFlowId} to localStorage for flow ${flowId}`);
+  } catch (error) {
+    console.error('Error storing next_flow_id to localStorage:', error);
+  }
+};
+
+const clearStoredNextFlowIds = (flowId: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `flow_next_flow_ids_${flowId}`;
+    localStorage.removeItem(key);
+    console.log(`Cleared stored next_flow_ids for flow ${flowId}`);
+  } catch (error) {
+    console.error('Error clearing next_flow_ids from localStorage:', error);
+  }
+};
 import {
   ReactFlow,
   Node,
@@ -485,10 +526,16 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
         console.log('DAG edges:', edgesArray.map((e: any) => ({ id: e.id, source: e.source_step_id, target: e.target_step_id })));
         
         // Process steps
+        // Load next_flow_ids from localStorage for this flow
+        const storedNextFlowIds = getStoredNextFlowIds(flowId);
+        console.log('Loaded next_flow_ids from localStorage:', storedNextFlowIds);
+        
         const flowSteps = stepsArray
           .sort((a: any, b: any) => a.order_index - b.order_index)
           .map((step: any) => ({
             ...step,
+            // Ensure next_flow_id is always present - check localStorage first, then backend, then default to null
+            next_flow_id: storedNextFlowIds[step.id] !== undefined ? storedNextFlowIds[step.id] : (step.next_flow_id || null),
             // Add UI-specific fields
             type: (() => {
               // If step_type is "processing" and extra_step is 1, it's a response node (backward compatibility)
@@ -535,11 +582,17 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
     console.log('Steps array before filtering:', stepsArray.map((s: any) => ({ id: s.id, flow_id: s.flow_id, step_type: s.step_type, extra_step: s.extra_step })));
     
     // Filter steps for this flow and sort by order_index
+    // Load next_flow_ids from localStorage for this flow
+    const storedNextFlowIds = getStoredNextFlowIds(flowId);
+    console.log('Loaded next_flow_ids from localStorage:', storedNextFlowIds);
+    
     const flowSteps = stepsArray
       .filter((step: any) => step.flow_id === flowId)
       .sort((a: any, b: any) => a.order_index - b.order_index)
       .map((step: any) => ({
         ...step,
+        // Ensure next_flow_id is always present - check localStorage first, then backend, then default to null
+        next_flow_id: storedNextFlowIds[step.id] !== undefined ? storedNextFlowIds[step.id] : (step.next_flow_id || null),
         // Add UI-specific fields - use step_type for type, not order_index
         // Map backend step_type to UI type
         type: (() => {
@@ -1449,6 +1502,18 @@ const NodePopup = ({
       },
     };
     console.log('Auto-saving node with flow selection:', JSON.stringify(updatedNode, null, 2));
+    
+    // Save next_flow_id to localStorage for persistence
+    // Always save (even if flowId is empty string) to clear previous values
+    const stepId = currentStep?.id || node.id;
+    const currentFlowId = currentStep?.flow_id;
+    if (currentFlowId) {
+      storeNextFlowId(currentFlowId, stepId, flowId || null);
+      console.log(`Saved next_flow_id to localStorage: flow ${currentFlowId}, step ${stepId} -> next_flow ${flowId || 'null'}`);
+    } else {
+      console.warn('Cannot save next_flow_id to localStorage: current flow ID not found in step');
+    }
+    
     onSave(updatedNode);
   };
   
