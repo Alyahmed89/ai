@@ -1374,49 +1374,54 @@ const NodePopup = ({
   
   const commandParameters = getCommandParameters();
   
-  // Handle flow selection change with auto-insertion of [input:message]
+  // Handle flow selection change with auto-insertion of [input:message] and auto-save
   const handleFlowChange = (flowId: string) => {
     setSelectedFlowId(flowId);
+    
+    let updatedInstructions = instructions;
     
     // If a flow is selected and instructions don't already contain [input:message],
     // auto-insert it at the end
     if (flowId && instructions && !instructions.includes('[input:message]')) {
-      const newInstructions = instructions.trim() + '\n\n[input:message]';
-      setInstructions(newInstructions);
+      updatedInstructions = instructions.trim() + '\n\n[input:message]';
+      setInstructions(updatedInstructions);
       hasAutoInsertedRef.current = true;
     }
+    
+    // Auto-save when flow is selected
+    autoSaveNode(flowId, updatedInstructions);
   };
   
-  console.log('NodePopup rendered! nodeData?.instructions:', nodeData?.instructions, 'instructions state:', instructions);
-
-  const handleSave = () => {
+  // Function to auto-save node when flow is selected
+  const autoSaveNode = (flowId: string, updatedInstructions?: string) => {
     // Read from DOM refs to bypass React state timing issues with automation
-    const domInstructions = textareaRef.current?.value || '';
+    // Use updatedInstructions if provided, otherwise get from DOM or state
+    const domInstructions = updatedInstructions || textareaRef.current?.value || instructions || '';
     
-    console.log('NodePopup handleSave called!');
-    console.log('State instructions:', instructions, 'DOM instructions:', domInstructions);
+    console.log('NodePopup autoSaveNode called!');
+    console.log('Selected flow ID:', flowId);
+    console.log('DOM instructions:', domInstructions);
     console.log('nodeData:', nodeData);
-    console.log('awaitInput:', awaitInput);
     
     const currentStep = nodeData?.step;
     const updatedNode = {
       ...node,
       data: {
         ...nodeData,
-        instructions: domInstructions, // Use DOM value
+        instructions: domInstructions,
         await_input: awaitInput,
         step: currentStep ? {
           ...currentStep,
-          instructions: domInstructions, // Use DOM value
+          instructions: domInstructions,
           // Store next_flow_id (empty string becomes null for backend)
-          next_flow_id: selectedFlowId || null,
+          next_flow_id: flowId || null,
         } : {
           // Create a minimal step object if it doesn't exist
           id: node.id || generateStableId('step'),
           flow_id: '',
           step_key: '',
           title: nodeData?.title || 'Untitled Step',
-          instructions: domInstructions, // Use DOM value
+          instructions: domInstructions,
           step_type: 'default',
           order_index: 0,
           blocking: 0,
@@ -1439,12 +1444,29 @@ const NodePopup = ({
           extra_step: 0,
           page_key: null,
           // Store next_flow_id for new steps
-          next_flow_id: selectedFlowId || null,
+          next_flow_id: flowId || null,
         },
       },
     };
-    console.log('Updated node to save:', JSON.stringify(updatedNode, null, 2));
+    console.log('Auto-saving node with flow selection:', JSON.stringify(updatedNode, null, 2));
     onSave(updatedNode);
+  };
+  
+  console.log('NodePopup rendered! nodeData?.instructions:', nodeData?.instructions, 'instructions state:', instructions);
+
+  const handleSave = () => {
+    // Read from DOM refs to bypass React state timing issues with automation
+    const domInstructions = textareaRef.current?.value || '';
+    
+    console.log('NodePopup handleSave called!');
+    console.log('State instructions:', instructions, 'DOM instructions:', domInstructions);
+    console.log('nodeData:', nodeData);
+    console.log('awaitInput:', awaitInput);
+    
+    // Use the autoSaveNode function to save with current selectedFlowId
+    autoSaveNode(selectedFlowId, domInstructions);
+    
+    // Close the popup after saving
     onClose();
   };
 
