@@ -2931,8 +2931,28 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
     console.log("ENTER SAVE HANDLER", flowId);
     const body = await c.req.json();
     
+    // Transform frontend data to match backend schema
+    const transformedBody = {
+      ...body,
+      flow_id: flowId,
+      edges: body.edges?.map((edge: any) => ({
+        ...edge,
+        flow_id: flowId, // Add flow_id from URL param
+        // Convert condition object to string if needed
+        condition: typeof edge.condition === 'object' && edge.condition !== null 
+          ? JSON.stringify(edge.condition) 
+          : edge.condition,
+        // Convert route object to string if needed
+        route: typeof edge.route === 'object' && edge.route !== null
+          ? JSON.stringify(edge.route)
+          : edge.route,
+        // Map 'type' to 'edge_type' if needed
+        edge_type: edge.edge_type || (edge.type === 'default' ? 'next' : edge.type) || 'next'
+      })) || []
+    };
+    
     // Validate with Zod
-    const validation = validateSchema(flowStepsUpdatePayloadSchema, { ...body, flow_id: flowId });
+    const validation = validateSchema(flowStepsUpdatePayloadSchema, transformedBody);
     if (!validation.success) {
       return c.json(validationErrorResponse(validation.error));
     }
@@ -3223,14 +3243,20 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `;
 
+        // Data is already transformed before validation
+        // Use the transformed values directly
+        const edgeType = edge.edge_type || 'next';
+        const conditionValue = dbValue(edge.condition);
+        const routeValue = dbValue(edge.route);
+
         const bindings = [
           edgeId,
-          flowId,
+          flowId, // flow_id from URL param
           edge.source_step_id,
           edge.target_step_id,
-          edge.edge_type || 'next',
-          dbValue(edge.condition),
-          dbValue(edge.route),
+          edgeType,
+          conditionValue,
+          routeValue,
           edge.weight || 1.0,
           dbValue(edge.metadata)
         ];
