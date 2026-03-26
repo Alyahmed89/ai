@@ -775,6 +775,7 @@ export class ConversationOrchestratorDO_2026A {
           
           // SYNC: Keep last_step_response in sync with ai_output for legacy compatibility
           this.conversation.last_step_response = body.response;
+          this.conversation.last_response = body.response;
           
           // Increment step_count AFTER successful completion
           this.conversation.execution_context.step_count += 1;
@@ -2601,6 +2602,22 @@ export class ConversationOrchestratorDO_2026A {
       
       const { startTaskExecution } = await import('../services/database');
       const nextStep = await this.getNextStep();
+      
+      // Cross-flow transition check
+      if (nextStep?.flow_id && nextStep.flow_id !== this.conversation.flow_id) {
+        console.log('FLOW_TRANSFER', {
+          from: this.conversation.flow_id,
+          to: nextStep.flow_id
+        });
+
+        await this.handleStartFlow({
+          flow_id: nextStep.flow_id,
+          input: this.conversation.last_response || ''
+        });
+
+        await this.stopConversation('flow_transferred');
+        return;
+      }
       
       if (!nextStep) {
         // NO MORE STEPS - FLOW TERMINATION
