@@ -27,6 +27,7 @@ export const flowStepSchema = z.object({
   output_auth_token: z.string().optional().nullable().default(null),
   input_keys: z.string().optional().nullable().default(null),
   output: booleanSchema.default(false),
+  next_flow_id: z.string().optional().nullable().default(null),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
