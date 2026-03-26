@@ -1629,6 +1629,14 @@ export class ConversationOrchestratorDO_2026A {
         status: 'pending' as const
       }));
       
+      if (!executionSteps || executionSteps.length === 0) {
+        throw new Error('invalid_flow_no_steps');
+      }
+      
+      console.log('FLOW_START_VALIDATION', {
+        stepsCount: executionSteps.length
+      });
+      
       this.conversation = {
         state: 'SENDING_STEP',
         initial_user_prompt: initialPrompt,
@@ -1673,10 +1681,8 @@ export class ConversationOrchestratorDO_2026A {
         console.log(`[DO:${this.state.id}] Stored callback_url: ${callback_url}`);
       }
       
-      // Set current_step if we have steps
-      if (executionSteps && executionSteps.length > 0) {
-        this.conversation.current_step = executionSteps[0];
-      }
+      // Set current_step (guaranteed to exist after validation)
+      this.conversation.current_step = executionSteps[0];
       
       await this.state.storage.put('conversation', this.conversation);
       
@@ -2929,13 +2935,6 @@ export class ConversationOrchestratorDO_2026A {
   
   private async handleInitState(): Promise<void> {
     if (!this.conversation) return;
-    
-    // For flow execution, we must have a current step
-    if (this.conversation.flow_execution_mode && !this.conversation.current_step) {
-      console.error(`[DO:${this.state.id}] Flow execution mode enabled but no current_step found`);
-      await this.stopConversation('missing_current_step');
-      return;
-    }
     
     // Check if this is a flow execution and we should bypass DeepSeek
     if (this.conversation.flow_execution_mode && this.conversation.current_step) {
