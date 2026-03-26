@@ -2930,6 +2930,13 @@ export class ConversationOrchestratorDO_2026A {
   private async handleInitState(): Promise<void> {
     if (!this.conversation) return;
     
+    // For flow execution, we must have a current step
+    if (this.conversation.flow_execution_mode && !this.conversation.current_step) {
+      console.error(`[DO:${this.state.id}] Flow execution mode enabled but no current_step found`);
+      await this.stopConversation('missing_current_step');
+      return;
+    }
+    
     // Check if this is a flow execution and we should bypass DeepSeek
     if (this.conversation.flow_execution_mode && this.conversation.current_step) {
       // For flow execution, check if this is a decision step (Step 7)
@@ -3147,14 +3154,6 @@ export class ConversationOrchestratorDO_2026A {
     }
     
     console.log(`[DO:${this.state.id}] Fact validation passed, resolved text: ${validationResult.resolvedText ? validationResult.resolvedText.substring(0, 100) + "..." : "EMPTY"}...`);
-    
-    // Check agent type - if deepseek, skip OpenHands and complete
-    if (this.conversation.agent === 'deepseek') {
-      console.log(`[DO:${this.state.id}] Agent is 'deepseek', skipping OpenHands and completing flow`);
-      await this.handleDoneResponse(validationResult.resolvedText || deepseekResult.response!, 'deepseek_only_complete');
-      await this.stopConversation('deepseek_only_complete');
-      return;
-    }
     
     // TEST: Simulate OpenHands API failure
     const TEST_OPENHANDS_FAILURE = false; // Set to true to test failure
