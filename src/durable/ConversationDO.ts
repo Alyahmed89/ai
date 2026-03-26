@@ -2626,19 +2626,24 @@ export class ConversationOrchestratorDO_2026A {
         step_id: nextStep?.step_id,
         flow_id: nextStep?.flow_id,
         next_flow_id: nextStep?.next_flow_id,
-        currentFlowId: this.conversation.flow_id
+        currentFlowId: this.conversation.flow_id,
+        current_step_id: this.conversation.current_step?.step_id,
+        current_step_next_flow_id: this.conversation.current_step?.next_flow_id
       });
       
-      // Cross-flow transition check - use next_flow_id instead of flow_id comparison
-      if (nextStep?.next_flow_id) {
+      // Cross-flow transition check - use next_flow_id from COMPLETED step (current_step)
+      // instead of next step to execute
+      if (this.conversation.current_step?.next_flow_id) {
         console.log('FLOW_TRANSFER', {
           from: this.conversation.flow_id,
-          to: nextStep.next_flow_id,
-          reason: 'next_flow_id set on current step'
+          to: this.conversation.current_step.next_flow_id,
+          reason: 'next_flow_id set on completed step',
+          completed_step_id: this.conversation.current_step.step_id,
+          completed_step_title: this.conversation.current_step.title
         });
 
         // Start the next flow using startSpecificFlow
-        await this.startSpecificFlow(nextStep.next_flow_id, this.conversation.last_response || '');
+        await this.startSpecificFlow(this.conversation.current_step.next_flow_id, this.conversation.last_response || '');
 
         await this.stopConversation('flow_transferred');
         return;
