@@ -5782,7 +5782,8 @@ ${messageContent}`;
       repository: this.conversation.repository,
       branch: this.conversation.branch || 'main',
       initial_user_prompt: this.conversation.initial_user_prompt,
-      max_iterations: this.conversation.max_iterations
+      max_iterations: this.conversation.max_iterations,
+      agent: this.conversation.agent || 'openhands' // Include agent field
     };
 
     try {
@@ -6276,7 +6277,8 @@ ${messageContent}`;
       repository: flow.repository, // Use repository column (not repo)
       branch: flow.branch || 'main',
       initial_user_prompt: firstStep.instructions, // Get from first step instructions
-      max_iterations: flow.max_iterations || 20
+      max_iterations: flow.max_iterations || 20,
+      agent: flow.agent || 'openhands' // Include agent field from flow definition
     };
     
     // Add input_payload for flow-to-flow propagation if available
@@ -6289,7 +6291,7 @@ ${messageContent}`;
       const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
       const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
       
-      const initResponse = await newConversationStub.fetch('http://placeholder/initialize', {
+      const initResponse = await newConversationStub.fetch('http://placeholder/initialize-flow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
