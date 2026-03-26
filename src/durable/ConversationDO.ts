@@ -2232,7 +2232,7 @@ export class ConversationOrchestratorDO_2026A {
       'blocking', 'auto_fail_on_error', 'retryable', 'task_id', 'input_keys',
       'output_url', 'output_auth_token', 'requires_task', 'dual_agent',
       'ruler_agent', 'goal_criteria', 'max_iterations_per_step', 
-      'expected_response', 'use_endpoints', 'extra_step', 'created_at', 'updated_at'
+      'expected_response', 'use_endpoints', 'extra_step', 'next_flow_id', 'created_at', 'updated_at'
     ];
     
     for (const column of testColumns) {
