@@ -380,7 +380,8 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
         fs.max_iterations_per_step,
         fs.expected_response,
         fs.use_endpoints,
-        fs.extra_step
+        fs.extra_step,
+        fs.next_flow_id
       FROM flow_steps fs
       WHERE fs.flow_id = ?
       ORDER BY fs.order_index
@@ -434,6 +435,7 @@ export async function getStepWithTaskData(db: D1Database, step_id: string): Prom
         fs.expected_response,
         fs.use_endpoints,
         fs.extra_step,
+        fs.next_flow_id,
         t.title as task_title,
         t.description as task_description
       FROM flow_steps fs
@@ -731,7 +733,8 @@ export async function getNextStepForFlow(db: D1Database, flow_id: string, flow_r
         fs.max_iterations_per_step,
         fs.expected_response,
         fs.use_endpoints,
-        fs.extra_step
+        fs.extra_step,
+        fs.next_flow_id
       FROM flow_steps fs
       WHERE fs.flow_id = ? 
     `;
@@ -877,7 +880,8 @@ export async function getNextStepBasedOnConditions(
                 fs.max_iterations_per_step,
                 fs.expected_response,
                 fs.use_endpoints,
-                fs.extra_step
+                fs.extra_step,
+                fs.next_flow_id
               FROM flow_steps fs
               WHERE fs.id = ?
               LIMIT 1
@@ -919,7 +923,8 @@ export async function getNextStepBasedOnConditions(
                 fs.max_iterations_per_step,
                 fs.expected_response,
                 fs.use_endpoints,
-                fs.extra_step
+                fs.extra_step,
+                fs.next_flow_id
               FROM flow_steps fs
               WHERE fs.flow_id = ? AND fs.order_index = ?
               LIMIT 1
@@ -997,7 +1002,8 @@ export async function getNextStepBasedOnConditions(
           fs.max_iterations_per_step,
           fs.expected_response,
           fs.use_endpoints,
-          fs.extra_step
+          fs.extra_step,
+          fs.next_flow_id
         FROM flow_steps fs
         WHERE fs.id = ?
         LIMIT 1
@@ -1042,7 +1048,8 @@ export async function getNextStepBasedOnConditions(
           fs.max_iterations_per_step,
           fs.expected_response,
           fs.use_endpoints,
-          fs.extra_step
+          fs.extra_step,
+          fs.next_flow_id
         FROM flow_steps fs
         WHERE fs.flow_id = ? AND fs.order_index = ?
         LIMIT 1
@@ -1094,7 +1101,8 @@ export async function getNextStepBasedOnConditions(
           fs.max_iterations_per_step,
           fs.expected_response,
           fs.use_endpoints,
-          fs.extra_step
+          fs.extra_step,
+          fs.next_flow_id
         FROM flow_steps fs
         WHERE fs.flow_id = ? AND fs.order_index = ?
         LIMIT 1

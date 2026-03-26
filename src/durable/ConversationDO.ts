@@ -2611,19 +2611,20 @@ export class ConversationOrchestratorDO_2026A {
       console.log('NEXT_STEP_DEBUG', {
         step_id: nextStep?.step_id,
         flow_id: nextStep?.flow_id,
-        next_flow_id: (nextStep as any)?.next_flow_id,
+        next_flow_id: nextStep?.next_flow_id,
         currentFlowId: this.conversation.flow_id
       });
       
-      // Cross-flow transition check
-      if (nextStep?.flow_id && nextStep.flow_id !== this.conversation.flow_id) {
+      // Cross-flow transition check - use next_flow_id instead of flow_id comparison
+      if (nextStep?.next_flow_id) {
         console.log('FLOW_TRANSFER', {
           from: this.conversation.flow_id,
-          to: nextStep.flow_id
+          to: nextStep.next_flow_id,
+          reason: 'next_flow_id set on current step'
         });
 
         await this.handleStartFlow({
-          flow_id: nextStep.flow_id,
+          flow_id: nextStep.next_flow_id,
           input: this.conversation.last_response || ''
         });
 
