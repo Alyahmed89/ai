@@ -627,6 +627,7 @@ export class ConversationOrchestratorDO_2026A {
   // Alarm handler (called by Cloudflare when alarm triggers)
   async alarm(): Promise<void> {
     console.log(`[DO:${this.state.id}] Alarm triggered`);
+    await this.loadConversationState();
     await this.handleAlarm();
   }
   
@@ -634,6 +635,11 @@ export class ConversationOrchestratorDO_2026A {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+    
+    // Load conversation state for all endpoints except initialization endpoints
+    if (path !== '/initialize' && path !== '/initialize-flow' && path !== '/start-flow') {
+      await this.loadConversationState();
+    }
     
     // Initialize a new conversation
     if (path === '/initialize' && request.method === 'POST') {
@@ -1496,6 +1502,7 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       console.log(`[DO:${this.state.id}] Starting ultra-minimal flow: ${flow_id}`);
+      console.log(`[DO:${this.state.id}] DEBUG: handleStartFlow called at ${Date.now()}`);
       
       // Store flow_id for error reporting
       let errorContext = `flow_id: ${flow_id}`;
@@ -1660,6 +1667,10 @@ export class ConversationOrchestratorDO_2026A {
         execution_context: createExecutionContext(flow_id, executionSteps[0]?.step_id || 'step-1')
       };
       
+      console.log(`[DO:${this.state.id}] DEBUG: Conversation object created with state: ${this.conversation.state}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Flow steps count: ${this.conversation.flow_steps?.length || 0}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Flow ID: ${this.conversation.flow_id}`);
+      
       // Store provided inputs in execution context
       if (Object.keys(inputs).length > 0) {
         for (const [key, value] of Object.entries(inputs)) {
@@ -1700,7 +1711,10 @@ export class ConversationOrchestratorDO_2026A {
       await this.createInitialFlowRun();
       
       // Schedule alarm to send first step
-      await this.state.storage.setAlarm(Date.now() + 1000);
+      const alarmTime = Date.now() + 1000;
+      console.log(`[DO:${this.state.id}] DEBUG: Setting alarm for ${alarmTime} (current time: ${Date.now()})`);
+      await this.state.storage.setAlarm(alarmTime);
+      console.log(`[DO:${this.state.id}] DEBUG: Alarm set successfully`);
       
       console.log(`[DO:${this.state.id}] Ultra-minimal flow initialized with ${steps.length} steps, repository: ${effectiveRepository}, branch: ${effectiveBranch}`);
       
@@ -2852,12 +2866,15 @@ export class ConversationOrchestratorDO_2026A {
   // ==========================================================================
   
   private async handleAlarm(): Promise<void> {
+    console.log(`[DO:${this.state.id}] DEBUG: handleAlarm called at ${Date.now()}`);
+    
     if (!this.conversation) {
       console.log(`[DO:${this.state.id}] No conversation to handle alarm`);
       return;
     }
     
     console.log(`[DO:${this.state.id}] Alarm triggered, state: ${this.conversation.state}, iteration: ${this.conversation.iteration}`);
+    console.log(`[DO:${this.state.id}] DEBUG: Conversation exists, flow_id: ${this.conversation.flow_id}, flow_steps count: ${this.conversation.flow_steps?.length || 0}`);
     
     // ==========================================================================
     // LIFECYCLE MANAGEMENT CHECKS
@@ -4814,9 +4831,15 @@ ${messageContent}`;
 
   // Ultra-minimal flow execution: Send step directly to OpenHands
   private async handleSendingStepState(): Promise<void> {
-    if (!this.conversation) return;
+    console.log(`[DO:${this.state.id}] DEBUG: handleSendingStepState called at ${Date.now()}`);
+    
+    if (!this.conversation) {
+      console.log(`[DO:${this.state.id}] DEBUG: No conversation in handleSendingStepState`);
+      return;
+    }
     
     console.log(`[DO:${this.state.id}] SENDING_STEP: Sending step to OpenHands`);
+    console.log(`[DO:${this.state.id}] DEBUG: Current flow_id: ${this.conversation.flow_id}, flow_steps count: ${this.conversation.flow_steps?.length || 0}`);
     
     // Check if we have flow steps
     if (!this.conversation.flow_steps || this.conversation.flow_steps.length === 0) {
