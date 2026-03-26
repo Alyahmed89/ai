@@ -2637,10 +2637,8 @@ export class ConversationOrchestratorDO_2026A {
           reason: 'next_flow_id set on current step'
         });
 
-        await this.handleStartFlow({
-          flow_id: nextStep.next_flow_id,
-          input: this.conversation.last_response || ''
-        });
+        // Start the next flow using startSpecificFlow
+        await this.startSpecificFlow(nextStep.next_flow_id, this.conversation.last_response || '');
 
         await this.stopConversation('flow_transferred');
         return;
@@ -5010,10 +5008,8 @@ ${messageContent}`;
         reason: 'next_flow_id set on current step'
       });
 
-      await this.handleStartFlow({
-        flow_id: step.next_flow_id,
-        input: this.conversation.last_response || ''
-      });
+      // Start the next flow using startSpecificFlow
+      await this.startSpecificFlow(step.next_flow_id, this.conversation.last_response || '');
 
       await this.stopConversation('flow_transferred');
       return;
