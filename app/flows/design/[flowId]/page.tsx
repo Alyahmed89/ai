@@ -88,7 +88,7 @@ export default function FlowDesignPage() {
       ));
       
       setCurrentFlowRunId(flow_run_id);
-      setOutput(prev => ({ ...prev, current_flow: flow_id, flow_run_id }));
+      setOutput((prev: any) => ({ ...prev, current_flow: flow_id, flow_run_id }));
       
       while (true) {
         const res = await runStep(flow_run_id);
@@ -101,7 +101,7 @@ export default function FlowDesignPage() {
           return node;
         }));
         
-        setOutput(prev => ({ ...prev, last_step: res }));
+        setOutput((prev: any) => ({ ...prev, last_step: res }));
         
         // Handle cross-flow transition
         if (res.next_flow_id) {
@@ -112,7 +112,7 @@ export default function FlowDesignPage() {
               : node
           ));
           
-          setOutput(prev => ({ 
+          setOutput((prev: any) => ({ 
             ...prev, 
             message: `Moving to next flow: ${res.next_flow_id}`,
             next_flow: res.next_flow_id 
