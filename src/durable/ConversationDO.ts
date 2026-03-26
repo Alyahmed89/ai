@@ -1696,6 +1696,15 @@ export class ConversationOrchestratorDO_2026A {
       // Set current_step (guaranteed to exist after validation)
       this.conversation.current_step = executionSteps[0];
       
+      // DEBUG: Log current_step details
+      console.log(`[DO:${this.state.id}] DEBUG: Setting current_step in handleStartFlow:`, {
+        step_id: this.conversation.current_step.step_id,
+        step_key: this.conversation.current_step.step_key,
+        title: this.conversation.current_step.title,
+        next_flow_id: this.conversation.current_step.next_flow_id,
+        has_next_flow_id: this.conversation.current_step.next_flow_id !== undefined && this.conversation.current_step.next_flow_id !== null
+      });
+      
       await this.state.storage.put('conversation', this.conversation);
       
       // Generate flow run ID and save to database
@@ -5294,6 +5303,12 @@ ${messageContent}`;
       
       console.log(`[DO:${this.state.id}] Resolved instructions length: ${resolvedStep.instructions?.length || 0} chars`);
       console.log(`[DO:${this.state.id}] Original description length: ${step.description?.length || 0} chars`);
+      
+      // DEBUG: Check if [input:message] is still in resolved instructions
+      if (resolvedStep.instructions && resolvedStep.instructions.includes('[input:')) {
+        console.log(`[DO:${this.state.id}] DEBUG: Resolved instructions still contains [input: placeholder`);
+        console.log(`[DO:${this.state.id}] DEBUG: First 300 chars of resolved instructions: ${resolvedStep.instructions.substring(0, 300)}`);
+      }
       
       if (resolvedStep.instructions) {
         prompt += `\n\n${resolvedStep.instructions}`;
