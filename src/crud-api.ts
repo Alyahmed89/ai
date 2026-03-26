@@ -385,8 +385,8 @@ crudApi.post('/flow-steps', async (c) => {
         id, flow_id, step_key, title, instructions, step_type, order_index,
         page_key, blocking, auto_fail_on_error, retryable, task_id,
         output_keys, output_url, output_payload_template, default_next_step,
-        output_auth_token, input_keys, output, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        output_auth_token, input_keys, output, next_flow_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     // Log bindings for debugging
@@ -409,7 +409,8 @@ crudApi.post('/flow-steps', async (c) => {
       dbValue(validatedData.default_next_step),
       dbValue(validatedData.output_auth_token),
       dbValue(validatedData.input_keys),
-      getBoolean(validatedData.output, false)
+      getBoolean(validatedData.output, false),
+      dbValue(validatedData.next_flow_id)
     ];
     
     // Final safety check: ensure no undefined values
@@ -454,7 +455,7 @@ crudApi.put('/flow-steps/:id', async (c) => {
       flow_id, step_key, title, instructions, step_type, order_index,
       page_key, blocking, auto_fail_on_error, retryable, task_id,
       output_keys, output_url, output_payload_template, default_next_step,
-      output_auth_token, input_keys, output
+      output_auth_token, input_keys, output, next_flow_id
     } = validatedData;
 
     const sql = `
@@ -462,7 +463,7 @@ crudApi.put('/flow-steps/:id', async (c) => {
         flow_id = ?, step_key = ?, title = ?, instructions = ?, step_type = ?, order_index = ?,
         page_key = ?, blocking = ?, auto_fail_on_error = ?, retryable = ?, task_id = ?,
         output_keys = ?, output_url = ?, output_payload_template = ?, default_next_step = ?,
-        output_auth_token = ?, input_keys = ?, output = ?, updated_at = CURRENT_TIMESTAMP
+        output_auth_token = ?, input_keys = ?, output = ?, next_flow_id = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
 
@@ -485,6 +486,7 @@ crudApi.put('/flow-steps/:id', async (c) => {
       dbValue(output_auth_token),
       dbValue(input_keys),
       getBoolean(output, false),
+      dbValue(next_flow_id),
       id
     ).run();
 
@@ -3199,8 +3201,8 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
               id, flow_id, step_key, title, instructions, step_type, order_index,
               page_key, blocking, auto_fail_on_error, retryable, task_id,
               output_keys, output_url, output_payload_template, default_next_step,
-              output_auth_token, input_keys, output, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              output_auth_token, input_keys, output, next_flow_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `;
 
           const bindings = [
@@ -3222,7 +3224,8 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
             dbValue(step.default_next_step),
             dbValue(step.output_auth_token),
             dbValue(step.input_keys),
-            getBoolean(step.output, false)
+            getBoolean(step.output, false),
+            dbValue(step.next_flow_id)
           ];
           
           statements.push(db.prepare(sql).bind(...bindings.map(normalizeForDb)));
