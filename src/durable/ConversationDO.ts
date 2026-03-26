@@ -2208,9 +2208,33 @@ export class ConversationOrchestratorDO_2026A {
         return [];
       }
       
+      // DEBUG: Log raw database results
+      console.log(`[DO:${this.state.id}] DEBUG: Raw database results for flow ${flowId}:`);
+      result.results.forEach((step: any, index: number) => {
+        console.log(`[DO:${this.state.id}]   Step ${index}:`, {
+          id: step.id,
+          step_key: step.step_key,
+          title: step.title,
+          next_flow_id: step.next_flow_id,
+          has_next_flow_id: step.next_flow_id !== undefined && step.next_flow_id !== null
+        });
+      });
+      
       // Transform results to expected format
       const transformedResults = this.transformFlowStepResults(result.results, availableColumns);
       console.log(`[DO:${this.state.id}] Transformed ${transformedResults.length} results`);
+      
+      // DEBUG: Log transformed results
+      console.log(`[DO:${this.state.id}] DEBUG: Transformed results for flow ${flowId}:`);
+      transformedResults.forEach((step: any, index: number) => {
+        console.log(`[DO:${this.state.id}]   Transformed Step ${index}:`, {
+          id: step.id,
+          step_key: step.step_key,
+          title: step.title,
+          next_flow_id: step.next_flow_id,
+          has_next_flow_id: step.next_flow_id !== undefined && step.next_flow_id !== null
+        });
+      });
       
       return transformedResults;
       
@@ -2631,6 +2655,17 @@ export class ConversationOrchestratorDO_2026A {
         currentFlowId: this.conversation.flow_id,
         current_step_id: this.conversation.current_step?.step_id,
         current_step_next_flow_id: this.conversation.current_step?.next_flow_id
+      });
+      
+      // DEBUG: Log current_step object in detail before cross-flow check
+      console.log(`[DO:${this.state.id}] DEBUG: current_step object before cross-flow check:`, {
+        step_id: this.conversation.current_step?.step_id,
+        step_key: this.conversation.current_step?.step_key,
+        title: this.conversation.current_step?.title,
+        flow_id: this.conversation.current_step?.flow_id,
+        next_flow_id: this.conversation.current_step?.next_flow_id,
+        has_next_flow_id: this.conversation.current_step?.next_flow_id !== undefined && this.conversation.current_step?.next_flow_id !== null,
+        all_keys: this.conversation.current_step ? Object.keys(this.conversation.current_step) : 'current_step is null'
       });
       
       // Cross-flow transition check - use next_flow_id from COMPLETED step (current_step)
@@ -5000,6 +5035,17 @@ ${messageContent}`;
       }
     }
     
+    // DEBUG: Log step object before cross-flow check
+    console.log(`[DO:${this.state.id}] DEBUG: Step object before cross-flow check:`, {
+      step_id: step?.step_id,
+      step_key: step?.step_key,
+      title: step?.title,
+      flow_id: step?.flow_id,
+      next_flow_id: step?.next_flow_id,
+      has_next_flow_id: step?.next_flow_id !== undefined && step?.next_flow_id !== null,
+      all_keys: step ? Object.keys(step) : 'step is null'
+    });
+    
     // Cross-flow transition check - use next_flow_id instead of flow_id comparison
     if (step?.next_flow_id) {
       console.log('NEXT_STEP_DEBUG', {
@@ -5048,6 +5094,14 @@ ${messageContent}`;
     }
     
     // Update current_step to track which step is being executed
+    // DEBUG: Log step being set as current_step
+    console.log(`[DO:${this.state.id}] DEBUG: Setting step as current_step:`, {
+      step_id: step?.step_id,
+      step_key: step?.step_key,
+      title: step?.title,
+      next_flow_id: step?.next_flow_id,
+      has_next_flow_id: step?.next_flow_id !== undefined && step?.next_flow_id !== null
+    });
     this.conversation.current_step = step;
     
     // Update step status in flow_steps array to "running"
