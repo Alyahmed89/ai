@@ -1622,6 +1622,14 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Successfully resolved step instructions with task data`);
           console.log(`[DO:${this.state.id}] Resolved instructions length: ${initialPrompt.length}`);
           console.log(`[DO:${this.state.id}] First 200 chars of resolved instructions: ${initialPrompt.substring(0, 200)}`);
+          
+          // DEBUG: Check if [input:message] was replaced
+          if (initialPrompt.includes('[input:')) {
+            console.log(`[DO:${this.state.id}] DEBUG: Resolved instructions still contains [input: placeholder after injection`);
+            console.log(`[DO:${this.state.id}] DEBUG: Inputs passed:`, Object.keys(inputs));
+          } else {
+            console.log(`[DO:${this.state.id}] DEBUG: [input:message] placeholder was successfully replaced`);
+          }
         } catch (error: any) {
           console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
           console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
