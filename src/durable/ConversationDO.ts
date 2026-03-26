@@ -2331,7 +2331,7 @@ export class ConversationOrchestratorDO_2026A {
       'page_key', 'blocking', 'auto_fail_on_error', 'retryable', 'task_id',
       'input_keys', 'output_url', 'output_auth_token', 'requires_task',
       'dual_agent', 'ruler_agent', 'goal_criteria', 'max_iterations_per_step',
-      'expected_response', 'use_endpoints', 'extra_step'
+      'expected_response', 'use_endpoints', 'extra_step', 'next_flow_id'
     ];
     
     for (const column of optionalColumns) {
@@ -2348,7 +2348,8 @@ export class ConversationOrchestratorDO_2026A {
                   column === 'dual_agent' || column === 'extra_step') {
           columnMappings[column] = '0';
         } else if (column === 'page_key' || column === 'task_id' ||
-                  column === 'input_keys' || column === 'ruler_agent') {
+                  column === 'input_keys' || column === 'ruler_agent' ||
+                  column === 'next_flow_id') {
           columnMappings[column] = 'NULL';
         } else if (column === 'max_iterations_per_step') {
           columnMappings[column] = 'NULL';
@@ -2438,6 +2439,7 @@ export class ConversationOrchestratorDO_2026A {
         expected_response: null,
         use_endpoints: null,
         extra_step: false,
+        next_flow_id: null,
         // Initialize execution fields
         response: null,
         status: 'pending'
@@ -3814,7 +3816,7 @@ export class ConversationOrchestratorDO_2026A {
           }
           
           // 5. Reload steps
-          await this.loadFlowSteps();
+          await this.loadFlowSteps(newFlowId);
           
           // 6. Get first step of new flow
           if (this.conversation.flow_steps && this.conversation.flow_steps.length > 0) {
@@ -4936,7 +4938,7 @@ ${messageContent}`;
         }
         
         // 5. Reload steps
-        await this.loadFlowSteps();
+        await this.loadFlowSteps(newFlowId);
         
         // 6. Get first step of new flow
         if (this.conversation.flow_steps && this.conversation.flow_steps.length > 0) {
