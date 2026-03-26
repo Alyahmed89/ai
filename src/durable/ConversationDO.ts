@@ -2266,6 +2266,11 @@ export class ConversationOrchestratorDO_2026A {
     // Always include id as step_id
     columnMappings['step_id'] = 'id';
     
+    // Always include flow_id for cross-flow transition checks
+    if (availableColumns.includes('flow_id')) {
+      columnMappings['flow_id'] = 'flow_id';
+    }
+    
     // Map step_key (use id if step_key doesn't exist)
     if (availableColumns.includes('step_key')) {
       columnMappings['step_key'] = 'step_key';
@@ -2602,6 +2607,13 @@ export class ConversationOrchestratorDO_2026A {
       
       const { startTaskExecution } = await import('../services/database');
       const nextStep = await this.getNextStep();
+      
+      console.log('NEXT_STEP_DEBUG', {
+        step_id: nextStep?.step_id,
+        flow_id: nextStep?.flow_id,
+        next_flow_id: (nextStep as any)?.next_flow_id,
+        currentFlowId: this.conversation.flow_id
+      });
       
       // Cross-flow transition check
       if (nextStep?.flow_id && nextStep.flow_id !== this.conversation.flow_id) {

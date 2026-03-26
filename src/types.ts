@@ -316,6 +316,8 @@ export interface StepData {
   blocking: boolean;
   auto_fail_on_error: boolean;
   retryable: boolean;
+  flow_id?: string; // For cross-flow transition checks
+  next_flow_id?: string; // For cross-flow transition to specific flow
   task_id?: string;
   requires_task?: boolean;
   input_keys?: string;  // NEW: JSON string of SecureApiConfig[] for dynamic API data fetching

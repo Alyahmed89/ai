@@ -358,6 +358,7 @@ export async function getFlowSteps(db: D1Database, flow_id: string): Promise<Ste
     const query = `
       SELECT 
         fs.id as step_id,
+        fs.flow_id,
         fs.step_key,
         fs.title,
         fs.instructions as description,
