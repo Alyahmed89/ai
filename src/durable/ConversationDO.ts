@@ -2721,15 +2721,15 @@ export class ConversationOrchestratorDO_2026A {
           flow_run_id: this.flowRunId
         });
         
-        // DEBUG: Check step_id mapping between flow_step_runs and flow_steps
+        // DEBUG: Check step_id mapping between step_runs and flow_steps
         const debugSteps = await this.env.FLOW_RUNS_DB.prepare(`
           SELECT 
-            fsr.step_id as run_step_id,
+            sr.step_id as run_step_id,
             fs.id as def_step_id,
             fs.next_flow_id
-          FROM flow_step_runs fsr
-          LEFT JOIN flow_steps fs ON fsr.step_id = fs.id
-          WHERE fsr.flow_run_id = ?
+          FROM step_runs sr
+          LEFT JOIN flow_steps fs ON sr.step_id = fs.id
+          WHERE sr.flow_run_id = ?
         `).bind(this.flowRunId).all();
         
         console.log('STEP_ID_MAPPING_DEBUG', {
@@ -2738,10 +2738,10 @@ export class ConversationOrchestratorDO_2026A {
         });
         
         const completedSteps = await this.env.FLOW_RUNS_DB.prepare(`
-          SELECT fsr.step_id, fsr.status, fs.next_flow_id, fs.id as flow_step_id
-          FROM flow_step_runs fsr
-          JOIN flow_steps fs ON fsr.step_id = fs.id
-          WHERE fsr.flow_run_id = ? AND fsr.status = 'completed'
+          SELECT sr.step_id, sr.status, fs.next_flow_id, fs.id as flow_step_id
+          FROM step_runs sr
+          JOIN flow_steps fs ON sr.step_id = fs.id
+          WHERE sr.flow_run_id = ? AND sr.status = 'completed'
         `).bind(this.flowRunId).all();
         
         console.log('DB_COMPLETED_STEPS_FOR_CHAINING', {
@@ -2752,7 +2752,7 @@ export class ConversationOrchestratorDO_2026A {
         // Also check if there are any step runs at all for this flow run
         const allStepRuns = await this.env.FLOW_RUNS_DB.prepare(`
           SELECT step_id, status
-          FROM flow_step_runs
+          FROM step_runs
           WHERE flow_run_id = ?
         `).bind(this.flowRunId).all();
         
@@ -7078,7 +7078,7 @@ ${messageContent}`;
       // Get all completed steps for this flow run
       const result = await this.env.FLOW_RUNS_DB.prepare(`
         SELECT step_id, response 
-        FROM flow_step_runs 
+        FROM step_runs 
         WHERE flow_run_id = ? AND status = 'completed'
         ORDER BY created_at ASC
       `).bind(this.flowRunId).all();
