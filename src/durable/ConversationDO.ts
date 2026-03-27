@@ -5634,6 +5634,34 @@ ${messageContent}`;
       
       // Complete the step with DeepSeek response
       await this.handleStepCompletion(step, response);
+      
+      // Step-level chaining for DeepSeek flows
+      if (this.env.FLOW_RUNS_DB && this.flowRunId) {
+        const completedSteps = await this.env.FLOW_RUNS_DB.prepare(`
+          SELECT sr.step_id, sr.status, fs.next_flow_id
+          FROM step_runs sr
+          JOIN flow_steps fs ON sr.step_id = fs.id
+          WHERE sr.flow_run_id = ? AND sr.status = 'completed'
+        `).bind(this.flowRunId).all();
+
+        for (const completedStep of completedSteps.results || []) {
+          if (completedStep.next_flow_id && !this.flowSwitchHistory?.includes(completedStep.next_flow_id)) {
+            console.log('DEEPSEEK_STEP_CHAIN_TRIGGER', completedStep);
+
+            await this.stopConversation('flow_transferred');
+
+            await this.startSpecificFlow(
+              completedStep.next_flow_id,
+              this.conversation.last_response || '',
+              false,
+              true
+            );
+
+            return;
+          }
+        }
+      }
+      
       // Check if conversation is still active before scheduling next alarm
       // Check for any active state, not just SENDING_STEP
       if (this.conversation && this.conversation.state !== 'DONE') {
