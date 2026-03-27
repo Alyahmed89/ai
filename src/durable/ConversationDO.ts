@@ -1270,6 +1270,18 @@ export class ConversationOrchestratorDO_2026A {
               // Get previous step responses for variable substitution
               const previousStepResponses = await this.getPreviousStepResponses();
               
+              // Extract values from input objects (inputs are stored as {value, metadata})
+              const rawInputs: Record<string, any> = {};
+              if (this.conversation.execution_context?.inputs) {
+                for (const [key, inputObj] of Object.entries(this.conversation.execution_context.inputs)) {
+                  if (inputObj && typeof inputObj === 'object' && 'value' in inputObj) {
+                    rawInputs[key] = inputObj.value;
+                  } else {
+                    rawInputs[key] = inputObj;
+                  }
+                }
+              }
+              
               const resolvedStep = await resolveStepInstructions(
                 currentStep,
                 this.env.FLOW_RUNS_DB,
@@ -1278,7 +1290,8 @@ export class ConversationOrchestratorDO_2026A {
                   flow_id: flow_id,
                   execution_id: this.flowRunId,
                   step_id: currentStep.step_id,
-                  previous_step_responses: previousStepResponses
+                  previous_step_responses: previousStepResponses,
+                  inputs: rawInputs
                 }
               );
               
@@ -5297,6 +5310,18 @@ ${messageContent}`;
       // Get previous step responses for variable substitution
       const previousStepResponses = await this.getPreviousStepResponses();
       
+      // Extract values from input objects (inputs are stored as {value, metadata})
+      const rawInputs: Record<string, any> = {};
+      if (this.conversation.execution_context?.inputs) {
+        for (const [key, inputObj] of Object.entries(this.conversation.execution_context.inputs)) {
+          if (inputObj && typeof inputObj === 'object' && 'value' in inputObj) {
+            rawInputs[key] = inputObj.value;
+          } else {
+            rawInputs[key] = inputObj;
+          }
+        }
+      }
+      
       resolvedStep = await resolveStepInstructions(
         step,
         this.env.FLOW_RUNS_DB,
@@ -5305,7 +5330,8 @@ ${messageContent}`;
           flow_id: this.conversation.flow_id,
           execution_id: this.flowRunId,
           step_id: step.step_id,
-          previous_step_responses: previousStepResponses
+          previous_step_responses: previousStepResponses,
+          inputs: rawInputs
         }
       );
       
