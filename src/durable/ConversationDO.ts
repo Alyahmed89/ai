@@ -2699,24 +2699,29 @@ export class ConversationOrchestratorDO_2026A {
         all_keys: this.conversation.current_step ? Object.keys(this.conversation.current_step) : 'current_step is null'
       });
       
-      // Cross-flow transition check - use next_flow_id from COMPLETED step (current_step)
-      // instead of next step to execute
-      if (this.conversation.current_step?.next_flow_id) {
-        console.log('FLOW_TRANSFER', {
-          from: this.conversation.flow_id,
-          to: this.conversation.current_step.next_flow_id,
-          reason: 'next_flow_id set on completed step',
-          completed_step_id: this.conversation.current_step.step_id,
-          completed_step_title: this.conversation.current_step.title
-        });
+      // Cross-flow transition check - iterate through ALL completed steps for next_flow_id
+      for (const step of this.conversation.completed_steps || []) {
+        if (step.next_flow_id && !this.flowSwitchHistory?.includes(step.next_flow_id)) {
+          console.log('STEP_CHAIN_TRIGGER', {
+            step_id: step.step_id,
+            step_title: step.title,
+            next_flow_id: step.next_flow_id,
+            from_flow: this.conversation.flow_id
+          });
 
-        // First stop current flow and update its status
-        await this.stopConversation('flow_transferred');
-        
-        // Then start the next flow using startSpecificFlow
-        // Skip concurrency check for flow chaining - allow starting even if flow is already active
-        await this.startSpecificFlow(this.conversation.current_step.next_flow_id, this.conversation.last_response || '', false, true);
-        return;
+          // Stop current flow first
+          await this.stopConversation('flow_transferred');
+
+          // Start next flow (skip concurrency check)
+          await this.startSpecificFlow(
+            step.next_flow_id,
+            this.conversation.last_response || '',
+            false,
+            true
+          );
+
+          return; // stop further execution after first chain
+        }
       }
       
       if (!nextStep) {
