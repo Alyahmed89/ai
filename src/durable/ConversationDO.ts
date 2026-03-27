@@ -1588,39 +1588,6 @@ export class ConversationOrchestratorDO_2026A {
       let initialPrompt = `Execute flow: ${flow_id}`;
       const firstStep = steps[0];
       
-      // Create inputs object from input_payload for [input:name] replacement
-      const inputs: Record<string, any> = {};
-      if (input_payload) {
-        try {
-          // Try to parse input_payload as JSON
-          const parsedPayload = JSON.parse(input_payload);
-          if (typeof parsedPayload === 'object' && parsedPayload !== null) {
-            // If it's an object, add all properties to inputs
-            Object.assign(inputs, parsedPayload);
-            // Also add a string representation as 'message' for backward compatibility
-            // Try to create a readable string representation
-            if (parsedPayload.text !== undefined) {
-              // If there's a 'text' property, use it as message
-              inputs['message'] = String(parsedPayload.text);
-            } else if (parsedPayload.message !== undefined) {
-              // If there's a 'message' property, use it
-              inputs['message'] = String(parsedPayload.message);
-            } else {
-              // Otherwise, use the first string value or JSON string
-              const stringValues = Object.values(parsedPayload).filter(v => typeof v === 'string');
-              inputs['message'] = stringValues.length > 0 ? stringValues[0] : JSON.stringify(parsedPayload);
-            }
-          } else {
-            // If it's not an object, add it as 'message' key
-            inputs['message'] = String(parsedPayload);
-          }
-        } catch {
-          // If not valid JSON, treat it as a string and add as 'message' key
-          inputs['message'] = input_payload;
-        }
-        console.log(`[DO:${this.state.id}] Created inputs from input_payload:`, Object.keys(inputs));
-      }
-      
       if (firstStep && this.env.FLOW_RUNS_DB) {
         try {
           console.log(`[DO:${this.state.id}] Attempting to resolve step instructions for step: ${firstStep.step_key}`);
