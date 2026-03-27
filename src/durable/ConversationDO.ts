@@ -2710,10 +2710,12 @@ export class ConversationOrchestratorDO_2026A {
           completed_step_title: this.conversation.current_step.title
         });
 
-        // Start the next flow using startSpecificFlow
-        await this.startSpecificFlow(this.conversation.current_step.next_flow_id, this.conversation.last_response || '');
-
+        // First stop current flow and update its status
         await this.stopConversation('flow_transferred');
+        
+        // Then start the next flow using startSpecificFlow
+        // Skip concurrency check for flow chaining - allow starting even if flow is already active
+        await this.startSpecificFlow(this.conversation.current_step.next_flow_id, this.conversation.last_response || '', false, true);
         return;
       }
       
@@ -4598,7 +4600,7 @@ export class ConversationOrchestratorDO_2026A {
         let flowStatus: 'completed' | 'stopped' | 'new_flow_started' = 'stopped';
         if (reason.includes('flow_completed') || reason.includes('max_iterations_reached') || reason.includes('END_FLOW')) {
           flowStatus = 'completed';
-        } else if (reason.includes('new_flow_started') || reason.includes('end_flow_with_new_prompt')) {
+        } else if (reason.includes('new_flow_started') || reason.includes('end_flow_with_new_prompt') || reason.includes('flow_transferred')) {
           flowStatus = 'new_flow_started';
         }
         
@@ -6316,7 +6318,7 @@ ${messageContent}`;
   /**
    * Start a specific flow (with loop prevention)
    */
-  private async startSpecificFlow(flowId: string, inputPayload?: string | null, skipFlowRunUpdate: boolean = false): Promise<void> {
+  private async startSpecificFlow(flowId: string, inputPayload?: string | null, skipFlowRunUpdate: boolean = false, skipConcurrencyCheck: boolean = false): Promise<void> {
     // Check for loops
     this.flowSwitchHistory.push(flowId);
     
@@ -6339,7 +6341,8 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Starting specific flow: ${flowId}`);
     
     // CONCURRENCY CHECK: Verify flow is not already running
-    if (this.env.FLOW_RUNS_DB) {
+    // Skip this check for flow chaining (skipConcurrencyCheck = true)
+    if (!skipConcurrencyCheck && this.env.FLOW_RUNS_DB) {
       try {
         const activeFlow = await this.env.FLOW_RUNS_DB.prepare(`
           SELECT COUNT(*) as active_count FROM flow_runs 
