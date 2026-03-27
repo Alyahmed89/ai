@@ -2722,7 +2722,7 @@ export class ConversationOrchestratorDO_2026A {
         });
         
         const completedSteps = await this.env.FLOW_RUNS_DB.prepare(`
-          SELECT fsr.step_id, fsr.status, fs.next_flow_id
+          SELECT fsr.step_id, fsr.status, fs.next_flow_id, fs.id as flow_step_id
           FROM flow_step_runs fsr
           JOIN flow_steps fs ON fsr.step_id = fs.id
           WHERE fsr.flow_run_id = ? AND fsr.status = 'completed'
@@ -2731,6 +2731,18 @@ export class ConversationOrchestratorDO_2026A {
         console.log('DB_COMPLETED_STEPS_FOR_CHAINING', {
           total_completed_steps: completedSteps.results?.length || 0,
           completed_steps: completedSteps.results || []
+        });
+        
+        // Also check if there are any step runs at all for this flow run
+        const allStepRuns = await this.env.FLOW_RUNS_DB.prepare(`
+          SELECT step_id, status
+          FROM flow_step_runs
+          WHERE flow_run_id = ?
+        `).bind(this.flowRunId).all();
+        
+        console.log('ALL_STEP_RUNS_FOR_FLOW_RUN', {
+          total_step_runs: allStepRuns.results?.length || 0,
+          step_runs: allStepRuns.results || []
         });
         
         for (const step of completedSteps.results || []) {
