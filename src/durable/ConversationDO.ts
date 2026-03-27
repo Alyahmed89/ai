@@ -2713,26 +2713,28 @@ export class ConversationOrchestratorDO_2026A {
         })) : 'flow_steps is null or empty'
       });
       
-      // Cross-flow transition check - fetch steps directly from DB to get next_flow_id
-      // In-memory conversation.flow_steps may not have next_flow_id populated
-      if (this.env.FLOW_RUNS_DB) {
-        console.log('FETCHING_STEPS_FROM_DB_FOR_CHAINING', {
-          flow_id: this.conversation.flow_id
+      // Cross-flow transition check - fetch completed step runs from DB and join with step definitions
+      // We need to check flow_step_runs for status and join with flow_steps for next_flow_id
+      if (this.env.FLOW_RUNS_DB && this.flowRunId) {
+        console.log('FETCHING_COMPLETED_STEPS_FROM_DB_FOR_CHAINING', {
+          flow_id: this.conversation.flow_id,
+          flow_run_id: this.flowRunId
         });
         
-        const steps = await this.env.FLOW_RUNS_DB.prepare(`
-          SELECT step_id, status, next_flow_id
-          FROM flow_steps
-          WHERE flow_id = ?
-        `).bind(this.conversation.flow_id).all();
+        const completedSteps = await this.env.FLOW_RUNS_DB.prepare(`
+          SELECT fsr.step_id, fsr.status, fs.next_flow_id
+          FROM flow_step_runs fsr
+          JOIN flow_steps fs ON fsr.step_id = fs.id
+          WHERE fsr.flow_run_id = ? AND fsr.status = 'completed'
+        `).bind(this.flowRunId).all();
         
-        console.log('DB_STEPS_FOR_CHAINING', {
-          total_steps: steps.results?.length || 0,
-          steps: steps.results || []
+        console.log('DB_COMPLETED_STEPS_FOR_CHAINING', {
+          total_completed_steps: completedSteps.results?.length || 0,
+          completed_steps: completedSteps.results || []
         });
         
-        for (const step of steps.results || []) {
-          console.log('CHECKING_STEP_FOR_CHAIN_DB', {
+        for (const step of completedSteps.results || []) {
+          console.log('CHECKING_COMPLETED_STEP_FOR_CHAIN_DB', {
             step_id: step.step_id,
             status: step.status,
             next_flow_id: step.next_flow_id
@@ -2742,7 +2744,8 @@ export class ConversationOrchestratorDO_2026A {
             console.log('STEP_CHAIN_TRIGGER_DB', {
               step_id: step.step_id,
               next_flow_id: step.next_flow_id,
-              from_flow: this.conversation.flow_id
+              from_flow: this.conversation.flow_id,
+              flow_run_id: this.flowRunId
             });
 
             // Stop current flow first
@@ -2760,7 +2763,10 @@ export class ConversationOrchestratorDO_2026A {
           }
         }
       } else {
-        console.log('FLOW_RUNS_DB not configured, cannot fetch steps for chaining');
+        console.log('FLOW_RUNS_DB not configured or flowRunId missing, cannot fetch steps for chaining', {
+          has_flow_runs_db: !!this.env.FLOW_RUNS_DB,
+          flow_run_id: this.flowRunId
+        });
       }
       
       if (!nextStep) {
