@@ -2699,9 +2699,31 @@ export class ConversationOrchestratorDO_2026A {
         all_keys: this.conversation.current_step ? Object.keys(this.conversation.current_step) : 'current_step is null'
       });
       
+      // DEBUG: Log steps state before chaining check
+      console.log('DEBUG_STEPS_STATE', {
+        flow_id: this.conversation.flow_id,
+        current_step: this.conversation.current_step,
+        completed_steps: this.conversation.completed_steps,
+        flow_steps: this.conversation.flow_steps ? this.conversation.flow_steps.map(s => ({
+          step_id: s.step_id,
+          title: s.title,
+          status: s.status,
+          next_flow_id: s.next_flow_id,
+          order_index: s.order_index
+        })) : 'flow_steps is null or empty'
+      });
+      
       // Cross-flow transition check - iterate through ALL completed steps for next_flow_id
       // Check flow_steps array for completed steps with next_flow_id
       for (const step of this.conversation.flow_steps || []) {
+        console.log('CHECKING_STEP_FOR_CHAIN', {
+          step_id: step.step_id,
+          title: step.title,
+          status: step.status,
+          next_flow_id: step.next_flow_id,
+          order_index: step.order_index
+        });
+        
         if (step.status === 'completed' && step.next_flow_id && !this.flowSwitchHistory?.includes(step.next_flow_id)) {
           console.log('STEP_CHAIN_TRIGGER', {
             step_id: step.step_id,
