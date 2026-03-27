@@ -2726,7 +2726,9 @@ export class ConversationOrchestratorDO_2026A {
           SELECT 
             sr.step_id as run_step_id,
             fs.id as def_step_id,
-            fs.next_flow_id
+            fs.next_flow_id,
+            sr.status as run_status,
+            sr.created_at as run_created_at
           FROM step_runs sr
           LEFT JOIN flow_steps fs ON sr.step_id = fs.id
           WHERE sr.flow_run_id = ?
