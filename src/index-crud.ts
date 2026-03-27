@@ -290,6 +290,10 @@ app.post('/start', async (c) => {
             return c.json(errorResponse(`Failed to start flow execution: ${initResponse.status}`, 500));
           }
           
+          // Parse the Durable Object response to get flow_run_id
+          const doResponse = await initResponse.json();
+          const flowRunId = doResponse.flow_run_id;
+          
           // Track active conversation count
           try {
             if (c.env.RATE_LIMIT_KV) {
@@ -304,7 +308,14 @@ app.post('/start', async (c) => {
           }
           
           // Return IMMEDIATELY - work happens in alarms
-          return c.json(successResponse({ message: 'Flow execution started. Work will happen in background via alarms.', conversation_id: id.toString(), flow_id: targetFlowId, note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step', check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}` }));
+          return c.json(successResponse({ 
+            message: 'Flow execution started. Work will happen in background via alarms.', 
+            conversation_id: id.toString(), 
+            flow_id: targetFlowId, 
+            flow_run_id: flowRunId,
+            note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step', 
+            check_status_url: `${new URL(c.req.url).origin}/status/${id.toString()}` 
+          }));
           
         } catch (dbError: any) {
           console.error(`[HTTP:START:FLOW] Database error checking flow: ${dbError.message}`);

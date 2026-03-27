@@ -1762,7 +1762,8 @@ export class ConversationOrchestratorDO_2026A {
         warning: effectiveRepository === '[FLOW]' 
           ? 'Repository is placeholder "[FLOW]". OpenHands conversation may not work correctly without a valid repository.' 
           : undefined,
-        conversation_id: this.state.id.toString()
+        conversation_id: this.state.id.toString(),
+        flow_run_id: this.flowRunId
       }), {
         headers: { 'Content-Type': 'application/json' }
       });
