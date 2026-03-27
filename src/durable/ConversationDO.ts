@@ -2713,39 +2713,54 @@ export class ConversationOrchestratorDO_2026A {
         })) : 'flow_steps is null or empty'
       });
       
-      // Cross-flow transition check - iterate through ALL completed steps for next_flow_id
-      // Check flow_steps array for completed steps with next_flow_id
-      for (const step of this.conversation.flow_steps || []) {
-        console.log('CHECKING_STEP_FOR_CHAIN', {
-          step_id: step.step_id,
-          title: step.title,
-          status: step.status,
-          next_flow_id: step.next_flow_id,
-          order_index: step.order_index
+      // Cross-flow transition check - fetch steps directly from DB to get next_flow_id
+      // In-memory conversation.flow_steps may not have next_flow_id populated
+      if (this.env.FLOW_RUNS_DB) {
+        console.log('FETCHING_STEPS_FROM_DB_FOR_CHAINING', {
+          flow_id: this.conversation.flow_id
         });
         
-        if (step.status === 'completed' && step.next_flow_id && !this.flowSwitchHistory?.includes(step.next_flow_id)) {
-          console.log('STEP_CHAIN_TRIGGER', {
+        const steps = await this.env.FLOW_RUNS_DB.prepare(`
+          SELECT step_id, status, next_flow_id
+          FROM flow_steps
+          WHERE flow_id = ?
+        `).bind(this.conversation.flow_id).all();
+        
+        console.log('DB_STEPS_FOR_CHAINING', {
+          total_steps: steps.results?.length || 0,
+          steps: steps.results || []
+        });
+        
+        for (const step of steps.results || []) {
+          console.log('CHECKING_STEP_FOR_CHAIN_DB', {
             step_id: step.step_id,
-            step_title: step.title,
-            next_flow_id: step.next_flow_id,
-            from_flow: this.conversation.flow_id,
-            step_status: step.status
+            status: step.status,
+            next_flow_id: step.next_flow_id
           });
+          
+          if (step.next_flow_id && !this.flowSwitchHistory?.includes(step.next_flow_id)) {
+            console.log('STEP_CHAIN_TRIGGER_DB', {
+              step_id: step.step_id,
+              next_flow_id: step.next_flow_id,
+              from_flow: this.conversation.flow_id
+            });
 
-          // Stop current flow first
-          await this.stopConversation('flow_transferred');
+            // Stop current flow first
+            await this.stopConversation('flow_transferred');
 
-          // Start next flow (skip concurrency check)
-          await this.startSpecificFlow(
-            step.next_flow_id,
-            this.conversation.last_response || '',
-            false,
-            true
-          );
+            // Start next flow (skip concurrency check)
+            await this.startSpecificFlow(
+              step.next_flow_id,
+              this.conversation.last_response || '',
+              false,
+              true
+            );
 
-          return; // stop further execution after first chain
+            return; // stop further execution after first chain
+          }
         }
+      } else {
+        console.log('FLOW_RUNS_DB not configured, cannot fetch steps for chaining');
       }
       
       if (!nextStep) {
