@@ -5662,12 +5662,22 @@ ${messageContent}`;
             await this.stopConversation('flow_transferred');
 
             console.log('DEEPSEEK_CHAINING_DEBUG: Calling startSpecificFlow for', completedStep.next_flow_id);
-            await this.startSpecificFlow(
-              completedStep.next_flow_id,
-              this.conversation.last_response || '',
-              false,
-              true
-            );
+            
+            try {
+              console.log('STARTING_NEXT_FLOW', completedStep.next_flow_id);
+              
+              await this.startSpecificFlow(
+                completedStep.next_flow_id,
+                this.conversation.last_response || '',
+                false,
+                true
+              );
+              
+              console.log('STARTED_NEXT_FLOW_SUCCESS', completedStep.next_flow_id);
+            } catch (err) {
+              console.error('START_NEXT_FLOW_ERROR', err);
+            }
+            
             console.log('DEEPSEEK_CHAINING_DEBUG: startSpecificFlow completed');
 
             return;
