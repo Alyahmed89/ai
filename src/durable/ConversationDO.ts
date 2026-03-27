@@ -5637,6 +5637,11 @@ ${messageContent}`;
       
       // Step-level chaining for DeepSeek flows
       if (this.env.FLOW_RUNS_DB && this.flowRunId) {
+        console.log('DEEPSEEK_CHAINING_DEBUG: Checking for step-level chaining', {
+          flowRunId: this.flowRunId,
+          hasDB: !!this.env.FLOW_RUNS_DB
+        });
+        
         const completedSteps = await this.env.FLOW_RUNS_DB.prepare(`
           SELECT sr.step_id, sr.status, fs.next_flow_id
           FROM step_runs sr
@@ -5644,22 +5649,32 @@ ${messageContent}`;
           WHERE sr.flow_run_id = ? AND sr.status = 'completed'
         `).bind(this.flowRunId).all();
 
+        console.log('DEEPSEEK_CHAINING_DEBUG: Query results', {
+          resultsCount: completedSteps.results?.length || 0,
+          results: completedSteps.results
+        });
+
         for (const completedStep of completedSteps.results || []) {
           if (completedStep.next_flow_id && !this.flowSwitchHistory?.includes(completedStep.next_flow_id)) {
             console.log('DEEPSEEK_STEP_CHAIN_TRIGGER', completedStep);
+            console.log('DEEPSEEK_CHAINING_DEBUG: Calling stopConversation and startSpecificFlow');
 
             await this.stopConversation('flow_transferred');
 
+            console.log('DEEPSEEK_CHAINING_DEBUG: Calling startSpecificFlow for', completedStep.next_flow_id);
             await this.startSpecificFlow(
               completedStep.next_flow_id,
               this.conversation.last_response || '',
               false,
               true
             );
+            console.log('DEEPSEEK_CHAINING_DEBUG: startSpecificFlow completed');
 
             return;
           }
         }
+        
+        console.log('DEEPSEEK_CHAINING_DEBUG: No step with next_flow_id found');
       }
       
       // Check if conversation is still active before scheduling next alarm
