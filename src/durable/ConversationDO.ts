@@ -2721,6 +2721,22 @@ export class ConversationOrchestratorDO_2026A {
           flow_run_id: this.flowRunId
         });
         
+        // DEBUG: Check step_id mapping between flow_step_runs and flow_steps
+        const debugSteps = await this.env.FLOW_RUNS_DB.prepare(`
+          SELECT 
+            fsr.step_id as run_step_id,
+            fs.id as def_step_id,
+            fs.next_flow_id
+          FROM flow_step_runs fsr
+          LEFT JOIN flow_steps fs ON fsr.step_id = fs.id
+          WHERE fsr.flow_run_id = ?
+        `).bind(this.flowRunId).all();
+        
+        console.log('STEP_ID_MAPPING_DEBUG', {
+          total_rows: debugSteps.results?.length || 0,
+          results: debugSteps.results || []
+        });
+        
         const completedSteps = await this.env.FLOW_RUNS_DB.prepare(`
           SELECT fsr.step_id, fsr.status, fs.next_flow_id, fs.id as flow_step_id
           FROM flow_step_runs fsr
