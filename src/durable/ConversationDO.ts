@@ -2700,13 +2700,15 @@ export class ConversationOrchestratorDO_2026A {
       });
       
       // Cross-flow transition check - iterate through ALL completed steps for next_flow_id
-      for (const step of this.conversation.completed_steps || []) {
-        if (step.next_flow_id && !this.flowSwitchHistory?.includes(step.next_flow_id)) {
+      // Check flow_steps array for completed steps with next_flow_id
+      for (const step of this.conversation.flow_steps || []) {
+        if (step.status === 'completed' && step.next_flow_id && !this.flowSwitchHistory?.includes(step.next_flow_id)) {
           console.log('STEP_CHAIN_TRIGGER', {
             step_id: step.step_id,
             step_title: step.title,
             next_flow_id: step.next_flow_id,
-            from_flow: this.conversation.flow_id
+            from_flow: this.conversation.flow_id,
+            step_status: step.status
           });
 
           // Stop current flow first
