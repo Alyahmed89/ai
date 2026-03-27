@@ -860,6 +860,7 @@ export default function ChatPage(props: any) {
       }
       
       const conversationId = flowResult.data?.conversation_id;
+      const flowRunId = flowResult.data?.flow_run_id;
       
       // Add status message (api_response type) for flow start
       const statusMessage: ChatMessage = {
@@ -890,12 +891,20 @@ export default function ChatPage(props: any) {
       // Refresh flow runs to show new run
       fetchFlowRuns();
       
+      // If we have flowRunId from the response, use it directly
+      if (flowRunId) {
+        console.log('Setting flow run ID from response:', flowRunId);
+        setSelectedFlowRunId(flowRunId);
+      }
+      
       // Start polling for actual results if we have a conversation ID
       if (conversationId) {
         startPollingForResults(conversationId, assistantMessageId, prompt, restoreOriginalInstructions);
         
-        // Also start polling to find and select the corresponding flow run
-        pollForFlowRunByConversationId(conversationId);
+        // Only poll for flow run if we don't already have the flowRunId
+        if (!flowRunId) {
+          pollForFlowRunByConversationId(conversationId);
+        }
       }
       
     } catch (error) {
@@ -985,6 +994,7 @@ export default function ChatPage(props: any) {
       }
       
       const conversationId = flowResult.data?.conversation_id;
+      const flowRunId = flowResult.data?.flow_run_id;
       
       // Add status message (api_response type) for flow start
       const statusMessage: ChatMessage = {
@@ -1000,6 +1010,12 @@ export default function ChatPage(props: any) {
       
       // Refresh flow runs to show new run
       fetchFlowRuns();
+      
+      // If we have flowRunId from the response, use it directly
+      if (flowRunId) {
+        console.log('Setting flow run ID from response:', flowRunId);
+        setSelectedFlowRunId(flowRunId);
+      }
       
       // Start polling for actual results if we have a conversation ID
       if (conversationId) {

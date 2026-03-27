@@ -3219,12 +3219,19 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                   console.log('Flow started successfully:', flowResult);
                   console.log('Flow result data:', flowResult.data);
                   console.log('Conversation ID:', flowResult.data?.conversation_id);
+                  console.log('Flow Run ID:', flowResult.data?.flow_run_id);
                   
-                  // Get conversation ID from response
+                  // Get conversation ID and flow run ID from response
                   const conversationId = flowResult.data?.conversation_id;
+                  const flowRunId = flowResult.data?.flow_run_id;
                   
-                  if (conversationId) {
-                    // Poll to find the flow run ID
+                  // If we have flowRunId from the response, use it directly
+                  if (flowRunId) {
+                    console.log('Setting flow run ID from response:', flowRunId);
+                    setFlowRunId(flowRunId);
+                  } else if (conversationId) {
+                    // Fallback: Poll to find the flow run ID if flowRunId is not in response
+                    console.log('Flow run ID not in response, falling back to polling with conversation ID:', conversationId);
                     let attempts = 0;
                     const maxAttempts = 30; // Increased from 10 to 30
                     
