@@ -5077,26 +5077,28 @@ ${messageContent}`;
     });
     
     // Cross-flow transition check - use next_flow_id instead of flow_id comparison
-    if (step?.next_flow_id) {
-      console.log('NEXT_STEP_DEBUG', {
-        step_id: step?.step_id,
-        flow_id: step?.flow_id,
-        next_flow_id: step?.next_flow_id,
-        currentFlowId: this.conversation.flow_id
-      });
-      
-      console.log('FLOW_TRANSFER', {
-        from: this.conversation.flow_id,
-        to: step.next_flow_id,
-        reason: 'next_flow_id set on current step'
-      });
-
-      // Start the next flow using startSpecificFlow
-      await this.startSpecificFlow(step.next_flow_id, this.conversation.last_response || '');
-
-      await this.stopConversation('flow_transferred');
-      return;
-    }
+    // NOTE: We now execute the step first, then check for next_flow_id transition
+    // after step completion in handleStepCompletion
+    // if (step?.next_flow_id) {
+    //   console.log('NEXT_STEP_DEBUG', {
+    //     step_id: step?.step_id,
+    //     flow_id: step?.flow_id,
+    //     next_flow_id: step?.next_flow_id,
+    //     currentFlowId: this.conversation.flow_id
+    //   });
+    //   
+    //   console.log('FLOW_TRANSFER', {
+    //     from: this.conversation.flow_id,
+    //     to: step.next_flow_id,
+    //     reason: 'next_flow_id set on current step'
+    //   });
+    // 
+    //   // Start the next flow using startSpecificFlow
+    //   await this.startSpecificFlow(step.next_flow_id, this.conversation.last_response || '');
+    // 
+    //   await this.stopConversation('flow_transferred');
+    //   return;
+    // }
     
     console.log(`[DO:${this.state.id}] Sending step: ${step.title} (order_index: ${step.order_index})`);
     
