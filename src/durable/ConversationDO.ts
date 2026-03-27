@@ -6440,7 +6440,7 @@ ${messageContent}`;
     // Get first step instructions from flow_steps table
     const firstStep = await this.env.FLOW_RUNS_DB.prepare(`
       SELECT instructions FROM flow_steps 
-      WHERE flow_id = ? AND order_index = 1
+      WHERE flow_id = ? AND order_index = 0
       ORDER BY order_index LIMIT 1
     `).bind(flowId).first();
     
@@ -6526,7 +6526,7 @@ ${messageContent}`;
     // Get first step instructions from flow_steps table
     const firstStep = await this.env.FLOW_RUNS_DB.prepare(`
       SELECT instructions FROM flow_steps 
-      WHERE flow_id = ? AND order_index = 1
+      WHERE flow_id = ? AND order_index = 0
       ORDER BY order_index LIMIT 1
     `).bind(flowId).first();
     
