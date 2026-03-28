@@ -4495,41 +4495,6 @@ export class ConversationOrchestratorDO_2026A {
         console.log(`[DO:${this.state.id}] Using conditional next flow: ${conditionalNextFlowId}`);
         nextFlowIds = [conditionalNextFlowId];
         nextFlowId = conditionalNextFlowId;
-      } else {
-        // Fall back to static next_flow_id/next_flow_ids from flow_definitions table
-        const nextFlow = await this.env.FLOW_RUNS_DB.prepare(`
-          SELECT next_flow_id, next_flow_ids FROM flow_definitions WHERE id = ?
-        `).bind(this.conversation.flow_id).first();
-        
-        // Normalize to array: use next_flow_ids if available, fall back to next_flow_id
-        if (nextFlow?.next_flow_ids) {
-          try {
-            // Parse JSON array from next_flow_ids column
-            const parsedIds = JSON.parse(nextFlow.next_flow_ids as string);
-            if (Array.isArray(parsedIds) && parsedIds.every(id => typeof id === 'string')) {
-              nextFlowIds = parsedIds;
-              console.log(`[DO:${this.state.id}] Using next_flow_ids from flow_definitions: ${JSON.stringify(nextFlowIds)}`);
-            } else {
-              console.warn(`[DO:${this.state.id}] Invalid next_flow_ids format, falling back to next_flow_id`);
-            }
-          } catch (error: any) {
-            console.error(`[DO:${this.state.id}] Error parsing next_flow_ids: ${error.message}`);
-          }
-        }
-        
-        // If no next_flow_ids or parsing failed, fall back to next_flow_id
-        if (nextFlowIds.length === 0 && nextFlow?.next_flow_id) {
-          nextFlowIds = [nextFlow.next_flow_id as string];
-          console.log(`[DO:${this.state.id}] Using next_flow_id from flow_definitions: ${nextFlow.next_flow_id}`);
-        }
-        
-        if (nextFlowIds.length > 0) {
-          // Store the first flow ID in nextFlowId for backward compatibility in single flow case
-          nextFlowId = nextFlowIds[0];
-        } else {
-          console.log(`[DO:${this.state.id}] No next_flow_id or next_flow_ids defined in flow_definitions for: ${this.conversation.flow_id}`);
-          console.log(`[DO:${this.state.id}] Flow chain ends here`);
-        }
       }
       
       // Check if we have a callback_url to send response to
@@ -5492,56 +5457,7 @@ ${messageContent}`;
     };
     } // End of else block (not using existing prompt)
     
-    // SPECIAL HANDLING: For 'hello' step type, complete immediately without OpenHands
-    if (step.step_type === 'hello') {
-      console.log(`[DO:${this.state.id}] 'hello' step type detected, completing immediately`);
-      // Save hello step run to database (no API calls for hello steps)
-      await this.saveStepRunToDatabase(
-        step,
-        "Hello step (auto-completed)",
-        "Hello step completed successfully",
-        'completed'
-      );
-      await this.handleStepCompletion(step, "Hello step completed successfully");
-      return;
-    }
 
-    // SPECIAL HANDLING: For 'call_flow' step type, start another flow and wait for response
-    if (step.step_type === 'call_flow') {
-      console.log(`[DO:${this.state.id}] 'call_flow' step type detected`);
-      
-      // Extract target flow ID from step instructions or parameters
-      const targetFlowId = step.instructions?.match(/\[flow:(\w+)\]/)?.[1] || 
-                          step.description?.match(/\[flow:(\w+)\]/)?.[1];
-      
-      if (!targetFlowId) {
-        console.error(`[DO:${this.state.id}] No target flow ID found in call_flow step`);
-        await this.handleStepCompletion(step, "Error: No target flow ID specified");
-        return;
-      }
-
-      console.log(`[DO:${this.state.id}] Starting flow call to: ${targetFlowId}`);
-      
-      // Create callback URL to this flow's /resume endpoint
-      // Note: In production, this would need to be the actual external URL
-      const callbackUrl = `http://placeholder/resume?conversation_id=${this.state.id.toString()}`;
-      
-      // Start the target flow with callback
-      await this.startSpecificFlowWithCallback(targetFlowId, callbackUrl);
-      
-      // Enter WAITING_FOR_INPUT state to wait for response
-      await this.updateConversationState({
-        state: 'WAITING_FOR_INPUT',
-        waiting_for_input: {
-          name: `flow_response_${targetFlowId}`,
-          step_id: step.step_id,
-          timestamp: Date.now()
-        }
-      });
-      
-      console.log(`[DO:${this.state.id}] Waiting for response from flow: ${targetFlowId}`);
-      return;
-    }
 
 
     
