@@ -6188,12 +6188,11 @@ ${messageContent}`;
         NULL as condition_key,
         fsc.condition_value,
         NULL as condition_query,
-        fd.next_flow_id as flow_def_next_flow_id, -- Get from flow_definitions table
+        NULL as flow_def_next_flow_id, -- Removed: fd.next_flow_id (column doesn't exist)
         fsc.next_flow_id as step_condition_next_flow_id, -- Get from flow_step_conditions table
         fsc.condition_operator -- Include operator for evaluation
       FROM flow_step_conditions fsc
       JOIN flow_steps fs ON fsc.flow_step_id = fs.id
-      JOIN flow_definitions fd ON fs.flow_id = fd.id
       WHERE fs.flow_id = ? AND fs.id = ?
       ORDER BY fsc.condition_type
     `).bind(this.conversation.flow_id, step.step_id).all();
@@ -6211,8 +6210,8 @@ ${messageContent}`;
         condition_key: conditionRow.condition_key,
         condition_value: conditionRow.condition_value,
         condition_query: conditionRow.condition_query,
-        // Use step condition's next_flow_id if available, otherwise fall back to flow definition's
-        next_flow_id: conditionRow.step_condition_next_flow_id || conditionRow.flow_def_next_flow_id
+        // Use step condition's next_flow_id only (flow_definitions.next_flow_id column doesn't exist)
+        next_flow_id: conditionRow.step_condition_next_flow_id
       };
       
       // Legacy condition evaluation for static/sql engines

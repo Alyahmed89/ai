@@ -2598,8 +2598,8 @@ crudApi.post('/flow-definitions', async (c) => {
     const flowDefinitionId = id || `flow-def-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     const sql = `
-      INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, next_flow_id, priority, agent, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, priority, agent, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     await db.prepare(sql).bind(
@@ -2609,7 +2609,6 @@ crudApi.post('/flow-definitions', async (c) => {
       max_iterations || 20,
       repository,
       branch || 'main',
-      dbValue(next_flow_id),
       priority || 0,
       agent
     ).run();
@@ -2664,10 +2663,8 @@ crudApi.put('/flow-definitions/:id', async (c) => {
       updates.push('branch = ?');
       values.push(branch);
     }
-    if (next_flow_id !== undefined) {
-      updates.push('next_flow_id = ?');
-      values.push(dbValue(next_flow_id));
-    }
+    // next_flow_id column removed from flow_definitions table
+    // Step-level chaining uses flow_steps.next_flow_id instead
     if (priority !== undefined) {
       updates.push('priority = ?');
       values.push(priority);
