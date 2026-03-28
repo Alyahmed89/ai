@@ -118,6 +118,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import DebugPanelAggressive from '@/app/components/DebugPanelAggressive';
+import './NodePopupEnhanced.css';
 
 // Dagre layout configuration
 const dagreGraph = new dagre.graphlib.Graph();
@@ -1335,7 +1336,7 @@ const EdgePopup = ({
   );
 };
 
-// Unified popup modal component for all nodes (steps and conditions)
+// Unified popup modal component for all nodes (steps and conditions) - ENHANCED VERSION
 const NodePopup = ({ 
   node, 
   availableVariables,
@@ -1372,6 +1373,18 @@ const NodePopup = ({
   
   // Track if we've already auto-inserted [input:message]
   const hasAutoInsertedRef = useRef(false);
+  
+  // Enhanced UI states
+  const [flowInput, setFlowInput] = useState('main_pipeline');
+  const [stepInput, setStepInput] = useState('process_data');
+  const [flowrunInput, setFlowrunInput] = useState('daily_run_001');
+  const [queryParams, setQueryParams] = useState([
+    { key: 'limit', value: '10' },
+    { key: 'status', value: 'active' },
+    { key: 'priority', value: 'high' }
+  ]);
+  const [outputCollapsed, setOutputCollapsed] = useState(false);
+  const [showSampleModal, setShowSampleModal] = useState(false);
   
   // Fetch available commands from API
   useEffect(() => {
@@ -1480,7 +1493,7 @@ const NodePopup = ({
       data: {
         ...nodeData,
         instructions: domInstructions,
-        await_input: awaitInput,
+        await_input: false, // Always false since we removed the checkbox
         step: currentStep ? {
           ...currentStep,
           instructions: domInstructions,
@@ -1647,8 +1660,7 @@ const NodePopup = ({
   return (
     <Modal onClose={onClose}>
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-base font-thin">Node</h3>
+        <div className="flex justify-end">
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
@@ -1660,15 +1672,64 @@ const NodePopup = ({
         </div>
         
         <div className="space-y-4">
-          {/* Command Selector with + button */}
-          <div className="flex gap-2">
+          {/* ========== INPUT SECTION ========== */}
+          <div className="node-popup-section-label">INPUT</div>
+          
+          {/* FLOW, STEP, FLOWRUN with text labels and searchable autocomplete */}
+          <div className="node-popup-inline-params node-popup-row">
+            <div className="node-popup-labeled-input">
+              <span className="label-text">flow</span>
+              <input 
+                type="text" 
+                value={flowInput}
+                onChange={(e) => setFlowInput(e.target.value)}
+                list="flowOptions"
+                placeholder="search..."
+                className="node-popup-input"
+              />
+              <datalist id="flowOptions">
+                {['main_pipeline', 'data_processing', 'etl_job', 'analytics_flow'].map(option => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+            <div className="node-popup-labeled-input">
+              <span className="label-text">step</span>
+              <input 
+                type="text" 
+                value={stepInput}
+                onChange={(e) => setStepInput(e.target.value)}
+                list="stepOptions"
+                placeholder="search..."
+                className="node-popup-input"
+              />
+              <datalist id="stepOptions">
+                {['process_data', 'validate_input', 'transform_results', 'load_final'].map(option => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+            <div className="node-popup-labeled-input">
+              <span className="label-text">flowrun</span>
+              <input 
+                type="text" 
+                value={flowrunInput}
+                onChange={(e) => setFlowrunInput(e.target.value)}
+                list="flowrunOptions"
+                placeholder="search..."
+                className="node-popup-input"
+              />
+              <datalist id="flowrunOptions">
+                {['daily_run_001', 'nightly_batch', 'manual_trigger', 'scheduled_flow'].map(option => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+          </div>
+
+          {/* DROPLIST with endpoint + dark icon */}
+          <div className="node-popup-dropdown-row">
             <select
               value={selectedCommand}
               onChange={(e) => setSelectedCommand(e.target.value)}
-              className="flex-1 bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
+              className="node-popup-select"
               disabled={loadingCommands}
             >
-              <option value="">command...</option>
+              <option value="">select endpoint to call for input</option>
               {availableCommands.map((cmd) => (
                 <option key={cmd.name} value={cmd.name}>
                   {cmd.name} ({cmd.method})
@@ -1677,22 +1738,125 @@ const NodePopup = ({
             </select>
             <button
               onClick={() => setShowCreateCommand(true)}
-              className="px-3 py-2 bg-black border border-gray-600 rounded text-white text-sm font-thin hover:bg-gray-900 transition-colors"
+              className="node-popup-icon-btn"
               title="Add new command"
             >
               +
+            </button>
+            <button 
+              onClick={() => setShowSampleModal(true)}
+              className="node-popup-icon-btn" 
+              title="sample response"
+            >
+              📋
             </button>
           </div>
           {loadingCommands && (
             <div className="text-xs text-neutral-400">Loading commands...</div>
           )}
 
-          {/* Default Next Flow Selection (optional) - ABOVE instructions */}
-          <div>
+          {/* ========== QUERY PARAMETERS ========== */}
+          <div className="node-popup-query-params">
+            <div className="node-popup-query-header">
+              <button 
+                onClick={() => setQueryParams([...queryParams, { key: '', value: '' }])}
+                className="node-popup-icon-btn"
+              >
+                +
+              </button>
+            </div>
+            {queryParams.map((param, index) => (
+              <div key={index} className="node-popup-query-row">
+                <input
+                  type="text"
+                  value={param.key}
+                  onChange={(e) => {
+                    const newParams = [...queryParams];
+                    newParams[index].key = e.target.value;
+                    setQueryParams(newParams);
+                  }}
+                  placeholder="key"
+                  className="node-popup-query-key"
+                />
+                <input
+                  type="text"
+                  value={param.value}
+                  onChange={(e) => {
+                    const newParams = [...queryParams];
+                    newParams[index].value = e.target.value;
+                    setQueryParams(newParams);
+                  }}
+                  placeholder="value"
+                  className="node-popup-query-value"
+                />
+                <button
+                  onClick={() => {
+                    const newParams = queryParams.filter((_, i) => i !== index);
+                    setQueryParams(newParams);
+                  }}
+                  className="node-popup-icon-btn"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* ========== VARIABLES SECTION ========== */}
+          <div className="node-popup-tags-section">
+            <div className="text-xs text-gray-400 mb-1 font-thin">
+              available variables:
+            </div>
+            <div className="node-popup-tags-wrapper">
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'command_output')}
+                title="Drag command_output into text"
+              >
+                command_output
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'flow_id')}
+                title="Drag flow_id into text"
+              >
+                flow_id
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'step_id')}
+                title="Drag step_id into text"
+              >
+                step_id
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'user_input')}
+                title="Drag user_input into text"
+              >
+                user_input
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'timestamp')}
+                title="Drag timestamp into text"
+              >
+                timestamp
+              </div>
+            </div>
+          </div>
+
+          {/* ========== FLOW DROPDOWN ========== */}
+          <div className="node-popup-dropdown-row">
             <select
               value={selectedFlowId}
               onChange={(e) => handleFlowChange(e.target.value)}
-              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
+              className="node-popup-select"
             >
               <option value="">Default Next Flow (optional)</option>
               {availableFlows.map(flow => (
@@ -1701,17 +1865,10 @@ const NodePopup = ({
                 </option>
               ))}
             </select>
-            <div className="text-xs text-neutral-400 mt-1">
-              {selectedFlowId ? (
-                <span>Step output will be available as <code className="bg-gray-800 px-1 rounded">[input:message]</code> in target flow</span>
-              ) : (
-                <span>Select a flow to route execution after this step completes</span>
-              )}
-            </div>
           </div>
 
-          {/* Instructions/condition text area */}
-          <div>
+          {/* ========== INSTRUCTIONS TEXTAREA ========== */}
+          <div className="node-popup-textarea-container">
             <textarea
               ref={textareaRef}
               value={instructions || ''}
@@ -1719,24 +1876,205 @@ const NodePopup = ({
               onInput={(e) => setInstructions(e.currentTarget.value)}
               onDragOver={onInstructionsDragOver}
               onDrop={onInstructionsDrop}
-              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white min-h-[80px] font-thin text-sm placeholder:italic focus:border-gray-500 focus:outline-none"
-              placeholder="instructions..."
+              className="node-popup-textarea"
+              placeholder="expected response: {{command_output}}"
               autoFocus
             />
           </div>
 
-          {/* Await User Input Checkbox */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="await-input-checkbox"
-              checked={awaitInput}
-              onChange={(e) => setAwaitInput(e.target.checked)}
-              className="h-3 w-3 rounded border-gray-600 bg-black text-gray-400 focus:ring-gray-500"
-            />
-            <label htmlFor="await-input-checkbox" className="ml-2 text-sm text-gray-300 font-thin">
-              requires user input
-            </label>
+          {/* ========== OUTPUT SECTION ========== */}
+          <div className="node-popup-section-label">OUTPUT</div>
+          
+          {/* FLOW, STEP, FLOWRUN with text labels and searchable autocomplete */}
+          <div className="node-popup-inline-params node-popup-row">
+            <div className="node-popup-labeled-input">
+              <span className="label-text">flow</span>
+              <input 
+                type="text" 
+                value={flowInput}
+                onChange={(e) => setFlowInput(e.target.value)}
+                list="flowOptions"
+                placeholder="search..."
+                className="node-popup-input"
+              />
+              <datalist id="flowOptions">
+                {['main_pipeline', 'data_processing', 'etl_job', 'analytics_flow'].map(option => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+            <div className="node-popup-labeled-input">
+              <span className="label-text">step</span>
+              <input 
+                type="text" 
+                value={stepInput}
+                onChange={(e) => setStepInput(e.target.value)}
+                list="stepOptions"
+                placeholder="search..."
+                className="node-popup-input"
+              />
+              <datalist id="stepOptions">
+                {['process_data', 'validate_input', 'transform_results', 'load_final'].map(option => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+            <div className="node-popup-labeled-input">
+              <span className="label-text">flowrun</span>
+              <input 
+                type="text" 
+                value={flowrunInput}
+                onChange={(e) => setFlowrunInput(e.target.value)}
+                list="flowrunOptions"
+                placeholder="search..."
+                className="node-popup-input"
+              />
+              <datalist id="flowrunOptions">
+                {['daily_run_001', 'nightly_batch', 'manual_trigger', 'scheduled_flow'].map(option => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+          </div>
+
+          {/* DROPLIST with endpoint + dark icon */}
+          <div className="node-popup-dropdown-row">
+            <select
+              value={selectedCommand}
+              onChange={(e) => setSelectedCommand(e.target.value)}
+              className="node-popup-select"
+              disabled={loadingCommands}
+            >
+              <option value="">select endpoint to call for input</option>
+              {availableCommands.map((cmd) => (
+                <option key={cmd.name} value={cmd.name}>
+                  {cmd.name} ({cmd.method})
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => setShowCreateCommand(true)}
+              className="node-popup-icon-btn"
+              title="Add new command"
+            >
+              +
+            </button>
+            <button 
+              onClick={() => setShowSampleModal(true)}
+              className="node-popup-icon-btn" 
+              title="sample response"
+            >
+              📋
+            </button>
+          </div>
+          {loadingCommands && (
+            <div className="text-xs text-neutral-400">Loading commands...</div>
+          )}
+
+          {/* ========== QUERY PARAMETERS ========== */}
+          <div className="node-popup-query-params">
+            <div className="node-popup-query-header">
+              <button 
+                onClick={() => setQueryParams([...queryParams, { key: '', value: '' }])}
+                className="node-popup-icon-btn"
+              >
+                +
+              </button>
+            </div>
+            {queryParams.map((param, index) => (
+              <div key={index} className="node-popup-query-row">
+                <input
+                  type="text"
+                  value={param.key}
+                  onChange={(e) => {
+                    const newParams = [...queryParams];
+                    newParams[index].key = e.target.value;
+                    setQueryParams(newParams);
+                  }}
+                  placeholder="key"
+                  className="node-popup-query-key"
+                />
+                <input
+                  type="text"
+                  value={param.value}
+                  onChange={(e) => {
+                    const newParams = [...queryParams];
+                    newParams[index].value = e.target.value;
+                    setQueryParams(newParams);
+                  }}
+                  placeholder="value"
+                  className="node-popup-query-value"
+                />
+                <button
+                  onClick={() => {
+                    const newParams = queryParams.filter((_, i) => i !== index);
+                    setQueryParams(newParams);
+                  }}
+                  className="node-popup-icon-btn"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* ========== VARIABLES SECTION ========== */}
+          <div className="node-popup-tags-section">
+            <div className="text-xs text-gray-400 mb-1 font-thin">
+              available variables:
+            </div>
+            <div className="node-popup-tags-wrapper">
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'command_output')}
+                title="Drag command_output into text"
+              >
+                command_output
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'flow_id')}
+                title="Drag flow_id into text"
+              >
+                flow_id
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'step_id')}
+                title="Drag step_id into text"
+              >
+                step_id
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'user_input')}
+                title="Drag user_input into text"
+              >
+                user_input
+              </div>
+              <div 
+                className="node-popup-var-tag"
+                draggable
+                onDragStart={(e) => onVariableDragStart(e, 'timestamp')}
+                title="Drag timestamp into text"
+              >
+                timestamp
+              </div>
+            </div>
+          </div>
+
+          {/* ========== FLOW DROPDOWN ========== */}
+          <div className="node-popup-dropdown-row">
+            <select
+              value={selectedFlowId}
+              onChange={(e) => handleFlowChange(e.target.value)}
+              className="node-popup-select"
+            >
+              <option value="">Default Next Flow (optional)</option>
+              {availableFlows.map(flow => (
+                <option key={flow.id} value={flow.id}>
+                  {flow.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Command Parameters - only show when command is selected */}
@@ -1776,11 +2114,27 @@ const NodePopup = ({
             </div>
           )}
 
-          {/* Minimal save button */}
-          <div className="flex justify-end pt-2">
+          {/* ========== FLOW DROPDOWN (ABOVE SAVE) ========== */}
+          <div className="node-popup-dropdown-row">
+            <select
+              value={selectedFlowId}
+              onChange={(e) => handleFlowChange(e.target.value)}
+              className="node-popup-select"
+            >
+              <option value="">Default Next Flow (optional)</option>
+              {availableFlows.map(flow => (
+                <option key={flow.id} value={flow.id}>
+                  {flow.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* ========== SAVE BUTTON ========== */}
+          <div className="node-popup-save-row">
             <button
               onClick={handleSave}
-              className="px-3 py-1.5 bg-black text-white rounded hover:bg-gray-900 text-sm font-thin border border-gray-700 transition-colors"
+              className="node-popup-save-btn"
             >
               Save
             </button>
@@ -1891,6 +2245,41 @@ const NodePopup = ({
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Sample Response Modal */}
+      {showSampleModal && (
+        <Modal onClose={() => setShowSampleModal(false)}>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-thin">Sample Response</h3>
+              <button
+                onClick={() => setShowSampleModal(false)}
+                className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="bg-black border border-gray-600 rounded p-4">
+              <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+{`{
+  "status": "success",
+  "data": {
+    "id": "resp_001",
+    "message": "Operation completed successfully",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "metrics": {
+      "duration_ms": 245,
+      "records_processed": 1250
+    }
+  }
+}`}</pre>
             </div>
           </div>
         </Modal>
