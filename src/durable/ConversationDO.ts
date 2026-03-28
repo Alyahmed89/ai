@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens, extractStructuredOutput } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, generateId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions, saveApiCall, saveVariable } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
@@ -5137,6 +5137,56 @@ ${messageContent}`;
       
       if (!deepseekResult.success) {
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
+        
+        // PERSISTENCE: Save normalized API calls and variables for failed steps too
+        if (resolvedStep?.api_calls && resolvedStep.api_calls.length > 0 && this.db) {
+          try {
+            // Generate step run ID for linking
+            const stepRunId = generateStepRunId();
+            
+            // A) Save normalized API calls
+            for (const call of resolvedStep.api_calls) {
+              await saveApiCall(this.db, {
+                id: generateId(),
+                flow_id: this.conversation.flow_id,
+                flow_run_id: this.conversation.flow_run_id,
+                step_id: step.id,
+                step_run_id: stepRunId,
+                endpoint_id: call.endpoint_id,
+                endpoint_name: call.endpoint_name,
+                method: call.phase,
+                request: call.request,
+                response: call.response
+              });
+            }
+            
+            // B) Extract → save variables (FROM apiCalls ONLY)
+            for (const call of resolvedStep.api_calls) {
+              const data = call.response?.data;
+              
+              if (!data || typeof data !== 'object') continue;
+              
+              for (const [key, value] of Object.entries(data)) {
+                await saveVariable(this.db, {
+                  id: generateId(),
+                  flow_id: this.conversation.flow_id,
+                  flow_run_id: this.conversation.flow_run_id,
+                  step_id: step.id,
+                  step_run_id: stepRunId,
+                  key: `${call.endpoint_name}.${key}`,
+                  value,
+                  source: 'api'
+                });
+              }
+            }
+            
+            console.log(`[DO:${this.state.id}] Persisted ${resolvedStep.api_calls.length} API calls and extracted variables for failed step`);
+          } catch (persistError) {
+            console.error(`[DO:${this.state.id}] Error persisting API calls/variables for failed step:`, persistError);
+            // Continue with step execution even if persistence fails
+          }
+        }
+        
         // Save failed step run to database with API calls
         await this.saveStepRunToDatabase(
           step,
@@ -5178,6 +5228,56 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] DeepSeek response received (${response.length} chars)`);
       
       // Save successful step run to database with API calls
+      
+      // PERSISTENCE: Save normalized API calls and variables BEFORE step run save
+      if (resolvedStep?.api_calls && resolvedStep.api_calls.length > 0 && this.db) {
+        try {
+          // Generate step run ID for linking
+          const stepRunId = generateStepRunId();
+          
+          // A) Save normalized API calls
+          for (const call of resolvedStep.api_calls) {
+            await saveApiCall(this.db, {
+              id: generateId(),
+              flow_id: this.conversation.flow_id,
+              flow_run_id: this.conversation.flow_run_id,
+              step_id: step.id,
+              step_run_id: stepRunId,
+              endpoint_id: call.endpoint_id,
+              endpoint_name: call.endpoint_name,
+              method: call.phase,
+              request: call.request,
+              response: call.response
+            });
+          }
+          
+          // B) Extract → save variables (FROM apiCalls ONLY)
+          for (const call of resolvedStep.api_calls) {
+            const data = call.response?.data;
+            
+            if (!data || typeof data !== 'object') continue;
+            
+            for (const [key, value] of Object.entries(data)) {
+              await saveVariable(this.db, {
+                id: generateId(),
+                flow_id: this.conversation.flow_id,
+                flow_run_id: this.conversation.flow_run_id,
+                step_id: step.id,
+                step_run_id: stepRunId,
+                key: `${call.endpoint_name}.${key}`,
+                value,
+                source: 'api'
+              });
+            }
+          }
+          
+          console.log(`[DO:${this.state.id}] Persisted ${resolvedStep.api_calls.length} API calls and extracted variables`);
+        } catch (persistError) {
+          console.error(`[DO:${this.state.id}] Error persisting API calls/variables:`, persistError);
+          // Continue with step execution even if persistence fails
+        }
+      }
+      
       await this.saveStepRunToDatabase(
         step,
         prompt,

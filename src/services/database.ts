@@ -265,6 +265,14 @@ export function generateStepRunId(): string {
 }
 
 /**
+ * Generate a unique ID for any entity
+ * @returns Unique ID
+ */
+export function generateId(): string {
+  return `id_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
  * Get all project facts from the database
  * @param db D1Database instance (PROJECT_FACTS_DB)
  * @returns Promise with array of project facts
@@ -1594,5 +1602,89 @@ export async function getNextFlowBasedOnConditions(
   } catch (error: any) {
     console.error(`[DATABASE] Error getting next flow based on conditions: ${error.message}`);
     return null;
+  }
+}
+
+/**
+ * Save a normalized API call to the database
+ * @param db D1Database instance
+ * @param apiCall API call data to save
+ * @returns Promise with success status
+ */
+export async function saveApiCall(db: D1Database, apiCall: {
+  id: string;
+  flow_id?: string;
+  flow_run_id?: string;
+  step_id?: string;
+  step_run_id?: string;
+  endpoint_id?: string;
+  endpoint_name?: string;
+  method?: string;
+  request?: any;
+  response?: any;
+}): Promise<{success: boolean; error?: string}> {
+  try {
+    await db.prepare(`
+      INSERT INTO api_calls (
+        id, flow_id, flow_run_id, step_id, step_run_id,
+        endpoint_id, endpoint_name, method, request, response
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      apiCall.id,
+      apiCall.flow_id || null,
+      apiCall.flow_run_id || null,
+      apiCall.step_id || null,
+      apiCall.step_run_id || null,
+      apiCall.endpoint_id || null,
+      apiCall.endpoint_name || null,
+      apiCall.method || null,
+      apiCall.request ? JSON.stringify(apiCall.request) : null,
+      apiCall.response ? JSON.stringify(apiCall.response) : null
+    ).run();
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error saving API call: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Save a variable to the database
+ * @param db D1Database instance
+ * @param variable Variable data to save
+ * @returns Promise with success status
+ */
+export async function saveVariable(db: D1Database, variable: {
+  id: string;
+  flow_id?: string;
+  flow_run_id?: string;
+  step_id?: string;
+  step_run_id?: string;
+  key: string;
+  value: any;
+  source?: string;
+}): Promise<{success: boolean; error?: string}> {
+  try {
+    await db.prepare(`
+      INSERT INTO variables (
+        id, flow_id, flow_run_id, step_id, step_run_id,
+        key, value, source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      variable.id,
+      variable.flow_id || null,
+      variable.flow_run_id || null,
+      variable.step_id || null,
+      variable.step_run_id || null,
+      variable.key,
+      variable.value ? JSON.stringify(variable.value) : null,
+      variable.source || 'api'
+    ).run();
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error saving variable: ${error.message}`);
+    return { success: false, error: error.message };
   }
 }
