@@ -1150,55 +1150,86 @@ export class ConversationOrchestratorDO_2026A {
       // Store flow_id for error reporting
       let errorContext = `flow_id: ${flow_id}`;
       
-      // Load flow definition from database
+      // Load flow definition from database - REQUIRED
       let flowDefinition = null;
-      let effectiveRepository = '[FLOW]';
-      let effectiveBranch = '[FLOW]';
+      let effectiveRepository = '';
+      let effectiveBranch = '';
       let effectiveMaxIterations = 20; // Default
-      let databaseAvailable = false;
       
-      if (this.env.FLOW_RUNS_DB) {
-        try {
-          errorContext += `, FLOW_RUNS_DB: available`;
-          // Import database functions
-          const { getFlowDefinition } = await import('../services/database');
-          console.log(`[DO:${this.state.id}] Calling getFlowDefinition for ${flow_id}`);
-          flowDefinition = await getFlowDefinition(this.env.FLOW_RUNS_DB, flow_id);
-          
-          if (flowDefinition) {
-            console.log(`[DO:${this.state.id}] Loaded flow definition for ${flow_id}: ${flowDefinition.name}`);
-            console.log(`[DO:${this.state.id}] Flow definition agent field: ${flowDefinition.agent || 'not set (defaults to openhands)'}`);
-            databaseAvailable = true;
-            
-            // Use flow definition values
-            effectiveRepository = flowDefinition.repository || '[FLOW]';
-            effectiveBranch = flowDefinition.branch || '[FLOW]';
-            
-            // Use flow max iterations if available
-            if (flowDefinition.max_iterations && flowDefinition.max_iterations > 0) {
-              effectiveMaxIterations = flowDefinition.max_iterations;
-            }
-            
-            console.log(`[DO:${this.state.id}] Using repository from database: ${effectiveRepository}, branch: ${effectiveBranch}, agent: ${flowDefinition?.agent || 'openhands'}`);
-            
-            // Warn if repository is placeholder
-            if (effectiveRepository === '[FLOW]') {
-              console.warn(`[DO:${this.state.id}] WARNING: Repository is placeholder '[FLOW]'. OpenHands conversation will be created but may not work correctly.`);
-            }
-          } else {
-            console.warn(`[DO:${this.state.id}] No flow definition found for ${flow_id} in database. Using placeholder values.`);
-            console.warn(`[DO:${this.state.id}] To fix: Ensure 'flow_definitions' table exists with repository and branch columns.`);
-            // Note: agent will be set to 'openhands' as default when conversation object is created below
-          }
-        } catch (error: any) {
-          console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
-          console.error(`[DO:${this.state.id}] Database error details: ${error.message}`);
-          console.error(`[DO:${this.state.id}] Using placeholder values. Check if 'flow_definitions' table exists.`);
-          errorContext += `, flow_definition_error: ${error.message}`;
+      if (!this.env.FLOW_RUNS_DB) {
+        console.error(`[DO:${this.state.id}] FLOW_RUNS_DB not configured. Flow definitions are required.`);
+        return new Response(JSON.stringify({ 
+          error: 'Database not configured. Flow definitions are required.',
+          context: `flow_id: ${flow_id}, FLOW_RUNS_DB: not configured`
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      try {
+        errorContext += `, FLOW_RUNS_DB: available`;
+        // Import database functions
+        const { getFlowDefinition } = await import('../services/database');
+        console.log(`[DO:${this.state.id}] Calling getFlowDefinition for ${flow_id}`);
+        flowDefinition = await getFlowDefinition(this.env.FLOW_RUNS_DB, flow_id);
+        
+        if (!flowDefinition) {
+          console.error(`[DO:${this.state.id}] Flow definition not found for: ${flow_id}`);
+          return new Response(JSON.stringify({ 
+            error: `Flow definition not found for: ${flow_id}`,
+            message: 'Flow must exist in flow_definitions table',
+            context: errorContext
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
         }
-      } else {
-        console.warn(`[DO:${this.state.id}] FLOW_RUNS_DB not configured. Using placeholder values for repository and branch.`);
-        errorContext += `, FLOW_RUNS_DB: not configured`;
+        
+        console.log(`[DO:${this.state.id}] Loaded flow definition for ${flow_id}: ${flowDefinition.name}`);
+        console.log(`[DO:${this.state.id}] Flow definition agent field: ${flowDefinition.agent}`);
+        
+        // Validate agent field
+        if (!flowDefinition.agent || !['openhands', 'deepseek'].includes(flowDefinition.agent)) {
+          console.error(`[DO:${this.state.id}] Invalid or missing agent in flow definition: ${flowDefinition.agent}`);
+          return new Response(JSON.stringify({
+            error: `Invalid or missing agent in flow definition: ${flowDefinition.agent || 'undefined'}`,
+            message: 'Flow definition must have agent: "openhands" or "deepseek"',
+            context: errorContext
+          }), { status: 400 });
+        }
+        
+        // Use flow definition values
+        effectiveRepository = flowDefinition.repository || '';
+        effectiveBranch = flowDefinition.branch || '';
+        
+        // Validate repository/branch for OpenHands agent
+        if (flowDefinition.agent === 'openhands' && (!effectiveRepository || effectiveRepository.trim() === '')) {
+          console.error(`[DO:${this.state.id}] Repository required for OpenHands agent but not provided in flow definition`);
+          return new Response(JSON.stringify({
+            error: 'Repository required for OpenHands agent',
+            message: 'Flow definition with agent="openhands" must have repository field',
+            context: errorContext
+          }), { status: 400 });
+        }
+        
+        // Use flow max iterations if available
+        if (flowDefinition.max_iterations && flowDefinition.max_iterations > 0) {
+          effectiveMaxIterations = flowDefinition.max_iterations;
+        }
+        
+        console.log(`[DO:${this.state.id}] Using repository from database: ${effectiveRepository}, branch: ${effectiveBranch}, agent: ${flowDefinition.agent}`);
+        
+      } catch (error: any) {
+        console.error(`[DO:${this.state.id}] Error loading flow definition: ${error.message}`);
+        console.error(`[DO:${this.state.id}] Database error details: ${error.message}`);
+        return new Response(JSON.stringify({ 
+          error: `Database error loading flow definition: ${error.message}`,
+          context: errorContext
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
       }
       
       // Load steps from database
@@ -1311,7 +1342,7 @@ export class ConversationOrchestratorDO_2026A {
         flow_steps: executionSteps,
         flow_completed: false, // Track if flow execution is complete
         current_step_index: 0,
-        agent: flowDefinition?.agent || 'openhands', // Set agent from flow definition
+        agent: flowDefinition.agent, // Set agent from flow definition (validated above)
         flow_execution_mode: true, // Enable flow execution mode for step-by-step execution
         step_status_sent: false, // Track if SENDING STEP status has been sent for current step
         // Initialize execution context with provided inputs
@@ -1376,22 +1407,17 @@ export class ConversationOrchestratorDO_2026A {
       await this.state.storage.setAlarm(alarmTime);
       console.log(`[DO:${this.state.id}] DEBUG: Alarm set successfully`);
       
-      console.log(`[DO:${this.state.id}] Ultra-minimal flow initialized with ${steps.length} steps, repository: ${effectiveRepository}, branch: ${effectiveBranch}`);
+      console.log(`[DO:${this.state.id}] Flow initialized with ${steps.length} steps, agent: ${flowDefinition.agent}, repository: ${effectiveRepository}, branch: ${effectiveBranch}`);
       
       return new Response(JSON.stringify({
         success: true,
         flow_id: flow_id,
+        flow_name: flowDefinition.name,
+        agent: flowDefinition.agent,
         repository: effectiveRepository,
         branch: effectiveBranch,
         steps_count: steps.length,
-        database_available: databaseAvailable,
-        repository_source: databaseAvailable && flowDefinition ? 'database' : 'placeholder',
-        message: databaseAvailable && flowDefinition 
-          ? 'Ultra-minimal flow execution started with repository and branch from database' 
-          : 'Ultra-minimal flow execution started with placeholder repository and branch (database not available or flow definition not found)',
-        warning: effectiveRepository === '[FLOW]' 
-          ? 'Repository is placeholder "[FLOW]". OpenHands conversation may not work correctly without a valid repository.' 
-          : undefined,
+        message: `Flow execution started with agent: ${flowDefinition.agent}`,
         conversation_id: this.state.id.toString(),
         flow_run_id: this.flowRunId
       }), {
