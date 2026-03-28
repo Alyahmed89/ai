@@ -5139,6 +5139,10 @@ ${messageContent}`;
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
         
         // PERSISTENCE: Save normalized API calls and variables for failed steps too
+        console.log("PERSISTENCE_CHECK", {
+          hasApiCalls: !!resolvedStep?.api_calls,
+          apiCallsLength: resolvedStep?.api_calls?.length || 0
+        });
         if (resolvedStep?.api_calls && resolvedStep.api_calls.length > 0 && this.db) {
           try {
             // Generate step run ID for linking
@@ -5146,6 +5150,7 @@ ${messageContent}`;
             
             // A) Save normalized API calls
             for (const call of resolvedStep.api_calls) {
+              console.log("PERSISTING_API_CALL", call.endpoint_name);
               await saveApiCall(this.db, {
                 id: generateId(),
                 flow_id: this.conversation.flow_id,
@@ -5167,6 +5172,7 @@ ${messageContent}`;
               if (!data || typeof data !== 'object') continue;
               
               for (const [key, value] of Object.entries(data)) {
+                console.log("PERSISTING_VARIABLE", key);
                 await saveVariable(this.db, {
                   id: generateId(),
                   flow_id: this.conversation.flow_id,
@@ -5230,6 +5236,10 @@ ${messageContent}`;
       // Save successful step run to database with API calls
       
       // PERSISTENCE: Save normalized API calls and variables BEFORE step run save
+      console.log("PERSISTENCE_CHECK", {
+        hasApiCalls: !!resolvedStep?.api_calls,
+        apiCallsLength: resolvedStep?.api_calls?.length || 0
+      });
       if (resolvedStep?.api_calls && resolvedStep.api_calls.length > 0 && this.db) {
         try {
           // Generate step run ID for linking
@@ -5237,6 +5247,7 @@ ${messageContent}`;
           
           // A) Save normalized API calls
           for (const call of resolvedStep.api_calls) {
+            console.log("PERSISTING_API_CALL", call.endpoint_name);
             await saveApiCall(this.db, {
               id: generateId(),
               flow_id: this.conversation.flow_id,
@@ -5258,6 +5269,7 @@ ${messageContent}`;
             if (!data || typeof data !== 'object') continue;
             
             for (const [key, value] of Object.entries(data)) {
+              console.log("PERSISTING_VARIABLE", key);
               await saveVariable(this.db, {
                 id: generateId(),
                 flow_id: this.conversation.flow_id,
