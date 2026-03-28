@@ -637,18 +637,13 @@ export class ConversationOrchestratorDO_2026A {
     const path = url.pathname;
     
     // Load conversation state for all endpoints except initialization endpoints
-    if (path !== '/initialize' && path !== '/initialize-flow' && path !== '/start-flow') {
+    if (path !== '/initialize' && path !== '/start-flow') {
       await this.loadConversationState();
     }
     
     // Initialize a new conversation
     if (path === '/initialize' && request.method === 'POST') {
       return this.handleInitialize(request);
-    }
-    
-    // Initialize a new flow execution
-    if (path === '/initialize-flow' && request.method === 'POST') {
-      return this.handleInitializeFlow(request);
     }
     
     // Ultra-minimal flow execution (NEW)
@@ -698,7 +693,7 @@ export class ConversationOrchestratorDO_2026A {
     
     return new Response(JSON.stringify({
       error: 'Not found',
-      available_endpoints: ['POST /initialize', 'POST /initialize-flow', 'POST /start-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration', 'POST /openhands-response', 'POST /resume']
+      available_endpoints: ['POST /initialize', 'POST /start-flow', 'POST /attach', 'GET /get-state', 'POST /stop', 'POST /delete', 'POST /trigger-next-iteration', 'POST /openhands-response', 'POST /resume']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
@@ -1135,371 +1130,6 @@ export class ConversationOrchestratorDO_2026A {
     }
   }
 
-  private async handleInitializeFlow(request: Request): Promise<Response> {
-    try {
-      console.log(`[DO:${this.state.id}] handleInitializeFlow called`);
-      
-      const body = await request.json() as {
-        flow_id: string;
-        repository?: string;
-        branch?: string;
-        initial_user_prompt?: string;
-        max_iterations?: number;
-        input_payload?: string;
-      };
-      const { flow_id, repository, branch, initial_user_prompt, max_iterations, input_payload } = body;
-      
-      console.log(`[DO:${this.state.id}] Parsed request: flow_id=${flow_id}`);
-      
-      if (!flow_id) {
-        return new Response(JSON.stringify({ error: 'Need flow_id' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      
-      let currentStep: StepData | null = null;
-      
-      // Ensure reasonable minimum iterations
-      let effectiveMaxIterations = max_iterations && max_iterations >= 10 ? max_iterations : MAX_ITERATIONS;
-      
-      // Generate flow run ID
-      this.flowRunId = generateFlowRunId();
-      console.log(`[DO:${this.state.id}] Generated flow run ID: ${this.flowRunId}`);
-      
-      // Load flow context from database (if available)
-      let flowContext = null;
-      let flowDefinition = null;
-      let taskPrompt = initial_user_prompt || `Execute flow: ${flow_id}`;
-      let steps: StepData[] = []; // Initialize steps array
-      
-      // Variables that might be overridden by flow definition
-      let effectiveRepository = repository;
-      let effectiveBranch = branch;
-      
-      if (this.env.FLOW_RUNS_DB) {
-        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB is available`);
-        try {
-          // Import the database functions
-          console.log(`[DO:${this.state.id}] Attempting to import database functions...`);
-          const { getFlowContext, getNextStepForFlow, startTaskExecution } = await import('../services/database');
-          console.log(`[DO:${this.state.id}] Database functions imported successfully`);
-          
-          // Load flow context from database
-          flowContext = await getFlowContext(this.env.FLOW_RUNS_DB, flow_id);
-          console.log(`[DO:${this.state.id}] Flow context loaded: ${flowContext ? 'yes' : 'no'}`);
-          
-          if (flowContext) {
-            flowDefinition = flowContext.definition;
-            console.log(`[DO:${this.state.id}] Loaded flow context for ${flow_id}: ${flowDefinition.name}`);
-            
-            // Use flow definition values if not provided in request
-            effectiveRepository = repository || flowDefinition.repository;
-            effectiveBranch = branch || flowDefinition.branch;
-            const effectiveFlowMaxIterations = flowDefinition.max_iterations;
-            
-            // Use flow max iterations if not specified in request
-            if (!max_iterations && effectiveFlowMaxIterations > 0) {
-              effectiveMaxIterations = Math.max(effectiveFlowMaxIterations, effectiveMaxIterations);
-            }
-            
-            // Use flow's first_prompt (stored as description) for initial task prompt
-            if (flowDefinition.description) {
-              taskPrompt = flowDefinition.description;
-              console.log(`[DO:${this.state.id}] Using flow first_prompt: ${taskPrompt.substring(0, 100)}...`);
-            }
-          } else {
-            console.log(`[DO:${this.state.id}] No flow context found for ${flow_id}, using request parameters`);
-          }
-          
-          // Load first step directly from database (bypass getNextStep which needs conversation)
-          const { getFlowSteps } = await import('../services/database');
-          steps = await getFlowSteps(this.env.FLOW_RUNS_DB, flow_id);
-          currentStep = steps && steps.length > 0 ? steps[0] : null;
-          console.log(`[DO:${this.state.id}] First step loaded: ${currentStep ? currentStep.title : 'none'}`);
-          
-          if (currentStep) {
-            // Fetch task data if task_id is present OR if requires_task is true
-            let taskData = null;
-            let dynamicTaskId = null;
-            
-            // First try static task_id (only if non-empty string)
-            if (currentStep.task_id && currentStep.task_id.trim() && this.env.FLOW_RUNS_DB) {
-              try {
-                taskData = await getTaskData(this.env.FLOW_RUNS_DB, currentStep.task_id);
-                if (taskData) {
-                  console.log(`[DO:${this.state.id}] Loaded task data for task: ${currentStep.task_id}`);
-                } else {
-                  console.log(`[DO:${this.state.id}] Task not found in FLOW_RUNS_DB: ${currentStep.task_id}`);
-                  // Clear taskData so we can try requires_task if set
-                  taskData = null;
-                }
-              } catch (error) {
-                console.error(`[DO:${this.state.id}] Error loading task data from FLOW_RUNS_DB: ${error}`);
-              }
-            }
-            
-            // If no task data from task_id, try requires_task
-            // Convert requires_task to boolean explicitly (database returns 0/1 as number or string)
-            const requiresTask = this.convertRequiresTaskToBoolean(currentStep.requires_task);
-            console.log(`[DO:${this.state.id}] Task injection debug (other): taskData=${!!taskData}, requiresTask=${requiresTask}, flow_id=${flow_id}, FLOW_RUNS_DB=${!!this.env.FLOW_RUNS_DB}`);
-            if (!taskData && requiresTask && this.env.FLOW_RUNS_DB) {
-              // Dynamic task assignment - get first pending task for this flow
-              console.log(`[DO:${this.state.id}] Step requires dynamic task, fetching first pending task for flow: ${flow_id}`);
-              try {
-                const pendingTask = await getFirstPendingTask(this.env.FLOW_RUNS_DB, flow_id);
-                if (pendingTask) {
-                  taskData = {
-                    title: pendingTask.title,
-                    description: pendingTask.description,
-                    payload: pendingTask.payload
-                  };
-                  dynamicTaskId = pendingTask.id;
-                  console.log(`[DO:${this.state.id}] Loaded first pending task: ${pendingTask.id} - ${pendingTask.title}`);
-                } else {
-                  console.log(`[DO:${this.state.id}] No pending tasks found for flow: ${flow_id}`);
-                }
-              } catch (error) {
-                console.error(`[DO:${this.state.id}] Error loading first pending task: ${error}`);
-              }
-            }
-            
-            // Use the new step resolver for dynamic API data fetching
-            // This handles both new input_keys system and backward compatibility
-            try {
-              // Get previous step responses for variable substitution
-              const previousStepResponses = await this.getPreviousStepResponses();
-              
-              // Extract values from input objects (inputs are stored as {value, metadata})
-              const rawInputs: Record<string, any> = {};
-              if (this.conversation.execution_context?.inputs) {
-                for (const [key, inputObj] of Object.entries(this.conversation.execution_context.inputs)) {
-                  if (inputObj && typeof inputObj === 'object' && 'value' in inputObj) {
-                    rawInputs[key] = inputObj.value;
-                  } else {
-                    rawInputs[key] = inputObj;
-                  }
-                }
-              }
-              
-              const resolvedStep = await resolveStepInstructions(
-                currentStep,
-                this.env.FLOW_RUNS_DB,
-                this.env as Record<string, string>,
-                {
-                  flow_id: flow_id,
-                  execution_id: this.flowRunId,
-                  step_id: currentStep.step_id,
-                  previous_step_responses: previousStepResponses,
-                  inputs: rawInputs
-                }
-              );
-              
-              // Build the task prompt with resolved instructions
-              // Remove "Step X: " prefix from title to prevent AI from inferring progress
-              const stepTitleWithoutNumber = currentStep.title.replace(/^Step \d+: /, '');
-              taskPrompt = `Execute step: ${stepTitleWithoutNumber}`;
-              
-              // Add task data if available (backward compatibility)
-              if (resolvedStep.task_data) {
-                taskPrompt += `\n\n=== TASK ===`;
-                const taskId = dynamicTaskId || currentStep.task_id;
-                if (taskId) {
-                  taskPrompt += `\nTask ID: ${taskId}`;
-                }
-                if (resolvedStep.task_data.title) {
-                  taskPrompt += `\nTitle: ${resolvedStep.task_data.title}`;
-                }
-                if (resolvedStep.task_data.description) {
-                  taskPrompt += `\nDescription: ${resolvedStep.task_data.description}`;
-                }
-                taskPrompt += `\n=== END TASK ===\n`;
-                
-                // Store dynamic task ID if we fetched one
-                if (dynamicTaskId) {
-                  console.log(`[DO:${this.state.id}] Using dynamic task ID: ${dynamicTaskId}`);
-                }
-              }
-              
-              // Add the resolved instructions
-              taskPrompt += `\n${resolvedStep.instructions}`;
-              
-              // Add expected_response after instructions if provided
-              if (currentStep.expected_response) {
-                taskPrompt += `\n\nExpected response format:\n${currentStep.expected_response}`;
-              }
-              
-              // Log API responses if any (for debugging)
-              if (resolvedStep.api_responses && Object.keys(resolvedStep.api_responses).length > 0) {
-                console.log(`[DO:${this.state.id}] Step ${currentStep.step_id} API responses:`, 
-                  Object.keys(resolvedStep.api_responses).map(key => `${key}: ${resolvedStep.api_responses![key].success ? 'success' : 'failed'}`)
-                );
-              }
-              
-            } catch (error) {
-              console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
-              
-              // Fall back to old logic if step resolver fails
-              // Remove "Step X: " prefix from title to prevent AI from inferring progress
-              const stepTitleWithoutNumber = currentStep.title.replace(/^Step \d+: /, '');
-              taskPrompt = `Execute step: ${stepTitleWithoutNumber}`;
-              
-              if (taskData) {
-                taskPrompt += `\n\n=== TASK ===`;
-                const taskId = dynamicTaskId || currentStep.task_id;
-                if (taskId) {
-                  taskPrompt += `\nTask ID: ${taskId}`;
-                }
-                if (taskData.title) {
-                  taskPrompt += `\nTitle: ${taskData.title}`;
-                }
-                if (taskData.description) {
-                  taskPrompt += `\nDescription: ${taskData.description}`;
-                }
-                taskPrompt += `\n=== END TASK ===\n`;
-              }
-              
-              if (currentStep.description) {
-                taskPrompt += `\n${currentStep.description}`;
-              }
-            }
-            
-            // Add step metadata
-            if (currentStep.page_key) {
-              taskPrompt += `\nPage: ${currentStep.page_key}`;
-            }
-            if (currentStep.blocking === false) {
-              taskPrompt += `\nNote: This step is non-blocking - flow can continue even if this step fails`;
-            }
-            
-            console.log(`[DO:${this.state.id}] Loaded step for flow ${flow_id}: ${currentStep.title} (${currentStep.step_type})`);
-            
-            // Start tracking step execution (using task_execution_steps table for now)
-            try {
-              const executionResult = await startTaskExecution(
-                this.env.FLOW_RUNS_DB, 
-                this.flowRunId!,
-                currentStep.step_id
-              );
-              
-              if (executionResult.success) {
-                console.log(`[DO:${this.state.id}] Started tracking step execution: ${executionResult.execution_step_id}`);
-                // Store execution step ID for later completion
-                this.conversation!.current_execution_step_id = executionResult.execution_step_id;
-                // Store step data for reference
-                this.conversation!.current_step = currentStep;
-                // Set current step index to 0 (first step)
-                this.conversation!.current_step_index = 0;
-              }
-            } catch (trackingError: any) {
-              console.error(`[DO:${this.state.id}] Error tracking step execution: ${trackingError.message}`);
-              // Continue even if tracking fails
-            }
-          } else {
-            console.log(`[DO:${this.state.id}] No steps found for flow ${flow_id}`);
-          }
-        } catch (error: any) {
-          console.error(`[DO:${this.state.id}] Error loading flow context for ${flow_id}: ${error.message}`);
-          console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
-          // Continue without flow context if database error occurs
-        }
-      } else {
-        console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not available, proceeding without flow context loading`);
-      }
-      
-      // Initialize conversation for flow execution
-      // Convert steps to ExecutionStepData by adding response and status fields
-      const executionSteps: ExecutionStepData[] = steps ? steps.map(step => ({
-        ...step,
-        response: null,
-        status: 'pending' as const
-      })) : [];
-      
-      // Inject input_payload into prompt if available
-      let finalPrompt = taskPrompt;
-      if (input_payload) {
-        console.log(`[DO:${this.state.id}] Injecting input_payload into prompt (${input_payload.length} chars)`);
-        // Keep raw JSON string, don't stringify twice
-        finalPrompt = taskPrompt
-          ? `Input Data:\n${input_payload}\n\nUser Prompt:\n${taskPrompt}`
-          : `Input Data:\n${input_payload}`;
-      }
-      
-      this.conversation = {
-        state: 'INIT',
-        initial_user_prompt: finalPrompt,
-        iteration: 0,
-        repository: effectiveRepository || 'flow/execution',
-        branch: effectiveBranch || 'main',
-        max_iterations: effectiveMaxIterations,
-        status: 'active',
-        created_at: Date.now(),
-        updated_at: Date.now(),
-        project_facts: [], // Empty array instead of database query
-        flow_id: flow_id, // Store flow ID for flow execution
-        flow_steps: executionSteps, // Store all flow steps with execution data
-        flow_completed: false, // Track if flow execution is complete
-        current_step_index: 0, // Start at first step
-        flow_execution_mode: true, // Flag to indicate flow execution mode,
-        input_payload: input_payload || undefined, // Store input payload for flow-to-flow propagation
-        
-        // Store flow context for reference
-        flow_context: flowContext ? {
-          definition: flowDefinition,
-          has_project_context: flowContext.project_context.length > 0,
-          has_testing_priorities: flowContext.testing_priorities.length > 0,
-          has_api_commands: flowContext.api_commands.length > 0
-        } : undefined,
-        
-        // Task-based execution fields
-        task_execution_mode: currentStep !== null,
-        current_task_id: currentStep?.step_id,
-        step_status_sent: false, // Track if SENDING STEP status has been sent for current step
-        current_task_title: currentStep?.title,
-        current_task_description: currentStep?.description || undefined,
-        
-        // Set agent from flow definition or default to 'openhands'
-        agent: flowDefinition?.agent || 'openhands'
-      };
-      
-      // Set current_step if we have steps
-      if (executionSteps && executionSteps.length > 0) {
-        this.conversation.current_step = executionSteps[0];
-      }
-      
-      await this.state.storage.put('conversation', this.conversation);
-      
-      // Create initial flow run record in database
-      await this.createInitialFlowRun();
-      
-      // Schedule first alarm immediately
-      await this.scheduleNextAlarm(ALARM_DELAY_INIT);
-      
-      console.log(`[DO:${this.state.id}] Initialized flow execution for flow: ${flow_id}, alarm scheduled`);
-      
-      const responseData: FlowInitResponse = {
-        success: true,
-        conversation_id: this.state.id.toString(),
-        flow_id: flow_id,
-        state: 'INIT',
-        message: 'Flow execution initialized. First alarm scheduled.',
-        note: 'Flow execution: DeepSeek → OpenHands → API validation → Next step'
-      };
-      
-      // Task info not available in flow execution mode - using currentStep instead
-      
-      return new Response(JSON.stringify(responseData), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-    } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Initialize flow error: ${error.message}`);
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-  }
 
   // Ultra-minimal flow execution handler
   private async handleStartFlow(request: Request): Promise<Response> {
@@ -5938,28 +5568,22 @@ ${messageContent}`;
       return;
     }
 
-    console.log(`[DO:${this.state.id}] Restarting flow: ${this.conversation.flow_id}`);
-    
-    // Prepare the request body for the new flow (same as original)
-    const requestBody = {
-      flow_id: this.conversation.flow_id,
-      repository: this.conversation.repository,
-      branch: this.conversation.branch || 'main',
-      initial_user_prompt: this.conversation.initial_user_prompt,
-      max_iterations: this.conversation.max_iterations,
-      agent: this.conversation.agent || 'openhands' // Include agent field
-    };
+    console.log(`[DO:${this.state.id}] Restarting flow: ${this.conversation.flow_id} with /start-flow endpoint`);
 
     try {
       // Create a new Durable Object for the restarted flow
       const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
       const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
 
-      // Initialize the new Durable Object for flow execution
-      const initResponse = await newConversationStub.fetch('http://placeholder/initialize-flow', {
+      // Initialize the new Durable Object for flow execution using /start-flow
+      const initResponse = await newConversationStub.fetch('http://placeholder/start-flow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          flow_id: this.conversation.flow_id,
+          inputs: {},
+          callback_url: undefined
+        })
       });
 
       if (!initResponse.ok) {
@@ -6435,27 +6059,20 @@ ${messageContent}`;
       return;
     }
     
-    // Prepare the request body for the new flow
-    const requestBody: any = {
+    // Prepare the request body for the new flow using /start-flow endpoint
+    const requestBody = {
       flow_id: flowId,
-      repository: flow.repository, // Use repository column (not repo)
-      branch: flow.branch || 'main',
-      initial_user_prompt: firstStep.instructions, // Get from first step instructions
-      max_iterations: flow.max_iterations || 20,
-      agent: flow.agent || 'openhands' // Include agent field from flow definition
+      inputs: inputPayload !== undefined && inputPayload !== null ? { input_payload: inputPayload } : {},
+      callback_url: undefined
     };
     
-    // Add input_payload for flow-to-flow propagation if available
-    if (inputPayload !== undefined && inputPayload !== null) {
-      requestBody.input_payload = inputPayload;
-      console.log(`[DO:${this.state.id}] Adding input_payload to next flow (${inputPayload.length} chars)`);
-    }
+    console.log(`[DO:${this.state.id}] Starting flow ${flowId} with /start-flow endpoint, input payload: ${inputPayload ? inputPayload.length + ' chars' : 'none'}`);
     
     try {
       const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
       const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
       
-      const initResponse = await newConversationStub.fetch('http://placeholder/initialize-flow', {
+      const initResponse = await newConversationStub.fetch('http://placeholder/start-flow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
