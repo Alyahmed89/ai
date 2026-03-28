@@ -4423,7 +4423,7 @@ export class ConversationOrchestratorDO_2026A {
   }
 
   /**
-   * Handle flow completion by checking flow_definitions.next_flow_id
+   * Handle flow completion by checking flow_steps.next_flow_id
    * This is the SINGLE AUTHORITY for flow transitions
    */
   private async handleFlowCompletion(): Promise<void> {
@@ -5708,7 +5708,7 @@ ${messageContent}`;
     await this.stopConversation(`end_flow_detected: ${finalStopReason}`);
 
     // DISABLED: [END_FLOW] tokens should not trigger new flows
-    // Flow transitions only happen via flow_definitions.next_flow_id
+    // Flow transitions only happen via flow_steps.next_flow_id
     // when flow completes (next_step == -1)
     // if (doneData.new_prompt && !doneData.is_end_flow_early) {
     //   await this.startNextFlow(doneData);
@@ -6006,7 +6006,7 @@ ${messageContent}`;
     // ENFORCEMENT INVARIANT: No flow switching in step completion
     // This method should only handle step-to-step transitions within the same flow
     console.log(`[DO:${this.state.id}] Flow transitions disabled in step completion`);
-    console.log(`[DO:${this.state.id}] Next flow will be determined by flow_definitions.next_flow_id only`);
+    console.log(`[DO:${this.state.id}] Next flow will be determined by flow_steps.next_flow_id only`);
     
     // 0. Update execution data based on step results
     await this.updateExecutionData(step, response);
@@ -6024,7 +6024,7 @@ ${messageContent}`;
     
     // FLOW TRANSITIONS ARE NOT ALLOWED AT STEP LEVEL
     // Steps can only control step execution, not flow transitions
-    // Flow transitions only happen via flow_definitions.next_flow_id
+    // Flow transitions only happen via flow_steps.next_flow_id
     // when flow completes (next_step == -1)
     
     // 2. Check for AI decision tokens (hardened regex)
@@ -6082,7 +6082,7 @@ ${messageContent}`;
     
     // 9. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
-    // Flow transitions only happen via flow_definitions.next_flow_id
+    // Flow transitions only happen via flow_steps.next_flow_id
     // when flow completes (next_step == -1)
     await this.moveToNextStep();
   }
@@ -6162,13 +6162,13 @@ ${messageContent}`;
     execute: boolean;
     skipReason?: string;
     // nextFlowId removed: Flow transitions not allowed at step level
-    // Only flow_definitions.next_flow_id controls flow transitions
+    // Only flow_steps.next_flow_id controls flow transitions
   }> {
     // ENFORCEMENT INVARIANT: No flow transitions at step level
     // This is a critical safety check to prevent regression
     if (step.conditions?.some(c => c.condition_type === 'next_flow')) {
       console.error(`[DO:${this.state.id}] SECURITY VIOLATION: Step ${step.id} has next_flow condition`);
-      console.error(`[DO:${this.state.id}] Flow transitions are ONLY allowed via flow_definitions.next_flow_id`);
+      console.error(`[DO:${this.state.id}] Flow transitions are ONLY allowed via flow_steps.next_flow_id`);
       throw new Error('ILLEGAL_FLOW_TRANSITION: next_flow conditions are not allowed at step level');
     }
     
@@ -6210,7 +6210,7 @@ ${messageContent}`;
         condition_key: conditionRow.condition_key,
         condition_value: conditionRow.condition_value,
         condition_query: conditionRow.condition_query,
-        // Use step condition's next_flow_id only (flow_definitions.next_flow_id column doesn't exist)
+        // Use step condition's next_flow_id only (flow transitions use flow_steps.next_flow_id)
         next_flow_id: conditionRow.step_condition_next_flow_id
       };
       
@@ -6270,7 +6270,7 @@ ${messageContent}`;
           
         // FLOW TRANSITIONS ARE NOT ALLOWED AT STEP LEVEL
         // Removed: 'next_flow' condition type
-        // Flow transitions only happen via flow_definitions.next_flow_id
+        // Flow transitions only happen via flow_steps.next_flow_id
         // when flow completes (next_step == -1)
       }
     }
@@ -6426,8 +6426,8 @@ ${messageContent}`;
     // Get first step instructions from flow_steps table
     const firstStep = await this.env.FLOW_RUNS_DB.prepare(`
       SELECT instructions FROM flow_steps 
-      WHERE flow_id = ? AND order_index = 0
-      ORDER BY order_index LIMIT 1
+      WHERE flow_id = ? 
+      ORDER BY order_index ASC LIMIT 1
     `).bind(flowId).first();
     
     if (!firstStep) {
@@ -6512,8 +6512,8 @@ ${messageContent}`;
     // Get first step instructions from flow_steps table
     const firstStep = await this.env.FLOW_RUNS_DB.prepare(`
       SELECT instructions FROM flow_steps 
-      WHERE flow_id = ? AND order_index = 0
-      ORDER BY order_index LIMIT 1
+      WHERE flow_id = ? 
+      ORDER BY order_index ASC LIMIT 1
     `).bind(flowId).first();
     
     if (!firstStep) {
@@ -6576,7 +6576,7 @@ ${messageContent}`;
   private async determineNextFlow(): Promise<string | null> {
     // WARNING: This method is for monitoring/logging only
     // It MUST NOT be used for flow switching decisions
-    // Flow transitions only happen via flow_definitions.next_flow_id
+    // Flow transitions only happen via flow_steps.next_flow_id
     // when flow completes (next_step == -1)
     
     // System-level arbitration (priority-based) - FOR MONITORING ONLY
