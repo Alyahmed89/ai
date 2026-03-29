@@ -3619,7 +3619,18 @@ crudApi.post('/query', async (c) => {
           ORDER BY created_at ${order === 'asc' ? 'ASC' : 'DESC'}
         `;
         
-        flowRunVariablesResult = await db.prepare(comprehensiveVariablesQuery).bind(...variablesQueryParams).all();
+        try {
+          flowRunVariablesResult = await db.prepare(comprehensiveVariablesQuery).bind(...variablesQueryParams).all();
+        } catch (error) {
+          console.error('Error querying variables for flow_run_id:', error);
+          // Fall back to just flow_id query
+          const fallbackQuery = `
+            SELECT * FROM variables 
+            WHERE flow_id = ?
+            ORDER BY created_at ${order === 'asc' ? 'ASC' : 'DESC'}
+          `;
+          flowRunVariablesResult = await db.prepare(fallbackQuery).bind(flowRunData.flow_id).all();
+        }
       }
     }
 
