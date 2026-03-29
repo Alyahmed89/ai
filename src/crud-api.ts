@@ -3510,10 +3510,14 @@ crudApi.post('/query', async (c) => {
       stepRunsParams.push(flow_id);
     }
 
+    // Add limit for step_id queries to prevent huge responses
+    const stepRunsLimit = step_id ? 'LIMIT 50' : '';
+    
     stepRunsQuery = `
       SELECT * FROM step_runs
       ${stepRunsWhereClause}
       ORDER BY iteration ${order === 'asc' ? 'ASC' : 'DESC'}, attempt ${order === 'asc' ? 'ASC' : 'DESC'}
+      ${stepRunsLimit}
     `;
 
     // Get variables from variables table
@@ -3521,8 +3525,13 @@ crudApi.post('/query', async (c) => {
     let variablesParams = [];
     
     if (flow_run_id) {
-      variablesWhereClause = 'WHERE flow_run_id = ?';
-      variablesParams.push(flow_run_id);
+      // For flow_run_id queries, we need to get variables in multiple ways:
+      // 1. Variables directly linked to this flow_run_id (if column exists)
+      // 2. Variables linked to the flow_id of this run
+      // 3. Variables linked to step_ids from step_runs of this run
+      // We'll handle this after we get the flow_id and step_ids
+      variablesWhereClause = '';
+      variablesParams = [];
     } else if (step_id) {
       variablesWhereClause = 'WHERE step_id = ?';
       variablesParams.push(step_id);
@@ -3559,20 +3568,71 @@ crudApi.post('/query', async (c) => {
       ORDER BY created_at ${order === 'asc' ? 'ASC' : 'DESC'}
     `;
 
-    // Execute all queries
+    // Get flow run data early if flow_run_id is provided (needed for variable resolution)
+    let flowRunData = null;
+    let flowRunVariablesResult = { results: [] };
+    
+    if (flow_run_id) {
+      // Get flow run data
+      flowRunData = await db.prepare('SELECT * FROM flow_runs WHERE id = ?').bind(flow_run_id).first();
+      
+      if (flowRunData) {
+        // For flow_run_id queries, we need to get variables in multiple ways:
+        // 1. Variables directly linked to this flow_run_id (if column exists)
+        // 2. Variables linked to the flow_id of this run
+        // 3. Variables linked to step_ids from step_runs of this run
+        
+        // First, get step_ids from step_runs for this flow_run
+        const stepRunsForFlowRun = await db.prepare(
+          'SELECT DISTINCT step_id FROM step_runs WHERE flow_run_id = ?'
+        ).bind(flow_run_id).all();
+        
+        const stepIds = stepRunsForFlowRun.results.map((r: any) => r.step_id);
+        
+        // Build comprehensive variables query
+        let variablesWhereParts = [];
+        let variablesQueryParams = [];
+        
+        // Try flow_run_id first (if column exists)
+        variablesWhereParts.push('flow_run_id = ?');
+        variablesQueryParams.push(flow_run_id);
+        
+        // Add flow_id condition
+        variablesWhereParts.push('flow_id = ?');
+        variablesQueryParams.push(flowRunData.flow_id);
+        
+        // Add step_id conditions if we have step_ids
+        if (stepIds.length > 0) {
+          const stepIdPlaceholders = stepIds.map(() => '?').join(', ');
+          variablesWhereParts.push(`step_id IN (${stepIdPlaceholders})`);
+          variablesQueryParams.push(...stepIds);
+        }
+        
+        // Combine with OR to get all relevant variables
+        const combinedWhereClause = variablesWhereParts.length > 0 
+          ? `WHERE (${variablesWhereParts.join(' OR ')})`
+          : '';
+        
+        const comprehensiveVariablesQuery = `
+          SELECT * FROM variables
+          ${combinedWhereClause}
+          ORDER BY created_at ${order === 'asc' ? 'ASC' : 'DESC'}
+        `;
+        
+        flowRunVariablesResult = await db.prepare(comprehensiveVariablesQuery).bind(...variablesQueryParams).all();
+      }
+    }
+
+    // Execute other queries
     const [flowResult, stepsResult, stepRunsResult, variablesResult, flowExecutionDataResult] = await Promise.all([
       flowQuery ? db.prepare(flowQuery).bind(...params).first() : Promise.resolve(null),
       stepsQuery ? db.prepare(stepsQuery).bind(...stepsParams).all() : Promise.resolve({ results: [] }),
       stepRunsQuery ? db.prepare(stepRunsQuery).bind(...stepRunsParams).all() : Promise.resolve({ results: [] }),
-      variablesQuery ? db.prepare(variablesQuery).bind(...variablesParams).all() : Promise.resolve({ results: [] }),
+      // Use the comprehensive variables result for flow_run_id, otherwise use the regular query
+      flow_run_id && flowRunData ? Promise.resolve(flowRunVariablesResult) : 
+        (variablesQuery ? db.prepare(variablesQuery).bind(...variablesParams).all() : Promise.resolve({ results: [] })),
       flowExecutionDataQuery ? db.prepare(flowExecutionDataQuery).bind(...flowExecutionDataParams).all() : Promise.resolve({ results: [] })
     ]);
-
-    // Get flow run data if flow_run_id is provided
-    let flowRunData = null;
-    if (flow_run_id) {
-      flowRunData = await db.prepare('SELECT * FROM flow_runs WHERE id = ?').bind(flow_run_id).first();
-    }
 
     // Organize variables by type
     const organizedVariables = {
