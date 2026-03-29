@@ -1133,9 +1133,14 @@ export class ConversationOrchestratorDO_2026A {
 
   // Ultra-minimal flow execution handler
   private async handleStartFlow(request: Request): Promise<Response> {
+    // Define errorContext at function scope so it's available in catch block
+    let errorContext = 'initializing';
+    let flow_id = '';
+    
     try {
       const body = await request.json() as { flow_id: string; inputs?: Record<string, any>; callback_url?: string };
-      const { flow_id, inputs = {}, callback_url } = body;
+      flow_id = body.flow_id;
+      const { inputs = {}, callback_url } = body;
       
       if (!flow_id) {
         return new Response(JSON.stringify({ error: 'Need flow_id' }), {
@@ -1148,7 +1153,7 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] DEBUG: handleStartFlow called at ${Date.now()}`);
       
       // Store flow_id for error reporting
-      let errorContext = `flow_id: ${flow_id}`;
+      errorContext = `flow_id: ${flow_id}`;
       
       // Load flow definition from database - REQUIRED
       let flowDefinition = null;
