@@ -620,7 +620,7 @@ app.get('/status/:id', async (c) => {
           flow_steps: (data.conversation.flow_steps || []).map((step: any) => ({
             id: step.step_id, // Use step_id from StepData interface
             title: step.title,
-            instructions: step.description || '', // Use description as instructions
+            instructions: step.rendered_instructions || step.description || '', // Use rendered instructions first, fallback to description
             // 🔥 REQUIRED FIELDS
             response: step.response || null,
             status: step.status || "pending"

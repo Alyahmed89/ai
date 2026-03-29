@@ -346,6 +346,7 @@ export interface StepData {
 export interface ExecutionStepData extends StepData {
   response?: string;       // AI output for this step
   status?: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'; // Execution status
+  rendered_instructions?: string; // Instructions after variable substitution (post-rendering)
 }
 
 // AI token parsing types

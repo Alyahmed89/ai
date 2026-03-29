@@ -1313,11 +1313,21 @@ export class ConversationOrchestratorDO_2026A {
       
       // Create ultra-minimal conversation with values from flow definition
       // Convert steps to ExecutionStepData by adding response and status fields
-      const executionSteps: ExecutionStepData[] = steps.map(step => ({
-        ...step,
-        response: null,
-        status: 'pending' as const
-      }));
+      const executionSteps: ExecutionStepData[] = steps.map(step => {
+        // For the first step, store rendered instructions if available
+        let renderedInstructions = undefined;
+        if (step.step_id === firstStep?.step_id && resolvedStep?.instructions) {
+          renderedInstructions = resolvedStep.instructions;
+          console.log(`[DO:${this.state.id}] Stored rendered instructions for initial step ${step.step_id}`);
+        }
+        
+        return {
+          ...step,
+          response: null,
+          status: 'pending' as const,
+          rendered_instructions: renderedInstructions
+        };
+      });
       
       if (!executionSteps || executionSteps.length === 0) {
         throw new Error('invalid_flow_no_steps');
@@ -4848,6 +4858,13 @@ ${messageContent}`;
       const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === step.step_id);
       if (stepIndex !== -1) {
         this.conversation.flow_steps[stepIndex].status = 'running';
+        
+        // Store rendered instructions if available (post-rendering)
+        if (resolvedStep?.instructions) {
+          this.conversation.flow_steps[stepIndex].rendered_instructions = resolvedStep.instructions;
+          console.log(`[DO:${this.state.id}] Stored rendered instructions for step ${step.step_id} (${resolvedStep.instructions.length} chars)`);
+        }
+        
         console.log(`[DO:${this.state.id}] Updated step ${step.step_id} status to 'running'`);
         
         // PERSIST: Save conversation state immediately
