@@ -3417,3 +3417,246 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
 });
 
 
+
+// Unified query endpoint for flows, steps, runs, and variables
+crudApi.post('/query', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const body = await c.req.json();
+    const { flow_id, flow_run_id, step_id, type = 'full', sort_by = 'step_order', order = 'asc' } = body;
+
+    // Validate parameters
+    if (!flow_id && !flow_run_id && !step_id && type !== 'full') {
+      return c.json({ error: 'At least one filter parameter (flow_id, flow_run_id, step_id) is required when type is not "full"' }, 400);
+    }
+
+    // Build base queries based on type
+    let flowQuery = '';
+    let stepsQuery = '';
+    let stepRunsQuery = '';
+    let variablesQuery = '';
+    let flowExecutionDataQuery = '';
+    let params = [];
+
+    // Get flow definition
+    if (flow_id) {
+      flowQuery = 'SELECT * FROM flow_definitions WHERE id = ?';
+      params.push(flow_id);
+    } else if (flow_run_id) {
+      flowQuery = `
+        SELECT fd.* FROM flow_definitions fd
+        INNER JOIN flow_runs fr ON fd.id = fr.flow_id
+        WHERE fr.id = ?
+      `;
+      params.push(flow_run_id);
+    } else if (step_id) {
+      flowQuery = `
+        SELECT fd.* FROM flow_definitions fd
+        INNER JOIN flow_steps fs ON fd.id = fs.flow_id
+        WHERE fs.id = ?
+      `;
+      params.push(step_id);
+    }
+
+    // Get flow steps with ordering
+    let stepsWhereClause = '';
+    let stepsParams = [];
+    
+    if (flow_id) {
+      stepsWhereClause = 'WHERE flow_id = ?';
+      stepsParams.push(flow_id);
+    } else if (flow_run_id) {
+      stepsWhereClause = `
+        WHERE flow_id = (
+          SELECT flow_id FROM flow_runs WHERE id = ?
+        )
+      `;
+      stepsParams.push(flow_run_id);
+    } else if (step_id) {
+      stepsWhereClause = 'WHERE id = ?';
+      stepsParams.push(step_id);
+    }
+
+    // Determine sort order for steps
+    const stepOrderField = sort_by === 'step_order' ? 'COALESCE(step_number, order_index)' : 'created_at';
+    const stepOrderDirection = order === 'asc' ? 'ASC' : 'DESC';
+    
+    stepsQuery = `
+      SELECT * FROM flow_steps
+      ${stepsWhereClause}
+      ORDER BY ${stepOrderField} ${stepOrderDirection}
+    `;
+
+    // Get step runs
+    let stepRunsWhereClause = '';
+    let stepRunsParams = [];
+    
+    if (flow_run_id) {
+      stepRunsWhereClause = 'WHERE flow_run_id = ?';
+      stepRunsParams.push(flow_run_id);
+    } else if (step_id) {
+      stepRunsWhereClause = 'WHERE step_id = ?';
+      stepRunsParams.push(step_id);
+    } else if (flow_id) {
+      stepRunsWhereClause = `
+        WHERE flow_run_id IN (
+          SELECT id FROM flow_runs WHERE flow_id = ?
+        )
+      `;
+      stepRunsParams.push(flow_id);
+    }
+
+    stepRunsQuery = `
+      SELECT * FROM step_runs
+      ${stepRunsWhereClause}
+      ORDER BY iteration ${order === 'asc' ? 'ASC' : 'DESC'}, attempt ${order === 'asc' ? 'ASC' : 'DESC'}
+    `;
+
+    // Get variables from variables table
+    let variablesWhereClause = '';
+    let variablesParams = [];
+    
+    if (flow_run_id) {
+      variablesWhereClause = 'WHERE flow_run_id = ?';
+      variablesParams.push(flow_run_id);
+    } else if (step_id) {
+      variablesWhereClause = 'WHERE step_id = ?';
+      variablesParams.push(step_id);
+    } else if (flow_id) {
+      variablesWhereClause = 'WHERE flow_id = ?';
+      variablesParams.push(flow_id);
+    }
+
+    variablesQuery = `
+      SELECT * FROM variables
+      ${variablesWhereClause}
+      ORDER BY created_at ${order === 'asc' ? 'ASC' : 'DESC'}
+    `;
+
+    // Get flow execution data
+    let flowExecutionDataWhereClause = '';
+    let flowExecutionDataParams = [];
+    
+    if (flow_run_id) {
+      flowExecutionDataWhereClause = `
+        WHERE conversation_id = (
+          SELECT conversation_id FROM flow_runs WHERE id = ?
+        )
+      `;
+      flowExecutionDataParams.push(flow_run_id);
+    } else if (flow_id) {
+      flowExecutionDataWhereClause = 'WHERE flow_id = ?';
+      flowExecutionDataParams.push(flow_id);
+    }
+
+    flowExecutionDataQuery = `
+      SELECT * FROM flow_execution_data
+      ${flowExecutionDataWhereClause}
+      ORDER BY created_at ${order === 'asc' ? 'ASC' : 'DESC'}
+    `;
+
+    // Execute all queries
+    const [flowResult, stepsResult, stepRunsResult, variablesResult, flowExecutionDataResult] = await Promise.all([
+      flowQuery ? db.prepare(flowQuery).bind(...params).first() : Promise.resolve(null),
+      stepsQuery ? db.prepare(stepsQuery).bind(...stepsParams).all() : Promise.resolve({ results: [] }),
+      stepRunsQuery ? db.prepare(stepRunsQuery).bind(...stepRunsParams).all() : Promise.resolve({ results: [] }),
+      variablesQuery ? db.prepare(variablesQuery).bind(...variablesParams).all() : Promise.resolve({ results: [] }),
+      flowExecutionDataQuery ? db.prepare(flowExecutionDataQuery).bind(...flowExecutionDataParams).all() : Promise.resolve({ results: [] })
+    ]);
+
+    // Get flow run data if flow_run_id is provided
+    let flowRunData = null;
+    if (flow_run_id) {
+      flowRunData = await db.prepare('SELECT * FROM flow_runs WHERE id = ?').bind(flow_run_id).first();
+    }
+
+    // Organize variables by type
+    const organizedVariables = {
+      input: {},
+      ai: {},
+      step: {},
+      flow: {}
+    };
+
+    // Process input variables from flow_runs
+    if (flowRunData?.input_payload) {
+      try {
+        const inputPayload = JSON.parse(flowRunData.input_payload);
+        organizedVariables.input = inputPayload;
+      } catch (e) {
+        organizedVariables.input = { raw: flowRunData.input_payload };
+      }
+    }
+
+    // Process AI output variables from step_runs
+    stepRunsResult.results.forEach((stepRun: any) => {
+      if (stepRun.response) {
+        const stepKey = `step_${stepRun.step_id}_iteration_${stepRun.iteration}_attempt_${stepRun.attempt}`;
+        organizedVariables.ai[stepKey] = stepRun.response;
+      }
+    });
+
+    // Process step output variables from step_runs
+    stepRunsResult.results.forEach((stepRun: any) => {
+      if (stepRun.output_payload) {
+        try {
+          const outputPayload = JSON.parse(stepRun.output_payload);
+          const stepKey = `step_${stepRun.step_id}_output`;
+          organizedVariables.step[stepKey] = outputPayload;
+        } catch (e) {
+          const stepKey = `step_${stepRun.step_id}_output_raw`;
+          organizedVariables.step[stepKey] = stepRun.output_payload;
+        }
+      }
+    });
+
+    // Process variables from variables table
+    variablesResult.results.forEach((variable: any) => {
+      try {
+        const value = JSON.parse(variable.value);
+        organizedVariables.flow[variable.key] = value;
+      } catch (e) {
+        organizedVariables.flow[variable.key] = variable.value;
+      }
+    });
+
+    // Process flow execution data
+    flowExecutionDataResult.results.forEach((data: any) => {
+      organizedVariables.flow[data.key] = data.value;
+    });
+
+    // Build response based on type
+    let response: any = {};
+    
+    if (type === 'full' || type === 'flow') {
+      response.flow = flowResult || null;
+    }
+    
+    if (type === 'full' || type === 'step') {
+      response.steps = stepsResult.results || [];
+    }
+    
+    if (type === 'full' || type === 'run') {
+      response.step_runs = stepRunsResult.results || [];
+    }
+    
+    if (type === 'full' || type === 'variable') {
+      response.variables = organizedVariables;
+    }
+
+    // For backward compatibility, always include flow_run if flow_run_id is provided
+    if (flow_run_id) {
+      response.flow_run = flowRunData;
+    }
+
+    return c.json(response);
+
+  } catch (error) {
+    console.error('Query endpoint error:', error);
+    return c.json({ error: 'Internal server error', details: error.message }, 500);
+  }
+});
