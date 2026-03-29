@@ -3590,14 +3590,14 @@ crudApi.post('/query', async (c) => {
         const stepIds = stepRunsForFlowRun.results.map((r: any) => r.step_id);
         
         // Build comprehensive variables query
+        // Note: We don't include flow_run_id in the WHERE clause because
+        // the variables table might not have this column. Instead, we query
+        // by flow_id and step_ids which should cover all variables relevant
+        // to this flow run.
         let variablesWhereParts = [];
         let variablesQueryParams = [];
         
-        // Try flow_run_id first (if column exists)
-        variablesWhereParts.push('flow_run_id = ?');
-        variablesQueryParams.push(flow_run_id);
-        
-        // Add flow_id condition
+        // Add flow_id condition (variables table has flow_id column)
         variablesWhereParts.push('flow_id = ?');
         variablesQueryParams.push(flowRunData.flow_id);
         
