@@ -1666,20 +1666,43 @@ export async function saveVariable(db: D1Database, variable: {
   source?: string;
 }): Promise<{success: boolean; error?: string}> {
   try {
+    // Get conversation_id from flow_run_id if available
+    let conversation_id = null;
+    if (variable.flow_run_id) {
+      const flowRun = await db.prepare(`
+        SELECT conversation_id FROM flow_runs WHERE id = ?
+      `).bind(variable.flow_run_id).first();
+      
+      if (flowRun) {
+        conversation_id = (flowRun as any).conversation_id;
+      }
+    }
+    
+    // Generate ID for flow_execution_data: flow_id_conversation_id_key
+    const executionDataId = variable.flow_id && conversation_id 
+      ? `${variable.flow_id}_${conversation_id}_${variable.key}`
+      : variable.id;
+    
+    const now = Math.floor(Date.now());
+    
+    // Insert into flow_execution_data (the actual variable storage)
     await db.prepare(`
-      INSERT INTO variables (
-        id, flow_id, flow_run_id, step_id, step_run_id,
-        key, value, source
+      INSERT INTO flow_execution_data (
+        id, flow_id, conversation_id, flow_run_id, key, value, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        value = excluded.value,
+        updated_at = excluded.updated_at,
+        flow_run_id = COALESCE(excluded.flow_run_id, flow_execution_data.flow_run_id)
     `).bind(
-      variable.id,
+      executionDataId,
       variable.flow_id || null,
+      conversation_id,
       variable.flow_run_id || null,
-      variable.step_id || null,
-      variable.step_run_id || null,
       variable.key,
       variable.value ? JSON.stringify(variable.value) : null,
-      variable.source || 'api'
+      now,
+      now
     ).run();
 
     return { success: true };
