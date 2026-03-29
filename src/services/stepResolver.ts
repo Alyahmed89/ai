@@ -92,6 +92,38 @@ export async function resolveStepInstructions(
       // Inject API responses into instructions
       instructions = injectApiResponses(instructions, unifiedResult.api_calls, unifiedResult.variables);
       
+      // Combine all available variables for {variable} substitution
+      const allVariables: Record<string, any> = {};
+      
+      // Add context.inputs
+      if (context.inputs) {
+        Object.assign(allVariables, context.inputs);
+      }
+      
+      // Add previous step responses
+      if (context.previous_step_responses) {
+        Object.assign(allVariables, context.previous_step_responses);
+      }
+      
+      // Add unified result variables
+      if (unifiedResult.variables) {
+        Object.assign(allVariables, unifiedResult.variables);
+      }
+      
+      // Add task data if available
+      if (taskData) {
+        allVariables.task_data = taskData;
+        allVariables.task_title = taskData.title;
+        allVariables.task_description = taskData.description;
+      }
+      
+      console.log(`[StepResolver:unified] Combined variables for {variable} substitution: ${Object.keys(allVariables).join(', ')}`);
+      
+      // Apply {variable} substitution
+      if (Object.keys(allVariables).length > 0) {
+        instructions = substituteVariables(instructions, allVariables, 'unified_system');
+      }
+      
       // Add command format instructions if step has command endpoints
       instructions = addCommandFormatInstructions(instructions, step);
       
@@ -127,6 +159,13 @@ export async function resolveStepInstructions(
         initialVariables.task_data = taskData;
       }
       
+      // Add context.inputs to initial variables for {variable} substitution
+      if (context.inputs && Object.keys(context.inputs).length > 0) {
+        Object.assign(initialVariables, context.inputs);
+      }
+      
+      console.log(`[StepResolver:legacy] Initial variables for resolver: ${Object.keys(initialVariables).join(', ')}`);
+      
       // We need to modify SecureVariableResolver to accept initial variables
       // For now, we'll use a workaround by injecting task data into the instructions
       let instructionsWithTaskData = step.instructions || step.description || step.title || '';
@@ -135,7 +174,7 @@ export async function resolveStepInstructions(
         instructionsWithTaskData = injectTaskData(instructionsWithTaskData, taskData, step.task_id);
       }
       
-      // Inject input values if available
+      // Inject input values if available (legacy [input:name] syntax)
       if (context.inputs && Object.keys(context.inputs).length > 0) {
         instructionsWithTaskData = injectInputValues(instructionsWithTaskData, context.inputs);
       }
@@ -161,6 +200,8 @@ export async function resolveStepInstructions(
           task_data: taskData,
           // Pass previous step responses for variable substitution
           previous_step_responses: context.previous_step_responses,
+          // Pass context inputs for {variable} substitution
+          inputs: context.inputs,
           // Pass database for endpoint registry lookups
           db: db
         }
@@ -194,6 +235,33 @@ export async function resolveStepInstructions(
   // Inject input values if available
   if (context.inputs && Object.keys(context.inputs).length > 0) {
     instructions = injectInputValues(instructions, context.inputs);
+  }
+  
+  // Combine all available variables for {variable} substitution
+  const allVariables: Record<string, any> = {};
+  
+  // Add context.inputs
+  if (context.inputs) {
+    Object.assign(allVariables, context.inputs);
+  }
+  
+  // Add previous step responses
+  if (context.previous_step_responses) {
+    Object.assign(allVariables, context.previous_step_responses);
+  }
+  
+  // Add task data if available
+  if (taskData) {
+    allVariables.task_data = taskData;
+    allVariables.task_title = taskData.title;
+    allVariables.task_description = taskData.description;
+  }
+  
+  console.log(`[StepResolver] Combined variables for {variable} substitution: ${Object.keys(allVariables).join(', ')}`);
+  
+  // Apply {variable} substitution
+  if (Object.keys(allVariables).length > 0) {
+    instructions = substituteVariables(instructions, allVariables, 'old_system');
   }
   
   return {
@@ -1094,9 +1162,12 @@ export function injectInputValues(
 ): string {
   let result = instructions;
   
-  // Inject [input:name] placeholders
+  // Inject [input:name] placeholders (legacy support)
   const inputRegex = /\[input:([^\]]+)\]/g;
   const matches = [...result.matchAll(inputRegex)];
+  
+  console.log(`[StepResolver:injectInputValues] Found ${matches.length} [input:name] placeholders: ${matches.map(m => m[1]).join(', ')}`);
+  console.log(`[StepResolver:injectInputValues] Available inputs: ${Object.keys(inputs).join(', ')}`);
   
   for (const match of matches) {
     const fullMatch = match[0];
@@ -1106,6 +1177,60 @@ export function injectInputValues(
       const value = inputs[inputName];
       result = result.replace(new RegExp(fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 
         typeof value === 'string' ? value : JSON.stringify(value));
+      console.log(`[StepResolver:injectInputValues] Replaced ${fullMatch} with value`);
+    } else {
+      console.log(`[StepResolver:injectInputValues] WARNING: Input ${inputName} not found in available inputs`);
+    }
+  }
+  
+  return result;
+}
+
+// Helper to substitute {variable} placeholders in instructions
+export function substituteVariables(
+  instructions: string,
+  variables: Record<string, any>,
+  source: string = 'unknown'
+): string {
+  let result = instructions;
+  
+  // Find all {variable} placeholders
+  const variableRegex = /\{([^}]+)\}/g;
+  const matches = [...result.matchAll(variableRegex)];
+  
+  console.log(`[StepResolver:substituteVariables] Source: ${source}`);
+  console.log(`[StepResolver:substituteVariables] Found ${matches.length} {variable} placeholders: ${matches.map(m => m[1]).join(', ')}`);
+  console.log(`[StepResolver:substituteVariables] Available variables: ${Object.keys(variables).join(', ')}`);
+  
+  // Create a SecureVariableResolver for proper substitution
+  const resolver = new SecureVariableResolver({});
+  
+  try {
+    // Use safeSubstitute for proper variable replacement
+    result = resolver.safeSubstitute(instructions, variables);
+    console.log(`[StepResolver:substituteVariables] Substitution completed successfully`);
+    
+    // Check for any remaining placeholders
+    const remainingMatches = [...result.matchAll(variableRegex)];
+    if (remainingMatches.length > 0) {
+      console.log(`[StepResolver:substituteVariables] WARNING: ${remainingMatches.length} unresolved placeholders remain: ${remainingMatches.map(m => m[1]).join(', ')}`);
+    }
+    
+  } catch (error) {
+    console.error(`[StepResolver:substituteVariables] Error during variable substitution:`, error);
+    // Fall back to manual replacement
+    for (const match of matches) {
+      const fullMatch = match[0];
+      const varName = match[1];
+      
+      if (variables[varName] !== undefined) {
+        const value = variables[varName];
+        result = result.replace(new RegExp(fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 
+          typeof value === 'string' ? value : JSON.stringify(value));
+        console.log(`[StepResolver:substituteVariables] Manually replaced ${fullMatch}`);
+      } else {
+        console.log(`[StepResolver:substituteVariables] WARNING: Variable ${varName} not found`);
+      }
     }
   }
   

@@ -65,6 +65,7 @@ interface ExecutionContext {
   execution_id?: string;
   task_data?: any;
   previous_step_responses?: Record<string, any>; // NEW: Previous step responses for variable substitution
+  inputs?: Record<string, any>; // NEW: Input values for {variable} substitution
   db?: D1Database; // NEW: Database for endpoint registry lookups
 }
 
@@ -113,6 +114,12 @@ export class SecureVariableResolver {
       if (context.previous_step_responses) {
         initialVariables.previous_step_responses = context.previous_step_responses;
         this.log('debug', `Added previous_step_responses to initial variables with ${Object.keys(context.previous_step_responses).length} steps`);
+      }
+
+      // Add context inputs to initial variables for {variable} substitution
+      if (context.inputs && Object.keys(context.inputs).length > 0) {
+        Object.assign(initialVariables, context.inputs);
+        this.log('debug', `Added ${Object.keys(context.inputs).length} inputs from context to initial variables: ${Object.keys(context.inputs).join(', ')}`);
       }
       
       if (apiConfigs.length === 0) {
@@ -989,7 +996,9 @@ export class SecureVariableResolver {
     console.log("🔍 [DIAG] safeSubstitute called:", { 
       templateLength: template.length,
       variableCount: Object.keys(variables).length,
-      delimiters: { start, end }
+      delimiters: { start, end },
+      variables: Object.keys(variables),
+      templatePreview: template.substring(0, 200) + (template.length > 200 ? '...' : '')
     });
     
     // Escape regex special characters in delimiters
