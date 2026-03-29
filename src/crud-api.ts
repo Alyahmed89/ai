@@ -2818,15 +2818,29 @@ crudApi.post('/execute-step', async (c) => {
       }
     }
     
-    return c.json(successResponse({
+    // Create final response data
+    const responseData = {
       step: stepInfo,
       user_prompt,
       prompt_sent: prompt,
       agent_used: agent,
       deepseek_response,
       openhands_response,
-      timestamp: new Date().toISOString()
-    }));
+      timestamp: new Date().toISOString(),
+      ai_response: ai_response  // Add ai_response field
+    };
+    
+    // Add persistence test tag at final point
+    responseData.ai_response = "[PERSIST_TEST]" + responseData.ai_response;
+    
+    // Also update the mapped fields for consistency
+    if (agent === 'deepseek' && responseData.deepseek_response) {
+      responseData.deepseek_response = "[PERSIST_TEST]" + responseData.deepseek_response;
+    } else if ((agent === 'openhands' || agent === 'both') && responseData.openhands_response) {
+      responseData.openhands_response.conversationId = "[PERSIST_TEST]" + responseData.openhands_response.conversationId;
+    }
+    
+    return c.json(successResponse(responseData));
 
   } catch (error) {
     console.error('Error executing step:', error);
