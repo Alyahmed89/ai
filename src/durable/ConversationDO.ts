@@ -2827,14 +2827,17 @@ export class ConversationOrchestratorDO_2026A {
           // Filter out status messages from AI response
           const filteredResponse = this.filterStatusMessages(deepseekResult.response!);
           
+          // PERSIST_TEST: Add deployment verification tag
+          const taggedResponse = "[PERSIST_TEST]" + filteredResponse;
+          
           // Store filtered DeepSeek response
-          this.conversation.last_deepseek_response = filteredResponse;
+          this.conversation.last_deepseek_response = taggedResponse;
           this.conversation.deepseek_response_pending = false;
           
           // Update execution context with AI output for new condition system
           if (this.conversation.execution_context) {
             this.conversation.execution_context.ai_output = {
-              response: filteredResponse,
+              response: taggedResponse,
               intent: '',
               actions: [],
               metadata: {},
@@ -2842,7 +2845,7 @@ export class ConversationOrchestratorDO_2026A {
             };
             
             // SYNC: Keep last_step_response in sync with ai_output for legacy compatibility
-            this.conversation.last_step_response = filteredResponse;
+            this.conversation.last_step_response = taggedResponse;
             
             // Increment step_count AFTER successful completion
             this.conversation.execution_context.step_count += 1;
