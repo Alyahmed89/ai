@@ -5,6 +5,7 @@ import { ConversationOrchestratorDO_2026A } from './durable/ConversationDO';
 import { crudApi } from './crud-api';
 import { graphApi } from './graph-api';
 import { successResponse, errorResponse, notFoundResponse } from './response';
+import { VERSION, BUILD_TIME } from './version';
 
 // Dummy FlowControllerDO to satisfy existing binding
 export class FlowControllerDO {
@@ -190,6 +191,8 @@ app.get('/health', async (c) => {
   const healthChecks: any = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
+    version: VERSION,
+    build_time: BUILD_TIME,
     services: {}
   };
   
