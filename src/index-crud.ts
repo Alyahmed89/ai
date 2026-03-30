@@ -290,7 +290,15 @@ app.post('/start', async (c) => {
           if (!initResponse.ok) {
             const errorText = await initResponse.text();
             console.error(`[HTTP:START:FLOW] Durable Object start-flow failed: ${initResponse.status} - ${errorText}`);
-            return c.json(errorResponse(`Failed to start flow execution: ${initResponse.status}`, 500));
+            
+            try {
+              // Try to parse the error response as JSON to get detailed error info
+              const errorJson = JSON.parse(errorText);
+              return c.json(errorResponse(`Failed to start flow execution: ${errorJson.error || errorJson.message || 'Unknown error'}`, 500));
+            } catch (parseError) {
+              // If not JSON, return the raw error text
+              return c.json(errorResponse(`Failed to start flow execution: ${errorText.substring(0, 200)}`, 500));
+            }
           }
           
           // Parse the Durable Object response to get flow_run_id

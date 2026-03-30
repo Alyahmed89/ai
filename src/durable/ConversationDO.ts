@@ -1138,9 +1138,16 @@ export class ConversationOrchestratorDO_2026A {
     let flow_id = '';
     
     try {
+      console.log(`[DO:${this.state.id}] ========== START FLOW DEBUG ==========`);
+      console.log(`[DO:${this.state.id}] DEBUG: handleStartFlow called at ${Date.now()}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Durable Object ID: ${this.state.id.toString()}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Environment keys: ${Object.keys(this.env).join(', ')}`);
+      
       const body = await request.json() as { flow_id: string; inputs?: Record<string, any>; callback_url?: string };
       flow_id = body.flow_id;
       const { inputs = {}, callback_url } = body;
+      
+      console.log(`[DO:${this.state.id}] DEBUG: Request body - flow_id: ${flow_id}, inputs: ${JSON.stringify(inputs)}, callback_url: ${callback_url || 'none'}`);
       
       if (!flow_id) {
         return new Response(JSON.stringify({ error: 'Need flow_id' }), {
@@ -1150,7 +1157,6 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       console.log(`[DO:${this.state.id}] Starting ultra-minimal flow: ${flow_id}`);
-      console.log(`[DO:${this.state.id}] DEBUG: handleStartFlow called at ${Date.now()}`);
       
       // Store flow_id for error reporting
       errorContext = `flow_id: ${flow_id}`;
@@ -1174,8 +1180,13 @@ export class ConversationOrchestratorDO_2026A {
       
       try {
         errorContext += `, FLOW_RUNS_DB: available`;
+        console.log(`[DO:${this.state.id}] DEBUG: FLOW_RUNS_DB available: ${!!this.env.FLOW_RUNS_DB}`);
+        
         // Import database functions
+        console.log(`[DO:${this.state.id}] DEBUG: Attempting to import database module...`);
         const { getFlowDefinition } = await import('../services/database');
+        console.log(`[DO:${this.state.id}] DEBUG: Successfully imported database module, getFlowDefinition: ${typeof getFlowDefinition}`);
+        
         console.log(`[DO:${this.state.id}] Calling getFlowDefinition for ${flow_id}`);
         flowDefinition = await getFlowDefinition(this.env.FLOW_RUNS_DB, flow_id);
         
@@ -1193,6 +1204,14 @@ export class ConversationOrchestratorDO_2026A {
         
         console.log(`[DO:${this.state.id}] Loaded flow definition for ${flow_id}: ${flowDefinition.name}`);
         console.log(`[DO:${this.state.id}] Flow definition agent field: ${flowDefinition.agent}`);
+        console.log(`[DO:${this.state.id}] DEBUG: Flow definition full object:`, {
+          id: flowDefinition.id,
+          name: flowDefinition.name,
+          agent: flowDefinition.agent,
+          repository: flowDefinition.repository,
+          branch: flowDefinition.branch,
+          max_iterations: flowDefinition.max_iterations
+        });
         
         // Validate agent field
         if (!flowDefinition.agent || !['openhands', 'deepseek'].includes(flowDefinition.agent)) {
@@ -1239,9 +1258,9 @@ export class ConversationOrchestratorDO_2026A {
       
       // Load steps from database
       errorContext += `, loading steps`;
-      console.log(`[DO:${this.state.id}] Calling loadFlowStepsFromDB for flow: ${flow_id}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Calling loadFlowStepsFromDB for flow: ${flow_id}`);
       const steps = await this.loadFlowStepsFromDB(flow_id);
-      console.log(`[DO:${this.state.id}] loadFlowStepsFromDB returned ${steps?.length || 0} steps`);
+      console.log(`[DO:${this.state.id}] DEBUG: loadFlowStepsFromDB returned ${steps?.length || 0} steps`);
       
       if (!steps || steps.length === 0) {
         console.error(`[DO:${this.state.id}] No steps found for flow: ${flow_id}`);
@@ -1256,6 +1275,13 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       console.log(`[DO:${this.state.id}] Loaded ${steps.length} steps for flow: ${flow_id}`);
+      console.log(`[DO:${this.state.id}] DEBUG: First step details:`, {
+        step_id: steps[0]?.step_id,
+        step_key: steps[0]?.step_key,
+        title: steps[0]?.title,
+        instructions: steps[0]?.instructions?.substring(0, 100) + '...',
+        next_flow_id: steps[0]?.next_flow_id
+      });
       errorContext += `, steps: ${steps.length}`;
       
       // Adjust max iterations based on number of steps if not set by flow definition
@@ -1269,12 +1295,38 @@ export class ConversationOrchestratorDO_2026A {
       
       if (firstStep && this.env.FLOW_RUNS_DB) {
         try {
-          console.log(`[DO:${this.state.id}] Attempting to resolve step instructions for step: ${firstStep.step_key}`);
-          console.log(`[DO:${this.state.id}] Step has input_keys: ${!!firstStep.input_keys}`);
-          console.log(`[DO:${this.state.id}] Step has task_id: ${firstStep.task_id}`);
+          console.log(`[DO:${this.state.id}] DEBUG: Attempting to resolve step instructions for step: ${firstStep.step_key}`);
+          console.log(`[DO:${this.state.id}] DEBUG: Step properties:`, {
+            step_id: firstStep.step_id,
+            step_key: firstStep.step_key,
+            title: firstStep.title,
+            has_input_keys: !!firstStep.input_keys,
+            input_keys: firstStep.input_keys,
+            has_task_id: !!firstStep.task_id,
+            task_id: firstStep.task_id,
+            instructions_length: firstStep.instructions?.length || 0
+          });
           
           // Import step resolver
-          const { resolveStepInstructions } = await import('../services/stepResolver');
+          console.log(`[DO:${this.state.id}] DEBUG: Attempting to import stepResolver module...`);
+          const stepResolverModule = await import('../services/stepResolver');
+          console.log(`[DO:${this.state.id}] DEBUG: stepResolver module imported successfully`);
+          console.log(`[DO:${this.state.id}] DEBUG: stepResolver module exports:`, Object.keys(stepResolverModule));
+          
+          const { resolveStepInstructions } = stepResolverModule;
+          console.log(`[DO:${this.state.id}] DEBUG: resolveStepInstructions function: ${typeof resolveStepInstructions}`);
+          
+          console.log(`[DO:${this.state.id}] DEBUG: Calling resolveStepInstructions with parameters:`);
+          console.log(`[DO:${this.state.id}] DEBUG: - step:`, { step_id: firstStep.step_id, step_key: firstStep.step_key });
+          console.log(`[DO:${this.state.id}] DEBUG: - db: ${!!this.env.FLOW_RUNS_DB}`);
+          console.log(`[DO:${this.state.id}] DEBUG: - env keys:`, Object.keys(this.env));
+          console.log(`[DO:${this.state.id}] DEBUG: - execution context:`, {
+            flow_id: flow_id,
+            execution_id: `flow-${Date.now()}`,
+            step_id: firstStep.step_id,
+            inputs_count: Object.keys(inputs).length,
+            inputs_keys: Object.keys(inputs)
+          });
           
           // Resolve step instructions with task data and inputs
           const resolvedStep = await resolveStepInstructions(
@@ -1289,6 +1341,12 @@ export class ConversationOrchestratorDO_2026A {
               inputs: inputs // Pass inputs for [input:name] replacement
             }
           );
+          
+          console.log(`[DO:${this.state.id}] DEBUG: resolveStepInstructions returned:`, {
+            success: !!resolvedStep,
+            has_instructions: !!resolvedStep?.instructions,
+            instructions_length: resolvedStep?.instructions?.length || 0
+          });
           
           // Use resolved instructions directly
           initialPrompt = resolvedStep.instructions;
@@ -1310,8 +1368,10 @@ export class ConversationOrchestratorDO_2026A {
             console.log(`[DO:${this.state.id}] DEBUG: [input:message] placeholder was successfully replaced`);
           }
         } catch (error: any) {
-          console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
-          console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
+          console.error(`[DO:${this.state.id}] ERROR: Error resolving step instructions: ${error.message}`);
+          console.error(`[DO:${this.state.id}] ERROR: Error stack: ${error.stack}`);
+          console.error(`[DO:${this.state.id}] ERROR: Error name: ${error.name}`);
+          console.error(`[DO:${this.state.id}] ERROR: Error cause: ${error.cause}`);
           // Continue with default prompt if resolution fails
         }
       }
@@ -1440,13 +1500,27 @@ export class ConversationOrchestratorDO_2026A {
       });
       
     } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Start flow error: ${error.message}`);
-      console.error(`[DO:${this.state.id}] Error context: ${errorContext}`);
-      console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
+      console.error(`[DO:${this.state.id}] ========== START FLOW ERROR ==========`);
+      console.error(`[DO:${this.state.id}] ERROR: Start flow error: ${error.message}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error name: ${error.name}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error context: ${errorContext}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error stack: ${error.stack}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error cause: ${error.cause}`);
+      console.error(`[DO:${this.state.id}] ERROR: Flow ID: ${flow_id}`);
+      console.error(`[DO:${this.state.id}] ======================================`);
+      
+      // Return detailed error information for debugging
       return new Response(JSON.stringify({ 
         error: error.message,
-        context: errorContext,
-        flow_id: flow_id
+        error_name: error.name,
+        error_stack: error.stack,
+        error_context: errorContext,
+        flow_id: flow_id,
+        debug_info: {
+          durable_object_id: this.state.id.toString(),
+          timestamp: Date.now(),
+          environment_keys: Object.keys(this.env)
+        }
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
@@ -1886,27 +1960,31 @@ export class ConversationOrchestratorDO_2026A {
   // Helper to load flow steps from database with robust schema detection
   private async loadFlowStepsFromDB(flowId: string): Promise<ExecutionStepData[]> {
     if (!this.env.FLOW_RUNS_DB) {
-      console.log(`[DO:${this.state.id}] FLOW_RUNS_DB not configured`);
+      console.log(`[DO:${this.state.id}] ERROR: FLOW_RUNS_DB not configured`);
       return [];
     }
     
     try {
-      console.log(`[DO:${this.state.id}] Loading steps for flow: ${flowId}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Loading steps for flow: ${flowId}`);
       
       // First, try to detect the schema by checking what columns exist
+      console.log(`[DO:${this.state.id}] DEBUG: Calling detectFlowStepsSchema...`);
       const availableColumns = await this.detectFlowStepsSchema();
-      console.log(`[DO:${this.state.id}] Detected available columns: ${availableColumns.join(', ')}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Detected available columns: ${availableColumns.join(', ')}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Number of available columns: ${availableColumns.length}`);
       
       // Build query based on available columns
+      console.log(`[DO:${this.state.id}] DEBUG: Calling buildFlowStepsQuery...`);
       const query = this.buildFlowStepsQuery(availableColumns);
-      console.log(`[DO:${this.state.id}] Built query: ${query.substring(0, 200)}...`);
+      console.log(`[DO:${this.state.id}] DEBUG: Built query: ${query}`);
       
       // Execute the query
+      console.log(`[DO:${this.state.id}] DEBUG: Executing query for flow: ${flowId}`);
       const result = await this.env.FLOW_RUNS_DB.prepare(query).bind(flowId).all();
-      console.log(`[DO:${this.state.id}] Query executed, found ${result.results?.length || 0} results`);
+      console.log(`[DO:${this.state.id}] DEBUG: Query executed, success: ${result.success}, found ${result.results?.length || 0} results`);
       
       if (!result.results || result.results.length === 0) {
-        console.log(`[DO:${this.state.id}] No steps found for flow ${flowId}`);
+        console.log(`[DO:${this.state.id}] WARNING: No steps found for flow ${flowId}`);
         return [];
       }
       
@@ -1917,14 +1995,16 @@ export class ConversationOrchestratorDO_2026A {
           id: step.id,
           step_key: step.step_key,
           title: step.title,
+          instructions: step.instructions?.substring(0, 50) + '...',
           next_flow_id: step.next_flow_id,
           has_next_flow_id: step.next_flow_id !== undefined && step.next_flow_id !== null
         });
       });
       
       // Transform results to expected format
+      console.log(`[DO:${this.state.id}] DEBUG: Calling transformFlowStepResults...`);
       const transformedResults = this.transformFlowStepResults(result.results, availableColumns);
-      console.log(`[DO:${this.state.id}] Transformed ${transformedResults.length} results`);
+      console.log(`[DO:${this.state.id}] DEBUG: Transformed ${transformedResults.length} results`);
       
       // DEBUG: Log transformed results
       console.log(`[DO:${this.state.id}] DEBUG: Transformed results for flow ${flowId}:`);
@@ -1933,6 +2013,7 @@ export class ConversationOrchestratorDO_2026A {
           id: step.id,
           step_key: step.step_key,
           title: step.title,
+          instructions_length: step.instructions?.length || 0,
           next_flow_id: step.next_flow_id,
           has_next_flow_id: step.next_flow_id !== undefined && step.next_flow_id !== null
         });
@@ -1941,8 +2022,10 @@ export class ConversationOrchestratorDO_2026A {
       return transformedResults;
       
     } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Error loading steps: ${error.message}`);
-      console.error(`[DO:${this.state.id}] Error stack: ${error.stack}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error loading steps: ${error.message}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error name: ${error.name}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error stack: ${error.stack}`);
+      console.error(`[DO:${this.state.id}] ERROR: Error cause: ${error.cause}`);
       return [];
     }
   }
