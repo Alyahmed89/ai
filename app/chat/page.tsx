@@ -1154,8 +1154,8 @@ export default function ChatPage(props: any) {
     }
   };
 
-  const formatRelativeTime = (dateString: string): string => {
-    const date = new Date(dateString);
+  const formatRelativeTime = (dateInput: string | number): string => {
+    const date = typeof dateInput === 'string' ? new Date(dateInput) : new Date(dateInput * 1000);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffSec = Math.floor(diffMs / 1000);
