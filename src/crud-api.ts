@@ -1852,7 +1852,7 @@ crudApi.post('/endpoints', async (c) => {
       endpointData.ai_enabled ? 1 : 0,
       endpointData.endpoint_type || 'external_api',
       endpointData.parameter_schema ? JSON.stringify(endpointData.parameter_schema) : null,
-      endpointData.sample_response ? JSON.stringify(endpointData.sample_response) : null
+      endpointData.sample_response ? (typeof endpointData.sample_response === 'string' ? endpointData.sample_response : JSON.stringify(endpointData.sample_response)) : null
     ];
 
     await db.prepare(sql).bind(...params).run();
@@ -1914,8 +1914,16 @@ crudApi.put('/endpoints/:name', async (c) => {
         let value = endpointData[field];
         
         // Handle JSON fields
-        if (['headers', 'query_params', 'allowed_domains', 'tags', 'parameter_schema', 'sample_response'].includes(field) && value) {
+        if (['headers', 'query_params', 'allowed_domains', 'tags', 'parameter_schema'].includes(field) && value) {
           value = JSON.stringify(value);
+        }
+        
+        // Handle sample_response specially - don't double-stringify
+        if (field === 'sample_response' && value) {
+          if (typeof value !== 'string') {
+            value = JSON.stringify(value);
+          }
+          // If it's already a string, keep it as is
         }
         
         // Handle boolean fields
