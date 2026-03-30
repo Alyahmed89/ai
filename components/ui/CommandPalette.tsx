@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, KeyboardEvent } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface CommandItem {
   id: string;
@@ -44,8 +44,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!paletteRef.current) return;
-
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
@@ -82,26 +80,30 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
       }
     };
 
-    // Add event listener
+    // Add event listener only if the element exists
     const paletteElement = paletteRef.current;
-    paletteElement.addEventListener('keydown', handleKeyDown as any);
+    if (!paletteElement) return;
+
+    paletteElement.addEventListener('keydown', handleKeyDown as EventListener);
     
     return () => {
-      paletteElement.removeEventListener('keydown', handleKeyDown as any);
+      paletteElement.removeEventListener('keydown', handleKeyDown as EventListener);
     };
   }, [filteredItems, selectedIndex, onSelect, onClose]);
 
   // Focus the palette when it opens
   useEffect(() => {
-    if (paletteRef.current) {
-      paletteRef.current.focus();
+    const paletteElement = paletteRef.current;
+    if (paletteElement) {
+      paletteElement.focus();
     }
   }, []);
 
   // Close palette when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (paletteRef.current && !paletteRef.current.contains(e.target as Node)) {
+      const paletteElement = paletteRef.current;
+      if (paletteElement && !paletteElement.contains(e.target as Node)) {
         onClose();
       }
     };
