@@ -188,6 +188,8 @@ const getLayoutedElements = (nodes: CustomNode[], edges: CustomEdge[], direction
 import EditFlowModal from '../../../../components/EditFlowModal';
 import SimpleFlowCreator from '../../../../components/SimpleFlowCreator';
 import Modal from '../../../../components/ui/Modal';
+import FlowSection from '../../../../components/FlowSection';
+import IntelligentTextarea from '../../../../components/ui/IntelligentTextarea';
 
 // Step data structure - matches backend FlowStep
 interface Step {
@@ -1673,392 +1675,92 @@ const NodePopup = ({
         
         <div className="space-y-4">
           {/* ========== INPUT SECTION ========== */}
-          <div className="node-popup-section-label">INPUT</div>
-          
-          {/* FLOW, STEP, FLOWRUN with text labels and searchable autocomplete */}
-          <div className="node-popup-inline-params node-popup-row">
-            <div className="node-popup-labeled-input">
-              <span className="label-text">flow</span>
-              <input 
-                type="text" 
-                value={flowInput}
-                onChange={(e) => setFlowInput(e.target.value)}
-                list="flowOptions"
-                placeholder="search..."
-                className="node-popup-input"
-              />
-              <datalist id="flowOptions">
-                {['main_pipeline', 'data_processing', 'etl_job', 'analytics_flow'].map(option => <option key={option} value={option} />)}
-              </datalist>
-            </div>
-            <div className="node-popup-labeled-input">
-              <span className="label-text">step</span>
-              <input 
-                type="text" 
-                value={stepInput}
-                onChange={(e) => setStepInput(e.target.value)}
-                list="stepOptions"
-                placeholder="search..."
-                className="node-popup-input"
-              />
-              <datalist id="stepOptions">
-                {['process_data', 'validate_input', 'transform_results', 'load_final'].map(option => <option key={option} value={option} />)}
-              </datalist>
-            </div>
-            <div className="node-popup-labeled-input">
-              <span className="label-text">flowrun</span>
-              <input 
-                type="text" 
-                value={flowrunInput}
-                onChange={(e) => setFlowrunInput(e.target.value)}
-                list="flowrunOptions"
-                placeholder="search..."
-                className="node-popup-input"
-              />
-              <datalist id="flowrunOptions">
-                {['daily_run_001', 'nightly_batch', 'manual_trigger', 'scheduled_flow'].map(option => <option key={option} value={option} />)}
-              </datalist>
-            </div>
-          </div>
-
-          {/* DROPLIST with endpoint + dark icon */}
-          <div className="node-popup-dropdown-row">
-            <select
-              value={selectedCommand}
-              onChange={(e) => setSelectedCommand(e.target.value)}
-              className="node-popup-select"
-              disabled={loadingCommands}
-            >
-              <option value="">select endpoint to call for input</option>
-              {availableCommands.map((cmd) => (
-                <option key={cmd.name} value={cmd.name}>
-                  {cmd.name} ({cmd.method})
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => setShowCreateCommand(true)}
-              className="node-popup-icon-btn"
-              title="Add new command"
-            >
-              +
-            </button>
-            <button 
-              onClick={() => setShowSampleModal(true)}
-              className="node-popup-icon-btn" 
-              title="sample response"
-            >
-              📋
-            </button>
-          </div>
-          {loadingCommands && (
-            <div className="text-xs text-neutral-400">Loading commands...</div>
-          )}
-
-          {/* ========== QUERY PARAMETERS ========== */}
-          <div className="node-popup-query-params">
-            <div className="node-popup-query-header">
-              <button 
-                onClick={() => setQueryParams([...queryParams, { key: '', value: '' }])}
-                className="node-popup-icon-btn"
-              >
-                +
-              </button>
-            </div>
-            {queryParams.map((param, index) => (
-              <div key={index} className="node-popup-query-row">
-                <input
-                  type="text"
-                  value={param.key}
-                  onChange={(e) => {
-                    const newParams = [...queryParams];
-                    newParams[index].key = e.target.value;
-                    setQueryParams(newParams);
-                  }}
-                  placeholder="key"
-                  className="node-popup-query-key"
-                />
-                <input
-                  type="text"
-                  value={param.value}
-                  onChange={(e) => {
-                    const newParams = [...queryParams];
-                    newParams[index].value = e.target.value;
-                    setQueryParams(newParams);
-                  }}
-                  placeholder="value"
-                  className="node-popup-query-value"
-                />
-                <button
-                  onClick={() => {
-                    const newParams = queryParams.filter((_, i) => i !== index);
-                    setQueryParams(newParams);
-                  }}
-                  className="node-popup-icon-btn"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* ========== VARIABLES SECTION ========== */}
-          <div className="node-popup-tags-section">
-            <div className="text-xs text-gray-400 mb-1 font-thin">
-              available variables:
-            </div>
-            <div className="node-popup-tags-wrapper">
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'command_output')}
-                title="Drag command_output into text"
-              >
-                command_output
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'flow_id')}
-                title="Drag flow_id into text"
-              >
-                flow_id
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'step_id')}
-                title="Drag step_id into text"
-              >
-                step_id
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'user_input')}
-                title="Drag user_input into text"
-              >
-                user_input
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'timestamp')}
-                title="Drag timestamp into text"
-              >
-                timestamp
-              </div>
-            </div>
-          </div>
-
-          {/* ========== FLOW DROPDOWN ========== */}
-          <div className="node-popup-dropdown-row">
-            <select
-              value={selectedFlowId}
-              onChange={(e) => handleFlowChange(e.target.value)}
-              className="node-popup-select"
-            >
-              <option value="">Default Next Flow (optional)</option>
-              {availableFlows.map(flow => (
-                <option key={flow.id} value={flow.id}>
-                  {flow.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* ========== INSTRUCTIONS TEXTAREA ========== */}
-          <div className="node-popup-textarea-container">
-            <textarea
-              ref={textareaRef}
-              value={instructions || ''}
-              onChange={(e) => setInstructions(e.target.value)}
-              onInput={(e) => setInstructions(e.currentTarget.value)}
-              onDragOver={onInstructionsDragOver}
-              onDrop={onInstructionsDrop}
-              className="node-popup-textarea"
-              placeholder="expected response: {{command_output}}"
-              autoFocus
-            />
-          </div>
+          <FlowSection
+            title="INPUT"
+            type="input"
+            flowValue={flowInput}
+            stepValue={stepInput}
+            flowrunValue={flowrunInput}
+            onFlowChange={setFlowInput}
+            onStepChange={setStepInput}
+            onFlowrunChange={setFlowrunInput}
+            selectedCommand={selectedCommand}
+            onCommandChange={setSelectedCommand}
+            availableCommands={availableCommands}
+            loadingCommands={loadingCommands}
+            onAddCommand={() => setShowCreateCommand(true)}
+            onShowSample={() => setShowSampleModal(true)}
+            queryParams={queryParams}
+            onAddQueryParam={() => setQueryParams([...queryParams, { key: '', value: '' }])}
+            onUpdateQueryParam={(index, key, value) => {
+              const newParams = [...queryParams];
+              newParams[index] = { key, value };
+              setQueryParams(newParams);
+            }}
+            onRemoveQueryParam={(index) => {
+              const newParams = queryParams.filter((_, i) => i !== index);
+              setQueryParams(newParams);
+            }}
+            onVariableDragStart={onVariableDragStart}
+            defaultCollapsed={true}
+          />
 
           {/* ========== OUTPUT SECTION ========== */}
-          <div className="node-popup-section-label">OUTPUT</div>
-          
-          {/* FLOW, STEP, FLOWRUN with text labels and searchable autocomplete */}
-          <div className="node-popup-inline-params node-popup-row">
-            <div className="node-popup-labeled-input">
-              <span className="label-text">flow</span>
-              <input 
-                type="text" 
-                value={flowInput}
-                onChange={(e) => setFlowInput(e.target.value)}
-                list="flowOptions"
-                placeholder="search..."
-                className="node-popup-input"
-              />
-              <datalist id="flowOptions">
-                {['main_pipeline', 'data_processing', 'etl_job', 'analytics_flow'].map(option => <option key={option} value={option} />)}
-              </datalist>
-            </div>
-            <div className="node-popup-labeled-input">
-              <span className="label-text">step</span>
-              <input 
-                type="text" 
-                value={stepInput}
-                onChange={(e) => setStepInput(e.target.value)}
-                list="stepOptions"
-                placeholder="search..."
-                className="node-popup-input"
-              />
-              <datalist id="stepOptions">
-                {['process_data', 'validate_input', 'transform_results', 'load_final'].map(option => <option key={option} value={option} />)}
-              </datalist>
-            </div>
-            <div className="node-popup-labeled-input">
-              <span className="label-text">flowrun</span>
-              <input 
-                type="text" 
-                value={flowrunInput}
-                onChange={(e) => setFlowrunInput(e.target.value)}
-                list="flowrunOptions"
-                placeholder="search..."
-                className="node-popup-input"
-              />
-              <datalist id="flowrunOptions">
-                {['daily_run_001', 'nightly_batch', 'manual_trigger', 'scheduled_flow'].map(option => <option key={option} value={option} />)}
-              </datalist>
-            </div>
-          </div>
+          <FlowSection
+            title="OUTPUT"
+            type="output"
+            flowValue={flowInput}
+            stepValue={stepInput}
+            flowrunValue={flowrunInput}
+            onFlowChange={setFlowInput}
+            onStepChange={setStepInput}
+            onFlowrunChange={setFlowrunInput}
+            selectedCommand={selectedCommand}
+            onCommandChange={setSelectedCommand}
+            availableCommands={availableCommands}
+            loadingCommands={loadingCommands}
+            onAddCommand={() => setShowCreateCommand(true)}
+            onShowSample={() => setShowSampleModal(true)}
+            queryParams={queryParams}
+            onAddQueryParam={() => setQueryParams([...queryParams, { key: '', value: '' }])}
+            onUpdateQueryParam={(index, key, value) => {
+              const newParams = [...queryParams];
+              newParams[index] = { key, value };
+              setQueryParams(newParams);
+            }}
+            onRemoveQueryParam={(index) => {
+              const newParams = queryParams.filter((_, i) => i !== index);
+              setQueryParams(newParams);
+            }}
+            onVariableDragStart={onVariableDragStart}
+            defaultCollapsed={true}
+          />
 
-          {/* DROPLIST with endpoint + dark icon */}
-          <div className="node-popup-dropdown-row">
-            <select
-              value={selectedCommand}
-              onChange={(e) => setSelectedCommand(e.target.value)}
-              className="node-popup-select"
-              disabled={loadingCommands}
-            >
-              <option value="">select endpoint to call for input</option>
-              {availableCommands.map((cmd) => (
-                <option key={cmd.name} value={cmd.name}>
-                  {cmd.name} ({cmd.method})
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => setShowCreateCommand(true)}
-              className="node-popup-icon-btn"
-              title="Add new command"
-            >
-              +
-            </button>
-            <button 
-              onClick={() => setShowSampleModal(true)}
-              className="node-popup-icon-btn" 
-              title="sample response"
-            >
-              📋
-            </button>
-          </div>
-          {loadingCommands && (
-            <div className="text-xs text-neutral-400">Loading commands...</div>
-          )}
-
-          {/* ========== QUERY PARAMETERS ========== */}
-          <div className="node-popup-query-params">
-            <div className="node-popup-query-header">
-              <button 
-                onClick={() => setQueryParams([...queryParams, { key: '', value: '' }])}
-                className="node-popup-icon-btn"
-              >
-                +
-              </button>
-            </div>
-            {queryParams.map((param, index) => (
-              <div key={index} className="node-popup-query-row">
-                <input
-                  type="text"
-                  value={param.key}
-                  onChange={(e) => {
-                    const newParams = [...queryParams];
-                    newParams[index].key = e.target.value;
-                    setQueryParams(newParams);
-                  }}
-                  placeholder="key"
-                  className="node-popup-query-key"
-                />
-                <input
-                  type="text"
-                  value={param.value}
-                  onChange={(e) => {
-                    const newParams = [...queryParams];
-                    newParams[index].value = e.target.value;
-                    setQueryParams(newParams);
-                  }}
-                  placeholder="value"
-                  className="node-popup-query-value"
-                />
-                <button
-                  onClick={() => {
-                    const newParams = queryParams.filter((_, i) => i !== index);
-                    setQueryParams(newParams);
-                  }}
-                  className="node-popup-icon-btn"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* ========== VARIABLES SECTION ========== */}
-          <div className="node-popup-tags-section">
-            <div className="text-xs text-gray-400 mb-1 font-thin">
-              available variables:
-            </div>
-            <div className="node-popup-tags-wrapper">
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'command_output')}
-                title="Drag command_output into text"
-              >
-                command_output
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'flow_id')}
-                title="Drag flow_id into text"
-              >
-                flow_id
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'step_id')}
-                title="Drag step_id into text"
-              >
-                step_id
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'user_input')}
-                title="Drag user_input into text"
-              >
-                user_input
-              </div>
-              <div 
-                className="node-popup-var-tag"
-                draggable
-                onDragStart={(e) => onVariableDragStart(e, 'timestamp')}
-                title="Drag timestamp into text"
-              >
-                timestamp
-              </div>
-            </div>
+          {/* ========== STEP INSTRUCTIONS ========== */}
+          <div className="node-popup-textarea-container">
+            <IntelligentTextarea
+              value={instructions || ''}
+              onChange={(value) => setInstructions(value)}
+              placeholder="expected response: {{command_output}}"
+              className="node-popup-textarea"
+              commands={availableCommands.map(cmd => ({
+                id: cmd.name,
+                label: cmd.name,
+                description: `Command: ${cmd.method}`,
+                type: 'command' as const,
+                value: `{{${cmd.name}}}`
+              }))}
+              variables={[
+                { id: 'command_output', label: 'command_output', description: 'Output from the command', type: 'variable', value: '{{command_output}}' },
+                { id: 'flow_id', label: 'flow_id', description: 'Current flow ID', type: 'variable', value: '{{flow_id}}' },
+                { id: 'step_id', label: 'step_id', description: 'Current step ID', type: 'variable', value: '{{step_id}}' },
+                { id: 'user_input', label: 'user_input', description: 'User input variable', type: 'variable', value: '{{user_input}}' },
+                { id: 'timestamp', label: 'timestamp', description: 'Current timestamp', type: 'variable', value: '{{timestamp}}' }
+              ]}
+              flows={[]} // Will be populated from API
+              steps={[]} // Will be populated from API
+              flowruns={[]} // Will be populated from API
+            />
           </div>
 
           {/* ========== FLOW DROPDOWN ========== */}
@@ -2114,21 +1816,7 @@ const NodePopup = ({
             </div>
           )}
 
-          {/* ========== FLOW DROPDOWN (ABOVE SAVE) ========== */}
-          <div className="node-popup-dropdown-row">
-            <select
-              value={selectedFlowId}
-              onChange={(e) => handleFlowChange(e.target.value)}
-              className="node-popup-select"
-            >
-              <option value="">Default Next Flow (optional)</option>
-              {availableFlows.map(flow => (
-                <option key={flow.id} value={flow.id}>
-                  {flow.name}
-                </option>
-              ))}
-            </select>
-          </div>
+
 
           {/* ========== SAVE BUTTON ========== */}
           <div className="node-popup-save-row">

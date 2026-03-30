@@ -35,10 +35,12 @@ export default function Modal({ children, onClose }: ModalProps) {
       onClick={handleBackdropClick}
     >
       <div 
-        className="bg-neutral-900 text-white rounded-xl w-full max-w-md p-6"
+        className="bg-neutral-900 text-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {children}
+        <div className="max-h-[90vh] overflow-y-auto p-6">
+          {children}
+        </div>
       </div>
     </div>
   );
