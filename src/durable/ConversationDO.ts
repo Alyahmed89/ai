@@ -1329,51 +1329,59 @@ export class ConversationOrchestratorDO_2026A {
           });
           
           // Resolve step instructions with task data and inputs
-          const resolvedStep = await resolveStepInstructions(
-            firstStep,
-            this.env.FLOW_RUNS_DB,
-            this.env as Record<string, string>,
-            {
-              flow_id: flow_id,
-              execution_id: `flow-${Date.now()}`,
-              step_id: firstStep.step_id,
-              previous_step_responses: {}, // First step has no previous responses
-              inputs: inputs // Pass inputs for [input:name] replacement
+          let resolvedStep = null;
+          try {
+            resolvedStep = await resolveStepInstructions(
+              firstStep,
+              this.env.FLOW_RUNS_DB,
+              this.env as Record<string, string>,
+              {
+                flow_id: flow_id,
+                execution_id: `flow-${Date.now()}`,
+                step_id: firstStep.step_id,
+                previous_step_responses: {}, // First step has no previous responses
+                inputs: inputs // Pass inputs for [input:name] replacement
+              }
+            );
+            
+            console.log(`[DO:${this.state.id}] DEBUG: resolveStepInstructions returned:`, {
+              success: !!resolvedStep,
+              has_instructions: !!resolvedStep?.instructions,
+              instructions_length: resolvedStep?.instructions?.length || 0
+            });
+            
+            // Use resolved instructions directly if available
+            if (resolvedStep?.instructions) {
+              initialPrompt = resolvedStep.instructions;
+              
+              // Add expected_response after instructions if provided
+              if (firstStep.expected_response) {
+                initialPrompt += `\n\nExpected response format:\n${firstStep.expected_response}`;
+              }
+              
+              console.log(`[DO:${this.state.id}] Successfully resolved step instructions with task data`);
+              console.log(`[DO:${this.state.id}] Resolved instructions length: ${initialPrompt.length}`);
+              console.log(`[DO:${this.state.id}] First 200 chars of resolved instructions: ${initialPrompt.substring(0, 200)}`);
+            } else {
+              console.log(`[DO:${this.state.id}] DEBUG: No resolved instructions available, using default prompt`);
             }
-          );
-          
-          console.log(`[DO:${this.state.id}] DEBUG: resolveStepInstructions returned:`, {
-            success: !!resolvedStep,
-            has_instructions: !!resolvedStep?.instructions,
-            instructions_length: resolvedStep?.instructions?.length || 0
-          });
-          
-          // Use resolved instructions directly
-          initialPrompt = resolvedStep.instructions;
-          
-          // Add expected_response after instructions if provided
-          if (firstStep.expected_response) {
-            initialPrompt += `\n\nExpected response format:\n${firstStep.expected_response}`;
+            
+            // DEBUG: Check if [input:message] was replaced (only if we have resolved instructions)
+            if (resolvedStep?.instructions) {
+              if (initialPrompt.includes('[input:')) {
+                console.log(`[DO:${this.state.id}] DEBUG: Resolved instructions still contains [input: placeholder after injection`);
+                console.log(`[DO:${this.state.id}] DEBUG: Inputs passed:`, Object.keys(inputs));
+              } else {
+                console.log(`[DO:${this.state.id}] DEBUG: [input:message] placeholder was successfully replaced`);
+              }
+            }
+          } catch (error: any) {
+            console.error(`[DO:${this.state.id}] ERROR: Error resolving step instructions: ${error.message}`);
+            console.error(`[DO:${this.state.id}] ERROR: Error stack: ${error.stack}`);
+            console.error(`[DO:${this.state.id}] ERROR: Error name: ${error.name}`);
+            console.error(`[DO:${this.state.id}] ERROR: Error cause: ${error.cause}`);
+            // Continue with default prompt if resolution fails
           }
-          
-          console.log(`[DO:${this.state.id}] Successfully resolved step instructions with task data`);
-          console.log(`[DO:${this.state.id}] Resolved instructions length: ${initialPrompt.length}`);
-          console.log(`[DO:${this.state.id}] First 200 chars of resolved instructions: ${initialPrompt.substring(0, 200)}`);
-          
-          // DEBUG: Check if [input:message] was replaced
-          if (initialPrompt.includes('[input:')) {
-            console.log(`[DO:${this.state.id}] DEBUG: Resolved instructions still contains [input: placeholder after injection`);
-            console.log(`[DO:${this.state.id}] DEBUG: Inputs passed:`, Object.keys(inputs));
-          } else {
-            console.log(`[DO:${this.state.id}] DEBUG: [input:message] placeholder was successfully replaced`);
-          }
-        } catch (error: any) {
-          console.error(`[DO:${this.state.id}] ERROR: Error resolving step instructions: ${error.message}`);
-          console.error(`[DO:${this.state.id}] ERROR: Error stack: ${error.stack}`);
-          console.error(`[DO:${this.state.id}] ERROR: Error name: ${error.name}`);
-          console.error(`[DO:${this.state.id}] ERROR: Error cause: ${error.cause}`);
-          // Continue with default prompt if resolution fails
-        }
       }
       
       // Create ultra-minimal conversation with values from flow definition
