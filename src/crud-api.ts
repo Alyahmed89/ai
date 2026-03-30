@@ -1443,7 +1443,8 @@ crudApi.get('/endpoints', async (c) => {
         timeout_ms, max_retries, retry_delay_ms, cache_key,
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
-        created_at, updated_at, created_by, tags
+        created_at, updated_at, created_by, tags,
+        sample_response, ai_enabled, endpoint_type, parameter_schema
       FROM endpoint_registry
       ${whereClause}
       ORDER BY name ASC
@@ -1485,7 +1486,8 @@ crudApi.get('/endpoints/:name', async (c) => {
         timeout_ms, max_retries, retry_delay_ms, cache_key,
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
-        created_at, updated_at, created_by, tags
+        created_at, updated_at, created_by, tags,
+        sample_response, ai_enabled, endpoint_type, parameter_schema
       FROM endpoint_registry
       WHERE name = ?
     `;
