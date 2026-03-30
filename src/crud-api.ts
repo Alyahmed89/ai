@@ -1609,178 +1609,70 @@ crudApi.get('/endpoints/:name', async (c) => {
 // 3️⃣ Introspect endpoint - extract available keys from sample response
 crudApi.get('/endpoints/introspect', async (c) => {
   try {
-    console.log("INTROSPECT HIT - Route is deployed");
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
-      console.log("ERROR: Database not configured");
       return c.json({ error: 'Database not configured' }, 500);
     }
 
     const endpointId = c.req.query('endpoint_id');
-    console.log("INTROSPECT PARAM RAW:", endpointId, "type:", typeof endpointId);
     if (!endpointId) {
-      console.log("ERROR: endpoint_id query parameter is required");
       return c.json({ error: 'endpoint_id query parameter is required' }, 400);
     }
     
     const trimmedId = endpointId.trim();
-    console.log("INTROSPECT PARAM TRIMMED:", trimmedId, "length:", trimmedId.length);
-
-    // STEP 1 & 2: HARDCODED TEST + STRING MATCH ANALYSIS
-    console.log("STEP 1 & 2: Testing queries and analyzing string matches");
-    console.log("trimmedId:", JSON.stringify(trimmedId), "length:", trimmedId.length);
     
-    let endpoint;
-    try {
-      // STEP 7: Verify DB instance and count
-      console.log("STEP 7: Verifying DB instance and count");
-      console.log("DB INSTANCE:", c.env.FLOW_RUNS_DB ? "EXISTS" : "NULL");
-      
-      const countSql = `SELECT COUNT(*) as total FROM endpoint_registry`;
-      console.log("Test 0 - Count SQL:", countSql);
-      const countResult = await db.prepare(countSql).first();
-      console.log("Test 0 - Total endpoints in DB:", countResult?.total || 0);
-      
-      // Test 1: Hardcoded query
-      const hardcodedSql = `SELECT * FROM endpoint_registry WHERE id = 'endpoint_001'`;
-      console.log("Test 1 - Hardcoded SQL:", hardcodedSql);
-      const hardcodedResult = await db.prepare(hardcodedSql).first();
-      console.log("Test 1 - Hardcoded result:", hardcodedResult ? "FOUND" : "NOT FOUND");
-      
-      if (hardcodedResult) {
-        endpoint = hardcodedResult;
-        console.log("STEP 1 RESULT: Hardcoded query WORKS - Parameter binding is the issue");
-      } else {
-        console.log("STEP 1 RESULT: Hardcoded query also fails - Different issue");
-        
-        // STEP 2: Analyze string matches - check for hidden characters
-        console.log("STEP 2: Analyzing string matches in database");
-        const analyzeSql = `SELECT id, LENGTH(id) as len, HEX(id) as hex FROM endpoint_registry`;
-        console.log("Test 2 - Analyze SQL:", analyzeSql);
-        const analyzeResults = await db.prepare(analyzeSql).all();
-        console.log("Test 2 - Analyze results count:", analyzeResults.results?.length || 0);
-        if (analyzeResults.results) {
-          for (const row of analyzeResults.results) {
-            console.log(`  ID: "${row.id}", Length: ${row.len}, Hex: ${row.hex}`);
-          }
-        }
-        
-        // Test 3: Original parameter binding for comparison
-        const paramSql = `SELECT * FROM endpoint_registry WHERE id = ?`;
-        console.log("Test 3 - Parameter SQL:", paramSql, "with param:", trimmedId);
-        const paramResult = await db.prepare(paramSql).bind(trimmedId).first();
-        console.log("Test 3 - Parameter result:", paramResult ? "FOUND" : "NOT FOUND");
-        
-        if (!paramResult) {
-          // Test 4: Try with name instead of id
-          const nameSql = `SELECT * FROM endpoint_registry WHERE name = ?`;
-          console.log("Test 4 - Name SQL:", nameSql, "with param:", trimmedId);
-          const nameResult = await db.prepare(nameSql).bind(trimmedId).first();
-          console.log("Test 4 - Name result:", nameResult ? "FOUND" : "NOT FOUND");
-          
-          if (!nameResult) {
-            // STEP 3: Force trim match with TRIM() function
-            console.log("STEP 3: Testing TRIM() function match");
-            const trimSql = `SELECT * FROM endpoint_registry WHERE TRIM(id) = TRIM(?)`;
-            console.log("Test 5 - TRIM SQL:", trimSql, "with param:", trimmedId);
-            const trimResult = await db.prepare(trimSql).bind(trimmedId).first();
-            console.log("Test 5 - TRIM result:", trimResult ? "FOUND" : "NOT FOUND");
-            
-            if (!trimResult) {
-              // STEP 4: Test CAST to TEXT
-              console.log("STEP 4: Testing CAST to TEXT");
-              const castSql = `SELECT * FROM endpoint_registry WHERE CAST(id AS TEXT) = ?`;
-              console.log("Test 6 - CAST SQL:", castSql, "with param:", trimmedId);
-              const castResult = await db.prepare(castSql).bind(trimmedId).first();
-              console.log("Test 6 - CAST result:", castResult ? "FOUND" : "NOT FOUND");
-              
-              if (!castResult) {
-                // STEP 5: Test LIKE operator (IMPORTANT)
-                console.log("STEP 5: Testing LIKE operator");
-                const likeSql = `SELECT * FROM endpoint_registry WHERE id LIKE ?`;
-                console.log("Test 7 - LIKE SQL:", likeSql, "with param:", trimmedId);
-                const likeResult = await db.prepare(likeSql).bind(trimmedId).first();
-                console.log("Test 7 - LIKE result:", likeResult ? "FOUND" : "NOT FOUND");
-                
-                if (!likeResult) {
-                  // STEP 6: Test no parameter binding with sanitized string interpolation
-                  console.log("STEP 6: Testing sanitized string interpolation (TEMP FIX)");
-                  
-                  // Sanitize ID - allow only [a-zA-Z0-9_]
-                  const sanitizedId = trimmedId.replace(/[^a-zA-Z0-9_]/g, '');
-                  console.log("Sanitized ID:", sanitizedId, "original:", trimmedId);
-                  
-                  if (sanitizedId && sanitizedId === trimmedId) {
-                    const rawSql = `SELECT * FROM endpoint_registry WHERE id = '${sanitizedId}' LIMIT 1`;
-                    console.log("Test 8 - Raw SQL (sanitized):", rawSql);
-                    const rawResult = await db.prepare(rawSql).first();
-                    console.log("Test 8 - Raw result:", rawResult ? "FOUND" : "NOT FOUND");
-                    endpoint = rawResult;
-                  } else {
-                    console.log("STEP 6: ID contains invalid characters, skipping raw SQL");
-                  }
-                } else {
-                  endpoint = likeResult;
-                }
-              } else {
-                endpoint = castResult;
-              }
-            } else {
-              endpoint = trimResult;
-            }
-          } else {
-            endpoint = nameResult;
-          }
-        } else {
-          endpoint = paramResult;
-        }
-      }
-      
-      if (!endpoint) {
-        console.log("STEP 1-7: Endpoint not found with any method");
-        return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
-      }
-      
-      console.log("STEP 1-7: Found endpoint:", endpoint.id, endpoint.name);
-      
-      // Extract keys from sample response
-      let availableKeys: string[] = [];
-      let parsedSampleResponse: any = null;
-      
-      if (endpoint.sample_response) {
-        console.log("Found sample_response, extracting keys...");
-        availableKeys = extractKeysFromSampleResponse(endpoint.sample_response);
-        
-        // Try to parse sample response for display
-        try {
-          parsedSampleResponse = JSON.parse(endpoint.sample_response);
-        } catch (e) {
-          parsedSampleResponse = endpoint.sample_response;
-        }
-        
-        console.log(`Extracted ${availableKeys.length} keys from sample response`);
-      } else {
-        console.log("No sample_response found, using basic keys");
-        availableKeys = ["id", "name", "description", "method", "url"];
-      }
-      
-      // Return endpoint info with extracted keys
-      const response = {
-        id: endpoint.id,
-        name: endpoint.name,
-        description: endpoint.description,
-        method: endpoint.method,
-        url: endpoint.url,
-        available_keys: availableKeys,
-        sample_response: parsedSampleResponse
-      };
-      
-      return c.json(successResponse(response));
-      
-    } catch (queryError) {
-      console.error("STEP 1-7: Query error:", queryError);
-      return c.json(errorResponse(`Database query error: ${queryError.message}`, 500));
+    // Use the same SELECT query as the GET endpoint for consistency
+    const sql = `
+      SELECT 
+        id, name, description, url, method, auth_type, auth_value,
+        headers, body_template, query_params, response_path,
+        timeout_ms, max_retries, retry_delay_ms, cache_key,
+        cache_ttl_seconds, encrypt_cache, response_validator,
+        allowed_domains, require_https, log_level,
+        created_at, updated_at, created_by, tags,
+        sample_response, ai_enabled, endpoint_type, parameter_schema
+      FROM endpoint_registry
+      WHERE id = ? OR name = ?
+      LIMIT 1
+    `;
+    
+    // Try to find endpoint by ID or name
+    const endpoint = await db.prepare(sql).bind(trimmedId, trimmedId).first();
+    
+    if (!endpoint) {
+      return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
     }
+    
+    // Extract keys from sample response
+    let availableKeys: string[] = [];
+    let parsedSampleResponse: any = null;
+    
+    if (endpoint.sample_response) {
+      availableKeys = extractKeysFromSampleResponse(endpoint.sample_response);
+      
+      // Try to parse sample response for display
+      try {
+        parsedSampleResponse = JSON.parse(endpoint.sample_response);
+      } catch (e) {
+        parsedSampleResponse = endpoint.sample_response;
+      }
+    } else {
+      // Default keys if no sample response
+      availableKeys = ["id", "name", "description", "method", "url"];
+    }
+    
+    // Return endpoint info with extracted keys
+    const response = {
+      id: endpoint.id,
+      name: endpoint.name,
+      description: endpoint.description,
+      method: endpoint.method,
+      url: endpoint.url,
+      available_keys: availableKeys,
+      sample_response: parsedSampleResponse
+    };
+    
+    return c.json(successResponse(response));
 
   } catch (error: any) {
     console.error('Error introspecting endpoint:', error);
