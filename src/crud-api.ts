@@ -1637,15 +1637,15 @@ crudApi.get('/endpoints/introspect', async (c) => {
         created_at, updated_at, created_by, tags,
         sample_response, ai_enabled, endpoint_type, parameter_schema
       FROM endpoint_registry
-      WHERE id = ? OR name = ?
+      WHERE name = ?
       LIMIT 1
     `;
     
     console.log("SQL query:", sql);
-    console.log("Binding parameters:", trimmedId, trimmedId);
+    console.log("Binding parameters:", trimmedId);
     
     // Try to find endpoint by ID or name
-    const endpoint = await db.prepare(sql).bind(trimmedId, trimmedId).first();
+    const endpoint = await db.prepare(sql).bind(trimmedId).first();
     console.log("Query result:", endpoint ? "FOUND" : "NOT FOUND");
     
     if (!endpoint) {
