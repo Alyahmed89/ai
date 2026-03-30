@@ -1293,6 +1293,9 @@ export class ConversationOrchestratorDO_2026A {
       let initialPrompt = `Execute flow: ${flow_id}`;
       const firstStep = steps[0];
       
+      // Declare resolvedStep at function scope to avoid ReferenceError
+      let resolvedStep: { instructions: string; variables?: Record<string, any>; api_responses?: Record<string, any>; task_data?: { title?: string; description?: string; payload?: any } } | null = null;
+      
       if (firstStep && this.env.FLOW_RUNS_DB) {
         try {
           console.log(`[DO:${this.state.id}] DEBUG: Attempting to resolve step instructions for step: ${firstStep.step_key}`);
@@ -1329,7 +1332,6 @@ export class ConversationOrchestratorDO_2026A {
           });
           
           // Resolve step instructions with task data and inputs
-          let resolvedStep = null;
           try {
             resolvedStep = await resolveStepInstructions(
               firstStep,
@@ -1382,6 +1384,10 @@ export class ConversationOrchestratorDO_2026A {
             console.error(`[DO:${this.state.id}] ERROR: Error cause: ${error.cause}`);
             // Continue with default prompt if resolution fails
           }
+        } catch (error: any) {
+          console.error(`[DO:${this.state.id}] ERROR: Error in step resolution setup: ${error.message}`);
+          // Continue with default prompt if setup fails
+        }
       }
       
       // Create ultra-minimal conversation with values from flow definition
