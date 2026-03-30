@@ -229,21 +229,8 @@ interface Step {
   next_flow_id?: string | null;
 }
 
-// Flow definition interface - matches backend
-interface FlowDefinition {
-  id: string;
-  name: string;
-  description: string;
-  max_iterations: number;
-  repository: string;
-  branch: string;
-  created_at: string;
-  updated_at: string;
-  next_flow_id: string | null;
-  priority: number;
-  agent: string;
-  system_message?: string;
-}
+// Import shared types
+import { FlowDefinition } from '@/types';
 
 // Edge data structure with conditions
 interface EdgeData extends Record<string, any> {

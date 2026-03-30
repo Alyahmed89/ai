@@ -6,6 +6,7 @@ import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 import EditFlowModal from '@/components/EditFlowModal';
 import CreateProjectModal from '@/components/CreateProjectModal';
 import FlowRun, { ConversationData } from '@/components/FlowRun';
+import { FlowRun as SharedFlowRun } from '@/types';
 
 interface ChatMessage {
   id: string;
@@ -27,16 +28,6 @@ interface ParsedMessage {
     commandParams?: any;
     isThinking?: boolean;
   };
-}
-
-interface FlowRun {
-  id: string;
-  flow_id: string;
-  input_prompt?: string;
-  status: string;
-  started_at: string;
-  output_response?: string;
-  conversation_id?: string;
 }
 
 interface Task {
@@ -229,13 +220,13 @@ export default function ChatPage(props: any) {
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
+  const [flowRuns, setFlowRuns] = useState<SharedFlowRun[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [flowDefinitions, setFlowDefinitions] = useState<FlowDefinition[]>([]);
   const [showCreateFlowModal, setShowCreateFlowModal] = useState<boolean>(false);
   const [showEditFlowModal, setShowEditFlowModal] = useState<boolean>(false);
   const [showCreateProjectModal, setShowCreateProjectModal] = useState<boolean>(false);
-  const [selectedFlowRun, setSelectedFlowRun] = useState<FlowRun | null>(null);
+  const [selectedFlowRun, setSelectedFlowRun] = useState<SharedFlowRun | null>(null);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId || null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(initialFlowId || null);
@@ -577,7 +568,7 @@ export default function ChatPage(props: any) {
       if (!response.ok) throw new Error('Failed to fetch flow runs');
       const data = await response.json();
       // Sort flow runs from latest to oldest
-      const sortedRuns = data.sort((a: FlowRun, b: FlowRun) => 
+      const sortedRuns = data.sort((a: SharedFlowRun, b: SharedFlowRun) => 
         new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
       );
       setFlowRuns(sortedRuns);
@@ -610,7 +601,7 @@ export default function ChatPage(props: any) {
           setSelectedFlowRunId(matchingFlowRun.id);
           
           // Update flow runs list
-          const sortedRuns = flowRuns.sort((a: FlowRun, b: FlowRun) => 
+          const sortedRuns = flowRuns.sort((a: SharedFlowRun, b: SharedFlowRun) => 
             new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
           );
           setFlowRuns(sortedRuns);

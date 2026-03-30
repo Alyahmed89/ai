@@ -2,26 +2,7 @@
 
 import React, { useState, useEffect, useRef, KeyboardEvent, ChangeEvent } from 'react';
 import CommandPalette from './CommandPalette';
-
-interface CommandItem {
-  id: string;
-  label: string;
-  description?: string;
-  type: 'command' | 'variable' | 'flow' | 'step' | 'flowrun';
-  value: string;
-}
-
-interface IntelligentTextareaProps {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  className?: string;
-  commands?: CommandItem[];
-  variables?: CommandItem[];
-  flows?: CommandItem[];
-  steps?: CommandItem[];
-  flowruns?: CommandItem[];
-}
+import { IntelligentTextareaProps, CommandItem } from '@/types';
 
 const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
   value,

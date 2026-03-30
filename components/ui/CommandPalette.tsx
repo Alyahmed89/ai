@@ -1,23 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-
-interface CommandItem {
-  id: string;
-  label: string;
-  description?: string;
-  type: 'command' | 'variable' | 'flow' | 'step' | 'flowrun';
-  value: string;
-}
-
-interface CommandPaletteProps {
-  items: CommandItem[];
-  onSelect: (item: CommandItem) => void;
-  onClose: () => void;
-  position: { x: number; y: number };
-  searchQuery: string;
-  triggerType: '/' | '#' | null;
-}
+import { CommandPaletteProps, CommandItem } from '@/types';
 
 const CommandPalette: React.FC<CommandPaletteProps> = ({
   items,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import NodeChildren from '@/components/nodes/NodeChildren';
 import NodeParent from '@/components/nodes/NodeParent';
 import NodeLinks from '@/components/nodes/NodeLinks';
@@ -119,9 +120,9 @@ export default function NodeDetailPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <a href="/nodes" className="text-sm font-medium text-gray-600 hover:text-gray-500">
+        <Link href="/nodes" className="text-sm font-medium text-gray-600 hover:text-gray-500">
           ← Back to Nodes
-        </a>
+        </Link>
       </div>
 
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">

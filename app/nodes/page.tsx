@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 export const runtime = 'edge';
 
@@ -252,9 +253,9 @@ export default function NodesPage() {
                     <span>Updated: {new Date(node.updated_at * 1000).toLocaleDateString()}</span>
                   </div>
                   <div className="mt-2">
-                    <a href={`/nodes/${node.id}`} className="text-sm font-medium text-gray-600 hover:text-gray-500">
+                    <Link href={`/nodes/${node.id}`} className="text-sm font-medium text-gray-600 hover:text-gray-500">
                       View details →
-                    </a>
+                    </Link>
                   </div>
                 </div>
               </li>

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import EditStepModal from './EditStepModal';
 import TaskDetailsModal from './TaskDetailsModal';
 import ApiEndpointsModal from './ApiEndpointsModal';
+import { FlowDefinition, FlowRun, FlowStep } from '@/types';
 
 interface Project {
   id: string;
@@ -14,21 +15,6 @@ interface Project {
   updated_at: number;
   metadata: string;
   deleted_at: number | null;
-}
-
-interface FlowDefinition {
-  id: string;
-  name: string;
-  description: string;
-  max_iterations: number;
-  repository: string;
-  branch: string;
-  created_at: string;
-  updated_at: string;
-  next_flow_id: string | null;
-  priority: number;
-  agent: string;
-  system_message?: string;
 }
 
 interface Task {
@@ -43,44 +29,7 @@ interface Task {
   action: string | null;
 }
 
-interface FlowRun {
-  id: string;
-  flow_id: string;
-  status: string;
-  created_at: number;
-  completed_at: number | null;
-  output_response: string | null;
-  step_count: number;
-  last_step_at: number | null;
-}
 
-interface FlowStep {
-  id: string;
-  flow_id: string;
-  step_key: string;
-  title: string;
-  instructions: string;
-  step_type: string;
-  order_index: number;
-  page_key: string | null;
-  blocking: number;
-  auto_fail_on_error: number;
-  retryable: number;
-  created_at: string;
-  updated_at: string;
-  task_id: string | null;
-  output_keys: string;
-  output_url: string | null;
-  output_payload_template: string | null;
-  default_next_step: string | null;
-  output_auth_token: string | null;
-  input_keys: string;
-  use_endpoints: string; // New field for endpoint configuration
-  output: number;
-  default_next_step_id: string | null;
-  step_number: number | null;
-  requires_task: number;
-}
 
 interface HierarchicalNavProps {
   onSelectProject?: (projectId: string | null) => void;

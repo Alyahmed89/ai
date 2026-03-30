@@ -2,55 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Modal from './ui/Modal';
+import { FlowDefinition, FlowStep } from '@/types';
 
 interface Endpoint {
   id: string;
   name: string;
   url: string;
   method: string;
-}
-
-interface FlowStep {
-  id: string;
-  flow_id: string;
-  step_key: string;
-  title: string;
-  instructions: string;
-  step_type: string;
-  order_index: number;
-  page_key: string | null;
-  blocking: number;
-  auto_fail_on_error: number;
-  retryable: number;
-  created_at: string;
-  updated_at: string;
-  task_id: string | null;
-  output_keys: string;
-  output_url: string | null;
-  output_payload_template: string | null;
-  default_next_step: string | null;
-  output_auth_token: string | null;
-  input_keys: string;
-  use_endpoints: string; // New field for endpoint configuration
-  output: number;
-  default_next_step_id: string | null;
-  step_number: number | null;
-  requires_task: number;
-}
-
-interface FlowDefinition {
-  id: string;
-  name: string;
-  description: string;
-  max_iterations: number;
-  repository: string;
-  branch: string;
-  created_at: string;
-  updated_at: string;
-  next_flow_id: string | null;
-  priority: number;
-  agent: string;
-  system_message?: string;
 }
 
 interface EditStepModalProps {
