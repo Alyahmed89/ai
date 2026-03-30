@@ -61,6 +61,54 @@ function apiResponse(success: boolean, data?: any, error?: string, statusCode: n
   };
 }
 
+// Helper function to extract all keys from an object (including nested)
+function extractKeysFromObject(obj: any, prefix: string = ''): string[] {
+  const keys: string[] = [];
+  
+  if (typeof obj === 'object' && obj !== null) {
+    for (const key in obj) {
+      const fullKey = prefix ? `${prefix}.${key}` : key;
+      keys.push(fullKey);
+      
+      if (typeof obj[key] === 'object' && obj[key] !== null) {
+        keys.push(...extractKeysFromObject(obj[key], fullKey));
+      }
+    }
+  }
+  
+  return keys;
+}
+
+// Helper function to parse sample response and extract keys
+function extractKeysFromSampleResponse(sampleResponse: string | null): string[] {
+  if (!sampleResponse) {
+    return [];
+  }
+  
+  try {
+    // Try to parse as JSON
+    const parsed = JSON.parse(sampleResponse);
+    return extractKeysFromObject(parsed);
+  } catch (e) {
+    // If not valid JSON, try to extract JSON from text
+    const jsonMatches = sampleResponse.match(/\{[\s\S]*?\}/g);
+    if (jsonMatches) {
+      const allKeys: string[] = [];
+      for (const match of jsonMatches) {
+        try {
+          const obj = JSON.parse(match);
+          allKeys.push(...extractKeysFromObject(obj));
+        } catch (e2) {
+          // Skip invalid JSON
+        }
+      }
+      return [...new Set(allKeys)]; // Remove duplicates
+    }
+  }
+  
+  return [];
+}
+
 // Create CRUD API router
 export const crudApi = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -1693,14 +1741,36 @@ crudApi.get('/endpoints/introspect', async (c) => {
       
       console.log("STEP 1-7: Found endpoint:", endpoint.id, endpoint.name);
       
-      // Return basic endpoint info for now
+      // Extract keys from sample response
+      let availableKeys: string[] = [];
+      let parsedSampleResponse: any = null;
+      
+      if (endpoint.sample_response) {
+        console.log("Found sample_response, extracting keys...");
+        availableKeys = extractKeysFromSampleResponse(endpoint.sample_response);
+        
+        // Try to parse sample response for display
+        try {
+          parsedSampleResponse = JSON.parse(endpoint.sample_response);
+        } catch (e) {
+          parsedSampleResponse = endpoint.sample_response;
+        }
+        
+        console.log(`Extracted ${availableKeys.length} keys from sample response`);
+      } else {
+        console.log("No sample_response found, using basic keys");
+        availableKeys = ["id", "name", "description", "method", "url"];
+      }
+      
+      // Return endpoint info with extracted keys
       const response = {
         id: endpoint.id,
         name: endpoint.name,
         description: endpoint.description,
         method: endpoint.method,
         url: endpoint.url,
-        available_keys: ["id", "name", "description", "method", "url"]
+        available_keys: availableKeys,
+        sample_response: parsedSampleResponse
       };
       
       return c.json(successResponse(response));
@@ -1743,13 +1813,13 @@ crudApi.post('/endpoints', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        ai_enabled, endpoint_type, parameter_schema
+        ai_enabled, endpoint_type, parameter_schema, sample_response
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?
       )
     `;
 
@@ -1781,7 +1851,8 @@ crudApi.post('/endpoints', async (c) => {
       endpointData.tags ? JSON.stringify(endpointData.tags) : null,
       endpointData.ai_enabled ? 1 : 0,
       endpointData.endpoint_type || 'external_api',
-      endpointData.parameter_schema ? JSON.stringify(endpointData.parameter_schema) : null
+      endpointData.parameter_schema ? JSON.stringify(endpointData.parameter_schema) : null,
+      endpointData.sample_response ? JSON.stringify(endpointData.sample_response) : null
     ];
 
     await db.prepare(sql).bind(...params).run();
@@ -1835,7 +1906,7 @@ crudApi.put('/endpoints/:name', async (c) => {
       'timeout_ms', 'max_retries', 'retry_delay_ms', 'cache_key',
       'cache_ttl_seconds', 'encrypt_cache', 'response_validator',
       'allowed_domains', 'require_https', 'log_level', 'tags',
-      'ai_enabled', 'endpoint_type', 'parameter_schema'
+      'ai_enabled', 'endpoint_type', 'parameter_schema', 'sample_response'
     ];
 
     fields.forEach(field => {
@@ -1843,7 +1914,7 @@ crudApi.put('/endpoints/:name', async (c) => {
         let value = endpointData[field];
         
         // Handle JSON fields
-        if (['headers', 'query_params', 'allowed_domains', 'tags', 'parameter_schema'].includes(field) && value) {
+        if (['headers', 'query_params', 'allowed_domains', 'tags', 'parameter_schema', 'sample_response'].includes(field) && value) {
           value = JSON.stringify(value);
         }
         
