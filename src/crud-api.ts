@@ -1468,6 +1468,125 @@ crudApi.get('/endpoints', async (c) => {
   }
 });
 
+      }
+      
+      // Combine all unique variables
+      const allVariables = [...new Set([...urlVariables, ...bodyVariables, ...queryVariables])];
+      
+      return c.json({
+        ...successResponse(parsedEndpoint),
+        test_info: {
+          can_test: true,
+          test_endpoint: `POST /api/endpoints/${name}/test`,
+          required_parameters: allVariables,
+          example_test_request: {
+            method: 'POST',
+            url: `/api/endpoints/${name}/test`,
+            body: allVariables.reduce((acc, param) => {
+              acc[param] = "example_value";
+              return acc;
+            }, {} as Record<string, string>)
+          },
+          notes: [
+            'Use POST /api/endpoints/{name}/test to make actual test requests with parameters.',
+            'URL template variables like {username} must be provided in test parameters.',
+            'Authentication values starting with "env:" reference environment variables.'
+          ]
+        }
+      });
+
+// 3️⃣ Introspect endpoint - extract available keys from sample response
+crudApi.get('/endpoints/introspect', async (c) => {
+  try {
+    console.log("INTROSPECT ENDPOINT CALLED");
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      console.log("ERROR: Database not configured");
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const endpointId = c.req.query('endpoint_id');
+    console.log("Endpoint ID from query:", endpointId);
+    if (!endpointId) {
+      console.log("ERROR: endpoint_id query parameter is required");
+      return c.json({ error: 'endpoint_id query parameter is required' }, 400);
+    }
+    
+    const trimmedId = endpointId.trim();
+    console.log("Trimmed ID:", trimmedId);
+    
+    // Use the same SELECT query as the GET endpoint for consistency
+    const sql = `
+      SELECT 
+        id, name, description, url, method, auth_type, auth_value,
+        headers, body_template, query_params, response_path,
+        timeout_ms, max_retries, retry_delay_ms, cache_key,
+        cache_ttl_seconds, encrypt_cache, response_validator,
+        allowed_domains, require_https, log_level,
+        created_at, updated_at, created_by, tags,
+        sample_response, ai_enabled, endpoint_type, parameter_schema
+      FROM endpoint_registry
+      WHERE name = ?
+      LIMIT 1
+    `;
+    
+    console.log("SQL query:", sql);
+    console.log("Binding parameters:", trimmedId);
+    
+    // Try to find endpoint by ID or name
+    const endpoint = await db.prepare(sql).bind(trimmedId).first();
+    console.log("Query result:", endpoint ? "FOUND" : "NOT FOUND");
+    
+    if (!endpoint) {
+      console.log("Endpoint not found with ID/name:", trimmedId);
+      return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
+    }
+    
+    console.log("Found endpoint:", endpoint.id, endpoint.name);
+    console.log("Sample response exists:", !!endpoint.sample_response);
+    
+    // Extract keys from sample response
+    let availableKeys: string[] = [];
+    let parsedSampleResponse: any = null;
+    
+    if (endpoint.sample_response) {
+      console.log("Sample response:", endpoint.sample_response);
+      availableKeys = extractKeysFromSampleResponse(endpoint.sample_response);
+      console.log("Extracted keys:", availableKeys);
+      
+      // Try to parse sample response for display
+      try {
+        parsedSampleResponse = JSON.parse(endpoint.sample_response);
+      } catch (e) {
+        console.log("Failed to parse sample response as JSON:", e.message);
+        parsedSampleResponse = endpoint.sample_response;
+      }
+    } else {
+      // Default keys if no sample response
+      console.log("No sample response, using default keys");
+      availableKeys = ["id", "name", "description", "method", "url"];
+    }
+    
+    // Return endpoint info with extracted keys
+    const response = {
+      id: endpoint.id,
+      name: endpoint.name,
+      description: endpoint.description,
+      method: endpoint.method,
+      url: endpoint.url,
+      available_keys: availableKeys,
+      sample_response: parsedSampleResponse
+    };
+    
+    console.log("Returning response");
+    return c.json(successResponse(response));
+
+  } catch (error: any) {
+    console.error('Error introspecting endpoint:', error);
+    return c.json(errorResponse(`Error introspecting endpoint: ${error.message}`, 500));
+  }
+});
+
 // 2️⃣ Get endpoint by name
 crudApi.get('/endpoints/:name', async (c) => {
   try {
@@ -1570,32 +1689,6 @@ crudApi.get('/endpoints/:name', async (c) => {
             }
           }
         });
-      }
-      
-      // Combine all unique variables
-      const allVariables = [...new Set([...urlVariables, ...bodyVariables, ...queryVariables])];
-      
-      return c.json({
-        ...successResponse(parsedEndpoint),
-        test_info: {
-          can_test: true,
-          test_endpoint: `POST /api/endpoints/${name}/test`,
-          required_parameters: allVariables,
-          example_test_request: {
-            method: 'POST',
-            url: `/api/endpoints/${name}/test`,
-            body: allVariables.reduce((acc, param) => {
-              acc[param] = "example_value";
-              return acc;
-            }, {} as Record<string, string>)
-          },
-          notes: [
-            'Use POST /api/endpoints/{name}/test to make actual test requests with parameters.',
-            'URL template variables like {username} must be provided in test parameters.',
-            'Authentication values starting with "env:" reference environment variables.'
-          ]
-        }
-      });
     }
 
     return c.json(successResponse(parsedEndpoint));
@@ -1607,96 +1700,6 @@ crudApi.get('/endpoints/:name', async (c) => {
 });
 
 // 3️⃣ Introspect endpoint - extract available keys from sample response
-crudApi.get('/endpoints/introspect', async (c) => {
-  try {
-    console.log("INTROSPECT ENDPOINT CALLED");
-    const db = c.env.FLOW_RUNS_DB;
-    if (!db) {
-      console.log("ERROR: Database not configured");
-      return c.json({ error: 'Database not configured' }, 500);
-    }
-
-    const endpointId = c.req.query('endpoint_id');
-    console.log("Endpoint ID from query:", endpointId);
-    if (!endpointId) {
-      console.log("ERROR: endpoint_id query parameter is required");
-      return c.json({ error: 'endpoint_id query parameter is required' }, 400);
-    }
-    
-    const trimmedId = endpointId.trim();
-    console.log("Trimmed ID:", trimmedId);
-    
-    // Use the same SELECT query as the GET endpoint for consistency
-    const sql = `
-      SELECT 
-        id, name, description, url, method, auth_type, auth_value,
-        headers, body_template, query_params, response_path,
-        timeout_ms, max_retries, retry_delay_ms, cache_key,
-        cache_ttl_seconds, encrypt_cache, response_validator,
-        allowed_domains, require_https, log_level,
-        created_at, updated_at, created_by, tags,
-        sample_response, ai_enabled, endpoint_type, parameter_schema
-      FROM endpoint_registry
-      WHERE name = ?
-      LIMIT 1
-    `;
-    
-    console.log("SQL query:", sql);
-    console.log("Binding parameters:", trimmedId);
-    
-    // Try to find endpoint by ID or name
-    const endpoint = await db.prepare(sql).bind(trimmedId).first();
-    console.log("Query result:", endpoint ? "FOUND" : "NOT FOUND");
-    
-    if (!endpoint) {
-      console.log("Endpoint not found with ID/name:", trimmedId);
-      return c.json(notFoundResponse(`Endpoint not found: ${trimmedId}`));
-    }
-    
-    console.log("Found endpoint:", endpoint.id, endpoint.name);
-    console.log("Sample response exists:", !!endpoint.sample_response);
-    
-    // Extract keys from sample response
-    let availableKeys: string[] = [];
-    let parsedSampleResponse: any = null;
-    
-    if (endpoint.sample_response) {
-      console.log("Sample response:", endpoint.sample_response);
-      availableKeys = extractKeysFromSampleResponse(endpoint.sample_response);
-      console.log("Extracted keys:", availableKeys);
-      
-      // Try to parse sample response for display
-      try {
-        parsedSampleResponse = JSON.parse(endpoint.sample_response);
-      } catch (e) {
-        console.log("Failed to parse sample response as JSON:", e.message);
-        parsedSampleResponse = endpoint.sample_response;
-      }
-    } else {
-      // Default keys if no sample response
-      console.log("No sample response, using default keys");
-      availableKeys = ["id", "name", "description", "method", "url"];
-    }
-    
-    // Return endpoint info with extracted keys
-    const response = {
-      id: endpoint.id,
-      name: endpoint.name,
-      description: endpoint.description,
-      method: endpoint.method,
-      url: endpoint.url,
-      available_keys: availableKeys,
-      sample_response: parsedSampleResponse
-    };
-    
-    console.log("Returning response");
-    return c.json(successResponse(response));
-
-  } catch (error: any) {
-    console.error('Error introspecting endpoint:', error);
-    return c.json(errorResponse(`Error introspecting endpoint: ${error.message}`, 500));
-  }
-});
 
 // 4️⃣ Create new endpoint
 crudApi.post('/endpoints', async (c) => {
