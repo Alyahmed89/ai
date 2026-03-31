@@ -1207,8 +1207,8 @@ crudApi.delete('/steps/:id', async (c) => {
   return crudApi.fetch(new Request(c.req.url.replace('/steps', '/flow-steps'), c.req));
 });
 
-// Get all flow conditions
-crudApi.get('/flow-conditions', async (c) => {
+// Get all flow step conditions
+crudApi.get('/flow-step-conditions', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
@@ -1217,15 +1217,15 @@ crudApi.get('/flow-conditions', async (c) => {
 
     // Ensure tables exist before querying
 
-    const result = await db.prepare('SELECT * FROM flow_conditions ORDER BY flow_id, step_id').all();
+    const result = await db.prepare('SELECT * FROM flow_step_conditions ORDER BY flow_id, flow_step_id').all();
     return c.json(result.results || []);
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
 });
 
-// Get specific flow condition
-crudApi.get('/flow-conditions/:id', async (c) => {
+// Get specific flow step condition
+crudApi.get('/flow-step-conditions/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
@@ -1233,10 +1233,10 @@ crudApi.get('/flow-conditions/:id', async (c) => {
     }
 
     const conditionId = c.req.param('id');
-    const result = await db.prepare('SELECT * FROM flow_conditions WHERE id = ?').bind(conditionId).first();
+    const result = await db.prepare('SELECT * FROM flow_step_conditions WHERE id = ?').bind(conditionId).first();
     
     if (!result) {
-      return c.json({ error: 'Flow condition not found' }, 404);
+      return c.json({ error: 'Flow step condition not found' }, 404);
     }
     
     return c.json(result);
@@ -1245,8 +1245,8 @@ crudApi.get('/flow-conditions/:id', async (c) => {
   }
 });
 
-// Create flow condition
-crudApi.post('/flow-conditions', async (c) => {
+// Create flow step condition
+crudApi.post('/flow-step-conditions', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
@@ -1256,23 +1256,23 @@ crudApi.post('/flow-conditions', async (c) => {
     const body = await c.req.json();
     
     // Validate with Zod
-    const validation = validateSchema(flowConditionCreateSchema, body);
+    const validation = validateSchema(flowStepConditionCreateSchema, body);
     if (!validation.success) {
       return c.json(validationErrorResponse(validation.error));
     }
     
     const validatedData = validation.data!;
     const { 
-      id, flow_id, step_id, condition_type, condition_engine,
+      id, flow_id, flow_step_id, condition_type, condition_engine,
       condition_key, condition_value, condition_query, next_flow_id
     } = validatedData;
     
     // Generate ID if not provided
-    const conditionId = id || `flow-cond-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const conditionId = id || `flow-step-cond-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     const sql = `
-      INSERT INTO flow_conditions (
-        id, flow_id, step_id, condition_type, condition_engine,
+      INSERT INTO flow_step_conditions (
+        id, flow_id, flow_step_id, condition_type, condition_engine,
         condition_key, condition_value, condition_query, next_flow_id, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `;
@@ -1280,7 +1280,7 @@ crudApi.post('/flow-conditions', async (c) => {
     await db.prepare(sql).bind(
       conditionId,
       flow_id,
-      step_id,
+      flow_step_id,
       condition_type,
       condition_engine || 'static',
       dbValue(condition_key),
@@ -1290,7 +1290,7 @@ crudApi.post('/flow-conditions', async (c) => {
     ).run();
     
     return c.json(successResponse({ 
-      message: 'Flow condition created successfully', 
+      message: 'Flow step condition created successfully', 
       id: conditionId 
     }, 201));
   } catch (error) {
@@ -1298,8 +1298,8 @@ crudApi.post('/flow-conditions', async (c) => {
   }
 });
 
-// Update flow condition
-crudApi.put('/flow-conditions/:id', async (c) => {
+// Update flow step condition
+crudApi.put('/flow-step-conditions/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
@@ -1310,27 +1310,27 @@ crudApi.put('/flow-conditions/:id', async (c) => {
     const body = await c.req.json();
     
     // Validate with Zod
-    const validation = validateSchema(flowConditionUpdateSchema, { ...body, id: conditionId });
+    const validation = validateSchema(flowStepConditionUpdateSchema, { ...body, id: conditionId });
     if (!validation.success) {
       return c.json(validationErrorResponse(validation.error));
     }
     
     const validatedData = validation.data!;
     const { 
-      flow_id, step_id, condition_type, condition_engine,
+      flow_id, flow_step_id, condition_type, condition_engine,
       condition_key, condition_value, condition_query, next_flow_id
     } = validatedData;
     
     // Check if condition exists
-    const existing = await db.prepare('SELECT id FROM flow_conditions WHERE id = ?').bind(conditionId).first();
+    const existing = await db.prepare('SELECT id FROM flow_step_conditions WHERE id = ?').bind(conditionId).first();
     if (!existing) {
-      return c.json(errorResponse('Flow condition not found', 404));
+      return c.json(errorResponse('Flow step condition not found', 404));
     }
     
     const sql = `
-      UPDATE flow_conditions SET
+      UPDATE flow_step_conditions SET
         flow_id = COALESCE(?, flow_id),
-        step_id = COALESCE(?, step_id),
+        flow_step_id = COALESCE(?, flow_step_id),
         condition_type = COALESCE(?, condition_type),
         condition_engine = COALESCE(?, condition_engine),
         condition_key = COALESCE(?, condition_key),
@@ -1342,7 +1342,7 @@ crudApi.put('/flow-conditions/:id', async (c) => {
 
     await db.prepare(sql).bind(
       dbValue(flow_id),
-      dbValue(step_id),
+      dbValue(flow_step_id),
       dbValue(condition_type),
       dbValue(condition_engine),
       dbValue(condition_key),
@@ -1353,7 +1353,7 @@ crudApi.put('/flow-conditions/:id', async (c) => {
     ).run();
     
     return c.json(successResponse({ 
-      message: 'Flow condition updated successfully', 
+      message: 'Flow step condition updated successfully', 
       id: conditionId 
     }));
   } catch (error) {
@@ -1361,8 +1361,8 @@ crudApi.put('/flow-conditions/:id', async (c) => {
   }
 });
 
-// Delete flow condition
-crudApi.delete('/flow-conditions/:id', async (c) => {
+// Delete flow step condition
+crudApi.delete('/flow-step-conditions/:id', async (c) => {
   try {
     const db = c.env.FLOW_RUNS_DB;
     if (!db) {
@@ -1372,15 +1372,15 @@ crudApi.delete('/flow-conditions/:id', async (c) => {
     const conditionId = c.req.param('id');
     
     // Check if condition exists
-    const existing = await db.prepare('SELECT id FROM flow_conditions WHERE id = ?').bind(conditionId).first();
+    const existing = await db.prepare('SELECT id FROM flow_step_conditions WHERE id = ?').bind(conditionId).first();
     if (!existing) {
-      return c.json(errorResponse('Flow condition not found', 404));
+      return c.json(errorResponse('Flow step condition not found', 404));
     }
     
-    await db.prepare('DELETE FROM flow_conditions WHERE id = ?').bind(conditionId).run();
+    await db.prepare('DELETE FROM flow_step_conditions WHERE id = ?').bind(conditionId).run();
     
     return c.json(successResponse({ 
-      message: 'Flow condition deleted successfully' 
+      message: 'Flow step condition deleted successfully' 
     }));
   } catch (error) {
     return c.json(errorResponse(handleDbError(error).error, 500));
@@ -3139,15 +3139,15 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
       }
     }
     
-    // 2. Delete from flow_conditions if table exists (we fixed the schema, but check anyway)
+    // 2. Delete from flow_step_conditions if table exists (we fixed the schema, but check anyway)
     try {
-      db.prepare('SELECT 1 FROM flow_conditions LIMIT 1');
-      statements.push(db.prepare('DELETE FROM flow_conditions WHERE flow_id = ?').bind(flowId));
-      console.log("flow_conditions table exists, will delete conditions for flow", flowId);
+      db.prepare('SELECT 1 FROM flow_step_conditions LIMIT 1');
+      statements.push(db.prepare('DELETE FROM flow_step_conditions WHERE flow_id = ?').bind(flowId));
+      console.log("flow_step_conditions table exists, will delete conditions for flow", flowId);
     } catch (error) {
       const errorMessage = error.message || '';
-      if (errorMessage.includes('no such table: flow_conditions')) {
-        console.log("flow_conditions table doesn't exist, no conditions to delete");
+      if (errorMessage.includes('no such table: flow_step_conditions')) {
+        console.log("flow_step_conditions table doesn't exist, no conditions to delete");
       } else {
         throw error;
       }
