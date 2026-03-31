@@ -158,9 +158,11 @@ const getLayoutedElements = (nodes: CustomNode[], edges: CustomEdge[], direction
   });
 
   edges.forEach((edge) => {
+    console.log(`Dagre: Setting edge ${edge.source} -> ${edge.target}`);
     dagreGraph.setEdge(edge.source, edge.target);
   });
 
+  console.log(`Dagre layout: ${nodes.length} nodes, ${edges.length} edges`);
   dagre.layout(dagreGraph);
 
   const layoutedNodes = nodes.map((node) => {
@@ -314,11 +316,12 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
       <div className="flex justify-between items-start">
         {/* Hidden title placeholder */}
         <div className="font-thin text-sm truncate italic text-gray-400">
-          {step.instructions ? step.instructions.substring(0, 30) + (step.instructions.length > 30 ? '...' : '') : 'Step'}
+          {data.instructions ? data.instructions.substring(0, 30) + (data.instructions.length > 30 ? '...' : '') : 
+           step?.instructions ? step.instructions.substring(0, 30) + (step.instructions.length > 30 ? '...' : '') : 'Step'}
         </div>
         <div className="flex items-center space-x-1 ml-2">
           {/* Delete button - visible on hover only */}
-          {onDeleteNode && (
+          {onDeleteNode && !data.isFlowExit && (
             <button
               onClick={handleDelete}
               className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30 opacity-0 group-hover:opacity-100"
@@ -328,32 +331,34 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
             </button>
           )}
           {/* Add Step button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onAddNode) {
-                onAddNode(step.id, e);
-              }
-            }}
-            draggable
-            onDragStart={(e) => {
-              e.stopPropagation();
-              e.dataTransfer.setData('application/node-add', step.id);
-              e.dataTransfer.effectAllowed = 'copy';
-              const dragIcon = document.createElement('div');
-              dragIcon.textContent = '+';
-              dragIcon.style.position = 'absolute';
-              dragIcon.style.left = '-1000px';
-              dragIcon.style.top = '-1000px';
-              document.body.appendChild(dragIcon);
-              e.dataTransfer.setDragImage(dragIcon, 10, 10);
-              setTimeout(() => document.body.removeChild(dragIcon), 0);
-            }}
-            className="text-xs text-neutral-400 opacity-40 hover:opacity-100 hover:text-green-400 transition-opacity cursor-grab active:cursor-grabbing"
-            title="Add step from this node (click or drag)"
-          >
-            +
-          </button>
+          {!data.isFlowExit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onAddNode) {
+                  onAddNode(step.id, e);
+                }
+              }}
+              draggable
+              onDragStart={(e) => {
+                e.stopPropagation();
+                e.dataTransfer.setData('application/node-add', step.id);
+                e.dataTransfer.effectAllowed = 'copy';
+                const dragIcon = document.createElement('div');
+                dragIcon.textContent = '+';
+                dragIcon.style.position = 'absolute';
+                dragIcon.style.left = '-1000px';
+                dragIcon.style.top = '-1000px';
+                document.body.appendChild(dragIcon);
+                e.dataTransfer.setDragImage(dragIcon, 10, 10);
+                setTimeout(() => document.body.removeChild(dragIcon), 0);
+              }}
+              className="text-xs text-neutral-400 opacity-40 hover:opacity-100 hover:text-green-400 transition-opacity cursor-grab active:cursor-grabbing"
+              title="Add step from this node (click or drag)"
+            >
+              +
+            </button>
+          )}
         </div>
       </div>
       
@@ -409,7 +414,9 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
   });
 
   const conditionText = data?.condition?.source === 'default' 
-    ? 'Always' // Show "Always" for default conditions
+    ? data?.route?.type === 'flow' ? `To flow: ${data?.route?.target_id || 'flow'}` : 'Always' // Show flow name for flow routing edges
+    : data?.condition?.source === 'condition' && data?.condition?.operator === 'false'
+    ? `If false: ${data?.condition?.value || 'condition'}` // Show condition for loop edges
     : `${data?.condition?.source} ${data?.condition?.operator} ${data?.condition?.value || ''}`;
 
   return (
@@ -971,16 +978,19 @@ function createEdgesFromSteps(steps: Step[]) {
   const stepMap = new Map<string, Step>();
   steps.forEach(step => stepMap.set(step.id, step));
   
-  // Create edges based on default_next_step_id connections
+  // Create edges based on various connection types
   steps.forEach(step => {
+    console.log(`Processing step ${step.id}: next_flow_id="${step.next_flow_id}", default_next_step_id="${step.default_next_step_id}", loop_condition="${step.loop_condition}", final_step_id="${step.final_step_id}"`);
+    
+    // 1. Default next step (non-conditional)
     if (step.default_next_step_id && stepMap.has(step.default_next_step_id)) {
       edges.push({
-        id: `e${step.id}-${step.default_next_step_id}`,
+        id: `e-default-${step.id}-${step.default_next_step_id}`,
         source: step.id,
         target: step.default_next_step_id,
         animated: false,
         style: {
-          stroke: '#3b82f6', // Blue color for edges
+          stroke: '#3b82f6', // Blue color for default edges
           strokeWidth: 2,
         },
         markerEnd: {
@@ -1001,9 +1011,106 @@ function createEdgesFromSteps(steps: Step[]) {
         },
       });
     }
+    
+    // 2. Loop condition edge (conditional - goes to final_step_id when condition is false)
+    if (step.loop_condition && step.final_step_id && stepMap.has(step.final_step_id)) {
+      edges.push({
+        id: `e-loop-${step.id}-${step.final_step_id}`,
+        source: step.id,
+        target: step.final_step_id,
+        animated: true, // Animated for conditional edges
+        style: {
+          stroke: '#10b981', // Green color for conditional edges
+          strokeWidth: 2,
+          strokeDasharray: '5,5', // Dashed line for conditional edges
+        },
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#10b981',
+        },
+        data: {
+          condition: {
+            source: 'condition',
+            operator: 'false', // Goes to final_step_id when loop_condition is false
+            value: step.loop_condition,
+          },
+          route: {
+            type: 'step' as const,
+            target_id: step.final_step_id,
+            context_preservation: 'full' as const,
+          },
+        },
+      });
+    }
+    
+    // 3. Next flow routing edge
+    if (step.next_flow_id && step.next_flow_id.trim()) {
+      console.log(`Creating flow routing edge from ${step.id} to flow-exit-${step.next_flow_id} for flow ${step.next_flow_id}`);
+      // Create edge to the flow exit node
+      edges.push({
+        id: `e-flow-${step.id}-${step.next_flow_id}`,
+        source: step.id,
+        target: `flow-exit-${step.next_flow_id}`, // Special node ID for flow exit
+        animated: true,
+        style: {
+          stroke: '#8b5cf6', // Purple color for flow routing edges
+          strokeWidth: 2,
+          strokeDasharray: '5,5',
+        },
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#8b5cf6',
+        },
+        data: {
+          condition: {
+            source: 'default',
+            operator: 'always',
+            value: null,
+          },
+          route: {
+            type: 'flow' as const,
+            target_id: step.next_flow_id,
+            context_preservation: 'full' as const,
+          },
+        },
+      });
+    }
   });
   
   return edges;
+}
+
+// Create flow exit nodes for flow routing edges
+function createFlowExitNodes(steps: Step[]): CustomNode[] {
+  const flowExitNodes: CustomNode[] = [];
+  const flowIds = new Set<string>();
+  
+  // Collect unique flow IDs from steps with next_flow_id
+  steps.forEach(step => {
+    if (step.next_flow_id && step.next_flow_id.trim() && !flowIds.has(step.next_flow_id)) {
+      flowIds.add(step.next_flow_id);
+    }
+  });
+  
+  // Create a flow exit node for each unique flow ID
+  let index = 0;
+  flowIds.forEach(flowId => {
+    flowExitNodes.push({
+      id: `flow-exit-${flowId}`,
+      type: 'flow' as const,
+      data: {
+        label: `Exit to ${flowId}`,
+        title: `Exit to ${flowId}`,
+        instructions: `Route to flow: ${flowId}`,
+        type: 'flow' as const,
+        isFlowExit: true, // Mark as flow exit node
+      },
+      position: { x: 800, y: 100 + (index * 120) }, // Position to the right of regular nodes
+    });
+    index++;
+  });
+  
+  return flowExitNodes;
 }
 
 // Edge popup modal component
@@ -2158,6 +2265,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         // Create nodes from steps
         const initialNodes = createNodesFromSteps(flowSteps);
         
+        // Add flow exit nodes for flow routing
+        const flowExitNodes = createFlowExitNodes(flowSteps);
+        const allNodes = [...initialNodes, ...flowExitNodes];
+        
         // Create edges: use flowEdges if available, otherwise try localStorage, otherwise create from steps
         let initialEdges: CustomEdge[] = [];
         if (flowEdges && flowEdges.length > 0) {
@@ -2204,7 +2315,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         }
         
         // Apply Dagre layout for proper node positioning
-        const { nodes: layoutedNodes } = getLayoutedElements(initialNodes, initialEdges);
+        const { nodes: layoutedNodes } = getLayoutedElements(allNodes, initialEdges);
         
         setNodes(layoutedNodes);
         setEdges(initialEdges);

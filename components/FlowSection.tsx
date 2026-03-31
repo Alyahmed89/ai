@@ -25,12 +25,11 @@ interface FlowSectionProps {
   onRemoveQueryParam: (index: number) => void;
   onVariableDragStart: (e: React.DragEvent, variable: string) => void;
   defaultCollapsed?: boolean;
+  sampleResponse?: string;
 }
 
-interface EndpointMetadata {
-  parameters: Array<{ name: string; type: string; required: boolean }>;
-  variables: Array<{ name: string; description: string }>;
-}
+// Endpoint metadata will be provided by backend
+// Includes parameters (from request sample) and variables (from response sample)
 
 export default function FlowSection({
   title,
@@ -52,11 +51,21 @@ export default function FlowSection({
   onUpdateQueryParam,
   onRemoveQueryParam,
   onVariableDragStart,
-  defaultCollapsed = true
+  defaultCollapsed = true,
+  sampleResponse = `{
+  "status": "success",
+  "data": {
+    "id": "resp_001",
+    "message": "Operation completed successfully",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "metrics": {
+      "duration_ms": 245,
+      "records_processed": 1250
+    }
+  }
+}`
 }: FlowSectionProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
-  const [endpointMetadata, setEndpointMetadata] = useState<EndpointMetadata | null>(null);
-  const [loadingMetadata, setLoadingMetadata] = useState(false);
   const [smartParams, setSmartParams] = useState(queryParams);
   
   // State for API data
@@ -71,42 +80,24 @@ export default function FlowSection({
     flowruns: false
   });
 
+  // State for endpoint keys (inputs and outputs)
+  const [inputKeys, setInputKeys] = useState<string[]>([]);
+  const [outputKeys, setOutputKeys] = useState<string[]>([]);
+  const [loadingEndpoint, setLoadingEndpoint] = useState(false);
+
   const flowOptions = ['main_pipeline', 'data_processing', 'etl_job', 'analytics_flow'];
   const stepOptions = ['process_data', 'validate_input', 'transform_results', 'load_final'];
   const flowrunOptions = ['daily_run_001', 'nightly_batch', 'manual_trigger', 'scheduled_flow'];
-  const variables = ['command_output', 'flow_id', 'step_id', 'user_input', 'timestamp'];
+  
+  // Variables will be provided by backend based on endpoint
+  // For now, show placeholder or empty list
+  const variables: string[] = [];
 
-  // Conditional rendering flags
-  const showParameters = selectedCommand && !loadingMetadata;
-  const showVariables = selectedCommand && endpointMetadata?.variables;
+  // Sections will be shown when endpoint is selected
+  // Backend will provide actual parameters and variables
 
-  // Fetch endpoint metadata when command changes
-  useEffect(() => {
-    if (selectedCommand) {
-      setLoadingMetadata(true);
-      // Simulate API call - in production, fetch from /api/commands/{name}/metadata
-      setTimeout(() => {
-        const mockMetadata: EndpointMetadata = {
-          parameters: [
-            { name: 'limit', type: 'number', required: false },
-            { name: 'offset', type: 'number', required: false },
-            { name: 'status', type: 'string', required: false },
-            { name: 'priority', type: 'string', required: false }
-          ],
-          variables: [
-            { name: 'command_output', description: 'Output from the command' },
-            { name: 'flow_id', description: 'Current flow ID' },
-            { name: 'step_id', description: 'Current step ID' }
-          ]
-        };
-        setEndpointMetadata(mockMetadata);
-        setLoadingMetadata(false);
-      }, 500);
-    } else {
-      setEndpointMetadata(null);
-      setLoadingMetadata(false);
-    }
-  }, [selectedCommand]);
+  // Backend will provide endpoint metadata when command is selected
+  // This includes parameters (from request sample) and variables (from response sample)
 
   // Smart parameter management
   useEffect(() => {
@@ -247,57 +238,94 @@ export default function FlowSection({
     fetchData();
   }, [flowValue]);
 
-  // Fetch endpoint metadata from real API
+  // Utility function to extract {variable} patterns from strings
+  const extractParams = (str: string): string[] => {
+    if (!str) return [];
+    const matches = str.match(/\{([^}]+)\}/g) || [];
+    return [...new Set(matches.map(m => m.replace(/[{}]/g, '')))];
+  };
+
+  // Fetch endpoint details when command is selected
   useEffect(() => {
-    const fetchEndpointMetadata = async () => {
+    const fetchEndpointDetails = async () => {
       if (!selectedCommand) {
-        setEndpointMetadata(null);
+        setInputKeys([]);
+        setOutputKeys([]);
         return;
       }
-      
-      setLoadingMetadata(true);
+
+      setLoadingEndpoint(true);
       try {
-        // Fetch command metadata
-        const response = await fetch(`/api/proxy/api/commands/${selectedCommand}`);
-        const data = await response.json();
-        
-        // Extract parameters and variables from metadata
-        const parameters = data.parameters || data.query_params || [];
-        const variables = data.variables || [];
-        
-        setEndpointMetadata({
-          parameters: parameters.map((p: any) => ({
-            name: p.name || p.key,
-            type: p.type || 'string',
-            required: p.required || false
-          })),
-          variables: variables.map((v: any) => ({
-            name: v.name || v,
-            description: v.description || `Variable: ${v.name || v}`
-          }))
-        });
+        // STEP 1: Fetch both sources in parallel
+        const [introspectResponse, endpointResponse] = await Promise.all([
+          fetch(`/api/proxy/api/endpoints/introspect?endpoint_id=${encodeURIComponent(selectedCommand)}`),
+          fetch(`/api/proxy/api/endpoints/${encodeURIComponent(selectedCommand)}`)
+        ]);
+
+        // STEP 2: Extract input keys (parameters) from endpoint config
+        let inputKeys: string[] = [];
+        if (endpointResponse.ok) {
+          const endpointData = await endpointResponse.json();
+          const endpoint = endpointData.data;
+          
+          // Extract from URL, query_params, and body_template
+          const urlParams = extractParams(endpoint.url || '');
+          const queryParams = extractParams(endpoint.query_params || '');
+          const bodyParams = extractParams(endpoint.body_template || '');
+          
+          // Combine and deduplicate
+          inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams])];
+          setInputKeys(inputKeys);
+          
+          // Initialize smartParams with input keys
+          const initialParams = inputKeys.map(key => ({
+            key,
+            value: `{{${key}}}`
+          }));
+          setSmartParams(initialParams);
+          
+          // Update parent component with initial params
+          initialParams.forEach((param, index) => {
+            if (param.key) {
+              onUpdateQueryParam(index, param.key, param.value);
+            }
+          });
+        } else {
+          console.error('Failed to fetch endpoint data:', endpointResponse.status);
+          setInputKeys([]);
+        }
+
+        // STEP 3: Map output keys from introspect
+        let outputKeys: string[] = [];
+        if (introspectResponse.ok) {
+          const introspectData = await introspectResponse.json();
+          outputKeys = introspectData.available_keys || [];
+          setOutputKeys(outputKeys);
+        } else {
+          console.error('Failed to fetch endpoint introspect:', introspectResponse.status);
+          setOutputKeys([]);
+        }
+
+        // STEP 4: Normalize structure (for debugging/logging)
+        const allKeys = [
+          ...inputKeys.map(name => ({ name, direction: "input" as const })),
+          ...outputKeys.map(name => ({ name, direction: "output" as const }))
+        ];
+        console.log('Endpoint keys loaded:', allKeys);
+
       } catch (error) {
-        console.error('Error fetching endpoint metadata:', error);
-        // Fallback to mock data
-        setEndpointMetadata({
-          parameters: [
-            { name: 'limit', type: 'number', required: false },
-            { name: 'offset', type: 'number', required: false },
-            { name: 'sort', type: 'string', required: false }
-          ],
-          variables: [
-            { name: 'command_output', description: 'Output from the command' },
-            { name: 'flow_id', description: 'Current flow ID' },
-            { name: 'step_id', description: 'Current step ID' }
-          ]
-        });
+        console.error('Error fetching endpoint details:', error);
+        setInputKeys([]);
+        setOutputKeys([]);
       } finally {
-        setLoadingMetadata(false);
+        setLoadingEndpoint(false);
       }
     };
-    
-    fetchEndpointMetadata();
+
+    fetchEndpointDetails();
   }, [selectedCommand]);
+
+  // Backend will provide endpoint metadata including parameters and variables
 
   return (
     <div className="node-popup-collapsible-section">
@@ -312,91 +340,36 @@ export default function FlowSection({
       </div>
       
       <div className={`node-popup-collapsible-content ${isCollapsed ? 'collapsed' : ''}`}>
-        {/* FLOW, STEP, FLOWRUN with text labels and searchable autocomplete */}
-        <div className="node-popup-inline-params node-popup-row">
-          <div className="node-popup-labeled-input">
-            <span className="label-text">flow</span>
-            <input 
-              type="text" 
-              value={flowValue}
-              onChange={(e) => onFlowChange(e.target.value)}
-              list={`${type}-flowOptions`}
-              placeholder="search..."
-              className="node-popup-input"
-            />
-            <datalist id={`${type}-flowOptions`}>
-              {flowOptions.map(option => <option key={option} value={option} />)}
-            </datalist>
-          </div>
-          <div className="node-popup-labeled-input">
-            <span className="label-text">step</span>
-            <input 
-              type="text" 
-              value={stepValue}
-              onChange={(e) => onStepChange(e.target.value)}
-              list={`${type}-stepOptions`}
-              placeholder="search..."
-              className="node-popup-input"
-            />
-            <datalist id={`${type}-stepOptions`}>
-              {stepOptions.map(option => <option key={option} value={option} />)}
-            </datalist>
-          </div>
-          <div className="node-popup-labeled-input">
-            <span className="label-text">flowrun</span>
-            <input 
-              type="text" 
-              value={flowrunValue}
-              onChange={(e) => onFlowrunChange(e.target.value)}
-              list={`${type}-flowrunOptions`}
-              placeholder="search..."
-              className="node-popup-input"
-            />
-            <datalist id={`${type}-flowrunOptions`}>
-              {flowrunOptions.map(option => <option key={option} value={option} />)}
-            </datalist>
-          </div>
-        </div>
-
-        {/* DROPLIST with endpoint + dark icon */}
+        {/* DROPLIST with endpoint - full width */}
         <div className="node-popup-dropdown-row">
-          <div className="flex-1">
-            <SearchableDropdown
-              value={selectedCommand}
-              onChange={onCommandChange}
-              placeholder={`select endpoint to call for ${type}`}
-              searchPlaceholder="Search endpoints..."
-              onSearch={searchEndpoints}
-              options={availableCommands.map(cmd => ({
-                id: cmd.name,
-                label: `${cmd.name} (${cmd.method})`,
-                description: `Endpoint method: ${cmd.method}`
-              }))}
-              loading={loadingCommands}
-            />
-          </div>
-          <button
-            onClick={onAddCommand}
-            className="node-popup-icon-btn"
-            title="Add new command"
-          >
-            +
-          </button>
-          <button 
-            onClick={onShowSample}
-            className="node-popup-icon-btn" 
-            title="sample response"
-          >
-            📋
-          </button>
+          <SearchableDropdown
+            value={selectedCommand}
+            onChange={onCommandChange}
+            placeholder={`select endpoint to call for ${type}`}
+            searchPlaceholder="Search endpoints..."
+            onSearch={searchEndpoints}
+            options={availableCommands.map(cmd => ({
+              id: cmd.name,
+              label: `${cmd.name} (${cmd.method})`,
+              description: `Endpoint method: ${cmd.method}`
+            }))}
+            loading={loadingCommands}
+          />
         </div>
 
-        {/* ========== QUERY PARAMETERS ========== */}
-        {showParameters ? (
+        {/* ========== ENDPOINT PARAMETERS ========== */}
+        {selectedCommand && inputKeys.length > 0 && (
           <div className="node-popup-query-params">
             <div className="node-popup-query-header">
               <div className="text-xs text-gray-400 mb-1 font-thin">
-                Query Parameters {loadingMetadata && '(loading...)'}
+                {loadingEndpoint ? (
+                  <span className="flex items-center gap-2">
+                    <span className="animate-spin">⟳</span>
+                    Loading endpoint parameters...
+                  </span>
+                ) : (
+                  `Endpoint Parameters (${inputKeys.length} from endpoint)`
+                )}
               </div>
               <button 
                 onClick={handleAddParameter}
@@ -407,15 +380,9 @@ export default function FlowSection({
               </button>
             </div>
             
-            {loadingMetadata ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="flex gap-2">
-                    <div className="flex-1 h-8 bg-gray-800 rounded animate-pulse"></div>
-                    <div className="flex-1 h-8 bg-gray-800 rounded animate-pulse"></div>
-                    <div className="w-8 h-8 bg-gray-800 rounded animate-pulse"></div>
-                  </div>
-                ))}
+            {loadingEndpoint ? (
+              <div className="text-xs text-gray-500 italic py-2">
+                Loading parameters from endpoint...
               </div>
             ) : (
               <>
@@ -426,9 +393,8 @@ export default function FlowSection({
                       value={param.key}
                       onChange={(e) => handleParameterChange(index, 'key', e.target.value)}
                       onBlur={() => handleParameterBlur(index)}
-                      placeholder="key"
+                      placeholder="parameter name"
                       className="node-popup-query-key"
-                      list={`${type}-paramSuggestions`}
                     />
                     <input
                       type="text"
@@ -451,50 +417,48 @@ export default function FlowSection({
                     </button>
                   </div>
                 ))}
-                <datalist id={`${type}-paramSuggestions`}>
-                  {endpointMetadata?.parameters.map(param => (
-                    <option key={param.name} value={param.name}>
-                      {param.name} ({param.type}{param.required ? ', required' : ''})
-                    </option>
-                  ))}
-                </datalist>
               </>
             )}
           </div>
-        ) : (
-          selectedCommand && (
-            <div className="text-xs text-gray-400 py-2">
-              Loading endpoint metadata...
-            </div>
-          )
         )}
 
         {/* ========== VARIABLES SECTION ========== */}
-        {showVariables ? (
+        {selectedCommand && (
           <div className="node-popup-tags-section">
             <div className="text-xs text-gray-400 mb-1 font-thin">
-              available variables:
+              {loadingEndpoint ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin">⟳</span>
+                  Loading endpoint variables...
+                </span>
+              ) : (
+                `Available variables (${outputKeys.length} from endpoint):`
+              )}
             </div>
             <div className="node-popup-tags-wrapper">
-              {endpointMetadata?.variables.map(variable => (
-                <div 
-                  key={variable.name}
-                  className="node-popup-var-tag"
-                  draggable
-                  onDragStart={(e) => onVariableDragStart(e, variable.name)}
-                  title={`${variable.description} - Drag into text`}
-                >
-                  {variable.name}
+              {loadingEndpoint ? (
+                <div className="text-xs text-gray-500 italic">
+                  Loading variables from endpoint...
                 </div>
-              ))}
+              ) : outputKeys.length > 0 ? (
+                outputKeys.map(variable => (
+                  <div 
+                    key={variable}
+                    className="node-popup-var-tag"
+                    draggable
+                    onDragStart={(e) => onVariableDragStart(e, variable)}
+                    title={`{{${variable}}} - Drag into text`}
+                  >
+                    {variable}
+                  </div>
+                ))
+              ) : (
+                <div className="text-xs text-gray-500 italic">
+                  No variables available from this endpoint
+                </div>
+              )}
             </div>
           </div>
-        ) : (
-          selectedCommand && !loadingMetadata && (
-            <div className="text-xs text-gray-400 py-2">
-              No variables available for this endpoint
-            </div>
-          )
         )}
 
 
