@@ -3650,7 +3650,7 @@ crudApi.post('/query', async (c) => {
 crudApi.get('/variables', async (c) => {
   try {
     const { flow_id, flow_run_id, step_id, step_run_id, key, source } = c.req.query();
-    const db = c.env.DB;
+    const db = c.env.FLOW_RUNS_DB;
 
     let sql = 'SELECT * FROM variables WHERE 1=1';
     const bindings: any[] = [];
