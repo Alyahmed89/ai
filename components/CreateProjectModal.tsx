@@ -24,15 +24,14 @@ export default function CreateProjectModal({ onClose, onProjectCreated }: Create
     setError(null);
 
     try {
-      const response = await fetch('/api/proxy/graph/projects', {
+      const response = await fetch('/api/proxy/api/projects', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           name: projectName.trim(),
-          node_count: 0,
-          metadata: JSON.stringify({ description: 'New project created from UI' })
+          description: 'New project created from UI'
         }),
       });
 

@@ -10,11 +10,9 @@ import { FlowDefinition, FlowRun, FlowStep } from '@/types';
 interface Project {
   id: string;
   name: string;
-  status: string;
-  created_at: number;
-  updated_at: number;
-  metadata: string;
-  deleted_at: number | null;
+  description: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Task {
@@ -162,7 +160,7 @@ export default function HierarchicalNav({
   const fetchProjects = async () => {
     setLoading(prev => ({ ...prev, projects: true }));
     try {
-      const response = await fetch('/api/proxy/graph/projects');
+      const response = await fetch('/api/proxy/api/projects');
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
