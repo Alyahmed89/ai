@@ -2051,7 +2051,7 @@ export class ConversationOrchestratorDO_2026A {
     // Test for common column names
     const testColumns = [
       'id', 'flow_id', 'step_key', 'title', 'instructions', 'description', 
-      'prompt', 'step_type', 'order_index', 'step_number', 'page_key',
+      'prompt', 'order_index', 'step_number', 'page_key',
       'blocking', 'auto_fail_on_error', 'retryable', 'task_id', 'input_keys',
       'output_url', 'output_auth_token', 'requires_task', 'dual_agent',
       'ruler_agent', 'goal_criteria', 'max_iterations_per_step', 
@@ -2133,12 +2133,8 @@ export class ConversationOrchestratorDO_2026A {
       columnMappings['description'] = `'Step instructions'`;
     }
     
-    // Map step_type
-    if (availableColumns.includes('step_type')) {
-      columnMappings['step_type'] = 'step_type';
-    } else {
-      columnMappings['step_type'] = `'default'`;
-    }
+    // step_type removed - not needed for current implementation
+    columnMappings['step_type'] = `'default'`;
     
     // Map order_index/step_number
     if (availableColumns.includes('order_index')) {
@@ -2607,7 +2603,7 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // NEXT STEP EXISTS - INJECT AND CONTINUE
-      console.log(`[DO:${this.state.id}] Loaded next step for flow ${flowId}: ${nextStep.title} (${nextStep.step_type})`);
+      console.log(`[DO:${this.state.id}] Loaded next step for flow ${flowId}: ${nextStep.title}`);
       
       // Fetch task data if task_id is present OR if requires_task is true
       let taskData = null;
@@ -2729,7 +2725,6 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Add step metadata for context
-      taskPrompt += `\n\nStep Type: ${nextStep.step_type}`;
       if (nextStep.page_key) {
         taskPrompt += `\nPage: ${nextStep.page_key}`;
       }
@@ -2762,7 +2757,7 @@ export class ConversationOrchestratorDO_2026A {
           step_key: nextStep.step_key,
           title: nextStep.title,
           description: nextStep.description,
-          step_type: nextStep.step_type
+          step_type: 'default'
         },
         state: 'INIT',
         note: 'Step injected into prompt. Alarm scheduled for execution.'
@@ -3821,7 +3816,6 @@ export class ConversationOrchestratorDO_2026A {
         if (nextStep.description) {
           stepCommand += `\n${nextStep.description}`;
         }
-        stepCommand += `\n\nStep Type: ${nextStep.step_type}`;
         if (nextStep.page_key) {
           stepCommand += `\nPage: ${nextStep.page_key}`;
         }
@@ -6887,7 +6881,7 @@ ${messageContent}`;
       response,
       input_payload: JSON.stringify({
         step_key: step.step_key,
-        step_type: step.step_type,
+        step_type: 'default',
         requires_task: step.requires_task,
         task_id: step.task_id,
         output_enabled: step.output

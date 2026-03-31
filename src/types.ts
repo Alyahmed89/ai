@@ -310,7 +310,6 @@ export interface StepData {
   step_key: string;
   title: string;
   description: string | null;
-  step_type: string;
   order_index: number;
   page_key: string | null;
   blocking: boolean;
@@ -320,7 +319,7 @@ export interface StepData {
   next_flow_id?: string; // For cross-flow transition to specific flow
   task_id?: string;
   requires_task?: boolean;
-  input_keys?: string;  // NEW: JSON string of SecureApiConfig[] for dynamic API data fetching
+  input_keys?: string;  // DEPRECATED: Use /introspect endpoint for available keys
   output?: boolean;
   output_url?: string;
   output_auth_token?: string;

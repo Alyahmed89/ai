@@ -430,11 +430,11 @@ crudApi.post('/flow-steps', async (c) => {
     
     const sql = `
       INSERT INTO flow_steps (
-        id, flow_id, step_key, title, instructions, step_type, order_index,
+        id, flow_id, step_key, title, instructions, order_index,
         page_key, blocking, auto_fail_on_error, retryable, task_id,
         output_keys, output_url, output_payload_template, default_next_step,
         output_auth_token, input_keys, output, next_flow_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     // Log bindings for debugging
@@ -444,7 +444,6 @@ crudApi.post('/flow-steps', async (c) => {
       validatedData.step_key,
       validatedData.title,
       validatedData.instructions,
-      validatedData.step_type,
       validatedData.order_index,
       dbValue(validatedData.page_key),
       getBoolean(validatedData.blocking, true),
@@ -500,7 +499,7 @@ crudApi.put('/flow-steps/:id', async (c) => {
     
     const validatedData = validation.data!;
     const { 
-      flow_id, step_key, title, instructions, step_type, order_index,
+      flow_id, step_key, title, instructions, order_index,
       page_key, blocking, auto_fail_on_error, retryable, task_id,
       output_keys, output_url, output_payload_template, default_next_step,
       output_auth_token, input_keys, output, next_flow_id
@@ -508,7 +507,7 @@ crudApi.put('/flow-steps/:id', async (c) => {
 
     const sql = `
       UPDATE flow_steps SET 
-        flow_id = ?, step_key = ?, title = ?, instructions = ?, step_type = ?, order_index = ?,
+        flow_id = ?, step_key = ?, title = ?, instructions = ?, order_index = ?,
         page_key = ?, blocking = ?, auto_fail_on_error = ?, retryable = ?, task_id = ?,
         output_keys = ?, output_url = ?, output_payload_template = ?, default_next_step = ?,
         output_auth_token = ?, input_keys = ?, output = ?, next_flow_id = ?, updated_at = CURRENT_TIMESTAMP
@@ -520,7 +519,6 @@ crudApi.put('/flow-steps/:id', async (c) => {
       step_key,
       title,
       instructions,
-      step_type,
       order_index,
       dbValue(page_key),
       getBoolean(blocking, true),
@@ -2746,7 +2744,7 @@ crudApi.post('/execute-step', async (c) => {
         id: step.id,
         title: step.title,
         instructions: step.instructions,
-        step_type: step.step_type,
+        step_type: 'default',
         order_index: step.order_index
       };
 
@@ -3132,10 +3130,7 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
             updates.push('instructions = ?');
             bindings.push(step.instructions);
           }
-          if (step.step_type !== undefined) {
-            updates.push('step_type = ?');
-            bindings.push(step.step_type);
-          }
+          // step_type removed - not needed for current implementation
           if (step.order_index !== undefined) {
             updates.push('order_index = ?');
             bindings.push(step.order_index);
@@ -3202,11 +3197,11 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
           const stepId = step.id;
           const sql = `
             INSERT INTO flow_steps (
-              id, flow_id, step_key, title, instructions, step_type, order_index,
+              id, flow_id, step_key, title, instructions, order_index,
               page_key, blocking, auto_fail_on_error, retryable, task_id,
               output_keys, output_url, output_payload_template, default_next_step,
               output_auth_token, input_keys, output, next_flow_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `;
 
           const bindings = [
@@ -3215,7 +3210,6 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
             step.step_key || `step-${Date.now()}`,
             step.title || 'Untitled Step',
             step.instructions || '',
-            step.step_type || 'manual',
             step.order_index || 0,
             dbValue(step.page_key),
             getBoolean(step.blocking, true),
@@ -3649,5 +3643,71 @@ crudApi.post('/query', async (c) => {
   } catch (error) {
     console.error('Query endpoint error:', error);
     return c.json({ error: 'Internal server error', details: error.message }, 500);
+  }
+});
+
+// Variable retrieval endpoint for condition evaluation
+crudApi.get('/variables', async (c) => {
+  try {
+    const { flow_id, flow_run_id, step_id, step_run_id, key, source } = c.req.query();
+    const db = c.env.DB;
+
+    let sql = 'SELECT * FROM variables WHERE 1=1';
+    const bindings: any[] = [];
+
+    if (flow_id) {
+      sql += ' AND flow_id = ?';
+      bindings.push(flow_id);
+    }
+    if (flow_run_id) {
+      sql += ' AND flow_run_id = ?';
+      bindings.push(flow_run_id);
+    }
+    if (step_id) {
+      sql += ' AND step_id = ?';
+      bindings.push(step_id);
+    }
+    if (step_run_id) {
+      sql += ' AND step_run_id = ?';
+      bindings.push(step_run_id);
+    }
+    if (key) {
+      sql += ' AND key = ?';
+      bindings.push(key);
+    }
+    if (source) {
+      sql += ' AND source = ?';
+      bindings.push(source);
+    }
+
+    sql += ' ORDER BY created_at DESC';
+
+    const result = await db.prepare(sql).bind(...bindings).all();
+    
+    // Parse JSON values
+    const variables = result.results.map((v: any) => {
+      try {
+        return {
+          ...v,
+          value: v.value ? JSON.parse(v.value) : null
+        };
+      } catch (e) {
+        return v;
+      }
+    });
+
+    return c.json({
+      success: true,
+      count: variables.length,
+      variables
+    });
+
+  } catch (error: any) {
+    console.error('Variables endpoint error:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Internal server error', 
+      details: error.message 
+    }, 500);
   }
 });
