@@ -14,7 +14,6 @@ async function testNodesAPI() {
       },
       body: JSON.stringify({
         name: 'Test Project for Nodes ' + Date.now(),
-        status: 'active',
         metadata: '{"description": "Project for testing nodes API"}'
       })
     });

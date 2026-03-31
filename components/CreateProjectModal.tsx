@@ -31,7 +31,6 @@ export default function CreateProjectModal({ onClose, onProjectCreated }: Create
         },
         body: JSON.stringify({
           name: projectName.trim(),
-          status: 'active',
           node_count: 0,
           metadata: JSON.stringify({ description: 'New project created from UI' })
         }),
