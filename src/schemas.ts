@@ -53,13 +53,22 @@ export const flowDefinitionSchema = z.object({
   name: z.string().min(1, 'name is required'),
   description: z.string().optional().nullable(),
   max_iterations: z.number().int().positive().default(20),
-  repository: z.string().min(1, 'repository is required'),
+  repository: z.string().optional().nullable(),
   branch: z.string().default('main'),
   created_at: timestampSchema,
   updated_at: timestampSchema,
   next_flow_id: z.string().optional().nullable(),
   priority: z.number().int().default(0),
   agent: z.string().default('openhands'),
+}).superRefine((data, ctx) => {
+  // Repository is required only if agent is "openhands"
+  if (data.agent === 'openhands' && (!data.repository || data.repository.trim() === '')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'repository is required when agent is "openhands"',
+      path: ['repository'],
+    });
+  }
 });
 
 // Flow Definition Create Schema
