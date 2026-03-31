@@ -980,7 +980,7 @@ function createEdgesFromSteps(steps: Step[]) {
   
   // Create edges based on various connection types
   steps.forEach(step => {
-    console.log(`Processing step ${step.id}: next_flow_id="${step.next_flow_id}", default_next_step_id="${step.default_next_step_id}", loop_condition="${step.loop_condition}", final_step_id="${step.final_step_id}"`);
+    console.log(`Processing step ${step.id}: next_flow_id="${step.next_flow_id}", default_next_step_id="${step.default_next_step_id}"`);
     
     // 1. Default next step (non-conditional)
     if (step.default_next_step_id && stepMap.has(step.default_next_step_id)) {
@@ -1006,37 +1006,6 @@ function createEdgesFromSteps(steps: Step[]) {
           route: {
             type: 'step' as const,
             target_id: step.default_next_step_id,
-            context_preservation: 'full' as const,
-          },
-        },
-      });
-    }
-    
-    // 2. Loop condition edge (conditional - goes to final_step_id when condition is false)
-    if (step.loop_condition && step.final_step_id && stepMap.has(step.final_step_id)) {
-      edges.push({
-        id: `e-loop-${step.id}-${step.final_step_id}`,
-        source: step.id,
-        target: step.final_step_id,
-        animated: true, // Animated for conditional edges
-        style: {
-          stroke: '#10b981', // Green color for conditional edges
-          strokeWidth: 2,
-          strokeDasharray: '5,5', // Dashed line for conditional edges
-        },
-        markerEnd: {
-          type: 'arrowclosed',
-          color: '#10b981',
-        },
-        data: {
-          condition: {
-            source: 'condition',
-            operator: 'false', // Goes to final_step_id when loop_condition is false
-            value: step.loop_condition,
-          },
-          route: {
-            type: 'step' as const,
-            target_id: step.final_step_id,
             context_preservation: 'full' as const,
           },
         },
