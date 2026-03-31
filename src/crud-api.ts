@@ -1053,8 +1053,8 @@ crudApi.post('/flow-step-conditions', async (c) => {
     const sql = `
       INSERT INTO flow_step_conditions (
         id, flow_step_id, condition_type, condition_value, condition_operator,
-        next_step, next_step_id, next_flow_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        next_step, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     await db.prepare(sql).bind(
@@ -1063,9 +1063,7 @@ crudApi.post('/flow-step-conditions', async (c) => {
       condition_type,
       condition_value,
       condition_operator || 'equals',
-      dbValue(finalNextStep),
-      dbValue(finalNextStepId),
-      dbValue(next_flow_id)
+      dbValue(finalNextStep)
     ).run();
     
     return c.json(successResponse({ 
@@ -1129,8 +1127,6 @@ crudApi.put('/flow-step-conditions/:id', async (c) => {
         condition_value = COALESCE(?, condition_value),
         condition_operator = COALESCE(?, condition_operator),
         next_step = COALESCE(?, next_step),
-        next_step_id = COALESCE(?, next_step_id),
-        next_flow_id = COALESCE(?, next_flow_id),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
@@ -1141,8 +1137,6 @@ crudApi.put('/flow-step-conditions/:id', async (c) => {
       dbValue(condition_value),
       dbValue(condition_operator),
       dbValue(finalNextStep),
-      dbValue(finalNextStepId),
-      dbValue(next_flow_id),
       conditionId
     ).run();
     
@@ -1217,7 +1211,7 @@ crudApi.get('/flow-step-conditions', async (c) => {
 
     // Ensure tables exist before querying
 
-    const result = await db.prepare('SELECT * FROM flow_step_conditions ORDER BY flow_id, flow_step_id').all();
+    const result = await db.prepare('SELECT * FROM flow_step_conditions ORDER BY flow_step_id').all();
     return c.json(result.results || []);
   } catch (error) {
     return c.json(handleDbError(error), 500);
@@ -1324,26 +1318,21 @@ crudApi.put('/flow-step-conditions/:id', async (c) => {
     
     const sql = `
       UPDATE flow_step_conditions SET
-        flow_id = COALESCE(?, flow_id),
         flow_step_id = COALESCE(?, flow_step_id),
         condition_type = COALESCE(?, condition_type),
-        condition_engine = COALESCE(?, condition_engine),
-        condition_key = COALESCE(?, condition_key),
         condition_value = COALESCE(?, condition_value),
-        condition_query = COALESCE(?, condition_query),
-        next_flow_id = COALESCE(?, next_flow_id)
+        condition_operator = COALESCE(?, condition_operator),
+        next_step = COALESCE(?, next_step),
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
 
     await db.prepare(sql).bind(
-      dbValue(flow_id),
       dbValue(flow_step_id),
       dbValue(condition_type),
-      dbValue(condition_engine),
-      dbValue(condition_key),
       dbValue(condition_value),
-      dbValue(condition_query),
-      dbValue(next_flow_id),
+      dbValue(condition_operator),
+      dbValue(next_step),
       conditionId
     ).run();
     
