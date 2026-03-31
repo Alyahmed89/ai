@@ -3033,20 +3033,7 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
         }
       }
       
-      // Delete from flow_step_tags for deleted steps
-      try {
-        const placeholders = deleted_step_ids.map(() => '?').join(',');
-        statements.push(db.prepare(`DELETE FROM flow_step_tags WHERE step_id IN (${placeholders})`).bind(...deleted_step_ids));
-        console.log("Deleting flow_step_tags for", deleted_step_ids.length, "steps");
-      } catch (error) {
-        const errorMessage = error.message || '';
-        if (errorMessage.includes('no such table: flow_step_tags')) {
-          console.log("flow_step_tags table doesn't exist, no tags to delete");
-        } else {
-          // If it's another error (like table exists but has different schema), just log and continue
-          console.log("flow_step_tags deletion statement preparation failed:", errorMessage);
-        }
-      }
+
     }
     
     // 1. Delete orphaned steps (edges already deleted, so no foreign key issues)
@@ -3213,12 +3200,6 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
           // Check if error is due to missing flow_edges table
           if (errorMessage.includes('no such table: flow_edges')) {
             console.log("flow_edges table doesn't exist, skipping edge operations");
-            // Continue without this statement
-            continue;
-          }
-          // Check if error is due to missing flow_step_tags table
-          else if (errorMessage.includes('no such table: flow_step_tags')) {
-            console.log("flow_step_tags table doesn't exist, skipping tag deletion");
             // Continue without this statement
             continue;
           }
