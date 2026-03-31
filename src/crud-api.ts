@@ -8,6 +8,8 @@ import {
   flowDefinitionUpdateSchema,
   taskCreateSchema,
   taskUpdateSchema,
+  projectCreateSchema,
+  projectUpdateSchema,
   flowStepConditionCreateSchema,
   flowStepConditionUpdateSchema,
   flowConditionCreateSchema,
@@ -354,6 +356,149 @@ crudApi.delete('/tasks/:id', async (c) => {
     }
 
     return c.json({ message: 'Task deleted successfully' });
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// ============================================================================
+// PROJECTS ENDPOINTS
+// ============================================================================
+
+// Get all projects
+crudApi.get('/projects', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const result = await db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all();
+    return c.json(successResponse(result.results || []));
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Get project by ID
+crudApi.get('/projects/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('SELECT * FROM projects WHERE id = ?').bind(id).first();
+
+    if (!result) {
+      return c.json(notFoundResponse('Project not found'));
+    }
+
+    return c.json(successResponse(result));
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Create project
+crudApi.post('/projects', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const body = await c.req.json();
+    const validation = validateSchema(projectCreateSchema, body);
+    
+    if (!validation.success) {
+      return c.json(validationErrorResponse(validation.errors), 400);
+    }
+
+    const validatedData = validation.data!;
+    const projectId = validatedData.id || `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const sql = `
+      INSERT INTO projects (id, name, description, created_at, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `;
+
+    await db.prepare(sql).bind(
+      projectId,
+      validatedData.name,
+      dbValue(validatedData.description)
+    ).run();
+
+    const createdProject = await db.prepare('SELECT * FROM projects WHERE id = ?').bind(projectId).first();
+    return c.json(successResponse(createdProject), 201);
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Update project
+crudApi.put('/projects/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const validation = validateSchema(projectUpdateSchema, body);
+    
+    if (!validation.success) {
+      return c.json(validationErrorResponse(validation.errors), 400);
+    }
+
+    const validatedData = validation.data!;
+    const { name, description } = validatedData;
+
+    // Check if project exists
+    const existing = await db.prepare('SELECT id FROM projects WHERE id = ?').bind(id).first();
+    if (!existing) {
+      return c.json(notFoundResponse('Project not found'));
+    }
+
+    const sql = `
+      UPDATE projects SET
+        name = COALESCE(?, name),
+        description = COALESCE(?, description),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+
+    await db.prepare(sql).bind(
+      dbValue(name),
+      dbValue(description),
+      id
+    ).run();
+
+    const updatedProject = await db.prepare('SELECT * FROM projects WHERE id = ?').bind(id).first();
+    return c.json(successResponse(updatedProject));
+  } catch (error) {
+    return c.json(handleDbError(error), 500);
+  }
+});
+
+// Delete project
+crudApi.delete('/projects/:id', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(errorResponse('Database not configured', 500));
+    }
+
+    const id = c.req.param('id');
+    const result = await db.prepare('DELETE FROM projects WHERE id = ?').bind(id).run();
+
+    if (result.meta.changes === 0) {
+      return c.json(notFoundResponse('Project not found'));
+    }
+
+    return c.json({ message: 'Project deleted successfully' });
   } catch (error) {
     return c.json(handleDbError(error), 500);
   }
@@ -1442,7 +1587,7 @@ crudApi.get('/endpoints', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        sample_response, ai_enabled, endpoint_type, parameter_schema
+        sample_response, ai_enabled, endpoint_type, sample_request
       FROM endpoint_registry
       ${whereClause}
       ORDER BY name ASC
@@ -1495,7 +1640,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        sample_response, ai_enabled, endpoint_type, parameter_schema
+        sample_response, ai_enabled, endpoint_type, sample_request
       FROM endpoint_registry
       WHERE name = ?
       LIMIT 1
@@ -1578,7 +1723,7 @@ crudApi.get('/endpoints/:name', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        sample_response, ai_enabled, endpoint_type, parameter_schema
+        sample_response, ai_enabled, endpoint_type, sample_request
       FROM endpoint_registry
       WHERE name = ?
     `;
@@ -1725,7 +1870,7 @@ crudApi.post('/endpoints', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        ai_enabled, endpoint_type, parameter_schema, sample_response
+        ai_enabled, endpoint_type, sample_request, sample_response
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
@@ -1763,7 +1908,7 @@ crudApi.post('/endpoints', async (c) => {
       endpointData.tags ? JSON.stringify(endpointData.tags) : null,
       endpointData.ai_enabled ? 1 : 0,
       endpointData.endpoint_type || 'external_api',
-      endpointData.parameter_schema ? JSON.stringify(endpointData.parameter_schema) : null,
+      endpointData.sample_request ? JSON.stringify(endpointData.sample_request) : null,
       endpointData.sample_response ? (typeof endpointData.sample_response === 'string' ? endpointData.sample_response : JSON.stringify(endpointData.sample_response)) : null
     ];
 
@@ -1818,7 +1963,7 @@ crudApi.put('/endpoints/:name', async (c) => {
       'timeout_ms', 'max_retries', 'retry_delay_ms', 'cache_key',
       'cache_ttl_seconds', 'encrypt_cache', 'response_validator',
       'allowed_domains', 'require_https', 'log_level', 'tags',
-      'ai_enabled', 'endpoint_type', 'parameter_schema', 'sample_response'
+      'ai_enabled', 'endpoint_type', 'sample_request', 'sample_response'
     ];
 
     fields.forEach(field => {
@@ -1826,7 +1971,7 @@ crudApi.put('/endpoints/:name', async (c) => {
         let value = endpointData[field];
         
         // Handle JSON fields
-        if (['headers', 'query_params', 'allowed_domains', 'tags', 'parameter_schema'].includes(field) && value) {
+        if (['headers', 'query_params', 'allowed_domains', 'tags', 'sample_request'].includes(field) && value) {
           value = JSON.stringify(value);
         }
         
@@ -2189,7 +2334,7 @@ crudApi.get('/commands', async (c) => {
         description,
         method,
         url as endpoint,
-        parameter_schema,
+        sample_request,
         tags
       FROM endpoint_registry 
     `;
@@ -2211,7 +2356,7 @@ crudApi.get('/commands', async (c) => {
       description: cmd.description,
       method: cmd.method,
       endpoint: cmd.endpoint,
-      parameters: cmd.parameter_schema ? JSON.parse(cmd.parameter_schema) : null,
+      parameters: cmd.sample_request ? JSON.parse(cmd.sample_request) : null,
       tags: cmd.tags ? JSON.parse(cmd.tags) : []
     }));
     
@@ -2243,7 +2388,7 @@ crudApi.get('/commands/:name', async (c) => {
         description,
         method,
         url as endpoint,
-        parameter_schema,
+        sample_request,
         response_path,
         tags
       FROM endpoint_registry 
@@ -2262,7 +2407,7 @@ crudApi.get('/commands/:name', async (c) => {
       description: result.description,
       method: result.method,
       endpoint: result.endpoint,
-      parameters: result.parameter_schema ? JSON.parse(result.parameter_schema) : null,
+      parameters: result.sample_request ? JSON.parse(result.sample_request) : null,
       response_path: result.response_path,
       tags: result.tags ? JSON.parse(result.tags) : []
     };

@@ -120,6 +120,28 @@ export const taskUpdateSchema = taskCreateSchema.partial().extend({
   id: z.string().min(1, 'id is required for update'),
 });
 
+// Project Schema
+export const projectSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1, 'name is required'),
+  description: z.string().optional().nullable().default(null),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+
+// Project Create Schema (for POST requests)
+export const projectCreateSchema = projectSchema.omit({ 
+  created_at: true, 
+  updated_at: true 
+}).extend({
+  id: idSchema,
+});
+
+// Project Update Schema (for PUT requests)
+export const projectUpdateSchema = projectCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update'),
+});
+
 // Flow Step Condition Schema
 export const flowStepConditionSchema = z.object({
   id: z.string().min(1, 'id is required').optional(),
