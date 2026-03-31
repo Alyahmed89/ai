@@ -18,13 +18,13 @@ export const flowStepSchema = z.object({
   auto_fail_on_error: booleanSchema.default(true),
   retryable: booleanSchema.default(false),
   task_id: z.string().optional().nullable().default(null),
-  output_keys: z.string().optional().nullable().default(null).describe('DEPRECATED: Use /introspect endpoint for available keys'),
+  // output_keys removed per user directive
   output_url: z.string().url().optional().nullable().default(null),
   output_payload_template: z.string().optional().nullable().default(null),
   default_next_step: z.number().int().optional().nullable().default(null),
   default_next_step_id: z.string().optional().nullable().default(null),
   output_auth_token: z.string().optional().nullable().default(null),
-  input_keys: z.string().optional().nullable().default(null).describe('DEPRECATED: Use /introspect endpoint for available keys'),
+  // input_keys removed per user directive
   output: booleanSchema.default(false),
   next_flow_id: z.string().optional().nullable().default(null),
   created_at: timestampSchema,

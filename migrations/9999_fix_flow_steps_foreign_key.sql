@@ -1,7 +1,7 @@
 -- Migration 9999: Fix all foreign keys to reference flow_definitions instead of flows
 -- This fixes the foreign key constraint issues preventing deletions
 
--- 1. Fix flow_steps table foreign key
+-- 1. Fix flow_steps table foreign key and remove input_keys/output_keys
 CREATE TABLE IF NOT EXISTS flow_steps_new (
   id TEXT PRIMARY KEY,
   flow_id TEXT NOT NULL,
@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS flow_steps_new (
   validator_payload_template TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  input_keys TEXT,
-  output_keys TEXT,
+  -- input_keys and output_keys removed per user directive
   step_type TEXT DEFAULT 'standard',
   default_next_step_id TEXT,
   next_step_conditions TEXT,
@@ -21,7 +20,11 @@ CREATE TABLE IF NOT EXISTS flow_steps_new (
   FOREIGN KEY (flow_id) REFERENCES flow_definitions(id) ON DELETE CASCADE
 );
 
-INSERT INTO flow_steps_new SELECT * FROM flow_steps;
+-- Copy all columns except input_keys and output_keys
+INSERT INTO flow_steps_new (id, flow_id, step_number, prompt, expected_response, validator_api, validator_payload_template, created_at, updated_at, step_type, default_next_step_id, next_step_conditions, response_parser)
+SELECT id, flow_id, step_number, prompt, expected_response, validator_api, validator_payload_template, created_at, updated_at, step_type, default_next_step_id, next_step_conditions, response_parser
+FROM flow_steps;
+
 DROP TABLE flow_steps;
 ALTER TABLE flow_steps_new RENAME TO flow_steps;
 CREATE INDEX IF NOT EXISTS idx_flow_steps_flow_id ON flow_steps(flow_id);

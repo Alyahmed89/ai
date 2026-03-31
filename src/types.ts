@@ -319,7 +319,7 @@ export interface StepData {
   next_flow_id?: string; // For cross-flow transition to specific flow
   task_id?: string;
   requires_task?: boolean;
-  input_keys?: string;  // DEPRECATED: Use /introspect endpoint for available keys
+  // input_keys removed per user directive
   output?: boolean;
   output_url?: string;
   output_auth_token?: string;
