@@ -1263,8 +1263,7 @@ crudApi.post('/flow-step-conditions', async (c) => {
     
     const validatedData = validation.data!;
     const { 
-      id, flow_id, flow_step_id, condition_type, condition_engine,
-      condition_key, condition_value, condition_query, next_flow_id
+      id, flow_step_id, condition_type, condition_value, condition_operator, next_step
     } = validatedData;
     
     // Generate ID if not provided
@@ -1272,21 +1271,17 @@ crudApi.post('/flow-step-conditions', async (c) => {
     
     const sql = `
       INSERT INTO flow_step_conditions (
-        id, flow_id, flow_step_id, condition_type, condition_engine,
-        condition_key, condition_value, condition_query, next_flow_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        id, flow_step_id, condition_type, condition_value, condition_operator, next_step, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     await db.prepare(sql).bind(
       conditionId,
-      flow_id,
       flow_step_id,
       condition_type,
-      condition_engine || 'static',
-      dbValue(condition_key),
-      dbValue(condition_value),
-      dbValue(condition_query),
-      dbValue(next_flow_id)
+      condition_value,
+      condition_operator || 'equals',
+      next_step
     ).run();
     
     return c.json(successResponse({ 
@@ -3140,10 +3135,11 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
     }
     
     // 2. Delete from flow_step_conditions if table exists (we fixed the schema, but check anyway)
+    // Note: flow_step_conditions table doesn't have flow_id column, so we can't delete by flow_id directly
+    // Conditions will be deleted for specific steps in the deleted_step_ids section below
     try {
       db.prepare('SELECT 1 FROM flow_step_conditions LIMIT 1');
-      statements.push(db.prepare('DELETE FROM flow_step_conditions WHERE flow_id = ?').bind(flowId));
-      console.log("flow_step_conditions table exists, will delete conditions for flow", flowId);
+      console.log("flow_step_conditions table exists, conditions will be deleted for specific steps below");
     } catch (error) {
       const errorMessage = error.message || '';
       if (errorMessage.includes('no such table: flow_step_conditions')) {
