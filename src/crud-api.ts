@@ -17,6 +17,8 @@ import {
   flowEdgeCreateSchema,
   flowEdgeUpdateSchema,
   flowStepsUpdatePayloadSchema,
+  variableCreateSchema,
+  variableUpdateSchema,
   validateSchema 
 } from './schemas';
 import {
@@ -3592,6 +3594,164 @@ crudApi.get('/variables', async (c) => {
 
   } catch (error: any) {
     console.error('Variables endpoint error:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Internal server error', 
+      details: error.message 
+    }, 500);
+  }
+});
+
+// Variable creation endpoint
+crudApi.post('/variables', async (c) => {
+  try {
+    const body = await c.req.json();
+    const db = c.env.FLOW_RUNS_DB;
+    
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    // Validate input
+    const validation = validateSchema(variableCreateSchema, body);
+    if (!validation.success) {
+      return c.json({ error: validation.error }, 400);
+    }
+
+    const variable = validation.data;
+    
+    // Generate ID if not provided
+    const id = variable.id || `var-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Prepare value for storage (JSON stringify)
+    const valueJson = variable.value ? JSON.stringify(variable.value) : null;
+    
+    // Insert variable
+    const result = await db.prepare(`
+      INSERT INTO variables (id, flow_id, flow_run_id, step_id, step_run_id, key, value, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(
+      id,
+      variable.flow_id,
+      variable.flow_run_id || null,
+      variable.step_id || null,
+      variable.step_run_id || null,
+      variable.key,
+      valueJson,
+      variable.source || 'api'
+    ).run();
+
+    // If variable is user-created and requires input, create a step
+    if (variable.source === 'user' && !variable.value) {
+      // Create a step to collect user input
+      const stepId = `step-input-${id}`;
+      const stepTitle = `Input for variable: ${variable.key}`;
+      const stepInstructions = `Please provide value for variable: ${variable.key}`;
+      
+      await db.prepare(`
+        INSERT INTO flow_steps (id, flow_id, step_key, title, instructions, order_index, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 
+          (SELECT COALESCE(MAX(order_index), -1) + 1 FROM flow_steps WHERE flow_id = ?), 
+          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `).bind(
+        stepId,
+        variable.flow_id,
+        `input-${variable.key}`,
+        stepTitle,
+        stepInstructions,
+        variable.flow_id
+      ).run();
+      
+      // Return both variable and step info
+      return c.json({
+        success: true,
+        variable: { ...variable, id, value: variable.value },
+        requires_input: true,
+        input_step_id: stepId,
+        message: 'Variable created. User input required via step.'
+      }, 201);
+    }
+
+    return c.json({
+      success: true,
+      variable: { ...variable, id, value: variable.value },
+      requires_input: false
+    }, 201);
+
+  } catch (error: any) {
+    console.error('Variable creation error:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Internal server error', 
+      details: error.message 
+    }, 500);
+  }
+});
+
+// Update variable with user input (when step completes)
+crudApi.put('/variables/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const db = c.env.FLOW_RUNS_DB;
+    
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    // Validate input
+    const validation = validateSchema(variableUpdateSchema, { ...body, id });
+    if (!validation.success) {
+      return c.json({ error: validation.error }, 400);
+    }
+
+    const updates = validation.data;
+    
+    // Build dynamic update query
+    const updateFields: string[] = [];
+    const bindings: any[] = [];
+    
+    if (updates.value !== undefined) {
+      updateFields.push('value = ?');
+      bindings.push(JSON.stringify(updates.value));
+    }
+    if (updates.source !== undefined) {
+      updateFields.push('source = ?');
+      bindings.push(updates.source);
+    }
+    if (updates.flow_run_id !== undefined) {
+      updateFields.push('flow_run_id = ?');
+      bindings.push(updates.flow_run_id);
+    }
+    if (updates.step_id !== undefined) {
+      updateFields.push('step_id = ?');
+      bindings.push(updates.step_id);
+    }
+    if (updates.step_run_id !== undefined) {
+      updateFields.push('step_run_id = ?');
+      bindings.push(updates.step_run_id);
+    }
+    
+    if (updateFields.length === 0) {
+      return c.json({ error: 'No fields to update' }, 400);
+    }
+    
+    bindings.push(id);
+    
+    const result = await db.prepare(`
+      UPDATE variables 
+      SET ${updateFields.join(', ')}
+      WHERE id = ?
+    `).bind(...bindings).run();
+
+    return c.json({
+      success: true,
+      updated: result.meta.changes > 0,
+      message: 'Variable updated successfully'
+    });
+
+  } catch (error: any) {
+    console.error('Variable update error:', error);
     return c.json({ 
       success: false, 
       error: 'Internal server error', 

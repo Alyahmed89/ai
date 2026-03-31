@@ -267,6 +267,29 @@ export const flowStepsUpdatePayloadSchema = z.object({
   deleted_edge_ids: z.array(z.string()).optional().default([]),
 });
 
+// Variable Schema
+export const variableSchema = z.object({
+  id: idSchema,
+  flow_id: z.string().min(1, 'flow_id is required'),
+  flow_run_id: z.string().optional().nullable().default(null),
+  step_id: z.string().optional().nullable().default(null),
+  step_run_id: z.string().optional().nullable().default(null),
+  key: z.string().min(1, 'key is required'),
+  value: z.any().optional().nullable().default(null),
+  source: z.enum(['api', 'ai', 'user', 'command', 'system']).default('api'),
+  created_at: timestampSchema,
+});
+
+export const variableCreateSchema = variableSchema.omit({ 
+  created_at: true 
+}).extend({
+  id: idSchema,
+});
+
+export const variableUpdateSchema = variableCreateSchema.partial().extend({
+  id: z.string().min(1, 'id is required for update'),
+});
+
 // API Response Schema
 export const apiResponseSchema = z.object({
   success: z.boolean(),
