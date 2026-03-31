@@ -3011,16 +3011,23 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
       try {
         db.prepare('SELECT 1 FROM flow_step_conditions LIMIT 1');
         const placeholders = deleted_step_ids.map(() => '?').join(',');
-        statements.push(db.prepare(`DELETE FROM flow_step_conditions WHERE flow_step_id IN (${placeholders})`).bind(...deleted_step_ids));
+        // Try both columns: step_id (old) and flow_step_id (new)
+        statements.push(db.prepare(`DELETE FROM flow_step_conditions WHERE step_id IN (${placeholders}) OR flow_step_id IN (${placeholders})`).bind(...deleted_step_ids, ...deleted_step_ids));
         console.log("Deleting flow_step_conditions for", deleted_step_ids.length, "steps");
       } catch (error) {
         const errorMessage = error.message || '';
         if (errorMessage.includes('no such table: flow_step_conditions')) {
           console.log("flow_step_conditions table doesn't exist, no conditions to delete");
-        } else if (errorMessage.includes('no such column: flow_step_id')) {
-          console.log("flow_step_conditions table exists but has different schema (no flow_step_id column), skipping condition deletion");
-          // Try alternative: maybe the column is named differently or table has no foreign key
-          // We'll just skip deletion for now
+        } else if (errorMessage.includes('no such column: flow_step_id') || errorMessage.includes('no such column: step_id')) {
+          console.log("flow_step_conditions table exists but has different schema, trying alternative deletion");
+          // Try deleting by step_id only (older schema)
+          try {
+            const placeholders = deleted_step_ids.map(() => '?').join(',');
+            statements.push(db.prepare(`DELETE FROM flow_step_conditions WHERE step_id IN (${placeholders})`).bind(...deleted_step_ids));
+            console.log("Deleting flow_step_conditions using step_id column");
+          } catch (innerError) {
+            console.log("Could not delete flow_step_conditions, skipping");
+          }
         } else {
           throw error;
         }
