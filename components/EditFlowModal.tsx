@@ -18,9 +18,6 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    max_iterations: 10,
-    priority: 10,
     agent: 'deepseek' as 'deepseek' | 'openhands',
     system_message: ''
   });
@@ -47,9 +44,6 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
         setFlowDefinition(flowData.data);
         setFormData({
           name: flowData.data.name,
-          description: flowData.data.description,
-          max_iterations: flowData.data.max_iterations,
-          priority: flowData.data.priority,
           agent: flowData.data.agent,
           system_message: flowData.data.system_message || ''
         });
@@ -58,9 +52,6 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
         setFlowDefinition(flowData);
         setFormData({
           name: flowData.name,
-          description: flowData.description,
-          max_iterations: flowData.max_iterations,
-          priority: flowData.priority,
           agent: flowData.agent,
           system_message: flowData.system_message || ''
         });
@@ -99,7 +90,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'max_iterations' || name === 'priority' ? parseInt(value) || 0 : value
+      [name]: value
     }));
   };
 
@@ -117,9 +108,6 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
       // Prepare payload - include system_message only when agent is deepseek
       const payload: any = {
         name: formData.name,
-        description: formData.description,
-        max_iterations: formData.max_iterations,
-        priority: formData.priority,
         agent: formData.agent
       };
       
@@ -227,45 +215,7 @@ export default function EditFlowModal({ flowId, onClose, onFlowUpdated }: EditFl
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-neutral-400 mb-2">Description</label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                rows={3}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100 resize-none"
-                placeholder="Enter flow description"
-              />
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-400 mb-2">Max Iterations</label>
-                <input
-                  type="number"
-                  name="max_iterations"
-                  value={formData.max_iterations}
-                  onChange={handleInputChange}
-                  min="1"
-                  max="100"
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-400 mb-2">Priority</label>
-                <input
-                  type="number"
-                  name="priority"
-                  value={formData.priority}
-                  onChange={handleInputChange}
-                  min="1"
-                  max="100"
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-neutral-100"
-                />
-              </div>
-            </div>
 
             <div>
               <label className="block text-sm font-medium text-neutral-400 mb-2">Agent</label>
