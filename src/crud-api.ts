@@ -1468,33 +1468,6 @@ crudApi.get('/endpoints', async (c) => {
   }
 });
 
-      }
-      
-      // Combine all unique variables
-      const allVariables = [...new Set([...urlVariables, ...bodyVariables, ...queryVariables])];
-      
-      return c.json({
-        ...successResponse(parsedEndpoint),
-        test_info: {
-          can_test: true,
-          test_endpoint: `POST /api/endpoints/${name}/test`,
-          required_parameters: allVariables,
-          example_test_request: {
-            method: 'POST',
-            url: `/api/endpoints/${name}/test`,
-            body: allVariables.reduce((acc, param) => {
-              acc[param] = "example_value";
-              return acc;
-            }, {} as Record<string, string>)
-          },
-          notes: [
-            'Use POST /api/endpoints/{name}/test to make actual test requests with parameters.',
-            'URL template variables like {username} must be provided in test parameters.',
-            'Authentication values starting with "env:" reference environment variables.'
-          ]
-        }
-      });
-
 // 3️⃣ Introspect endpoint - extract available keys from sample response
 crudApi.get('/endpoints/introspect', async (c) => {
   try {
@@ -1586,6 +1559,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
     return c.json(errorResponse(`Error introspecting endpoint: ${error.message}`, 500));
   }
 });
+
 
 // 2️⃣ Get endpoint by name
 crudApi.get('/endpoints/:name', async (c) => {
@@ -1689,6 +1663,32 @@ crudApi.get('/endpoints/:name', async (c) => {
             }
           }
         });
+      }
+      
+      // Combine all unique variables
+      const allVariables = [...new Set([...urlVariables, ...bodyVariables, ...queryVariables])];
+      
+      return c.json({
+        ...successResponse(parsedEndpoint),
+        test_info: {
+          can_test: true,
+          test_endpoint: `POST /api/endpoints/${name}/test`,
+          required_parameters: allVariables,
+          example_test_request: {
+            method: 'POST',
+            url: `/api/endpoints/${name}/test`,
+            body: allVariables.reduce((acc, param) => {
+              acc[param] = "example_value";
+              return acc;
+            }, {} as Record<string, string>)
+          },
+          notes: [
+            'Use POST /api/endpoints/{name}/test to make actual test requests with parameters.',
+            'URL template variables like {username} must be provided in test parameters.',
+            'Authentication values starting with "env:" reference environment variables.'
+          ]
+        }
+      });
     }
 
     return c.json(successResponse(parsedEndpoint));
@@ -1699,7 +1699,6 @@ crudApi.get('/endpoints/:name', async (c) => {
   }
 });
 
-// 3️⃣ Introspect endpoint - extract available keys from sample response
 
 // 4️⃣ Create new endpoint
 crudApi.post('/endpoints', async (c) => {
