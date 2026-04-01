@@ -15,7 +15,7 @@ export const AGGRESSIVE_NO_EVENT_TIMEOUT = 300000; // 5 minutes without new even
 export const AGGRESSIVE_OPENHANDS_TIMEOUT = 600000; // 10 minutes for long operations
 export const STATIC_PROMPT_MODE = false; // Use static prompts instead of DeepSeek - TESTING
 export const FORCE_END_FLOW_AFTER_TIMEOUT = true; // Force end flow after timeout
-export const AUTO_RESTART_CONVERSATION = true; // Auto-restart conversations
+export const AUTO_RESTART_CONVERSATION = false; // Disable auto-restart conversations to prevent loops
 export const RESTART_DELAY = 10000; // 10 seconds between restarts
 export const MAX_RESTARTS = 10; // Maximum number of auto-restarts
 

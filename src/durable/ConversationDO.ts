@@ -794,17 +794,17 @@ export class ConversationOrchestratorDO_2026A {
         // Save steps completed count before stopping
         const stepsCompleted = this.conversation.flow_steps.length;
         
-        // Restart the flow with same payload before stopping
-        await this.restartFlow();
+        // Don't restart flow - just stop the conversation
+        console.log(`[DO:${this.state.id}] Flow completed with ${stepsCompleted} steps, stopping (no restart)`);
         
         // Stop current conversation
         await this.stopConversation('flow_completed');
         
         return new Response(JSON.stringify({
           success: true,
-          message: 'Flow execution completed, restarting flow',
+          message: 'Flow execution completed',
           steps_completed: stepsCompleted,
-          note: 'Flow is being restarted with same payload, current conversation stopped'
+          note: 'Flow completed successfully, conversation stopped'
         }), {
           headers: { 'Content-Type': 'application/json' }
         });
@@ -2576,8 +2576,8 @@ export class ConversationOrchestratorDO_2026A {
           console.error(`[DO:${this.state.id}] Error saving flow run to database: ${error.message}`);
         }
         
-        // Restart the flow with same payload before stopping
-        await this.restartFlow();
+        // Don't restart flow - just log completion
+        console.log(`[DO:${this.state.id}] Flow completed, not restarting`);
         
         // Cancel alarms
         try {
@@ -3612,8 +3612,14 @@ export class ConversationOrchestratorDO_2026A {
       // Save state
       await this.state.storage.put('conversation', this.conversation);
       
-      // Process immediately
-      await this.handleSendingStepState();
+      // For DeepSeek agent, schedule alarm instead of immediate execution to prevent loops
+      if (this.conversation.agent === 'deepseek') {
+        console.log(`[DO:${this.state.id}] DeepSeek agent: Scheduling alarm for next step instead of immediate execution`);
+        await this.scheduleNextAlarm(1000); // 1 second delay
+      } else {
+        // Process immediately for OpenHands
+        await this.handleSendingStepState();
+      }
     } else {
       // Regular mode: Go to DeepSeek for next instructions
       this.conversation.state = 'AWAITING_NEXT_ITERATION';
@@ -5379,15 +5385,9 @@ ${messageContent}`;
         // Clear current_step to prevent routing check on next alarm
         this.conversation.current_step = undefined;
         
-        // Move to ITERATION_COMPLETE state (consistent with OpenHands pattern)
-        this.conversation.state = 'ITERATION_COMPLETE';
-        this.conversation.last_iteration_summary = `DeepSeek step failed in iteration ${this.conversation.iteration || 1}: ${deepseekResult.error}`;
-        
-        // Save state
-        await this.state.storage.put('conversation', this.conversation);
-        
-        // Process immediately (will handle next step logic)
-        await this.handleIterationCompleteState();
+        // When DeepSeek API fails, stop the conversation instead of continuing
+        console.error(`[DO:${this.state.id}] DeepSeek API failed, stopping conversation: ${deepseekResult.error}`);
+        await this.stopConversation(`deepseek_api_failed: ${deepseekResult.error}`);
         return;
       }
       
@@ -5547,6 +5547,14 @@ ${messageContent}`;
       
       // Save state
       await this.state.storage.put('conversation', this.conversation);
+      
+      // Cancel any pending alarm before processing next step
+      try {
+        await this.state.storage.deleteAlarm();
+        console.log(`[DO:${this.state.id}] Cancelled pending alarm before processing next step`);
+      } catch (error) {
+        // Ignore if no alarm scheduled
+      }
       
       // Process immediately (will handle next step logic)
       await this.handleIterationCompleteState();
@@ -5880,41 +5888,11 @@ ${messageContent}`;
       return;
     }
 
-    console.log(`[DO:${this.state.id}] Restarting flow: ${this.conversation.flow_id} with /start-flow endpoint`);
-
-    try {
-      // Create a new Durable Object for the restarted flow
-      const newConversationIdObj = this.env.CONVERSATIONS.newUniqueId();
-      const newConversationStub = this.env.CONVERSATIONS.get(newConversationIdObj);
-
-      // Initialize the new Durable Object for flow execution using /start-flow
-      const initResponse = await newConversationStub.fetch('http://placeholder/start-flow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          flow_id: this.conversation.flow_id,
-          inputs: {},
-          callback_url: undefined
-        })
-      });
-
-      if (!initResponse.ok) {
-        const errorText = await initResponse.text();
-        console.error(`[DO:${this.state.id}] Failed to restart flow: ${initResponse.status} - ${errorText}`);
-        return;
-      }
-
-      console.log(`[DO:${this.state.id}] Flow restarted with ID: ${newConversationIdObj.toString()}`);
-      
-      // Update current flow run with next_flow_id if database is available
-      if (this.env.FLOW_RUNS_DB && this.flowRunId) {
-        await this.env.FLOW_RUNS_DB.prepare(
-          'UPDATE flow_runs SET next_flow_id = ? WHERE id = ?'
-        ).bind(newConversationIdObj.toString(), this.flowRunId).run();
-      }
-    } catch (error) {
-      console.error(`[DO:${this.state.id}] Failed to restart flow:`, error);
-    }
+    // DISABLED: Flow restart creates infinite loops
+    console.log(`[DO:${this.state.id}] Flow restart DISABLED to prevent infinite loops (flow: ${this.conversation.flow_id})`);
+    
+    // Log that flow would have been restarted but we're preventing loops
+    console.log(`[DO:${this.state.id}] Flow ${this.conversation.flow_id} completed, not restarting to prevent infinite API calls`);
   }
 
   /**
