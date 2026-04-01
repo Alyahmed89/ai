@@ -5336,7 +5336,12 @@ ${messageContent}`;
           this.conversation.execution_context.step_count += 1;
         }
         
-        await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
+        try {
+          await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
+        } catch (stepError) {
+          console.error(`[DO:${this.state.id}] Error in handleStepCompletion:`, stepError);
+          // Continue anyway to clear state and move forward
+        }
         
         // Clear current_step to prevent routing check on next alarm
         this.conversation.current_step = undefined;
@@ -5440,8 +5445,13 @@ ${messageContent}`;
         this.conversation.execution_context.step_count += 1;
       }
       
-      // Complete the step with DeepSeek response
-      await this.handleStepCompletion(step, response);
+      try {
+        // Complete the step with DeepSeek response
+        await this.handleStepCompletion(step, response);
+      } catch (stepError) {
+        console.error(`[DO:${this.state.id}] Error in handleStepCompletion:`, stepError);
+        // Continue anyway to clear state and move forward
+      }
       
       // Step-level chaining for DeepSeek flows
       if (this.env.FLOW_RUNS_DB && this.flowRunId) {
