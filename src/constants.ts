@@ -5,7 +5,7 @@ export const END_FLOW_EARLY_TOKEN = '[END_FLOW_EARLY]';
 export const ALARM_DELAY_INIT = 2000; // 2 seconds for initial alarm (2x from 1s) - Fast start
 export const ALARM_DELAY_WAITING = 5000; // 5 seconds between checks (0.5x from 10s) - FASTER than original!
 export const ALARM_DELAY_ACTIVE = 3000; // 3 seconds when expecting response (same as original) - Maximum speed
-export const DEEPSEEK_TIMEOUT = 10000; // 10 seconds for DeepSeek API
+export const DEEPSEEK_TIMEOUT = 30000; // 30 seconds for DeepSeek API
 export const OPENHANDS_TIMEOUT = 180000; // 3 minutes for long operations
 export const NO_EVENT_TIMEOUT = 120000; // 2 minutes without new events (increased from 1 minute)
 
