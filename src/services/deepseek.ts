@@ -15,6 +15,9 @@ export async function callDeepSeek(
 ): Promise<DeepSeekResult> {
   console.log(`[DeepSeek] Starting API call with ${messages.length} messages`);
   console.log(`[DeepSeek] First message preview: ${messages[0]?.content?.substring(0, 100)}...`);
+  console.log(`[DeepSeek] API key present: ${!!apiKey}`);
+  console.log(`[DeepSeek] API key starts with 'sk-': ${apiKey?.startsWith('sk-')}`);
+  console.log(`[DeepSeek] API key length: ${apiKey?.length}`);
   
   try {
     console.log(`[DeepSeek] Making fetch request to DeepSeek API`);
