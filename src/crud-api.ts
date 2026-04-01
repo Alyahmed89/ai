@@ -29,7 +29,7 @@ import {
 } from './response';
 import { StepExecutor } from './core/step-executor';
 import { createExecutionContext } from './core/execution-context';
-import { generateId, saveVariable } from '../services/database';
+import { generateId, saveVariable } from './services/database';
 
 // Helper function to handle database errors
 function handleDbError(error: any) {
