@@ -187,7 +187,9 @@ export default function FlowSection({
         setLoadingData(prev => ({ ...prev, commands: true }));
         const commandsResponse = await fetch('/api/proxy/api/commands');
         const commandsData = await commandsResponse.json();
-        const formattedCommands = commandsData.map((cmd: any) => ({
+        // Extract commands array from response structure: {success: true, data: {commands: [...]}}
+        const commandsArray = commandsData.data?.commands || [];
+        const formattedCommands = commandsArray.map((cmd: any) => ({
           id: cmd.name || cmd.id,
           label: cmd.name || cmd.id,
           description: cmd.description || `Method: ${cmd.method}`,
