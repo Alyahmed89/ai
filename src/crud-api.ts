@@ -3461,6 +3461,13 @@ crudApi.post('/query', async (c) => {
       } catch (e) {
         organizedVariables.input = { raw: flowRunData.input_payload };
       }
+    } else if (flowRunData?.input_prompt) {
+      try {
+        const inputPrompt = JSON.parse(flowRunData.input_prompt);
+        organizedVariables.input = inputPrompt;
+      } catch (e) {
+        organizedVariables.input = { raw: flowRunData.input_prompt };
+      }
     }
 
     // Process AI output variables from step_runs
