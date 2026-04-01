@@ -166,6 +166,11 @@ export async function resolveStepInstructions(
       
       console.log(`[StepResolver:legacy] Initial variables for resolver: ${Object.keys(initialVariables).join(', ')}`);
       
+      // DEBUG: Log previous_step_responses and inputs
+      console.log(`[StepResolver:legacy] DEBUG - previous_step_responses:`, JSON.stringify(context.previous_step_responses, null, 2));
+      console.log(`[StepResolver:legacy] DEBUG - context.inputs:`, JSON.stringify(context.inputs, null, 2));
+      console.log(`[StepResolver:legacy] DEBUG - task_data:`, JSON.stringify(taskData, null, 2));
+      
       // We need to modify SecureVariableResolver to accept initial variables
       // For now, we'll use a workaround by injecting task data into the instructions
       let instructionsWithTaskData = step.instructions || step.description || step.title || '';
@@ -1201,6 +1206,9 @@ export function substituteVariables(
   console.log(`[StepResolver:substituteVariables] Source: ${source}`);
   console.log(`[StepResolver:substituteVariables] Found ${matches.length} {variable} placeholders: ${matches.map(m => m[1]).join(', ')}`);
   console.log(`[StepResolver:substituteVariables] Available variables: ${Object.keys(variables).join(', ')}`);
+  
+  // DEBUG: Log ALL_VARIABLES with full structure
+  console.log(`[StepResolver:substituteVariables] ALL_VARIABLES FULL OBJECT:`, JSON.stringify(variables, null, 2));
   
   // Create a SecureVariableResolver for proper substitution
   const resolver = new SecureVariableResolver({});
