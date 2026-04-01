@@ -85,8 +85,8 @@ export class StepExecutor {
   private async callDeepSeek(messages: any[]): Promise<string> {
     const { callDeepSeek } = await import('../services/deepseek');
     
-    // Use env.DEEPSEEK_API_KEY only
-    const apiKey = this.env.DEEPSEEK_API_KEY;
+    // Use effectiveDeepSeekApiKey if provided, otherwise use env.DEEPSEEK_API_KEY
+    const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
     
     console.log("DS CALL", {
       key: apiKey?.slice(0,5),

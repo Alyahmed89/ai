@@ -2968,7 +2968,7 @@ export class ConversationOrchestratorDO_2026A {
           ];
           
           // Call DeepSeek API
-          const apiKey = this.env.DEEPSEEK_API_KEY;
+          const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
           console.log("DS CALL", {
             key: apiKey?.slice(0,5),
             path: "handleSendingStepState-1"
@@ -3108,7 +3108,7 @@ export class ConversationOrchestratorDO_2026A {
     this.conversation.conversation_messages = initialMessages;
     
     // Send initial prompt to DeepSeek
-    const apiKey = this.env.DEEPSEEK_API_KEY;
+    const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
     console.log("DS CALL", {
       key: apiKey?.slice(0,5),
       path: "handleInitState"
@@ -4617,7 +4617,7 @@ ${messageContent}`;
     });
     
     // Send OpenHands response to DeepSeek with full conversation history
-    const apiKey = this.env.DEEPSEEK_API_KEY;
+    const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
     console.log("DS CALL", {
       key: apiKey?.slice(0,5),
       path: "sendToDeepSeek"
@@ -4757,7 +4757,7 @@ ${messageContent}`;
     });
     
     // Send checking prompt to DeepSeek
-    const apiKey = this.env.DEEPSEEK_API_KEY;
+    const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
     console.log("DS CALL", {
       key: apiKey?.slice(0,5),
       path: "handleCheckingState"
@@ -5348,7 +5348,7 @@ ${messageContent}`;
       ];
       
       // Call DeepSeek API
-      const apiKey = this.env.DEEPSEEK_API_KEY;
+      const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
       console.log("DS CALL", {
         key: apiKey?.slice(0,5),
         path: "handleSendingStepState-2"

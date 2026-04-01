@@ -884,6 +884,38 @@ app.get('/execution-events/:flowRunId', async (c) => {
   }
 });
 
+// Proxy endpoint for DeepSeek API calls (to avoid 403 errors from Durable Objects)
+app.post('/proxy/deepseek', async (c) => {
+  const body = await c.req.json()
+
+  console.log("PROXY DS CALL", {
+    messagesLength: body.messages?.length
+  })
+
+  // Use API key from request if provided, otherwise use env variable
+  const apiKeyFromRequest = body.api_key || c.req.header('X-DeepSeek-API-Key');
+  const apiKey = apiKeyFromRequest || c.env.DEEPSEEK_API_KEY;
+  
+  // Remove api_key from body before forwarding to DeepSeek API
+  const { api_key, ...forwardBody } = body;
+
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(forwardBody)
+  })
+
+  const text = await res.text()
+
+  return new Response(text, {
+    status: res.status,
+    headers: { 'Content-Type': 'application/json' }
+  })
+})
+
 // Test endpoint for DeepSeek API
 app.get('/test-deepseek', async (c) => {
   try {

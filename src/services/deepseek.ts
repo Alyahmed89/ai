@@ -15,20 +15,11 @@ export async function callDeepSeek(
 ): Promise<DeepSeekResult> {
   console.log(`[DeepSeek] Starting API call with ${messages.length} messages`);
   console.log(`[DeepSeek] First message preview: ${messages[0]?.content?.substring(0, 100)}...`);
-  console.log(`[DeepSeek] API key present: ${!!apiKey}`);
-  console.log(`[DeepSeek] API key starts with 'sk-': ${apiKey?.startsWith('sk-')}`);
-  console.log(`[DeepSeek] API key length: ${apiKey?.length}`);
+  console.log(`[DeepSeek] API key parameter received (for backward compatibility): ${apiKey ? 'present' : 'missing'}`);
   console.log(`[DeepSeek] API key first 5 chars: ${apiKey ? apiKey.substring(0, 5) + '...' : 'MISSING'}`);
   
-  // Validate API key
-  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
-    console.error(`[DeepSeek] Invalid or missing API key`);
-    return {
-      success: false,
-      error: "Invalid or missing API key",
-      errorDetails: { status: 401, statusText: "Unauthorized", body: "API key is required" }
-    };
-  }
+  // Note: API key validation removed since proxy endpoint will handle authentication
+  // The apiKey parameter is kept for backward compatibility but not used
   
   // Check if any message has content
   const hasContent = messages.some(msg => msg.content?.trim());
@@ -42,7 +33,7 @@ export async function callDeepSeek(
   }
   
   try {
-    console.log(`[DeepSeek] Making fetch request to DeepSeek API`);
+    console.log(`[DeepSeek] Making fetch request to DeepSeek API via proxy`);
     console.log("DS BODY", JSON.stringify(messages).slice(0,500));
     console.log(`[DeepSeek] Request body (first 500 chars):`, JSON.stringify({
         model: 'deepseek-chat',
@@ -51,17 +42,28 @@ export async function callDeepSeek(
         max_tokens: 2000
       }).substring(0, 500));
 
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
+    // Use proxy endpoint instead of direct API call
+    // Note: We need to get the worker URL from somewhere - for now using hardcoded domain
+    // In production, this should be configurable or derived from request context
+    const workerDomain = 'https://deepseek-agent.alghamdimo89.workers.dev';
+    const proxyUrl = `${workerDomain}/proxy/deepseek`;
+    
+    console.log(`[DeepSeek] Using proxy URL: ${proxyUrl}`);
+    
+    const response = await fetch(proxyUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        // Pass API key in header for proxy endpoint
+        ...(apiKey ? { 'X-DeepSeek-API-Key': apiKey } : {})
       },
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages,
         temperature: 0.7,
-        max_tokens: 2000
+        max_tokens: 2000,
+        // Also pass API key in body for backward compatibility
+        ...(apiKey ? { api_key: apiKey } : {})
       })
     });
     
@@ -69,34 +71,49 @@ export async function callDeepSeek(
 
     if (!response.ok) {
       const errorText = await response.text();
-      const errorHeaders = Object.fromEntries(response.headers.entries());
-      console.error(`[DeepSeek] API error ${response.status}: ${errorText}`);
-      console.error(`[DeepSeek] Full error response headers:`, errorHeaders);
-      console.error(`[DeepSeek] Error response first 1000 chars:`, errorText.substring(0, 1000));
+      console.error(`[DeepSeek] Proxy API error ${response.status}: ${errorText}`);
       
-      // Return detailed error information
-      return {
-        success: false,
-        error: `DeepSeek API error: ${response.status} - ${errorText}`,
-        errorDetails: {
-          status: response.status,
-          statusText: response.statusText,
-          headers: errorHeaders,
-          body: errorText,
-          requestBodyPreview: JSON.stringify({
-            model: 'deepseek-chat',
-            messages,
-            temperature: 0.7,
-            max_tokens: 2000
-          }).substring(0, 500)
-        }
-      };
+      // Try to parse error as JSON
+      try {
+        const errorJson = JSON.parse(errorText);
+        return {
+          success: false,
+          error: `DeepSeek API error via proxy: ${response.status} - ${errorJson.error || errorText}`,
+          errorDetails: {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText,
+            requestBodyPreview: JSON.stringify({
+              model: 'deepseek-chat',
+              messages,
+              temperature: 0.7,
+              max_tokens: 2000
+            }).substring(0, 500)
+          }
+        };
+      } catch {
+        return {
+          success: false,
+          error: `DeepSeek API error via proxy: ${response.status} - ${errorText}`,
+          errorDetails: {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText,
+            requestBodyPreview: JSON.stringify({
+              model: 'deepseek-chat',
+              messages,
+              temperature: 0.7,
+              max_tokens: 2000
+            }).substring(0, 500)
+          }
+        };
+      }
     }
 
     const data = await response.json() as any;
     const result = data.choices[0].message.content;
     
-    console.log(`[DeepSeek] Success! Response length: ${result.length} chars`);
+    console.log(`[DeepSeek] Success via proxy! Response length: ${result.length} chars`);
     console.log(`[DeepSeek] Response preview: ${result.substring(0, 100)}...`);
 
     return {
