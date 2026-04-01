@@ -2909,6 +2909,13 @@ export class ConversationOrchestratorDO_2026A {
       if (!isDecisionStep) {
         // Check agent type - if deepseek, call DeepSeek API instead of OpenHands
         if (this.conversation.agent === 'deepseek') {
+          // ADD HARDCODED PROMPT FOR TESTING HERE
+          if (!this.conversation.initial_user_prompt?.trim()) {
+            console.error(`[DO:${this.state.id}] initial_user_prompt is empty or undefined`);
+            await this.stopConversation('initial_user_prompt is required');
+            return;
+          }
+          
           console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
           console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
           console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
@@ -2985,6 +2992,13 @@ export class ConversationOrchestratorDO_2026A {
           return;
         } else {
           // For openhands or both agents, send to OpenHands
+          // ADD HARDCODED PROMPT FOR TESTING HERE
+          if (!this.conversation.initial_user_prompt?.trim()) {
+            console.error(`[DO:${this.state.id}] initial_user_prompt is empty or undefined`);
+            await this.stopConversation('initial_user_prompt is required');
+            return;
+          }
+          
           console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
           console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
           console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
