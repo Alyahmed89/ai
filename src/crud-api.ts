@@ -2759,7 +2759,13 @@ crudApi.post('/execute-step', async (c) => {
       return c.json(errorResponse('Database not configured', 500));
     }
 
-    const { flow_id, step_id, user_prompt, include_step_instructions = true } = await c.req.json();
+    // Extract DeepSeek API key from headers or body
+    const deepseekApiKeyFromHeader = c.req.header('X-DeepSeek-API-Key');
+    
+    const { flow_id, step_id, user_prompt, include_step_instructions = true, deepseek_api_key } = await c.req.json();
+    
+    // Use passed API key if available, otherwise use env variable
+    const effectiveDeepSeekApiKey = deepseekApiKeyFromHeader || deepseek_api_key || c.env.DEEPSEEK_API_KEY;
     
     if (!user_prompt) {
       return c.json(errorResponse('user_prompt is required', 400));
@@ -2817,7 +2823,7 @@ crudApi.post('/execute-step', async (c) => {
     context.ai_input = prompt
     
     // Execute step using StepExecutor
-    const executor = new StepExecutor(c.env)
+    const executor = new StepExecutor(c.env, effectiveDeepSeekApiKey)
     
     const updatedContext = await executor.executeStep(
       context,

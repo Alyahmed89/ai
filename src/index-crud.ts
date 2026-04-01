@@ -904,6 +904,11 @@ app.get('/test-deepseek', async (c) => {
     console.log(`[HTTP:TEST-DEEPSEEK] API Key from env: ${c.env.DEEPSEEK_API_KEY ? 'Present' : 'Missing'}`);
     console.log(`[HTTP:TEST-DEEPSEEK] API Key first 8 chars: ${c.env.DEEPSEEK_API_KEY ? c.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'MISSING'}`);
     
+    console.log("FINAL KEY USED", {
+      key: c.env.DEEPSEEK_API_KEY?.slice(0,5),
+      source: "env"
+    });
+    
     const result = await callDeepSeek(c.env.DEEPSEEK_API_KEY, messages);
     
     if (!result.success) {

@@ -87,10 +87,11 @@ export class StepExecutor {
     
     // Use effectiveDeepSeekApiKey if available (passed from constructor), otherwise use env
     const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
-    console.log(`[StepExecutor] Calling DeepSeek API with key present: ${!!apiKey}`);
-    console.log(`[StepExecutor] effectiveDeepSeekApiKey from constructor: ${this.effectiveDeepSeekApiKey ? this.effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'NULL'}`);
-    console.log(`[StepExecutor] env.DEEPSEEK_API_KEY: ${this.env.DEEPSEEK_API_KEY ? this.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'NULL'}`);
-    console.log(`[StepExecutor] Final API key first 8 chars: ${apiKey ? apiKey.substring(0, 8) + '...' : 'MISSING'}`);
+    
+    console.log("FINAL KEY USED", {
+      key: apiKey?.slice(0,5),
+      source: this.effectiveDeepSeekApiKey ? "instance" : this.env.DEEPSEEK_API_KEY ? "env" : "none"
+    });
     
     const result = await callDeepSeek(apiKey, messages);
     
