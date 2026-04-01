@@ -4308,7 +4308,7 @@ export class ConversationOrchestratorDO_2026A {
       } else if (nextFlowIds.length > 0) {
         console.log(`[DO:${this.state.id}] Starting ${nextFlowIds.length} next flow(s): ${JSON.stringify(nextFlowIds)}`);
         
-        // Update current flow run with all next flow IDs
+        // Update current flow run with next flow ID
         if (this.flowRunId && this.env.FLOW_RUNS_DB) {
           try {
             await updateFlowRunStatus(
@@ -4317,12 +4317,11 @@ export class ConversationOrchestratorDO_2026A {
               'new_flow_started',
               'multiple_next_flows_triggered',
               nextFlowIds[0], // First flow ID for backward compatibility
-              undefined,
-              nextFlowIds // All flow IDs for multiple flows support
+              undefined
             );
-            console.log(`[DO:${this.state.id}] Updated flow run with next_flow_ids: ${JSON.stringify(nextFlowIds)}`);
+            console.log(`[DO:${this.state.id}] Updated flow run with next_flow_id: ${nextFlowIds[0]}`);
           } catch (error: any) {
-            console.error(`[DO:${this.state.id}] Error updating flow run with next_flow_ids: ${error.message}`);
+            console.error(`[DO:${this.state.id}] Error updating flow run: ${error.message}`);
           }
         }
         
@@ -6783,8 +6782,7 @@ ${messageContent}`;
       status, 
       stopReason, 
       null, // nextFlowId
-      this.conversation.last_step_response, // outputResponse
-      null // nextFlowIds
+      this.conversation.last_step_response // outputResponse
     );
     if (!result.success) {
       console.error(`[DO:${this.state.id}] Failed to update flow run: ${result.error}`);
