@@ -1536,15 +1536,34 @@ crudApi.get('/endpoints/introspect', async (c) => {
     
     console.log("Found endpoint:", endpoint.id, endpoint.name);
     console.log("Sample response exists:", !!endpoint.sample_response);
+    console.log("Sample request exists:", !!endpoint.sample_request);
+    
+    // Extract keys from sample request
+    let requestKeys: string[] = [];
+    let parsedSampleRequest: any = null;
+    
+    if (endpoint.sample_request) {
+      console.log("Sample request:", endpoint.sample_request);
+      requestKeys = extractKeysFromSampleResponse(endpoint.sample_request);
+      console.log("Extracted request keys:", requestKeys);
+      
+      // Try to parse sample request for display
+      try {
+        parsedSampleRequest = JSON.parse(endpoint.sample_request);
+      } catch (e) {
+        console.log("Failed to parse sample request as JSON:", e.message);
+        parsedSampleRequest = endpoint.sample_request;
+      }
+    }
     
     // Extract keys from sample response
-    let availableKeys: string[] = [];
+    let responseKeys: string[] = [];
     let parsedSampleResponse: any = null;
     
     if (endpoint.sample_response) {
       console.log("Sample response:", endpoint.sample_response);
-      availableKeys = extractKeysFromSampleResponse(endpoint.sample_response);
-      console.log("Extracted keys:", availableKeys);
+      responseKeys = extractKeysFromSampleResponse(endpoint.sample_response);
+      console.log("Extracted response keys:", responseKeys);
       
       // Try to parse sample response for display
       try {
@@ -1556,7 +1575,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
     } else {
       // Default keys if no sample response
       console.log("No sample response, using default keys");
-      availableKeys = ["id", "name", "description", "method", "url"];
+      responseKeys = ["id", "name", "description", "method", "url"];
     }
     
     // Return endpoint info with extracted keys
@@ -1566,7 +1585,9 @@ crudApi.get('/endpoints/introspect', async (c) => {
       description: endpoint.description,
       method: endpoint.method,
       url: endpoint.url,
-      available_keys: availableKeys,
+      request_keys: requestKeys,
+      response_keys: responseKeys,
+      sample_request: parsedSampleRequest,
       sample_response: parsedSampleResponse
     };
     
