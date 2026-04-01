@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, KeyboardEvent, ChangeEvent } from '
 import CommandPalette from './CommandPalette';
 import { IntelligentTextareaProps, CommandItem } from '@/types';
 
-const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
+const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string }> = ({
   value,
   onChange,
   placeholder = 'Type / for commands or # for variables...',
@@ -14,6 +14,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
   flows = [],
   steps = [],
   flowruns = [],
+  flowId,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showPalette, setShowPalette] = useState(false);
@@ -37,7 +38,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
   }, []);
 
   // Get items based on trigger type
-  const getItemsByTrigger = (): CommandItem[] => {
+  const getItemsByTrigger = (currentSearchQuery: string = searchQuery): CommandItem[] => {
     switch (triggerType) {
       case '/':
         return [
@@ -50,14 +51,14 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
         // Add "New Variable" option at the top when typing #
         const newVariableItem: CommandItem = {
           id: 'new-variable',
-          label: `New Variable: "${searchQuery}"`,
+          label: `New Variable: "${currentSearchQuery}"`,
           description: 'Create a new variable with this name',
-          value: `#${searchQuery} `,
+          value: `{${currentSearchQuery}} `,
           type: 'variable'
         };
         
         // Only show new variable option if there's a search query
-        if (searchQuery.trim()) {
+        if (currentSearchQuery.trim()) {
           return [newVariableItem, ...variables];
         } else {
           return variables;
@@ -126,13 +127,8 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
     // Calculate palette position
     calculatePalettePosition(maxIndex);
     
-    // Get items based on trigger type (don't depend on state)
-    let items: CommandItem[] = [];
-    if (triggerChar === '/') {
-      items = commands;
-    } else if (triggerChar === '#') {
-      items = [...variables, ...flows, ...steps, ...flowruns];
-    }
+    // Get items based on trigger type with current query
+    const items = getItemsByTrigger(query);
     
     const filteredItems = items.filter(item => 
       item.label.toLowerCase().includes(query.toLowerCase()) ||
@@ -148,7 +144,12 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
       variables: variables.length
     });
     
-    setShowPalette(filteredItems.length > 0);
+    // DEBUG: Always show palette when there's a trigger and query
+    if (triggerChar && query.trim()) {
+      setShowPalette(true);
+    } else {
+      setShowPalette(filteredItems.length > 0);
+    }
   };
 
   // Calculate palette position based on cursor
@@ -198,7 +199,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
       
       try {
         // Create variable via API
-        const response = await fetch('/api/proxy/variables', {
+        const response = await fetch('/api/proxy/api/variables', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -206,7 +207,8 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
           body: JSON.stringify({
             key: variableName,
             value: '', // Empty value, user will fill it
-            source: 'user'
+            source: 'user',
+            flow_id: flowId || 'default-flow-id'
           }),
         });
         
@@ -217,22 +219,8 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
         const result = await response.json();
         console.log('Variable created:', result);
         
-        // Replace #variableName with #{variableName} format
-        const beforeTrigger = currentValue.substring(0, triggerIndex);
-        const afterCursor = currentValue.substring(cursorPos);
-        const newValue = beforeTrigger + `{${variableName}} ` + afterCursor;
-        
-        onChange(newValue);
-        
-        // Move cursor to after inserted variable
-        const newCursorPos = triggerIndex + variableName.length + 3; // {variableName} + space
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.selectionStart = newCursorPos;
-            textareaRef.current.selectionEnd = newCursorPos;
-            textareaRef.current.focus();
-          }
-        }, 0);
+        // Use the item value for insertion (which is {variableName} )
+        insertItemValue(item, triggerIndex, cursorPos, currentValue);
         
       } catch (error) {
         console.error('Error creating variable:', error);
@@ -274,7 +262,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (showPalette) {
       // Handle palette navigation
-      const items = getItemsByTrigger();
+      const items = getItemsByTrigger(searchQuery);
       const filteredItems = items.filter(item => 
         item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.description?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -385,7 +373,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
             {triggerType === '/' ? 'Commands' : 'Variables'} - Press ↑↓ to navigate, Enter/Tab to select, Esc to close
           </div>
           <div style={{ padding: '0.25rem' }}>
-            {getItemsByTrigger()
+            {getItemsByTrigger(searchQuery)
               .filter(item => 
                 item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 item.description?.toLowerCase().includes(searchQuery.toLowerCase())

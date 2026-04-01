@@ -1406,12 +1406,14 @@ const NodePopup = ({
   node, 
   availableVariables,
   onSave, 
-  onClose 
+  onClose,
+  flowId
 }: { 
   node: CustomNode;
   availableVariables: string[];
   onSave: (node: CustomNode) => void;
   onClose: () => void;
+  flowId?: string;
 }) => {
   const nodeData = node.data as NodeData;
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
@@ -1793,6 +1795,7 @@ const NodePopup = ({
               flows={[]} // Will be populated from API
               steps={[]} // Will be populated from API
               flowruns={[]} // Will be populated from API
+              flowId={flowId}
             />
           </div>
 
@@ -3633,6 +3636,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             availableVariables={getAvailableVariables(selectedNode.id, flowSteps)}
             onSave={handleNodeUpdate}
             onClose={() => setSelectedNode(null)}
+            flowId={flowId}
           />
         )}
 
