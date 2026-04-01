@@ -466,6 +466,12 @@ export class ConversationOrchestratorDO_2026A {
   private async loadConversationState(): Promise<void> {
     if (this.conversation === null) {
       this.conversation = await this.state.storage.get('conversation') || null;
+      
+      // Load effectiveDeepSeekApiKey from conversation data if available
+      if (this.conversation?.effective_deepseek_api_key) {
+        this.effectiveDeepSeekApiKey = this.conversation.effective_deepseek_api_key;
+        console.log(`[DO:${this.state.id}] loadConversationState() - Loaded effectiveDeepSeekApiKey from storage: ${this.effectiveDeepSeekApiKey ? this.effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'NULL'}`);
+      }
     }
   }
 
@@ -628,6 +634,8 @@ export class ConversationOrchestratorDO_2026A {
   // Alarm handler (called by Cloudflare when alarm triggers)
   async alarm(): Promise<void> {
     console.log(`[DO:${this.state.id}] Alarm triggered`);
+    console.log(`[DO:${this.state.id}] alarm() - effectiveDeepSeekApiKey: ${this.effectiveDeepSeekApiKey ? this.effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'NULL'}`);
+    console.log(`[DO:${this.state.id}] alarm() - env.DEEPSEEK_API_KEY: ${this.env.DEEPSEEK_API_KEY ? this.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'NULL'}`);
     await this.loadConversationState();
     await this.handleAlarm();
   }
@@ -1100,7 +1108,8 @@ export class ConversationOrchestratorDO_2026A {
         project_facts: [], // Empty array instead of database query
         agent: 'openhands', // Default agent for non-flow initialization
         step_status_sent: false, // Track if SENDING STEP status has been sent for current step
-        input_payload: input_payload || undefined // Store input payload for flow-to-flow propagation
+        input_payload: input_payload || undefined, // Store input payload for flow-to-flow propagation
+        effective_deepseek_api_key: effectiveDeepSeekApiKey // Store the API key from request
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -4585,8 +4594,13 @@ ${messageContent}`;
     });
     
     // Send OpenHands response to DeepSeek with full conversation history
+    const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
+    console.log(`[DO:${this.state.id}] sendToDeepSeek() - effectiveDeepSeekApiKey: ${this.effectiveDeepSeekApiKey ? this.effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'NULL'}`);
+    console.log(`[DO:${this.state.id}] sendToDeepSeek() - env.DEEPSEEK_API_KEY: ${this.env.DEEPSEEK_API_KEY ? this.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'NULL'}`);
+    console.log(`[DO:${this.state.id}] sendToDeepSeek() - final API key: ${apiKey ? apiKey.substring(0, 8) + '...' : 'NULL'}`);
+    
     const deepseekResult = await callDeepSeek(
-      this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY,
+      apiKey,
       this.conversation.conversation_messages
     );
     

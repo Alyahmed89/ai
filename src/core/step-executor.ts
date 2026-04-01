@@ -3,8 +3,10 @@ import { CommandExecutor } from '../services/commandExecutor'
 
 export class StepExecutor {
   private commandExecutor: any
+  private effectiveDeepSeekApiKey?: string
 
-  constructor(private env: any) {
+  constructor(private env: any, effectiveDeepSeekApiKey?: string) {
+    this.effectiveDeepSeekApiKey = effectiveDeepSeekApiKey
     this.commandExecutor = new CommandExecutor({
       env: this.env,
       db: this.env.FLOW_RUNS_DB,
@@ -83,10 +85,12 @@ export class StepExecutor {
   private async callDeepSeek(messages: any[]): Promise<string> {
     const { callDeepSeek } = await import('../services/deepseek');
     
-    // Use effectiveDeepSeekApiKey if available (passed from worker), otherwise use env
-    const apiKey = this.env.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
+    // Use effectiveDeepSeekApiKey if available (passed from constructor), otherwise use env
+    const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
     console.log(`[StepExecutor] Calling DeepSeek API with key present: ${!!apiKey}`);
-    console.log(`[StepExecutor] API key first 8 chars: ${apiKey ? apiKey.substring(0, 8) + '...' : 'MISSING'}`);
+    console.log(`[StepExecutor] effectiveDeepSeekApiKey from constructor: ${this.effectiveDeepSeekApiKey ? this.effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'NULL'}`);
+    console.log(`[StepExecutor] env.DEEPSEEK_API_KEY: ${this.env.DEEPSEEK_API_KEY ? this.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'NULL'}`);
+    console.log(`[StepExecutor] Final API key first 8 chars: ${apiKey ? apiKey.substring(0, 8) + '...' : 'MISSING'}`);
     
     const result = await callDeepSeek(apiKey, messages);
     

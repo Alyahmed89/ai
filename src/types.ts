@@ -104,6 +104,9 @@ export interface ConversationData {
     has_testing_priorities: boolean;
     has_api_commands: boolean;
   };
+  
+  // API key management
+  effective_deepseek_api_key?: string; // API key from request (header/body) that overrides env
 
   // Debug information for observability
   last_step_debug?: {

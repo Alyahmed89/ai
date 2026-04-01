@@ -18,6 +18,17 @@ export async function callDeepSeek(
   console.log(`[DeepSeek] API key present: ${!!apiKey}`);
   console.log(`[DeepSeek] API key starts with 'sk-': ${apiKey?.startsWith('sk-')}`);
   console.log(`[DeepSeek] API key length: ${apiKey?.length}`);
+  console.log(`[DeepSeek] API key first 5 chars: ${apiKey ? apiKey.substring(0, 5) + '...' : 'MISSING'}`);
+  
+  // Validate API key
+  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+    console.error(`[DeepSeek] Invalid or missing API key`);
+    return {
+      success: false,
+      error: "Invalid or missing API key",
+      errorDetails: { status: 401, statusText: "Unauthorized", body: "API key is required" }
+    };
+  }
   
   // Check if any message has content
   const hasContent = messages.some(msg => msg.content?.trim());

@@ -902,6 +902,7 @@ app.get('/test-deepseek', async (c) => {
     
     console.log(`[HTTP:TEST-DEEPSEEK] Calling DeepSeek with message: "hi"`);
     console.log(`[HTTP:TEST-DEEPSEEK] API Key from env: ${c.env.DEEPSEEK_API_KEY ? 'Present' : 'Missing'}`);
+    console.log(`[HTTP:TEST-DEEPSEEK] API Key first 8 chars: ${c.env.DEEPSEEK_API_KEY ? c.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'MISSING'}`);
     
     const result = await callDeepSeek(c.env.DEEPSEEK_API_KEY, messages);
     
