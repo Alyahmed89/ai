@@ -866,6 +866,54 @@ app.get('/execution-events/:flowRunId', async (c) => {
   }
 });
 
+// Test endpoint for DeepSeek API
+app.get('/test-deepseek', async (c) => {
+  try {
+    console.log(`[HTTP:TEST-DEEPSEEK] Testing DeepSeek API`);
+    
+    // Import the callDeepSeek function
+    const { callDeepSeek } = await import('./services/deepseek');
+    
+    // Simple test message
+    const messages = [
+      {
+        role: 'user',
+        content: 'hi'
+      }
+    ];
+    
+    console.log(`[HTTP:TEST-DEEPSEEK] Calling DeepSeek with message: "hi"`);
+    console.log(`[HTTP:TEST-DEEPSEEK] API Key from env: ${c.env.DEEPSEEK_API_KEY ? 'Present' : 'Missing'}`);
+    
+    const result = await callDeepSeek(c.env.DEEPSEEK_API_KEY, messages);
+    
+    if (!result.success) {
+      console.error(`[HTTP:TEST-DEEPSEEK] DeepSeek API call failed: ${result.error}`);
+      return c.json({
+        success: false,
+        error: result.error,
+        errorDetails: result.errorDetails,
+        message: 'DeepSeek API call failed'
+      }, 500);
+    }
+    
+    console.log(`[HTTP:TEST-DEEPSEEK] DeepSeek API call successful`);
+    return c.json({
+      success: true,
+      response: result.response,
+      message: 'DeepSeek API test successful'
+    });
+    
+  } catch (error: any) {
+    console.error(`[HTTP:TEST-DEEPSEEK] Endpoint error: ${error.message}`);
+    return c.json({
+      success: false,
+      error: error.message,
+      message: 'Test endpoint error'
+    }, 500);
+  }
+});
+
 export default app;
 export { ConversationOrchestratorDO_2026A };
 // Export old class names for reference (not used)
