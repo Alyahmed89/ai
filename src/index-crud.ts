@@ -6,6 +6,7 @@ import { crudApi } from './crud-api';
 import { graphApi } from './graph-api';
 import { successResponse, errorResponse, notFoundResponse } from './response';
 import { VERSION, BUILD_TIME } from './version';
+import { callDeepSeek } from './services/deepseek';
 
 // Dummy FlowControllerDO to satisfy existing binding
 export class FlowControllerDO {
@@ -237,6 +238,37 @@ app.get('/health', async (c) => {
   healthChecks.services.openhands_api_url = c.env.OPENHANDS_API_URL ? 'configured' : 'missing';
   
   return c.json(successResponse(healthChecks));
+});
+
+// Test DeepSeek API directly (isolated endpoint)
+app.post('/test-deepseek', async (c) => {
+  try {
+    const apiKey = c.env.DEEPSEEK_API_KEY;
+    if (!apiKey) {
+      return c.json(errorResponse('DEEPSEEK_API_KEY not configured', 500));
+    }
+
+    const body = await c.req.json();
+    const { messages } = body;
+    
+    if (!messages || !Array.isArray(messages)) {
+      return c.json(errorResponse('Messages array required', 400));
+    }
+
+    console.log(`[TEST] Testing DeepSeek API with ${messages.length} messages`);
+    const result = await callDeepSeek(apiKey, messages);
+    
+    return c.json({
+      success: true,
+      data: {
+        deepseek_result: result,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error: any) {
+    console.error(`[TEST] Error: ${error.message}`);
+    return c.json(errorResponse(`Test failed: ${error.message}`, 500));
+  }
 });
 
 // ============================================================================
