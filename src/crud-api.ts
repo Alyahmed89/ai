@@ -29,6 +29,7 @@ import {
 } from './response';
 import { StepExecutor } from './core/step-executor';
 import { createExecutionContext } from './core/execution-context';
+import { generateId, saveVariable } from '../services/database';
 
 // Helper function to handle database errors
 function handleDbError(error: any) {
@@ -3628,25 +3629,26 @@ crudApi.post('/variables', async (c) => {
     const variable = validation.data;
     
     // Generate ID if not provided
-    const id = variable.id || `var-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = variable.id || generateId();
     
-    // Prepare value for storage (JSON stringify)
-    const valueJson = variable.value ? JSON.stringify(variable.value) : null;
-    
-    // Insert variable
-    const result = await db.prepare(`
-      INSERT INTO variables (id, flow_id, flow_run_id, step_id, step_run_id, key, value, source, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `).bind(
+    // Use the saveVariable function
+    const result = await saveVariable(db, {
       id,
-      variable.flow_id,
-      variable.flow_run_id || null,
-      variable.step_id || null,
-      variable.step_run_id || null,
-      variable.key,
-      valueJson,
-      variable.source || 'api'
-    ).run();
+      flow_id: variable.flow_id,
+      flow_run_id: variable.flow_run_id || null,
+      step_id: variable.step_id || null,
+      step_run_id: variable.step_run_id || null,
+      key: variable.key,
+      value: variable.value,
+      source: variable.source || 'api'
+    });
+
+    if (!result.success) {
+      return c.json({ 
+        success: false, 
+        error: result.error || 'Failed to save variable' 
+      }, 500);
+    }
 
     // If variable is user-created and requires input, create a step
     if (variable.source === 'user' && !variable.value) {
