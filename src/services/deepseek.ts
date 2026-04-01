@@ -21,6 +21,12 @@ export async function callDeepSeek(
     const timeoutId = setTimeout(() => controller.abort(), DEEPSEEK_TIMEOUT);
     
     console.log(`[DeepSeek] Making fetch request to DeepSeek API with timeout: ${DEEPSEEK_TIMEOUT}ms`);
+    console.log(`[DeepSeek] Request body (first 500 chars):`, JSON.stringify({
+        model: 'deepseek-chat',
+        messages,
+        temperature: 0.7,
+        max_tokens: 2000
+      }).substring(0, 500));
 
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
@@ -44,6 +50,8 @@ export async function callDeepSeek(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[DeepSeek] API error ${response.status}: ${errorText}`);
+      console.error(`[DeepSeek] Full error response headers:`, Object.fromEntries(response.headers.entries()));
+      console.error(`[DeepSeek] Error response first 1000 chars:`, errorText.substring(0, 1000));
       throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
     }
 
