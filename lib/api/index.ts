@@ -169,15 +169,6 @@ export const stepRunsApi = {
     apiFetch(`/api/step-runs${buildQueryParams({ flow_run_id: flowRunId })}`),
 };
 
-// ==================== Tasks API ====================
-export const tasksApi = {
-  getTasks: (limit?: number) => 
-    localApiFetch(`/graph/tasks${buildQueryParams({ limit })}`),
-  
-  getTasksByProjectId: (projectId: string) => 
-    localApiFetch(`/graph/tasks`), // Note: Currently tasks don't have project_id
-};
-
 // ==================== Nodes API ====================
 export const nodesApi = {
   getNodes: (limit?: number, projectId?: string) => 
@@ -256,7 +247,6 @@ export const apiClient = {
   flowSteps: flowStepsApi,
   flowRuns: flowRunsApi,
   stepRuns: stepRunsApi,
-  tasks: tasksApi,
   nodes: nodesApi,
   endpoints: endpointsApi,
   variables: variablesApi,

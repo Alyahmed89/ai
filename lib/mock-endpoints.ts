@@ -88,82 +88,6 @@ export const mockEndpoints: Endpoint[] = [
   },
   {
     id: 'endpoint_2',
-    name: 'search_tasks',
-    url: 'https://api.example.com/tasks',
-    method: 'GET',
-    description: 'Search for tasks with filters',
-    auth_type: 'bearer',
-    auth_value: '{{api_token}}',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    query_params: {
-      'status': '{{status}}',
-      'assignee': '{{assignee_id}}',
-      'project': '{{project_id}}'
-    },
-    response_path: 'tasks',
-    timeout_ms: 8000,
-    max_retries: 2,
-    retry_delay_ms: 2000,
-    cache_ttl_seconds: 60,
-    encrypt_cache: false,
-    allowed_domains: ['api.example.com'],
-    require_https: true,
-    log_level: 'info',
-    created_at: '2024-01-16T14:20:00Z',
-    updated_at: '2024-01-16T14:20:00Z',
-    created_by: 'system',
-    tags: ['tasks', 'search', 'filter'],
-    ai_enabled: true,
-    endpoint_type: 'external_api',
-    parameter_schema: {
-      status: {
-        type: 'string',
-        required: false,
-        description: 'Task status filter',
-        enum: ['open', 'in_progress', 'completed', 'blocked']
-      },
-      assignee_id: {
-        type: 'string',
-        required: false,
-        description: 'Assignee user ID'
-      },
-      project_id: {
-        type: 'string',
-        required: false,
-        description: 'Project ID'
-      },
-      api_token: {
-        type: 'string',
-        required: true,
-        description: 'API authentication token'
-      }
-    },
-    response_schema: {
-      tasks: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            title: { type: 'string' },
-            description: { type: 'string' },
-            status: { type: 'string' },
-            assignee: { type: 'string' },
-            due_date: { type: 'string' }
-          }
-        }
-      },
-      total: { type: 'number' },
-      page: { type: 'number' },
-      page_size: { type: 'number' }
-    },
-    output_variables: ['tasks_list', 'total_tasks', 'current_page'],
-    input_variables: ['status', 'assignee_id', 'project_id', 'api_token']
-  },
-  {
-    id: 'endpoint_3',
     name: 'create_document',
     url: 'https://api.example.com/documents',
     method: 'POST',
@@ -235,7 +159,7 @@ export const mockEndpoints: Endpoint[] = [
     input_variables: ['document_title', 'document_content', 'author_id', 'tags', 'api_token']
   },
   {
-    id: 'endpoint_4',
+    id: 'endpoint_3',
     name: 'analyze_sentiment',
     url: 'https://ai-api.example.com/sentiment',
     method: 'POST',
@@ -314,7 +238,7 @@ export const mockEndpoints: Endpoint[] = [
     input_variables: ['text_to_analyze', 'language', 'detailed_analysis', 'ai_api_key']
   },
   {
-    id: 'endpoint_5',
+    id: 'endpoint_4',
     name: 'send_notification',
     url: 'https://notifications.example.com/send',
     method: 'POST',

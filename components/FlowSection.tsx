@@ -148,18 +148,18 @@ export default function FlowSection({
 
   // Search endpoint function for SearchableDropdown
   const searchEndpoints = async (query: string) => {
-    // Use commands state which contains all commands fetched from API
+    // Use availableCommands prop from parent component (flow design page)
     return new Promise<Array<{ id: string; label: string; description?: string }>>((resolve) => {
       setTimeout(() => {
-        const filtered = commands
+        const filtered = availableCommands
           .filter(cmd => 
-            cmd.label.toLowerCase().includes(query.toLowerCase()) ||
-            cmd.description?.toLowerCase().includes(query.toLowerCase())
+            cmd.name.toLowerCase().includes(query.toLowerCase()) ||
+            cmd.method?.toLowerCase().includes(query.toLowerCase())
           )
           .map(cmd => ({
-            id: cmd.id,
-            label: cmd.label,
-            description: cmd.description
+            id: cmd.name,
+            label: cmd.name,
+            description: `Method: ${cmd.method}`
           }));
         resolve(filtered);
       }, 300);
@@ -183,21 +183,8 @@ export default function FlowSection({
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch commands
-        setLoadingData(prev => ({ ...prev, commands: true }));
-        const commandsResponse = await fetch('/api/proxy/api/commands');
-        const commandsData = await commandsResponse.json();
-        // Extract commands array from response structure: {success: true, data: {commands: [...]}}
-        const commandsArray = commandsData.data?.commands || [];
-        const formattedCommands = commandsArray.map((cmd: any) => ({
-          id: cmd.name || cmd.id,
-          label: cmd.name || cmd.id,
-          description: cmd.description || `Method: ${cmd.method}`,
-          type: 'command' as const,
-          value: cmd.name || cmd.id
-        }));
-        setCommands(formattedCommands);
-        setLoadingData(prev => ({ ...prev, commands: false }));
+        // Note: Commands are now provided via availableCommands prop from parent component
+        // The flow design page fetches commands and passes them as availableCommands
         
         // Fetch flow definitions
         setLoadingData(prev => ({ ...prev, flows: true }));
@@ -415,8 +402,12 @@ export default function FlowSection({
             placeholder={`select endpoint to call for ${type}`}
             searchPlaceholder="Search endpoints..."
             onSearch={searchEndpoints}
-            options={commands}
-            loading={loadingData.commands}
+            options={availableCommands.map(cmd => ({
+              id: cmd.name,
+              label: cmd.name,
+              description: `Method: ${cmd.method}`
+            }))}
+            loading={loadingCommands}
             onCreateOption={handleCreateEndpoint}
             showCreateOption={true}
           />

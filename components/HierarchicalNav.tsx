@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import EditStepModal from './EditStepModal';
-import TaskDetailsModal from './TaskDetailsModal';
 import ApiEndpointsModal from './ApiEndpointsModal';
 import { FlowDefinition, FlowRun, FlowStep } from '@/types';
 
@@ -15,24 +14,13 @@ interface Project {
   updated_at: string;
 }
 
-interface Task {
-  id: string;
-  title: string | null;
-  description: string | null;
-  task_type: string | null;
-  priority: string | null;
-  status: string;
-  flow_id: string | null;
-  created_at: string;
-  action: string | null;
-}
+
 
 
 
 interface HierarchicalNavProps {
   onSelectProject?: (projectId: string | null) => void;
   onSelectFlow?: (flowId: string | null) => void;
-  onSelectTask?: (taskId: string | null) => void;
   onSelectFlowRun?: (flowRunId: string | null) => void;
   onSelectStep?: (stepId: string | null) => void;
   onCreateProject?: () => void;
@@ -44,7 +32,6 @@ interface HierarchicalNavProps {
 export default function HierarchicalNav({
   onSelectProject,
   onSelectFlow,
-  onSelectTask,
   onSelectFlowRun,
   onSelectStep,
   onCreateProject,
@@ -56,7 +43,6 @@ export default function HierarchicalNav({
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [flows, setFlows] = useState<FlowDefinition[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
   const [flowSteps, setFlowSteps] = useState<FlowStep[]>([]);
   
@@ -107,15 +93,11 @@ export default function HierarchicalNav({
       flows: flows.map(f => ({ id: f.id, name: f.name, agent: f.agent }))
     });
   }, [projects, flows, selectedProjectId, selectedFlowId]);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-
 
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [showTasks, setShowTasks] = useState(true); // Toggle between tasks and flow runs
-  const [activeSection, setActiveSection] = useState<'steps' | 'tasks' | 'flowRuns'>('steps');
+  const [activeSection, setActiveSection] = useState<'steps' | 'flowRuns'>('steps');
   const [editingStep, setEditingStep] = useState<FlowStep | null>(null);
-  const [selectedTaskDetails, setSelectedTaskDetails] = useState<Task | null>(null);
   const [showApiEndpointsModal, setShowApiEndpointsModal] = useState(false);
   const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -124,7 +106,6 @@ export default function HierarchicalNav({
   const [loading, setLoading] = useState({
     projects: false,
     flows: false,
-    tasks: false,
     flowRuns: false,
     steps: false
   });
@@ -133,7 +114,6 @@ export default function HierarchicalNav({
   useEffect(() => {
     fetchProjects();
     fetchFlows();
-    fetchTasks();
     fetchFlowRuns();
   }, []);
 
@@ -145,10 +125,9 @@ export default function HierarchicalNav({
     }
   }, [selectedProjectId]);
 
-  // Fetch tasks, flow runs, and steps when flow changes
+  // Fetch flow runs and steps when flow changes
   useEffect(() => {
     if (selectedFlowId) {
-      fetchTasks();
       fetchFlowRuns();
       fetchFlowSteps();
     } else {
@@ -189,20 +168,7 @@ export default function HierarchicalNav({
     }
   };
 
-  const fetchTasks = async () => {
-    setLoading(prev => ({ ...prev, tasks: true }));
-    try {
-      const response = await fetch('/api/proxy/api/tasks');
-      if (response.ok) {
-        const data = await response.json();
-        setTasks(data);
-      }
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-    } finally {
-      setLoading(prev => ({ ...prev, tasks: false }));
-    }
-  };
+
 
   const fetchFlowRuns = async () => {
     setLoading(prev => ({ ...prev, flowRuns: true }));
@@ -255,7 +221,6 @@ export default function HierarchicalNav({
     console.log('handleProjectSelect called with projectId:', projectId);
     setSelectedProjectId(projectId);
     setSelectedFlowId(null);
-    setSelectedTaskId(null);
     setSelectedFlowRunId(null);
     onSelectProject?.(projectId);
     
@@ -269,7 +234,6 @@ export default function HierarchicalNav({
   const handleFlowSelect = (flowId: string | null) => {
     console.log('handleFlowSelect called with flowId:', flowId);
     setSelectedFlowId(flowId);
-    setSelectedTaskId(null);
     setSelectedFlowRunId(null);
     setActiveSection('steps'); // Reset to steps when selecting a new flow
     onSelectFlow?.(flowId);
@@ -281,21 +245,7 @@ export default function HierarchicalNav({
     }
   };
 
-  const handleTaskSelect = (taskId: string | null) => {
-    setSelectedTaskId(taskId);
-    onSelectTask?.(taskId);
-    
-    // Find and show task details
-    if (taskId) {
-      const task = tasks.find(t => t.id === taskId);
-      if (task) {
-        setSelectedTaskDetails(task);
-      }
-      // Note: /tasks/[id] route doesn't exist yet, so we show modal instead
-    } else {
-      setSelectedTaskDetails(null);
-    }
-  };
+
 
   const handleFlowRunSelect = (flowRunId: string | null) => {
     setSelectedFlowRunId(flowRunId);
@@ -430,11 +380,6 @@ export default function HierarchicalNav({
     setShowDeleteConfirm(false);
     setStepToDelete(null);
   };
-
-  // Filter tasks by selected flow
-  const filteredTasks = selectedFlowId 
-    ? tasks.filter(task => task.flow_id === selectedFlowId)
-    : [];
 
   // Filter flow runs by selected flow
   const filteredFlowRuns = selectedFlowId
@@ -657,21 +602,7 @@ export default function HierarchicalNav({
                   </svg>
                   <span>Steps: {filteredSteps.length}</span>
                 </button>
-                {/* Task icon - clickable */}
-                <button
-                  onClick={() => setActiveSection('tasks')}
-                  className={`flex items-center text-xs px-2 py-1 rounded ${
-                    activeSection === 'tasks'
-                      ? 'bg-gray-900/30 text-gray-300'
-                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
-                  }`}
-                  title="Show Tasks"
-                >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  <span>Tasks: {filteredTasks.length}</span>
-                </button>
+
               </div>
             </div>
           </div>
@@ -760,43 +691,7 @@ export default function HierarchicalNav({
             </div>
           )}
 
-          {/* Tasks Section - shown when activeSection is 'tasks' */}
-          {activeSection === 'tasks' && (
-            <div className="flex flex-col h-full">
-              <div className="p-4 border-b border-gray-800">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center">
-                    <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    <span className="text-sm font-medium text-gray-300">Tasks</span>
-                  </div>
-                  {loading.tasks && (
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
-                  )}
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <div className="space-y-1 p-4">
-                  {filteredTasks.map(task => (
-                    <button
-                      key={task.id}
-                      onClick={() => handleTaskSelect(task.id)}
-                      className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                        selectedTaskId === task.id 
-                          ? 'bg-gray-900/30 text-gray-300' 
-                          : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center min-w-0 flex-1">
-                        <span className="truncate">{task.title || 'Untitled Task'}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+
 
           {/* Flow Runs Section - shown when activeSection is 'flowRuns' */}
           {activeSection === 'flowRuns' && (
@@ -854,14 +749,6 @@ export default function HierarchicalNav({
             // Refresh step data after update
             fetchFlowSteps();
           }}
-        />
-      )}
-
-      {/* Task Details Modal */}
-      {selectedTaskDetails && (
-        <TaskDetailsModal
-          task={selectedTaskDetails}
-          onClose={() => setSelectedTaskDetails(null)}
         />
       )}
 

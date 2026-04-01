@@ -31,38 +31,7 @@ interface ParsedMessage {
   };
 }
 
-interface Task {
-  id: string;
-  title: string | null;
-  description: string | null;
-  task_type: string | null;
-  priority: string | null;
-  status: string;
-  flow_id: string | null;
-  created_at: string;
-  action: string | null;
-  dependencies: string | null;
-  file: string | null;
-  line: number | null;
-  estimated_complexity: string | null;
-  validation_checklist: string | null;
-  numeric_priority: number | null;
-  endpoint_path: string | null;
-  http_method: string | null;
-  sample_payload: string | null;
-  expected_response: string | null;
-  auth_required: string | null;
-  ai_context: string | null;
-  last_runtime_validation_at: string | null;
-  last_runtime_validation_status: string | null;
-  runtime_validation_count: number | null;
-  expectation_override: string | null;
-  expectation_source: string | null;
-  flow: string | null;
-  obligation_evidence: string | null;
-  obligation_reason: string | null;
-  order_index: number | null;
-}
+
 
 interface FlowDefinition {
   id: string;
@@ -222,7 +191,6 @@ export default function ChatPage(props: any) {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [flowRuns, setFlowRuns] = useState<SharedFlowRun[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [flowDefinitions, setFlowDefinitions] = useState<FlowDefinition[]>([]);
   const [variables, setVariables] = useState<CommandItem[]>([]);
   const [showCreateFlowModal, setShowCreateFlowModal] = useState<boolean>(false);
@@ -232,24 +200,21 @@ export default function ChatPage(props: any) {
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId || null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(initialFlowId || null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(initialFlowRunId || null);
   const [conversationData, setConversationData] = useState<ConversationData | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch flow definitions, flow runs, tasks, and variables on component mount
+  // Fetch flow definitions, flow runs, and variables on component mount
   useEffect(() => {
     fetchFlowDefinitions();
     fetchFlowRuns();
-    fetchTasks();
     fetchVariables();
     
-    // Auto-refresh flow definitions, flow runs, tasks, and variables every 30 seconds
+    // Auto-refresh flow definitions, flow runs, and variables every 30 seconds
     const interval = setInterval(() => {
       fetchFlowDefinitions();
       fetchFlowRuns();
-      fetchTasks();
       fetchVariables();
     }, 30000);
     
@@ -628,21 +593,6 @@ export default function ChatPage(props: any) {
     console.warn(`Failed to find flow run for conversation_id: ${conversationId} after ${maxAttempts} attempts`);
   };
 
-  const fetchTasks = async () => {
-    try {
-      const response = await fetch('/api/proxy/api/tasks');
-      if (!response.ok) throw new Error('Failed to fetch tasks');
-      const data = await response.json();
-      // Sort tasks from latest to oldest
-      const sortedTasks = data.sort((a: Task, b: Task) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      setTasks(sortedTasks);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-    }
-  };
-
   const fetchVariables = async () => {
     try {
       const response = await fetch('/api/proxy/variables');
@@ -806,27 +756,11 @@ export default function ChatPage(props: any) {
         }
       }
       
-      // First, fetch all flow steps and filter by flow_id
-      const stepsResponse = await fetch('/api/proxy/api/flow-steps');
-      if (!stepsResponse.ok) throw new Error('Failed to fetch flow steps');
-      const stepsData = await stepsResponse.json();
-      const steps = stepsData.data.filter((step: any) => step.flow_id === selectedFlowId);
-      console.log('Fetched steps for flow', selectedFlowId, ':', steps);
-      
-      // Extract variables from all step instructions
-      const variablePattern = /\{(\w+)\}/g;
+      // Note: Flow steps endpoint has been removed
+      // Variables from flow steps are no longer fetched
       const variablesFromSteps: Set<string> = new Set();
       
-      for (const step of steps) {
-        if (step.instructions) {
-          const matches = [...step.instructions.matchAll(variablePattern)];
-          for (const match of matches) {
-            variablesFromSteps.add(match[1]);
-          }
-        }
-      }
-      
-      console.log('Variables found in flow steps:', Array.from(variablesFromSteps));
+      console.log('Variables from flow steps: (endpoint removed)');
       
       // Update variables found in flow steps with the prompt value
       for (const variableName of variablesFromSteps) {
@@ -869,6 +803,9 @@ export default function ChatPage(props: any) {
       originalInstructions = {};
       const updatePromises = [];
       
+      // Note: Steps are no longer fetched from API
+      const steps: any[] = [];
+      
       for (const step of steps) {
         console.log('Checking step:', step.id, 'instructions:', step.instructions);
         // Check for new [input:...] format placeholders
@@ -905,24 +842,11 @@ export default function ChatPage(props: any) {
             extra_step: step.extra_step === 1
           };
           
-          const updatePromise = fetch(`/api/proxy/api/flow-steps/${step.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(stepData),
-          }).then(async (response) => {
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error('Failed to update step:', step.id, 'Status:', response.status, 'Error:', errorText);
-              throw new Error(`Failed to update step ${step.id}: ${response.status}`);
-            }
-            console.log('Successfully updated step:', step.id);
-            return response.json();
-          }).catch(error => {
-            console.error('Error updating step:', step.id, error);
-            throw error;
-          });
+          // Note: Flow steps endpoint has been removed
+          // Step updates are no longer performed
+          console.log('Would update step:', step.id, 'with instructions:', resolvedInstructions);
+          // Simulate update with a resolved promise
+          const updatePromise = Promise.resolve({ success: true, message: 'Step update simulated (endpoint removed)' });
           updatePromises.push(updatePromise);
         }
       }
@@ -960,21 +884,11 @@ export default function ChatPage(props: any) {
             extra_step: step.extra_step === 1
           };
           
-          const restorePromise = fetch(`/api/proxy/api/flow-steps/${stepId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(stepData)
-          }).then(async (response) => {
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error('Failed to restore step:', stepId, 'Status:', response.status, 'Error:', errorText);
-            } else {
-              console.log('Successfully restored step:', stepId);
-            }
-            return response.json();
-          }).catch(error => {
-            console.error('Error restoring step:', stepId, error);
-          });
+          // Note: Flow steps endpoint has been removed
+          // Step restoration is no longer performed
+          console.log('Would restore step:', stepId, 'with original instructions');
+          // Simulate restore with a resolved promise
+          const restorePromise = Promise.resolve({ success: true, message: 'Step restore simulated (endpoint removed)' });
           
           restorePromises.push(restorePromise);
         }
@@ -1477,7 +1391,6 @@ export default function ChatPage(props: any) {
           <HierarchicalNav
             onSelectProject={(projectId) => setSelectedProjectId(projectId)}
             onSelectFlow={(flowId) => setSelectedFlowId(flowId)}
-            onSelectTask={(taskId) => setSelectedTaskId(taskId)}
             onSelectFlowRun={(flowRunId) => setSelectedFlowRunId(flowRunId)}
             onCreateFlow={() => setShowCreateFlowModal(true)}
             onEditFlow={(flowId) => {

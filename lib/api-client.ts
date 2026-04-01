@@ -61,11 +61,6 @@ export async function getNodeDependencies(id: string) {
   return fetchFromBackend(`/graph/nodes/${id}/dependencies`);
 }
 
-// Tasks API
-export async function getTasks() {
-  return fetchFromBackend('/api/tasks');
-}
-
 // Flows API
 export async function getFlows() {
   return fetchFromBackend('/api/flows');

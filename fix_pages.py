@@ -26,29 +26,13 @@ def fix_page(filepath):
         content = content.replace(old_code, new_code)
         print(f"Fixed data parsing in {filepath}")
     
-    # Also fix interface if needed (for tasks)
-    if 'tasks/page.tsx' in filepath:
-        # Update Task interface to match actual API
-        task_interface = '''interface Task {
-  id: string;
-  title: string | null;
-  description: string | null;
-  task_type: string | null;
-  priority: string | null;
-  status: string;
-  flow_id: string | null;
-  created_at: string;
-  updated_at: string;
-}'''
-        content = re.sub(r'interface Task \{[\s\S]*?\}', task_interface, content)
-        print(f"Updated Task interface in {filepath}")
+
     
     with open(filepath, 'w') as f:
         f.write(content)
 
 # Fix all pages
 pages = [
-    'app/tasks/page.tsx',
     'app/flows/page.tsx', 
     'app/nodes/page.tsx',
     'app/flow-runs/page.tsx'

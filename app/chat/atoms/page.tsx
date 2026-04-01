@@ -41,7 +41,6 @@ export default function AtomsPage() {
           <HierarchicalNav
             onSelectProject={(projectId) => console.log('Project selected:', projectId)}
             onSelectFlow={(flowId) => console.log('Flow selected:', flowId)}
-            onSelectTask={(taskId) => console.log('Task selected:', taskId)}
             onSelectFlowRun={(flowRunId) => console.log('Flow run selected:', flowRunId)}
             onCreateFlow={() => console.log('Create flow clicked')}
             onEditFlow={(flowId) => console.log('Edit flow clicked:', flowId)}

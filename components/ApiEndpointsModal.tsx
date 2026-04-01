@@ -39,42 +39,9 @@ export default function ApiEndpointsModal({ isOpen, onClose }: ApiEndpointsModal
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/proxy/api/commands');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch endpoints: ${response.status} ${response.statusText}`);
-      }
-      const data = await response.json();
-      
-      // Transform the data if needed
-      let endpointsArray = [];
-      if (data.success && data.data && data.data.commands) {
-        // Handle format: {success: true, data: {commands: [...]}}
-        endpointsArray = data.data.commands;
-      } else if (Array.isArray(data)) {
-        endpointsArray = data;
-      } else if (data.endpoints || data.commands) {
-        // Handle different response formats
-        endpointsArray = data.endpoints || data.commands || [];
-      } else if (typeof data === 'object' && data !== null) {
-        // Try to extract endpoints from object properties
-        endpointsArray = Object.values(data).filter(item => {
-          if (!item || typeof item !== 'object') return false;
-          const endpointItem = item as Record<string, any>;
-          return endpointItem.path || endpointItem.method || endpointItem.name;
-        });
-      }
-      
-      // Ensure all endpoints have required fields
-      endpointsArray = endpointsArray.map((endpoint: any) => ({
-        name: endpoint.name || '',
-        path: endpoint.path || endpoint.endpoint || '',
-        method: endpoint.method || 'GET',
-        description: endpoint.description,
-        parameters: Array.isArray(endpoint.parameters) ? endpoint.parameters : [],
-        responses: Array.isArray(endpoint.responses) ? endpoint.responses : []
-      }));
-      
-      setEndpoints(endpointsArray);
+      // Note: Commands endpoint has been removed
+      // This modal will show empty state or mock data
+      setEndpoints([]);
     } catch (err) {
       console.error('Error fetching API endpoints:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');

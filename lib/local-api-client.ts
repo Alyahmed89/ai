@@ -51,19 +51,6 @@ export const localApiClient = {
     return localApiFetch(`/graph/flows`);
   },
 
-  // Tasks
-  getTasks: (limit?: number) => {
-    const params = new URLSearchParams();
-    if (limit) params.append('limit', limit.toString());
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return localApiFetch(`/graph/tasks${query}`);
-  },
-
-  getTasksByProjectId: (projectId: string) => {
-    // Note: Currently tasks don't have project_id, so we return all tasks
-    return localApiFetch(`/graph/tasks`);
-  },
-
   // Nodes (for backward compatibility)
   getNodes: (limit?: number, projectId?: string) => {
     const params = new URLSearchParams();

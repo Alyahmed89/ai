@@ -41,17 +41,6 @@ export async function getFlows() {
   return await queryD1(sql);
 }
 
-export async function getTasks(projectId?: string) {
-  let sql = 'SELECT * FROM tasks WHERE 1=1';
-  const params: any[] = [];
-  
-  // Note: Tasks table doesn't have project_id, so we can't filter by project
-  // This is a limitation of the current schema
-  sql += ' ORDER BY created_at DESC LIMIT 50';
-  
-  return await queryD1(sql, params);
-}
-
 export async function getFlowRuns() {
   const sql = 'SELECT * FROM flow_runs ORDER BY created_at DESC LIMIT 50';
   return await queryD1(sql);
