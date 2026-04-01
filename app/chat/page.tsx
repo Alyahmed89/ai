@@ -656,6 +656,18 @@ export default function ChatPage(props: any) {
     
     const prompt = inputPrompt.trim();
     
+    // Check for #variable_name pattern in the prompt
+    const variableMatch = prompt.match(/^#(\w+)\s+(.+)$/);
+    let variableName = null;
+    let variableValue = null;
+    
+    if (variableMatch) {
+      variableName = variableMatch[1];
+      variableValue = variableMatch[2];
+      
+      console.log('Detected variable creation:', { variableName, variableValue });
+    }
+    
     // Add user message to chat
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -677,6 +689,41 @@ export default function ChatPage(props: any) {
     let restoreOriginalInstructions: (() => Promise<void>) | null = null;
     
     try {
+      // Create variable if #variable_name pattern detected
+      if (variableMatch) {
+        // Create variable via API
+        const variableResponse = await fetch('/api/proxy/variables', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            key: variableName,
+            value: variableValue,
+            source: 'user',
+            flow_id: selectedFlowId
+          }),
+        });
+        
+        if (!variableResponse.ok) {
+          const errorText = await variableResponse.text();
+          console.error('Failed to create variable:', errorText);
+          throw new Error(`Failed to create variable: ${variableResponse.status}`);
+        }
+        
+        const variableResult = await variableResponse.json();
+        console.log('Variable created successfully:', variableResult);
+        
+        // Add variable creation confirmation message
+        const variableMessage: ChatMessage = {
+          id: `${Date.now()}_variable`,
+          type: 'assistant',
+          content: `✅ Variable created: \`${variableName}\` = "${variableValue}"`,
+          timestamp: new Date(),
+        };
+        setChatMessages(prev => [...prev, variableMessage]);
+      }
+      
       // First, fetch all flow steps and filter by flow_id
       const stepsResponse = await fetch('/api/proxy/api/flow-steps');
       if (!stepsResponse.ok) throw new Error('Failed to fetch flow steps');
@@ -804,24 +851,29 @@ export default function ChatPage(props: any) {
         }
       };
       
-      // Create task with proper title and description
-      const taskResponse = await fetch('/api/proxy/api/tasks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt,
-          description: prompt,
-          flow_id: selectedFlowId,
-          status: 'pending'
-        }),
-      });
-      
-      if (!taskResponse.ok) throw new Error('Failed to create task');
-      
-      const taskResult = await taskResponse.json();
-      const createdTaskId = taskResult.id;
+      // Create task with proper title and description (skip if it's just a variable creation)
+      let createdTaskId = null;
+      if (!variableMatch) {
+        const taskResponse = await fetch('/api/proxy/api/tasks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: prompt.length > 50 ? prompt.substring(0, 47) + '...' : prompt,
+            description: prompt,
+            flow_id: selectedFlowId,
+            status: 'pending'
+          }),
+        });
+        
+        if (!taskResponse.ok) throw new Error('Failed to create task');
+        
+        const taskResult = await taskResponse.json();
+        createdTaskId = taskResult.id;
+      } else {
+        console.log('Skipping task creation for variable creation command');
+      }
       
       // Start the flow with inputs
       const flowResponse = await fetch('/api/proxy/start', {
@@ -831,7 +883,11 @@ export default function ChatPage(props: any) {
         },
         body: JSON.stringify({
           flow_id: selectedFlowId,
-          inputs: {
+          inputs: variableMatch ? {
+            // If it's a variable creation, send the variable value as user_prompt
+            // This maintains compatibility with existing flows expecting user_prompt
+            user_prompt: variableValue
+          } : {
             user_prompt: prompt
           }
         }),

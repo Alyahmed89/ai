@@ -1768,6 +1768,34 @@ const NodePopup = ({
             defaultCollapsed={true}
           />
 
+          {/* ========== STEP INSTRUCTIONS ========== */}
+          <div className="node-popup-textarea-container">
+            <IntelligentTextarea
+              value={instructions || ''}
+              onChange={(value) => setInstructions(value)}
+              placeholder="expected response: {{command_output}}"
+              className="node-popup-textarea"
+              commands={availableCommands.map(cmd => ({
+                id: cmd.name,
+                label: cmd.name,
+                description: `Command: ${cmd.method}`,
+                type: 'command' as const,
+                value: `{{${cmd.name}}}`
+              }))}
+              variables={[
+                { id: 'command_output', label: 'command_output', description: 'Output from the command', type: 'variable', value: '{{command_output}}' },
+                { id: 'flow_id', label: 'flow_id', description: 'Current flow ID', type: 'variable', value: '{{flow_id}}' },
+                { id: 'step_id', label: 'step_id', description: 'Current step ID', type: 'variable', value: '{{step_id}}' },
+                { id: 'user_input', label: 'user_input', description: 'User input variable', type: 'variable', value: '{{user_input}}' },
+                { id: 'timestamp', label: 'timestamp', description: 'Current timestamp', type: 'variable', value: '{{timestamp}}' },
+                { id: 'inputs.user_prompt', label: 'inputs.user_prompt', description: 'User prompt from chat input', type: 'variable', value: '{inputs.user_prompt}' }
+              ]}
+              flows={[]} // Will be populated from API
+              steps={[]} // Will be populated from API
+              flowruns={[]} // Will be populated from API
+            />
+          </div>
+
           {/* ========== OUTPUT SECTION ========== */}
           <FlowSection
             title="OUTPUT"
@@ -1798,33 +1826,6 @@ const NodePopup = ({
             onVariableDragStart={onVariableDragStart}
             defaultCollapsed={true}
           />
-
-          {/* ========== STEP INSTRUCTIONS ========== */}
-          <div className="node-popup-textarea-container">
-            <IntelligentTextarea
-              value={instructions || ''}
-              onChange={(value) => setInstructions(value)}
-              placeholder="expected response: {{command_output}}"
-              className="node-popup-textarea"
-              commands={availableCommands.map(cmd => ({
-                id: cmd.name,
-                label: cmd.name,
-                description: `Command: ${cmd.method}`,
-                type: 'command' as const,
-                value: `{{${cmd.name}}}`
-              }))}
-              variables={[
-                { id: 'command_output', label: 'command_output', description: 'Output from the command', type: 'variable', value: '{{command_output}}' },
-                { id: 'flow_id', label: 'flow_id', description: 'Current flow ID', type: 'variable', value: '{{flow_id}}' },
-                { id: 'step_id', label: 'step_id', description: 'Current step ID', type: 'variable', value: '{{step_id}}' },
-                { id: 'user_input', label: 'user_input', description: 'User input variable', type: 'variable', value: '{{user_input}}' },
-                { id: 'timestamp', label: 'timestamp', description: 'Current timestamp', type: 'variable', value: '{{timestamp}}' }
-              ]}
-              flows={[]} // Will be populated from API
-              steps={[]} // Will be populated from API
-              flowruns={[]} // Will be populated from API
-            />
-          </div>
 
           {/* ========== FLOW DROPDOWN ========== */}
           <div className="node-popup-dropdown-row">
