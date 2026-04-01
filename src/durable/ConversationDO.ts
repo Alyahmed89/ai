@@ -2956,14 +2956,27 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
           console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
           console.log(`[DO:${this.state.id}] Agent is 'deepseek', calling DeepSeek API instead of OpenHands`);
-          console.log(`[DO:${this.state.id}] Payload to DeepSeek (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
+          console.log(`[DO:${this.state.id}] Payload to DeepSeek (first 500 chars): ${this.conversation.execution_context?.ai_input?.substring(0, 500) || 'No ai_input found'}...`);
           console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
           
           // Build messages for DeepSeek WITHOUT system message
+          // Use execution_context.ai_input as the single source of truth for resolved instructions
+          const aiInput = this.conversation.execution_context?.ai_input;
+          if (!aiInput) {
+            throw new Error('No resolved instructions found in execution_context.ai_input');
+          }
+          
+          // Guard: Ensure no unresolved variables
+          if (aiInput.includes('{')) {
+            throw new Error(`UNRESOLVED VARIABLES in ai_input: ${aiInput.substring(0, 200)}`);
+          }
+          
+          console.log('FINAL_INSTRUCTIONS (first 500 chars):', aiInput.substring(0, 500));
+          
           const messages = [
             {
               role: 'user',
-              content: this.conversation.initial_user_prompt
+              content: aiInput
             }
           ];
           
@@ -3043,12 +3056,25 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Step: ${(this.conversation.current_step_index || 0) + 1}`);
           console.log(`[DO:${this.state.id}] Step Key: ${this.conversation.current_step.step_key}`);
           console.log(`[DO:${this.state.id}] DeepSeek called: false (bypassing for execution step)`);
-          console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.initial_user_prompt.substring(0, 500)}...`);
+          console.log(`[DO:${this.state.id}] Payload to OpenHands (first 500 chars): ${this.conversation.execution_context?.ai_input?.substring(0, 500) || 'No ai_input found'}...`);
           console.log(`[DO:${this.state.id}] ====== END VALIDATION ======`);
           
           // Build initial conversation messages WITHOUT system message
+          // Use execution_context.ai_input as the single source of truth for resolved instructions
+          const aiInput = this.conversation.execution_context?.ai_input;
+          if (!aiInput) {
+            throw new Error('No resolved instructions found in execution_context.ai_input for OpenHands');
+          }
+          
+          // Guard: Ensure no unresolved variables
+          if (aiInput.includes('{')) {
+            throw new Error(`UNRESOLVED VARIABLES in ai_input for OpenHands: ${aiInput.substring(0, 200)}`);
+          }
+          
+          console.log('FINAL_INSTRUCTIONS for OpenHands (first 500 chars):', aiInput.substring(0, 500));
+          
           const initialMessages = buildInitialMessages(
-            this.conversation.initial_user_prompt,
+            aiInput,
             {
               repository: this.conversation.repository,
               branch: this.conversation.branch,
@@ -3068,11 +3094,11 @@ export class ConversationOrchestratorDO_2026A {
             ...initialMessages.filter(m => m.role !== 'user'), // Keep system message if any
             {
               role: 'assistant',
-              content: this.conversation.initial_user_prompt // This contains the exact command from DB
+              content: aiInput // Use resolved instructions
             }
           ];
           
-          this.conversation.last_deepseek_response = this.conversation.initial_user_prompt;
+          this.conversation.last_deepseek_response = aiInput;
           this.conversation.deepseek_response_pending = false;
           
           // Transition to WAITING_OPENHANDS state
@@ -3093,8 +3119,22 @@ export class ConversationOrchestratorDO_2026A {
     console.log(`[DO:${this.state.id}] INIT state: Sending to DeepSeek`);
     
     // Build initial conversation messages WITHOUT system message
+    // Prefer execution_context.ai_input if available (for resolved variables)
+    const userPrompt = this.conversation.execution_context?.ai_input || this.conversation.initial_user_prompt;
+    
+    if (!userPrompt) {
+      throw new Error('No user prompt available for DeepSeek');
+    }
+    
+    // Guard: Check for unresolved variables if using execution_context.ai_input
+    if (this.conversation.execution_context?.ai_input && this.conversation.execution_context.ai_input.includes('{')) {
+      throw new Error(`UNRESOLVED VARIABLES in ai_input: ${this.conversation.execution_context.ai_input.substring(0, 200)}`);
+    }
+    
+    console.log('FINAL_INSTRUCTIONS (first 500 chars):', userPrompt.substring(0, 500));
+    
     const initialMessages = buildInitialMessages(
-      this.conversation.initial_user_prompt,
+      userPrompt,
       {
         repository: this.conversation.repository,
         branch: this.conversation.branch,
@@ -5343,6 +5383,13 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Prompt preview: ${prompt.substring(0, 200)}...`);
       
       // Build messages for DeepSeek WITHOUT system message
+      // Guard: Ensure no unresolved variables
+      if (prompt.includes('{')) {
+        throw new Error(`UNRESOLVED VARIABLES in prompt: ${prompt.substring(0, 200)}`);
+      }
+      
+      console.log('FINAL_INSTRUCTIONS (first 500 chars):', prompt.substring(0, 500));
+      
       const messages = [
         { role: 'user', content: prompt }
       ];
