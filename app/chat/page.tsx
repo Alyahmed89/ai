@@ -6,7 +6,8 @@ import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 import EditFlowModal from '@/components/EditFlowModal';
 import CreateProjectModal from '@/components/CreateProjectModal';
 import FlowRun, { ConversationData } from '@/components/FlowRun';
-import { FlowRun as SharedFlowRun } from '@/types';
+import IntelligentTextarea from '@/components/ui/IntelligentTextarea';
+import { FlowRun as SharedFlowRun, CommandItem } from '@/types';
 
 interface ChatMessage {
   id: string;
@@ -223,6 +224,7 @@ export default function ChatPage(props: any) {
   const [flowRuns, setFlowRuns] = useState<SharedFlowRun[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [flowDefinitions, setFlowDefinitions] = useState<FlowDefinition[]>([]);
+  const [variables, setVariables] = useState<CommandItem[]>([]);
   const [showCreateFlowModal, setShowCreateFlowModal] = useState<boolean>(false);
   const [showEditFlowModal, setShowEditFlowModal] = useState<boolean>(false);
   const [showCreateProjectModal, setShowCreateProjectModal] = useState<boolean>(false);
@@ -236,17 +238,19 @@ export default function ChatPage(props: any) {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch flow definitions, flow runs and tasks on component mount
+  // Fetch flow definitions, flow runs, tasks, and variables on component mount
   useEffect(() => {
     fetchFlowDefinitions();
     fetchFlowRuns();
     fetchTasks();
+    fetchVariables();
     
-    // Auto-refresh flow definitions, flow runs and tasks every 30 seconds
+    // Auto-refresh flow definitions, flow runs, tasks, and variables every 30 seconds
     const interval = setInterval(() => {
       fetchFlowDefinitions();
       fetchFlowRuns();
       fetchTasks();
+      fetchVariables();
     }, 30000);
     
     return () => clearInterval(interval);
@@ -636,6 +640,28 @@ export default function ChatPage(props: any) {
       setTasks(sortedTasks);
     } catch (error) {
       console.error('Error fetching tasks:', error);
+    }
+  };
+
+  const fetchVariables = async () => {
+    try {
+      const response = await fetch('/api/proxy/variables');
+      if (!response.ok) throw new Error('Failed to fetch variables');
+      const data = await response.json();
+      
+      // Convert variables to CommandItem format
+      const variableItems: CommandItem[] = data.map((variable: any) => ({
+        id: variable.id || variable.key,
+        label: variable.key,
+        description: variable.value ? `Value: ${variable.value}` : 'No value set',
+        value: `{${variable.key}}`,
+        type: 'variable' as const
+      }));
+      
+      setVariables(variableItems);
+      console.log('Fetched variables:', variableItems.length);
+    } catch (error) {
+      console.error('Error fetching variables:', error);
     }
   };
 
@@ -1433,15 +1459,16 @@ export default function ChatPage(props: any) {
                 <div className="p-4">
                   <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="space-y-3">
                     <div className="relative">
-                      <textarea
-                        ref={textareaRef}
+                      <IntelligentTextarea
                         value={inputPrompt}
-                        onChange={(e) => setInputPrompt(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder={selectedFlowId ? "tell me what you are thinking .." : "Select a flow first to send messages"}
-                        className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 pr-24 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
-                        rows={1}
-                        disabled={isRunning}
+                        onChange={setInputPrompt}
+                        placeholder={selectedFlowId ? "Type / for commands or # for variables..." : "Select a flow first to send messages"}
+                        className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
+                        variables={variables}
+                        commands={[]}
+                        flows={[]}
+                        steps={[]}
+                        flowruns={[]}
                       />
                       <div className="absolute right-3 bottom-3 flex space-x-2">
                         <button

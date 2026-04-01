@@ -47,7 +47,21 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
           ...flowruns.map(fr => ({ ...fr, type: 'flowrun' as const })),
         ];
       case '#':
-        return variables;
+        // Add "New Variable" option at the top when typing #
+        const newVariableItem: CommandItem = {
+          id: 'new-variable',
+          label: `New Variable: "${searchQuery}"`,
+          description: 'Create a new variable with this name',
+          value: `#${searchQuery} `,
+          type: 'variable'
+        };
+        
+        // Only show new variable option if there's a search query
+        if (searchQuery.trim()) {
+          return [newVariableItem, ...variables];
+        } else {
+          return variables;
+        }
       default:
         return [];
     }
@@ -154,7 +168,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
   };
 
   // Handle palette item selection
-  const handlePaletteSelect = (item: CommandItem) => {
+  const handlePaletteSelect = async (item: CommandItem) => {
     if (!textareaRef.current || !triggerType) return;
     
     const textarea = textareaRef.current;
@@ -170,6 +184,74 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
       return;
     }
     
+    // Check if this is a "New Variable" creation
+    if (item.id === 'new-variable' && triggerType === '#') {
+      // Extract variable name from search query
+      const variableName = searchQuery.trim();
+      
+      if (!variableName) {
+        setShowPalette(false);
+        setTriggerType(null);
+        setSearchQuery('');
+        return;
+      }
+      
+      try {
+        // Create variable via API
+        const response = await fetch('/api/proxy/variables', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            key: variableName,
+            value: '', // Empty value, user will fill it
+            source: 'user'
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to create variable: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Variable created:', result);
+        
+        // Replace #variableName with #{variableName} format
+        const beforeTrigger = currentValue.substring(0, triggerIndex);
+        const afterCursor = currentValue.substring(cursorPos);
+        const newValue = beforeTrigger + `{${variableName}} ` + afterCursor;
+        
+        onChange(newValue);
+        
+        // Move cursor to after inserted variable
+        const newCursorPos = triggerIndex + variableName.length + 3; // {variableName} + space
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = newCursorPos;
+            textareaRef.current.selectionEnd = newCursorPos;
+            textareaRef.current.focus();
+          }
+        }, 0);
+        
+      } catch (error) {
+        console.error('Error creating variable:', error);
+        // Fall back to regular insertion
+        insertItemValue(item, triggerIndex, cursorPos, currentValue);
+      }
+    } else {
+      // Regular item selection
+      insertItemValue(item, triggerIndex, cursorPos, currentValue);
+    }
+    
+    // Close palette
+    setShowPalette(false);
+    setTriggerType(null);
+    setSearchQuery('');
+  };
+  
+  // Helper function to insert item value
+  const insertItemValue = (item: CommandItem, triggerIndex: number, cursorPos: number, currentValue: string) => {
     // Replace from trigger to cursor with selected item value
     const beforeTrigger = currentValue.substring(0, triggerIndex);
     const afterCursor = currentValue.substring(cursorPos);
@@ -186,11 +268,6 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps> = ({
         textareaRef.current.focus();
       }
     }, 0);
-    
-    // Close palette
-    setShowPalette(false);
-    setTriggerType(null);
-    setSearchQuery('');
   };
 
   // Handle keydown events for the textarea
