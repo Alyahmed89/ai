@@ -17,10 +17,7 @@ export async function callDeepSeek(
   console.log(`[DeepSeek] First message preview: ${messages[0]?.content?.substring(0, 100)}...`);
   
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), DEEPSEEK_TIMEOUT);
-    
-    console.log(`[DeepSeek] Making fetch request to DeepSeek API with timeout: ${DEEPSEEK_TIMEOUT}ms`);
+    console.log(`[DeepSeek] Making fetch request to DeepSeek API`);
     console.log(`[DeepSeek] Request body (first 500 chars):`, JSON.stringify({
         model: 'deepseek-chat',
         messages,
@@ -39,11 +36,8 @@ export async function callDeepSeek(
         messages,
         temperature: 0.7,
         max_tokens: 2000
-      }),
-      signal: controller.signal
+      })
     });
-
-    clearTimeout(timeoutId);
     
     console.log(`[DeepSeek] Response status: ${response.status} ${response.statusText}`);
 
