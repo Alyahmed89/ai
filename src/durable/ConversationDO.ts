@@ -2911,9 +2911,8 @@ export class ConversationOrchestratorDO_2026A {
         if (this.conversation.agent === 'deepseek') {
           // ADD HARDCODED PROMPT FOR TESTING HERE
           if (!this.conversation.initial_user_prompt?.trim()) {
-            console.error(`[DO:${this.state.id}] initial_user_prompt is empty or undefined`);
-            await this.stopConversation('initial_user_prompt is required');
-            return;
+            console.log(`[DO:${this.state.id}] initial_user_prompt is empty, using hardcoded prompt for testing`);
+            this.conversation.initial_user_prompt = "This is a hardcoded test prompt for DeepSeek API testing. Please respond with a simple test message.";
           }
           
           console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
@@ -2994,9 +2993,8 @@ export class ConversationOrchestratorDO_2026A {
           // For openhands or both agents, send to OpenHands
           // ADD HARDCODED PROMPT FOR TESTING HERE
           if (!this.conversation.initial_user_prompt?.trim()) {
-            console.error(`[DO:${this.state.id}] initial_user_prompt is empty or undefined`);
-            await this.stopConversation('initial_user_prompt is required');
-            return;
+            console.log(`[DO:${this.state.id}] initial_user_prompt is empty, using hardcoded prompt for testing`);
+            this.conversation.initial_user_prompt = "This is a hardcoded test prompt for OpenHands API testing. Please respond with a simple test message.";
           }
           
           console.log(`[DO:${this.state.id}] ====== ROUTING VALIDATION ======`);
