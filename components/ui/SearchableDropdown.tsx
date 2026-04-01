@@ -11,6 +11,8 @@ interface SearchableDropdownProps {
   options?: Array<{ id: string; label: string; description?: string }>;
   loading?: boolean;
   disabled?: boolean;
+  onCreateOption?: (query: string) => void;
+  showCreateOption?: boolean;
 }
 
 export default function SearchableDropdown({
@@ -21,7 +23,9 @@ export default function SearchableDropdown({
   onSearch,
   options: initialOptions = [],
   loading = false,
-  disabled = false
+  disabled = false,
+  onCreateOption,
+  showCreateOption = false
 }: SearchableDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,26 +88,37 @@ export default function SearchableDropdown({
       return;
     }
 
+    const showCreate = showCreateOption && onCreateOption && searchQuery.trim() && filteredOptions.length === 0;
+    const totalOptions = showCreate ? 1 : filteredOptions.length;
+
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
         setSelectedIndex(prev => 
-          prev < filteredOptions.length - 1 ? prev + 1 : 0
+          prev < totalOptions - 1 ? prev + 1 : 0
         );
         break;
       case 'ArrowUp':
         e.preventDefault();
         setSelectedIndex(prev => 
-          prev > 0 ? prev - 1 : filteredOptions.length - 1
+          prev > 0 ? prev - 1 : totalOptions - 1
         );
         break;
       case 'Enter':
         e.preventDefault();
-        if (selectedIndex >= 0 && selectedIndex < filteredOptions.length) {
-          const selectedOption = filteredOptions[selectedIndex];
-          onChange(selectedOption.id);
-          setSearchQuery('');
-          setIsOpen(false);
+        if (selectedIndex >= 0) {
+          if (showCreate && selectedIndex === 0) {
+            // Create option selected
+            onCreateOption(searchQuery);
+            setSearchQuery('');
+            setIsOpen(false);
+          } else if (selectedIndex < filteredOptions.length) {
+            // Regular option selected
+            const selectedOption = filteredOptions[selectedIndex];
+            onChange(selectedOption.id);
+            setSearchQuery('');
+            setIsOpen(false);
+          }
         }
         break;
       case 'Escape':
@@ -123,6 +138,15 @@ export default function SearchableDropdown({
     setSearchQuery('');
     setIsOpen(false);
     setSelectedIndex(-1);
+  };
+
+  const handleCreateClick = () => {
+    if (onCreateOption && searchQuery.trim()) {
+      onCreateOption(searchQuery);
+      setSearchQuery('');
+      setIsOpen(false);
+      setSelectedIndex(-1);
+    }
   };
 
   const selectedOption = initialOptions.find(opt => opt.id === value);
@@ -163,8 +187,32 @@ export default function SearchableDropdown({
       {isOpen && !disabled && (
         <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
           {filteredOptions.length === 0 ? (
-            <div className="px-3 py-2 text-gray-400 text-sm">
-              {isSearching ? 'Searching...' : 'No options found'}
+            <div>
+              {showCreateOption && onCreateOption && searchQuery.trim() ? (
+                <ul>
+                  <li
+                    className={`px-3 py-2 cursor-pointer text-sm ${
+                      selectedIndex === 0
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-300 hover:bg-gray-800'
+                    }`}
+                    onClick={handleCreateClick}
+                    onMouseEnter={() => setSelectedIndex(0)}
+                  >
+                    <div className="font-medium flex items-center">
+                      <svg className="w-4 h-4 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Create endpoint: "{searchQuery}"
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">Create a new endpoint with this name</div>
+                  </li>
+                </ul>
+              ) : (
+                <div className="px-3 py-2 text-gray-400 text-sm">
+                  {isSearching ? 'Searching...' : 'No options found'}
+                </div>
+              )}
             </div>
           ) : (
             <ul>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import SearchableDropdown from './ui/SearchableDropdown';
 import IntelligentTextarea from './ui/IntelligentTextarea';
+import CreateEndpointModal from './CreateEndpointModal';
 
 interface FlowSectionProps {
   title: string;
@@ -67,6 +68,10 @@ export default function FlowSection({
 }: FlowSectionProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [smartParams, setSmartParams] = useState(queryParams);
+  
+  // State for endpoint creation modal
+  const [showCreateEndpointModal, setShowCreateEndpointModal] = useState(false);
+  const [endpointToCreate, setEndpointToCreate] = useState('');
   
   // State for API data
   const [commands, setCommands] = useState<Array<{id: string, label: string, description?: string, type: 'command', value: string}>>([]);
@@ -159,6 +164,19 @@ export default function FlowSection({
         resolve(filtered);
       }, 300);
     });
+  };
+
+  // Handle create endpoint option
+  const handleCreateEndpoint = (query: string) => {
+    setEndpointToCreate(query);
+    setShowCreateEndpointModal(true);
+  };
+
+  // Handle endpoint created successfully
+  const handleEndpointCreated = (endpointName: string) => {
+    // Refresh available commands or update state as needed
+    // For now, we'll just select the newly created endpoint
+    onCommandChange(endpointName);
   };
 
   // Fetch data from real APIs
@@ -354,6 +372,8 @@ export default function FlowSection({
               description: `Endpoint method: ${cmd.method}`
             }))}
             loading={loadingCommands}
+            onCreateOption={handleCreateEndpoint}
+            showCreateOption={true}
           />
         </div>
 
@@ -465,6 +485,14 @@ export default function FlowSection({
 
 
       </div>
+
+      {/* Create Endpoint Modal */}
+      <CreateEndpointModal
+        isOpen={showCreateEndpointModal}
+        onClose={() => setShowCreateEndpointModal(false)}
+        endpointName={endpointToCreate}
+        onEndpointCreated={handleEndpointCreated}
+      />
     </div>
   );
 }
