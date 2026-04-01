@@ -227,35 +227,37 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
   const [collapsedEvents, setCollapsedEvents] = React.useState<Record<string, boolean>>({});
   // State to track which STATUS_UPDATE events should be hidden (flashed away)
   const [hiddenStatusEvents, setHiddenStatusEvents] = React.useState<Set<string>>(new Set());
-  
-  // Debug log to see what data we're receiving
-  React.useEffect(() => {
-    console.log('FlowRun component received data:', data);
-    if (data) {
-      console.log('FlowRun - Data analysis:', {
-        hasFlowSteps: !!data.flow_steps,
-        flowStepsCount: data.flow_steps?.length || 0,
-        flowCompleted: data.flow_completed,
-        state: data.state,
-        stepResponses: data.flow_steps?.map((step, i) => ({
-          step: i + 1,
-          hasResponse: !!step.response,
-          responseLength: step.response?.length || 0,
-          status: step.status,
-          apiCalls: step.api_calls?.length || 0
-        }))
-      });
-    } else {
-      console.log('FlowRun - Data is null or undefined');
-    }
-  }, [data]);
+  // State to track which events are currently showing (for animation)
+  const [showingEvents, setShowingEvents] = React.useState<Set<string>>(new Set());
   
   // Transform conversation data to events
   const events = React.useMemo(() => {
     const events = mapConversationToEvents(data);
-    console.log('FlowRun - Generated events:', events.map(e => ({ type: e.type, key: e.key, contentLength: e.content?.length || 0 })));
     return events;
   }, [data]);
+
+  // Auto-show events with delay for sequential appearance
+  React.useEffect(() => {
+    if (events.length === 0) return;
+
+    const timers: NodeJS.Timeout[] = [];
+    
+    events.forEach((event, index) => {
+      const timer = setTimeout(() => {
+        setShowingEvents(prev => {
+          const newSet = new Set(prev);
+          newSet.add(event.key);
+          return newSet;
+        });
+      }, index * 300); // Show each event 300ms after previous
+      
+      timers.push(timer);
+    });
+
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+    };
+  }, [events]);
 
   // Auto-hide STATUS_UPDATE events after 5 seconds (flash effect)
   React.useEffect(() => {
@@ -291,25 +293,29 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
       return null;
     }
     
+    // Skip if not showing yet
+    if (!showingEvents.has(event.key)) {
+      return null;
+    }
+    
     switch (event.type) {
       case 'FLOW_RUNNING':
         return (
-          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100/50 rounded-lg mb-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shadow-sm">
-              <span className="text-gray-700 text-lg">⏳</span>
+          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900/50 rounded-lg mb-3 transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
+              <span className="text-gray-300 text-lg">⏳</span>
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-gray-900 flex items-center gap-2">
-                Flow Status
-                <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+              <div className="font-semibold text-gray-100 flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-400 bg-gray-800 px-2 py-0.5 rounded-full">
                   LIVE
                 </span>
               </div>
               <div className="mt-1 flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-gray-500 to-gray-600 text-white shadow-sm">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-gray-600 to-gray-700 text-white shadow-sm">
                   RUNNING
                 </span>
-                <span className="text-xs text-gray-600">
+                <span className="text-xs text-gray-400">
                   {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
               </div>
@@ -320,32 +326,31 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
       case 'STEP_PROMPT':
         const isStepPromptCollapsed = collapsedEvents[event.key] ?? (event.metadata?.collapsed ?? false);
         return (
-          <div key={event.key} className="flex items-start gap-3 p-4 border border-purple-200 bg-white rounded-xl mb-3 shadow-sm">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center shadow-sm">
-              <span className="text-purple-700 text-lg font-bold">AI</span>
-            </div>
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-gray-700 bg-gray-800 rounded-xl mb-3 shadow-sm ml-auto max-w-3/4 transition-all duration-300 opacity-0 animate-fade-in">
             <div className="flex-1">
-              <div className="font-semibold text-gray-900 flex items-center justify-between mb-2">
+              <div className="font-semibold text-gray-100 flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span>Step Prompt</span>
                   <button
                     onClick={() => setCollapsedEvents(prev => ({ ...prev, [event.key]: !isStepPromptCollapsed }))}
-                    className="text-xs font-medium text-purple-700 bg-purple-100 hover:bg-purple-200 px-2 py-0.5 rounded-full transition-colors"
+                    className="text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded-full transition-colors"
                   >
-                    {isStepPromptCollapsed ? 'Show Details' : 'Hide Details'}
+                    {isStepPromptCollapsed ? 'Show' : 'Hide'}
                   </button>
                 </div>
-                <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                <span className="text-xs font-semibold text-gray-300 bg-gray-700 px-2 py-0.5 rounded-full">
                   PROMPT
                 </span>
               </div>
               {!isStepPromptCollapsed && (
-                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                  <div className="text-gray-800 whitespace-pre-wrap font-mono text-sm leading-relaxed">
+                <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                  <div className="text-gray-100 whitespace-pre-wrap font-mono text-sm leading-relaxed">
                     {event.content}
                   </div>
                 </div>
               )}
+            </div>
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
+              <span className="text-gray-300 text-lg font-bold">AI</span>
             </div>
           </div>
         );
@@ -353,28 +358,27 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
       case 'STEP_RESPONSE':
         const isStepResponseCollapsed = collapsedEvents[event.key] ?? (event.metadata?.collapsed ?? false);
         return (
-          <div key={event.key} className="flex items-start gap-3 p-4 border border-green-200 bg-white rounded-xl mb-3 shadow-sm">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center shadow-sm">
-              <span className="text-green-700 text-lg font-bold">✓</span>
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-gray-700 bg-gray-800 rounded-xl mb-3 shadow-sm mr-auto max-w-3/4 transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
+              <span className="text-gray-300 text-lg font-bold">✓</span>
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-gray-900 flex items-center justify-between mb-2">
+              <div className="font-semibold text-gray-100 flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span>Step Response</span>
                   <button
                     onClick={() => setCollapsedEvents(prev => ({ ...prev, [event.key]: !isStepResponseCollapsed }))}
-                    className="text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 px-2 py-0.5 rounded-full transition-colors"
+                    className="text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded-full transition-colors"
                   >
-                    {isStepResponseCollapsed ? 'Show Details' : 'Hide Details'}
+                    {isStepResponseCollapsed ? 'Show' : 'Hide'}
                   </button>
                 </div>
-                <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                <span className="text-xs font-semibold text-gray-300 bg-gray-700 px-2 py-0.5 rounded-full">
                   RESPONSE
                 </span>
               </div>
               {!isStepResponseCollapsed && (
-                <div className="bg-green-50/30 rounded-lg p-3 border border-green-200">
-                  <div className="text-gray-800 whitespace-pre-wrap font-mono text-sm leading-relaxed">
+                <div className="bg-gray-900/30 rounded-lg p-3 border border-gray-700">
+                  <div className="text-gray-100 whitespace-pre-wrap font-mono text-sm leading-relaxed">
                     {event.content}
                   </div>
                 </div>
@@ -385,22 +389,21 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
 
       case 'FLOW_COMPLETED':
         return (
-          <div key={event.key} className="flex items-start gap-3 p-4 border border-green-200 bg-gradient-to-r from-green-50 to-green-100/30 rounded-xl mb-3 shadow-sm">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-green-200 to-green-300 flex items-center justify-center shadow-sm">
-              <span className="text-green-800 text-lg font-bold">✓</span>
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900/30 rounded-xl mb-3 shadow-sm transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
+              <span className="text-gray-300 text-lg font-bold">✓</span>
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-gray-900 flex items-center justify-between mb-2">
-                <span>Flow Completed</span>
-                <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+              <div className="font-semibold text-gray-100 flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-300 bg-gray-800 px-2 py-0.5 rounded-full">
                   SUCCESS
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-green-500 to-green-600 text-white shadow-sm">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-gray-600 to-gray-700 text-white shadow-sm">
                   COMPLETED
                 </span>
-                <span className="text-xs text-gray-600">
+                <span className="text-xs text-gray-400">
                   {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
               </div>
@@ -411,37 +414,33 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
       case 'API_CALL':
         const isApiCallCollapsed = collapsedEvents[event.key] ?? (event.metadata?.collapsed ?? true);
         return (
-          <div key={event.key} className="flex items-start gap-3 p-4 border border-amber-200 bg-white rounded-xl mb-3 shadow-sm">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center shadow-sm">
-              <span className="text-amber-700 text-lg">↗️</span>
-            </div>
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-gray-700 bg-gray-800 rounded-xl mb-3 shadow-sm ml-auto max-w-3/4 transition-all duration-300 opacity-0 animate-fade-in">
             <div className="flex-1">
-              <div className="font-semibold text-gray-900 flex items-center justify-between mb-2">
+              <div className="font-semibold text-gray-100 flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span>API Call</span>
                   <button
                     onClick={() => setCollapsedEvents(prev => ({ ...prev, [event.key]: !isApiCallCollapsed }))}
-                    className="text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-full transition-colors"
+                    className="text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded-full transition-colors"
                   >
-                    {isApiCallCollapsed ? 'Show Details' : 'Hide Details'}
+                    {isApiCallCollapsed ? 'Show' : 'Hide'}
                   </button>
                 </div>
-                <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                <span className="text-xs font-semibold text-gray-300 bg-gray-700 px-2 py-0.5 rounded-full">
                   {event.metadata?.apiMethod || 'CALL'}
                 </span>
               </div>
               <div className="space-y-2">
                 <div>
-                  <div className="text-sm font-medium text-gray-700 mb-1">Endpoint</div>
-                  <div className="bg-gray-50 rounded px-3 py-2 font-mono text-sm text-gray-800">
+                  <div className="text-sm font-medium text-gray-300 mb-1">Endpoint</div>
+                  <div className="bg-gray-900 rounded px-3 py-2 font-mono text-sm text-gray-100">
                     {event.metadata?.apiEndpoint || event.content}
                   </div>
                 </div>
                 {!isApiCallCollapsed && event.metadata?.apiParams && (
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Parameters</div>
-                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                      <pre className="text-xs text-gray-700 overflow-x-auto">
+                    <div className="text-sm font-medium text-gray-300 mb-1">Parameters</div>
+                    <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                      <pre className="text-xs text-gray-100 overflow-x-auto">
                         {JSON.stringify(event.metadata.apiParams, null, 2)}
                       </pre>
                     </div>
@@ -449,50 +448,52 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
                 )}
               </div>
             </div>
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
+              <span className="text-gray-300 text-lg">↗️</span>
+            </div>
           </div>
         );
 
       case 'API_RESPONSE':
         const isApiResponseCollapsed = collapsedEvents[event.key] ?? (event.metadata?.collapsed ?? true);
         return (
-          <div key={event.key} className="flex items-start gap-3 p-4 border border-emerald-200 bg-white rounded-xl mb-3 shadow-sm">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-emerald-100 to-emerald-200 flex items-center justify-center shadow-sm">
-              <span className="text-emerald-700 text-lg">↙️</span>
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-gray-700 bg-gray-800 rounded-xl mb-3 shadow-sm mr-auto max-w-3/4 transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
+              <span className="text-gray-300 text-lg">↙️</span>
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-gray-900 flex items-center justify-between mb-2">
+              <div className="font-semibold text-gray-100 flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span>API Response</span>
                   <button
                     onClick={() => setCollapsedEvents(prev => ({ ...prev, [event.key]: !isApiResponseCollapsed }))}
-                    className="text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded-full transition-colors"
+                    className="text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded-full transition-colors"
                   >
-                    {isApiResponseCollapsed ? 'Show Details' : 'Hide Details'}
+                    {isApiResponseCollapsed ? 'Show' : 'Hide'}
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
                   {event.metadata?.duration && (
-                    <span className="text-xs font-medium text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-medium text-gray-300 bg-gray-700 px-2 py-0.5 rounded-full">
                       {event.metadata.duration}ms
                     </span>
                   )}
-                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-semibold text-gray-300 bg-gray-700 px-2 py-0.5 rounded-full">
                     RESPONSE
                   </span>
                 </div>
               </div>
               <div className="space-y-2">
                 <div>
-                  <div className="text-sm font-medium text-gray-700 mb-1">Endpoint</div>
-                  <div className="bg-gray-50 rounded px-3 py-2 font-mono text-sm text-gray-800">
+                  <div className="text-sm font-medium text-gray-300 mb-1">Endpoint</div>
+                  <div className="bg-gray-900 rounded px-3 py-2 font-mono text-sm text-gray-100">
                     {event.metadata?.apiEndpoint || event.content}
                   </div>
                 </div>
                 {!isApiResponseCollapsed && event.metadata?.apiResponse && (
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-1">Response Data</div>
-                    <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
-                      <pre className="text-xs text-gray-700 overflow-x-auto">
+                    <div className="text-sm font-medium text-gray-300 mb-1">Response Data</div>
+                    <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                      <pre className="text-xs text-gray-100 overflow-x-auto">
                         {JSON.stringify(event.metadata.apiResponse, null, 2)}
                       </pre>
                     </div>
@@ -505,21 +506,20 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
 
       case 'STATUS_UPDATE':
         return (
-          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100/30 rounded-xl mb-3 shadow-sm">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center shadow-sm">
-              <span className="text-gray-700 text-lg">📊</span>
+          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900/30 rounded-xl mb-3 shadow-sm transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
+              <span className="text-gray-300 text-lg">📊</span>
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-gray-900 flex items-center justify-between mb-2">
-                <span>Status Update</span>
-                <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full">
+              <div className="font-semibold text-gray-100 flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-300 bg-gray-800 px-2 py-0.5 rounded-full">
                   {event.metadata?.statusType || 'UPDATE'}
                 </span>
               </div>
               <div className="space-y-2">
-                <div className="text-gray-700 whitespace-pre-wrap">{event.content}</div>
+                <div className="text-gray-100 whitespace-pre-wrap">{event.content}</div>
                 {event.metadata?.timestamp && (
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-400">
                     {new Date(event.metadata.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </div>
                 )}
@@ -536,126 +536,21 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
   if (events.length === 0) {
     return (
       <div className="p-6 text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 mb-4">
-          <span className="text-gray-500 text-2xl">📊</span>
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-gray-800 to-gray-900 mb-4">
+          <span className="text-gray-400 text-2xl">📊</span>
         </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">No Flow Events</h3>
-        <p className="text-gray-600 mb-4 max-w-md mx-auto">
+        <h3 className="text-lg font-semibold text-gray-100 mb-2">No Flow Events</h3>
+        <p className="text-gray-400 mb-4 max-w-md mx-auto">
           The flow execution visualization will appear here when a flow is running.
         </p>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left max-w-md mx-auto">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-              <span className="text-gray-600 text-sm">ℹ️</span>
-            </div>
-            <div>
-              <div className="font-medium text-gray-900 mb-1">Debug Information</div>
-              <div className="text-sm text-gray-700 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Data received:</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${data ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {data ? 'YES' : 'NO'}
-                  </span>
-                </div>
-                {data && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">Flow steps:</span>
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                        {data.flow_steps?.length || 0}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">Flow completed:</span>
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${data.flow_completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {data.flow_completed ? 'YES' : 'NO'}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }
 
-  // Helper functions for expand/collapse all
-  const expandAll = () => {
-    const newCollapsed: Record<string, boolean> = {};
-    events.forEach(event => {
-      newCollapsed[event.key] = false;
-    });
-    setCollapsedEvents(newCollapsed);
-  };
 
-  const collapseAll = () => {
-    const newCollapsed: Record<string, boolean> = {};
-    events.forEach(event => {
-      newCollapsed[event.key] = true;
-    });
-    setCollapsedEvents(newCollapsed);
-  };
-
-  // Count how many events are currently collapsed
-  const collapsedCount = Object.values(collapsedEvents).filter(Boolean).length;
-  const totalCollapsibleEvents = events.filter(event => 
-    ['STEP_PROMPT', 'STEP_RESPONSE', 'API_CALL', 'API_RESPONSE'].includes(event.type)
-  ).length;
-  
-  // Count hidden status events
-  const hiddenStatusCount = events.filter(event => 
-    event.type === 'STATUS_UPDATE' && hiddenStatusEvents.has(event.key)
-  ).length;
-  const totalStatusEvents = events.filter(event => event.type === 'STATUS_UPDATE').length;
 
   return (
     <div className="space-y-3">
-      {(totalCollapsibleEvents > 0 || hiddenStatusCount > 0) && (
-        <div className="flex items-center justify-between mb-2 p-2 bg-gray-50 rounded-lg">
-          <div className="text-sm text-gray-600 space-y-1">
-            {totalCollapsibleEvents > 0 && (
-              <div>
-                {collapsedCount === 0 ? 'All details expanded' : 
-                 collapsedCount === totalCollapsibleEvents ? 'All details collapsed' : 
-                 `${collapsedCount} of ${totalCollapsibleEvents} details collapsed`}
-              </div>
-            )}
-            {hiddenStatusCount > 0 && (
-              <div className="text-amber-600">
-                {hiddenStatusCount} status update{hiddenStatusCount !== 1 ? 's' : ''} hidden
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2">
-            {hiddenStatusCount > 0 && (
-              <button
-                onClick={() => setHiddenStatusEvents(new Set())}
-                className="text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-full transition-colors"
-              >
-                Show Hidden Status
-              </button>
-            )}
-            {totalCollapsibleEvents > 0 && (
-              <>
-                <button
-                  onClick={expandAll}
-                  className="text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors"
-                >
-                  Expand All
-                </button>
-                <button
-                  onClick={collapseAll}
-                  className="text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors"
-                >
-                  Collapse All
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
       {events.map(renderEvent)}
     </div>
   );
