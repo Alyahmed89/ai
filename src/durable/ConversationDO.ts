@@ -4715,6 +4715,9 @@ ${messageContent}`;
   private async handleSendingStepState(): Promise<void> {
     console.log(`[DO:${this.state.id}] DEBUG: handleSendingStepState called at ${Date.now()}`);
     
+    // Declare resolvedStep at function scope so it's available throughout
+    let resolvedStep: any = null;
+    
     if (!this.conversation) {
       console.log(`[DO:${this.state.id}] DEBUG: No conversation in handleSendingStepState`);
       return;
@@ -4988,8 +4991,6 @@ ${messageContent}`;
       await this.handleDualAgentConversation(step);
       return;
     }
-    // Declare resolvedStep at function scope so it's available later
-    let resolvedStep: any = null;
     
     if (prompt) {
       console.log(`[DO:${this.state.id}] Using existing current_prompt (${prompt.length} chars)`);
