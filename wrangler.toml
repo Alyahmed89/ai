@@ -7,7 +7,7 @@ account_id = "e39371fc55a5c9ef7ed83e16660bd7bb"
 command = "node scripts/generate-version.js"
 
 [vars]
-DEEPSEEK_API_KEY = "${DEEPSEEK_API_KEY}"  # Set via environment variable
+# DEEPSEEK_API_KEY should be set in Cloudflare Workers environment variables
 OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 ADMIN_KEY = "test-admin-key-123"  # Change this in production
 
