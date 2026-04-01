@@ -43,6 +43,7 @@ export async function callDeepSeek(
   
   try {
     console.log(`[DeepSeek] Making fetch request to DeepSeek API`);
+    console.log("DS BODY", JSON.stringify(messages).slice(0,500));
     console.log(`[DeepSeek] Request body (first 500 chars):`, JSON.stringify({
         model: 'deepseek-chat',
         messages,
