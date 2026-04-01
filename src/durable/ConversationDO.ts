@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens, extractStructuredOutput } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, generateId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions, saveApiCall, saveVariable } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, generateId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions, saveApiCall, saveVariable, getVariablesForFlow } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
@@ -1369,6 +1369,14 @@ export class ConversationOrchestratorDO_2026A {
           
           // Resolve step instructions with task data and inputs
           try {
+            // Load variables from database for this flow
+            const dbVariables = await getVariablesForFlow(this.env.FLOW_RUNS_DB, flow_id);
+            console.log(`[DO:${this.state.id}] Loaded variables from database:`, Object.keys(dbVariables));
+            
+            // Merge database variables with inputs (database variables take precedence)
+            const allInputs = { ...inputs, ...dbVariables };
+            console.log(`[DO:${this.state.id}] All inputs for step resolution:`, Object.keys(allInputs));
+            
             resolvedStep = await resolveStepInstructions(
               firstStep,
               this.env.FLOW_RUNS_DB,
@@ -1378,7 +1386,7 @@ export class ConversationOrchestratorDO_2026A {
                 execution_id: `flow-${Date.now()}`,
                 step_id: firstStep.step_id,
                 previous_step_responses: {}, // First step has no previous responses
-                inputs: inputs // Pass inputs for [input:name] replacement
+                inputs: allInputs // Pass inputs for [input:name] replacement
               }
             );
             
@@ -5286,6 +5294,17 @@ ${messageContent}`;
           }
         }
       }
+      
+      // Load variables from database for this flow
+      if (this.conversation.flow_id) {
+        const dbVariables = await getVariablesForFlow(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
+        console.log(`[DO:${this.state.id}] Loaded variables from database for step ${step.step_id}:`, Object.keys(dbVariables));
+        
+        // Merge database variables with inputs (database variables take precedence)
+        Object.assign(rawInputs, dbVariables);
+      }
+      
+      console.log(`[DO:${this.state.id}] All inputs for step ${step.step_id}:`, Object.keys(rawInputs));
       
       resolvedStep = await resolveStepInstructions(
         step,

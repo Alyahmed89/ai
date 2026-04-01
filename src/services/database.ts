@@ -1691,3 +1691,36 @@ export async function saveVariable(db: D1Database, variable: {
     return { success: false, error: error.message };
   }
 }
+
+/**
+ * Get variables for a flow from the database
+ * @param db D1Database instance
+ * @param flow_id Flow ID
+ * @returns Promise with variables object
+ */
+export async function getVariablesForFlow(db: D1Database, flow_id: string): Promise<Record<string, any>> {
+  try {
+    const result = await db.prepare(`
+      SELECT key, value FROM variables 
+      WHERE flow_id = ? AND source = 'user'
+      ORDER BY created_at DESC
+    `).bind(flow_id).all();
+    
+    const variables: Record<string, any> = {};
+    
+    for (const row of result.results as any[]) {
+      try {
+        variables[row.key] = row.value ? JSON.parse(row.value) : null;
+      } catch (e) {
+        variables[row.key] = row.value;
+      }
+    }
+    
+    console.log(`[DATABASE] Loaded ${Object.keys(variables).length} variables for flow ${flow_id}:`, Object.keys(variables));
+    return variables;
+    
+  } catch (error: any) {
+    console.error(`[DATABASE] Error loading variables for flow ${flow_id}: ${error.message}`);
+    return {};
+  }
+}
