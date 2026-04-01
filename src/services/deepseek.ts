@@ -49,10 +49,28 @@ export async function callDeepSeek(
 
     if (!response.ok) {
       const errorText = await response.text();
+      const errorHeaders = Object.fromEntries(response.headers.entries());
       console.error(`[DeepSeek] API error ${response.status}: ${errorText}`);
-      console.error(`[DeepSeek] Full error response headers:`, Object.fromEntries(response.headers.entries()));
+      console.error(`[DeepSeek] Full error response headers:`, errorHeaders);
       console.error(`[DeepSeek] Error response first 1000 chars:`, errorText.substring(0, 1000));
-      throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
+      
+      // Return detailed error information
+      return {
+        success: false,
+        error: `DeepSeek API error: ${response.status} - ${errorText}`,
+        errorDetails: {
+          status: response.status,
+          statusText: response.statusText,
+          headers: errorHeaders,
+          body: errorText,
+          requestBodyPreview: JSON.stringify({
+            model: 'deepseek-chat',
+            messages,
+            temperature: 0.7,
+            max_tokens: 2000
+          }).substring(0, 500)
+        }
+      };
     }
 
     const data = await response.json() as any;
@@ -71,7 +89,19 @@ export async function callDeepSeek(
     console.error(`[DeepSeek] Stack: ${error.stack}`);
     return {
       success: false,
-      error: error.message || 'Unknown DeepSeek API error'
+      error: error.message || 'Unknown DeepSeek API error',
+      errorDetails: {
+        status: 0,
+        statusText: 'Exception',
+        headers: {},
+        body: error.message || 'Unknown error',
+        requestBodyPreview: JSON.stringify({
+          model: 'deepseek-chat',
+          messages,
+          temperature: 0.7,
+          max_tokens: 2000
+        }).substring(0, 500)
+      }
     };
   }
 }

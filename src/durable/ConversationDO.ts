@@ -2360,7 +2360,9 @@ export class ConversationOrchestratorDO_2026A {
       conversation: {
         state: conversation.state || 'idle',
         flow_completed: conversation.flow_completed || false,
-        flow_steps: conversation.flow_steps || []
+        flow_steps: conversation.flow_steps || [],
+        error_message: conversation.error_message,
+        deepseek_error_details: conversation.deepseek_error_details
       }
     }), {
       headers: { 'Content-Type': 'application/json' }
@@ -2927,7 +2929,13 @@ export class ConversationOrchestratorDO_2026A {
           
           if (!deepseekResult.success) {
             console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
-            await this.stopConversation(`deepseek_failed: ${deepseekResult.error}`);
+            // Store detailed error information
+            const errorMessage = `deepseek_failed: ${deepseekResult.error}`;
+            if (deepseekResult.errorDetails) {
+              this.conversation.deepseek_error_details = deepseekResult.errorDetails;
+              console.error(`[DO:${this.state.id}] DeepSeek error details:`, deepseekResult.errorDetails);
+            }
+            await this.stopConversation(errorMessage);
             return;
           }
           
@@ -3052,7 +3060,14 @@ export class ConversationOrchestratorDO_2026A {
     );
     
     if (!deepseekResult.success) {
-      await this.stopConversation(`deepseek_failed: ${deepseekResult.error}`);
+      console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
+      // Store detailed error information
+      const errorMessage = `deepseek_failed: ${deepseekResult.error}`;
+      if (deepseekResult.errorDetails) {
+        this.conversation.deepseek_error_details = deepseekResult.errorDetails;
+        console.error(`[DO:${this.state.id}] DeepSeek error details:`, deepseekResult.errorDetails);
+      }
+      await this.stopConversation(errorMessage);
       return;
     }
     
@@ -4543,7 +4558,14 @@ ${messageContent}`;
     );
     
     if (!deepseekResult.success) {
-      await this.stopConversation(`deepseek_failed: ${deepseekResult.error}`);
+      console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
+      // Store detailed error information
+      const errorMessage = `deepseek_failed: ${deepseekResult.error}`;
+      if (deepseekResult.errorDetails) {
+        this.conversation.deepseek_error_details = deepseekResult.errorDetails;
+        console.error(`[DO:${this.state.id}] DeepSeek error details:`, deepseekResult.errorDetails);
+      }
+      await this.stopConversation(errorMessage);
       return;
     }
     
@@ -4671,6 +4693,11 @@ ${messageContent}`;
     
     if (!deepseekResult.success) {
       console.error(`[DO:${this.state.id}] Checking prompt failed: ${deepseekResult.error}`);
+      // Store detailed error information even though we don't stop
+      if (deepseekResult.errorDetails) {
+        this.conversation.deepseek_error_details = deepseekResult.errorDetails;
+        console.error(`[DO:${this.state.id}] DeepSeek error details:`, deepseekResult.errorDetails);
+      }
       // Don't stop conversation on checking prompt failure
       return;
     }
@@ -5253,6 +5280,12 @@ ${messageContent}`;
       
       if (!deepseekResult.success) {
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
+        
+        // Store detailed error information
+        if (deepseekResult.errorDetails) {
+          this.conversation.deepseek_error_details = deepseekResult.errorDetails;
+          console.error(`[DO:${this.state.id}] DeepSeek error details:`, deepseekResult.errorDetails);
+        }
         
         // PERSISTENCE: Save normalized API calls and variables for failed steps too
         console.log("PERSISTENCE_CHECK", {

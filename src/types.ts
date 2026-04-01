@@ -36,6 +36,13 @@ export interface ConversationData {
   // Tracking
   last_deepseek_response?: string;
   last_openhands_response?: string;
+  deepseek_error_details?: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: string;
+    requestBodyPreview: string;
+  };
   created_at: number;
   updated_at: number;
   
@@ -219,6 +226,13 @@ export interface DeepSeekResult {
   success: boolean;
   response?: string;
   error?: string;
+  errorDetails?: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: string;
+    requestBodyPreview: string;
+  };
 }
 
 export interface OpenHandsCreateResult {
