@@ -148,18 +148,18 @@ export default function FlowSection({
 
   // Search endpoint function for SearchableDropdown
   const searchEndpoints = async (query: string) => {
-    // Simulate API search - in production, fetch from /api/commands?search=...
+    // Use commands state which contains all commands fetched from API
     return new Promise<Array<{ id: string; label: string; description?: string }>>((resolve) => {
       setTimeout(() => {
-        const filtered = availableCommands
+        const filtered = commands
           .filter(cmd => 
-            cmd.name.toLowerCase().includes(query.toLowerCase()) ||
-            cmd.method.toLowerCase().includes(query.toLowerCase())
+            cmd.label.toLowerCase().includes(query.toLowerCase()) ||
+            cmd.description?.toLowerCase().includes(query.toLowerCase())
           )
           .map(cmd => ({
-            id: cmd.name,
-            label: `${cmd.name} (${cmd.method})`,
-            description: `Endpoint method: ${cmd.method}`
+            id: cmd.id,
+            label: cmd.label,
+            description: cmd.description
           }));
         resolve(filtered);
       }, 300);
@@ -286,13 +286,55 @@ export default function FlowSection({
           const endpointData = await endpointResponse.json();
           const endpoint = endpointData.data;
           
-          // Extract from URL, query_params, and body_template
-          const urlParams = extractParams(endpoint.url || '');
-          const queryParams = extractParams(endpoint.query_params || '');
-          const bodyParams = extractParams(endpoint.body_template || '');
+          // First, try to get request_keys from introspect response
+          if (introspectResponse.ok) {
+            const introspectData = await introspectResponse.json();
+            console.log('Introspect request_keys check:', introspectData.data?.request_keys);
+            if (introspectData.data?.request_keys && introspectData.data.request_keys.length > 0) {
+              // Use request_keys from introspect endpoint
+              inputKeys = introspectData.data.request_keys;
+              console.log('Using request_keys from introspect:', inputKeys);
+            } else {
+              // Fall back to extracting from URL patterns and sample_request
+              const urlParams = extractParams(endpoint.url || '');
+              const queryParams = extractParams(endpoint.query_params || '');
+              const bodyParams = extractParams(endpoint.body_template || '');
+              
+              // Also try to extract from sample_request if available
+              let sampleRequestParams: string[] = [];
+              if (endpoint.sample_request) {
+                try {
+                  // sample_request might be a JSON string that contains another JSON string
+                  let sampleRequestStr = endpoint.sample_request;
+                  // Remove outer quotes if present
+                  if (sampleRequestStr.startsWith('"') && sampleRequestStr.endsWith('"')) {
+                    sampleRequestStr = sampleRequestStr.slice(1, -1);
+                  }
+                  // Parse the JSON
+                  const parsedRequest = JSON.parse(sampleRequestStr);
+                  // If it's still a string, parse again
+                  if (typeof parsedRequest === 'string') {
+                    const innerParsed = JSON.parse(parsedRequest);
+                    sampleRequestParams = Object.keys(innerParsed);
+                  } else {
+                    sampleRequestParams = Object.keys(parsedRequest);
+                  }
+                } catch (e) {
+                  console.warn('Failed to parse sample_request:', e);
+                }
+              }
+              
+              // Combine and deduplicate
+              inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams, ...sampleRequestParams])];
+            }
+          } else {
+            // If introspect fails, fall back to URL patterns only
+            const urlParams = extractParams(endpoint.url || '');
+            const queryParams = extractParams(endpoint.query_params || '');
+            const bodyParams = extractParams(endpoint.body_template || '');
+            inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams])];
+          }
           
-          // Combine and deduplicate
-          inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams])];
           setInputKeys(inputKeys);
           
           // Initialize smartParams with input keys
@@ -317,7 +359,12 @@ export default function FlowSection({
         let outputKeys: string[] = [];
         if (introspectResponse.ok) {
           const introspectData = await introspectResponse.json();
-          outputKeys = introspectData.available_keys || [];
+          console.log('Introspect data:', introspectData);
+          console.log('Introspect data.data:', introspectData.data);
+          console.log('Introspect data.data?.response_keys:', introspectData.data?.response_keys);
+          // Use response_keys from introspect endpoint
+          outputKeys = introspectData.data?.response_keys || [];
+          console.log('Output keys:', outputKeys);
           setOutputKeys(outputKeys);
         } else {
           console.error('Failed to fetch endpoint introspect:', introspectResponse.status);
@@ -366,12 +413,8 @@ export default function FlowSection({
             placeholder={`select endpoint to call for ${type}`}
             searchPlaceholder="Search endpoints..."
             onSearch={searchEndpoints}
-            options={availableCommands.map(cmd => ({
-              id: cmd.name,
-              label: `${cmd.name} (${cmd.method})`,
-              description: `Endpoint method: ${cmd.method}`
-            }))}
-            loading={loadingCommands}
+            options={commands}
+            loading={loadingData.commands}
             onCreateOption={handleCreateEndpoint}
             showCreateOption={true}
           />
