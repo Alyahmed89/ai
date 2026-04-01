@@ -5337,11 +5337,19 @@ ${messageContent}`;
         }
         
         await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
-        // Check if conversation is still active before scheduling next alarm
-        // Check for any active state, not just SENDING_STEP
-        if (this.conversation && this.conversation.state !== 'DONE') {
-          await this.scheduleNextAlarm(1000); // Schedule immediately for next step
-        }
+        
+        // Clear current_step to prevent routing check on next alarm
+        this.conversation.current_step = undefined;
+        
+        // Move to ITERATION_COMPLETE state (consistent with OpenHands pattern)
+        this.conversation.state = 'ITERATION_COMPLETE';
+        this.conversation.last_iteration_summary = `DeepSeek step failed in iteration ${this.conversation.iteration || 1}: ${deepseekResult.error}`;
+        
+        // Save state
+        await this.state.storage.put('conversation', this.conversation);
+        
+        // Process immediately (will handle next step logic)
+        await this.handleIterationCompleteState();
         return;
       }
       
@@ -5487,11 +5495,18 @@ ${messageContent}`;
         console.log('DEEPSEEK_CHAINING_DEBUG: No step with next_flow_id found');
       }
       
-      // Check if conversation is still active before scheduling next alarm
-      // Check for any active state, not just SENDING_STEP
-      if (this.conversation && this.conversation.state !== 'DONE') {
-        await this.scheduleNextAlarm(1000); // Schedule immediately for next step
-      }
+      // Clear current_step to prevent routing check on next alarm
+      this.conversation.current_step = undefined;
+      
+      // Move to ITERATION_COMPLETE state (consistent with OpenHands pattern)
+      this.conversation.state = 'ITERATION_COMPLETE';
+      this.conversation.last_iteration_summary = `DeepSeek step completed in iteration ${this.conversation.iteration || 1}`;
+      
+      // Save state
+      await this.state.storage.put('conversation', this.conversation);
+      
+      // Process immediately (will handle next step logic)
+      await this.handleIterationCompleteState();
       return;
     }
     
