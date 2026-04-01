@@ -19,6 +19,17 @@ export async function callDeepSeek(
   console.log(`[DeepSeek] API key starts with 'sk-': ${apiKey?.startsWith('sk-')}`);
   console.log(`[DeepSeek] API key length: ${apiKey?.length}`);
   
+  // Check if any message has content
+  const hasContent = messages.some(msg => msg.content?.trim());
+  if (!hasContent) {
+    console.error(`[DeepSeek] No content in messages`);
+    return {
+      success: false,
+      error: "No content in messages",
+      errorDetails: { status: 400, statusText: "Bad Request", body: "Empty message content" }
+    };
+  }
+  
   try {
     console.log(`[DeepSeek] Making fetch request to DeepSeek API`);
     console.log(`[DeepSeek] Request body (first 500 chars):`, JSON.stringify({
