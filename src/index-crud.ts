@@ -272,18 +272,36 @@ app.post('/start', async (c) => {
           
           console.log(`[HTTP:START:FLOW] Using flow definition: ${targetFlowId}, repo: ${targetRepository}, branch: ${targetBranch}`);
           
+          // VALIDATE DEEPSEEK API KEY BEFORE STARTING FLOW
+          console.log(`[HTTP:START:FLOW] Validating DeepSeek API key configuration...`);
+          console.log(`[HTTP:START:FLOW] DEEPSEEK_API_KEY present in worker env: ${!!c.env.DEEPSEEK_API_KEY}`);
+          console.log(`[HTTP:START:FLOW] DEEPSEEK_API_KEY first 10 chars: ${c.env.DEEPSEEK_API_KEY ? c.env.DEEPSEEK_API_KEY.substring(0, 10) + '...' : 'MISSING'}`);
+          console.log(`[HTTP:START:FLOW] DEEPSEEK_API_KEY format check: ${c.env.DEEPSEEK_API_KEY ? (c.env.DEEPSEEK_API_KEY.startsWith('sk-') ? 'VALID (starts with sk-)' : 'INVALID (does not start with sk-)') : 'MISSING'}`);
+          
+          // Log DeepSeek API request details that will be sent
+          console.log(`[HTTP:START:FLOW] DeepSeek API endpoint: https://api.deepseek.com/chat/completions`);
+          console.log(`[HTTP:START:FLOW] DeepSeek API headers: Authorization: Bearer ${c.env.DEEPSEEK_API_KEY ? c.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'MISSING'}, Content-Type: application/json`);
+          console.log(`[HTTP:START:FLOW] DeepSeek API model: deepseek-chat, temperature: 0.7, max_tokens: 2000`);
+          console.log(`[HTTP:START:FLOW] Note: Flow may make multiple DeepSeek API calls (6 potential call sites in code)`);
+          
           // Create a new Durable Object for this conversation
           const id = c.env.CONVERSATIONS.newUniqueId();
           const conversationDo = c.env.CONVERSATIONS.get(id);
           
           // Use flow execution mode (start-flow endpoint) for proper step execution with task injection
+          // PASS DEEPSEEK API KEY TO DURABLE OBJECT to ensure it has the correct key
+          console.log(`[HTTP:START:FLOW] Passing DEEPSEEK_API_KEY to Durable Object...`);
           const initResponse = await conversationDo.fetch('http://placeholder/start-flow', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-DeepSeek-API-Key': c.env.DEEPSEEK_API_KEY || ''
+            },
             body: JSON.stringify({
               flow_id: targetFlowId,
               inputs: inputs || {},
-              callback_url: callback_url
+              callback_url: callback_url,
+              deepseek_api_key: c.env.DEEPSEEK_API_KEY // Pass in body too for redundancy
             })
           });
           

@@ -83,7 +83,12 @@ export class StepExecutor {
   private async callDeepSeek(messages: any[]): Promise<string> {
     const { callDeepSeek } = await import('../services/deepseek');
     
-    const result = await callDeepSeek(this.env.DEEPSEEK_API_KEY, messages);
+    // Use effectiveDeepSeekApiKey if available (passed from worker), otherwise use env
+    const apiKey = this.env.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
+    console.log(`[StepExecutor] Calling DeepSeek API with key present: ${!!apiKey}`);
+    console.log(`[StepExecutor] API key first 8 chars: ${apiKey ? apiKey.substring(0, 8) + '...' : 'MISSING'}`);
+    
+    const result = await callDeepSeek(apiKey, messages);
     
     if (!result.success) {
       throw new Error(`DeepSeek failed: ${result.error}`);

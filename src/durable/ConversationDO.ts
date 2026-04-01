@@ -54,6 +54,7 @@ export class ConversationOrchestratorDO_2026A {
   private flowStepsCache: ExecutionStepData[] | null = null; // Cache for flow steps
   private flowStepsCacheTime: number = 0; // When cache was last updated
   private readonly FLOW_STEPS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
+  private effectiveDeepSeekApiKey: string | null = null; // API key passed from worker
   
   // Flow switching loop prevention
   private flowSwitchHistory: string[] = [];
@@ -1142,12 +1143,26 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] DEBUG: handleStartFlow called at ${Date.now()}`);
       console.log(`[DO:${this.state.id}] DEBUG: Durable Object ID: ${this.state.id.toString()}`);
       console.log(`[DO:${this.state.id}] DEBUG: Environment keys: ${Object.keys(this.env).join(', ')}`);
+      console.log(`[DO:${this.state.id}] DEBUG: DEEPSEEK_API_KEY in env: ${!!this.env.DEEPSEEK_API_KEY}`);
+      console.log(`[DO:${this.state.id}] DEBUG: DEEPSEEK_API_KEY first 8 chars: ${this.env.DEEPSEEK_API_KEY ? this.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'MISSING'}`);
       
-      const body = await request.json() as { flow_id: string; inputs?: Record<string, any>; callback_url?: string };
+      // Extract DeepSeek API key from headers or body (passed from worker)
+      const deepseekApiKeyFromHeader = request.headers.get('X-DeepSeek-API-Key');
+      console.log(`[DO:${this.state.id}] DEBUG: X-DeepSeek-API-Key header: ${deepseekApiKeyFromHeader ? deepseekApiKeyFromHeader.substring(0, 8) + '...' : 'MISSING'}`);
+      
+      const body = await request.json() as { flow_id: string; inputs?: Record<string, any>; callback_url?: string; deepseek_api_key?: string };
       flow_id = body.flow_id;
-      const { inputs = {}, callback_url } = body;
+      const { inputs = {}, callback_url, deepseek_api_key } = body;
       
       console.log(`[DO:${this.state.id}] DEBUG: Request body - flow_id: ${flow_id}, inputs: ${JSON.stringify(inputs)}, callback_url: ${callback_url || 'none'}`);
+      console.log(`[DO:${this.state.id}] DEBUG: deepseek_api_key in body: ${deepseek_api_key ? deepseek_api_key.substring(0, 8) + '...' : 'MISSING'}`);
+      
+      // Use passed API key if available, otherwise use env variable
+      const effectiveDeepSeekApiKey = deepseekApiKeyFromHeader || deepseek_api_key || this.env.DEEPSEEK_API_KEY;
+      console.log(`[DO:${this.state.id}] DEBUG: Effective DeepSeek API key: ${effectiveDeepSeekApiKey ? effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'MISSING'}`);
+      
+      // Store the effective API key for use in API calls
+      this.effectiveDeepSeekApiKey = effectiveDeepSeekApiKey;
       
       if (!flow_id) {
         return new Response(JSON.stringify({ error: 'Need flow_id' }), {
@@ -2931,7 +2946,7 @@ export class ConversationOrchestratorDO_2026A {
           ];
           
           // Call DeepSeek API
-          const deepseekResult = await callDeepSeek(this.env.DEEPSEEK_API_KEY, messages);
+          const deepseekResult = await callDeepSeek(this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY, messages);
           
           if (!deepseekResult.success) {
             console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
@@ -3067,7 +3082,7 @@ export class ConversationOrchestratorDO_2026A {
     
     // Send initial prompt to DeepSeek
     const deepseekResult = await callDeepSeek(
-      this.env.DEEPSEEK_API_KEY,
+      this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY,
       this.conversation.conversation_messages!
     );
     
@@ -4571,7 +4586,7 @@ ${messageContent}`;
     
     // Send OpenHands response to DeepSeek with full conversation history
     const deepseekResult = await callDeepSeek(
-      this.env.DEEPSEEK_API_KEY,
+      this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY,
       this.conversation.conversation_messages
     );
     
@@ -4705,7 +4720,7 @@ ${messageContent}`;
     
     // Send checking prompt to DeepSeek
     const deepseekResult = await callDeepSeek(
-      this.env.DEEPSEEK_API_KEY,
+      this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY,
       this.conversation.conversation_messages
     );
     
@@ -5290,9 +5305,9 @@ ${messageContent}`;
       ];
       
       // Call DeepSeek API
-      console.log(`[DO:${this.state.id}] Calling callDeepSeek() with API key present: ${!!this.env.DEEPSEEK_API_KEY}`);
+      console.log(`[DO:${this.state.id}] Calling callDeepSeek() with API key present: ${!!(this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY)}`);
       const deepseekResult = await callDeepSeek(
-        this.env.DEEPSEEK_API_KEY,
+        this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY,
         messages
       );
       
