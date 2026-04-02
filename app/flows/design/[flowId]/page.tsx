@@ -1734,6 +1734,7 @@ const NodePopup = ({
       
       // Add the new command to the available commands list locally
       const newCommand = {
+        id: `custom_${Date.now()}`, // Generate a unique ID for the custom command
         name: newCommandData.name,
         description: newCommandData.description,
         method: newCommandData.method,
