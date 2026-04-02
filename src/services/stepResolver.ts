@@ -4,6 +4,7 @@
 import { SecureVariableResolver } from './secureVariableResolver';
 import { getTaskData, saveVariable } from './database';
 import { StepData } from '../types';
+import { ApiCaller } from './ApiCaller';
 
 // Backward compatibility wrapper for step instructions
 export async function resolveStepInstructions(
@@ -572,71 +573,51 @@ export async function executeUnifiedEndpoints(
     
     // Execute input phase endpoints ONLY
     const inputEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'input');
-    
+
+    // Create ApiCaller instance
+    const apiCaller = new ApiCaller(db);
+
     for (const endpointConfig of inputEndpoints) {
       try {
-        // Get endpoint details from registry
-        const endpointSql = `
-          SELECT id, name, url, method, auth_type, auth_value,
-                 headers, body_template, query_params, response_path,
-                 timeout_ms, max_retries, retry_delay_ms,
-                 parameter_schema, sample_response, save_to_db
-          FROM endpoint_registry
-          WHERE id = ? OR name = ?
-        `;
+        // Get endpoint HTTP method
+        const endpoint = await db.prepare(`
+          SELECT method FROM endpoint_registry WHERE id = ?
+        `).bind(endpointConfig.endpoint_id).first();
         
-        const endpoint = await db.prepare(endpointSql)
-          .bind(endpointConfig.endpoint_id, endpointConfig.endpoint_name)
-          .first();
-        
-        if (!endpoint) {
-          console.error(`[executeUnifiedEndpoints] Endpoint not found: ${endpointConfig.endpoint_id}`);
-          continue;
-        }
-        
-        // Build request (no variable substitution for inputs - isolated execution)
-        const request = await buildEndpointRequest(endpoint, endpointConfig, {}, env);
-        
-        // Execute request
-        const response = await executeEndpointRequest(request, endpoint);
-        
-        // Create API call record
-        const apiCall = {
-          endpoint_id: endpointConfig.endpoint_id,
-          endpoint_name: endpoint.name,
-          phase: 'input',
-          request,
-          response,
-          timestamp: new Date().toISOString()
-        };
-        
-        apiCalls.push(apiCall);
-        
-        // Add to variables.api for {variable} substitution
-        variables.api[endpointConfig.endpoint_id] = { response: response.data };
-        
-        // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
-        if (endpoint.save_to_db !== false && endpointConfig.save_to_db !== false) {
-          const { saveApiCall, generateId } = await import('./database');
-          await saveApiCall(db, {
-            id: generateId(),
+        // Use ApiCaller to execute the endpoint
+        const result = await apiCaller.callEndpoint(
+          endpointConfig.endpoint_id,
+          {
             flow_id: context.flow_id,
+            flow_run_id: context.execution_id,
             step_id: context.step_id,
             step_run_id: context.step_run_id,
+            parameters: {} // Input endpoints don't have parameters
+          },
+          'input',
+          endpoint?.method // Pass the HTTP method
+        );
+
+        if (result.success && result.data) {
+          // Create API call record
+          const apiCall = {
             endpoint_id: endpointConfig.endpoint_id,
-            endpoint_name: endpoint.name,
-            method: endpoint.method,
-            request: request,
-            response: response.data,
+            endpoint_name: endpointConfig.endpoint_name,
             phase: 'input',
-            timestamp: apiCall.timestamp
-          });
+            request: {}, // ApiCaller stores the actual request in api_calls table
+            response: { data: result.data, status: result.status },
+            timestamp: new Date().toISOString()
+          };
+
+          apiCalls.push(apiCall);
+
+          // Add to variables.api for backward compatibility
+          // Note: This is just for variable substitution, not stored in variables table
+          variables.api[endpointConfig.endpoint_id] = { response: result.data };
+        } else {
+          console.error(`[executeUnifiedEndpoints] Failed to execute endpoint ${endpointConfig.endpoint_id}:`, result.error);
         }
-        
-        // API results are stored in api_calls table, not as variables
-        // Variables are optional queries on stored data, not wrappers for API calls
-        // The API call has been saved to step_runs.api_calls via saveApiCall above
-        
+
       } catch (error) {
         console.error(`[executeUnifiedEndpoints] Error executing input endpoint ${endpointConfig.endpoint_id}:`, error);
       }
@@ -761,6 +742,9 @@ export async function executeUnifiedCommands(
     // Parse commands from AI response
     const commands = parseCommandsFromAIResponse(aiResponse);
     
+    // Create ApiCaller instance
+    const apiCaller = new ApiCaller(db);
+    
     // Execute each command against matching command endpoints
     for (const command of commands) {
       const matchingEndpoint = commandEndpoints.find((ep: any) => 
@@ -773,82 +757,66 @@ export async function executeUnifiedCommands(
       }
       
       try {
-        // Get endpoint details from registry
-        const endpointSql = `
-          SELECT id, name, url, method, auth_type, auth_value,
-                 headers, body_template, query_params, response_path,
-                 timeout_ms, max_retries, retry_delay_ms,
-                 parameter_schema, sample_response, save_to_db
-          FROM endpoint_registry
-          WHERE id = ? OR name = ?
-        `;
-        
-        const endpoint = await db.prepare(endpointSql)
-          .bind(matchingEndpoint.endpoint_id, command.name)
-          .first();
-        
-        if (!endpoint) {
-          console.error(`[executeUnifiedCommands] Endpoint not found: ${matchingEndpoint.endpoint_id} or ${command.name}`);
-          continue;
-        }
-        
-        // Build request with command parameters (no variable substitution - isolated execution)
-        const request = await buildCommandRequest(endpoint, command.params);
-        
-        // Execute command
-        const response = await executeEndpointRequest(request, endpoint);
-        
-        // Create API call record
-        const apiCall = {
-          endpoint_id: endpoint.id,
-          endpoint_name: endpoint.name,
-          phase: 'command',
-          request,
-          response,
-          timestamp: new Date().toISOString()
-        };
-        
-        apiCalls.push(apiCall);
-        
-        // Add to variables.api for {variable} substitution
-        variables.api[endpoint.id] = { response: response.data };
-        
-        // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
-        if (endpoint.save_to_db !== false && matchingEndpoint.save_to_db !== false) {
-          const { saveApiCall, generateId } = await import('./database');
-          await saveApiCall(db, {
-            id: generateId(),
+        // Use ApiCaller to execute the command endpoint
+        const result = await apiCaller.callEndpoint(
+          command.name,
+          {
             flow_id: context.flow_id,
+            flow_run_id: context.execution_id,
             step_id: context.step_id,
             step_run_id: context.step_run_id,
-            endpoint_id: endpoint.id,
-            endpoint_name: endpoint.name,
-            method: endpoint.method,
-            request: request,
-            response: response.data,
+            parameters: command.params || {}
+          },
+          'command',
+          command.method // Pass the HTTP method from command
+        );
+
+        if (result.success && result.data) {
+          // Create API call record
+          const apiCall = {
+            endpoint_id: matchingEndpoint.endpoint_id,
+            endpoint_name: command.name,
             phase: 'command',
-            timestamp: apiCall.timestamp
-          });
+            request: {}, // ApiCaller stores the actual request in api_calls table
+            response: { data: result.data, status: result.status },
+            timestamp: new Date().toISOString()
+          };
+
+          apiCalls.push(apiCall);
+
+          // Add to variables.api for backward compatibility
+          // Note: This is just for variable substitution, not stored in variables table
+          variables.api[matchingEndpoint.endpoint_id] = { response: result.data };
+        } else {
+          console.error(`[executeUnifiedCommands] Failed to execute command ${command.name}:`, result.error);
+          
+          // Save error response
+          const apiCall = {
+            endpoint_id: matchingEndpoint.endpoint_id,
+            endpoint_name: command.name,
+            phase: 'command',
+            request: { command: command.name, params: command.params },
+            response: { error: result.error, success: false },
+            timestamp: new Date().toISOString()
+          };
+          
+          apiCalls.push(apiCall);
         }
         
       } catch (error: any) {
         console.error(`[executeUnifiedCommands] Error executing command ${command.name}:`, error);
         
-        // Save error response to step_runs.api_calls
-        const { saveApiCall, generateId } = await import('./database');
-        await saveApiCall(db, {
-          id: generateId(),
-          flow_id: context.flow_id,
-          step_id: context.step_id,
-          step_run_id: context.step_run_id,
+        // Create error API call record
+        const apiCall = {
           endpoint_id: matchingEndpoint.endpoint_id,
           endpoint_name: command.name,
-          method: 'POST',
+          phase: 'command',
           request: { command: command.name, params: command.params },
           response: { error: error.message, success: false },
-          phase: 'command',
           timestamp: new Date().toISOString()
-        });
+        };
+        
+        apiCalls.push(apiCall);
       }
     }
     
@@ -1019,74 +987,49 @@ export async function executeUnifiedOutputs(
     // Parse AI response for output data (nested JSON, key/value, arrays)
     const outputData = parseAIResponseForOutput(aiResponse);
     
+    // Create ApiCaller instance
+    const apiCaller = new ApiCaller(db);
+    
     // Execute each output endpoint
     for (const endpointConfig of outputEndpoints) {
       try {
-        // Get endpoint details from registry
-        const endpointSql = `
-          SELECT id, name, url, method, auth_type, auth_value,
-                 headers, body_template, query_params, response_path,
-                 timeout_ms, max_retries, retry_delay_ms,
-                 parameter_schema, sample_response, save_to_db
-          FROM endpoint_registry
-          WHERE id = ? OR name = ?
-        `;
+        // Get endpoint HTTP method
+        const endpoint = await db.prepare(`
+          SELECT method FROM endpoint_registry WHERE id = ?
+        `).bind(endpointConfig.endpoint_id).first();
         
-        const endpoint = await db.prepare(endpointSql)
-          .bind(endpointConfig.endpoint_id, endpointConfig.endpoint_name)
-          .first();
-        
-        if (!endpoint) {
-          console.error(`[executeUnifiedOutputs] Endpoint not found: ${endpointConfig.endpoint_id}`);
-          continue;
-        }
-        
-        // Validate output data against schema if provided
-        if (endpoint.validation_schema && endpointConfig.validation_schema) {
-          const validationResult = validateOutputData(outputData, endpoint.validation_schema);
-          if (!validationResult.valid) {
-            console.error(`[executeUnifiedOutputs] Output validation failed for ${endpoint.name}:`, validationResult.errors);
-            continue;
-          }
-        }
-        
-        // Build request with output data
-        const request = await buildOutputRequest(endpoint, outputData);
-        
-        // Execute request
-        const response = await executeEndpointRequest(request, endpoint);
-        
-        // Create API call record
-        const apiCall = {
-          endpoint_id: endpointConfig.endpoint_id,
-          endpoint_name: endpoint.name,
-          phase: 'output',
-          request,
-          response,
-          timestamp: new Date().toISOString()
-        };
-        
-        apiCalls.push(apiCall);
-        
-        // Add to variables.api for {variable} substitution
-        variables.api[endpointConfig.endpoint_id] = { response: response.data };
-        
-        // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
-        if (endpoint.save_to_db !== false && endpointConfig.save_to_db !== false) {
-          const { saveApiCall, generateId } = await import('./database');
-          await saveApiCall(db, {
-            id: generateId(),
+        // Use ApiCaller to execute the output endpoint
+        const result = await apiCaller.callEndpoint(
+          endpointConfig.endpoint_id,
+          {
             flow_id: context.flow_id,
+            flow_run_id: context.execution_id,
             step_id: context.step_id,
             step_run_id: context.step_run_id,
+            parameters: outputData || {}
+          },
+          'output',
+          endpoint?.method // Pass the HTTP method
+        );
+
+        if (result.success && result.data) {
+          // Create API call record
+          const apiCall = {
             endpoint_id: endpointConfig.endpoint_id,
-            endpoint_name: endpoint.name,
-            method: endpoint.method,
-            request: request,
-            response: response.data,
+            endpoint_name: endpointConfig.endpoint_name,
             phase: 'output',
-            timestamp: apiCall.timestamp
-          });
+            request: {}, // ApiCaller stores the actual request in api_calls table
+            response: { data: result.data, status: result.status },
+            timestamp: new Date().toISOString()
+          };
+
+          apiCalls.push(apiCall);
+
+          // Add to variables.api for backward compatibility
+          // Note: This is just for variable substitution, not stored in variables table
+          variables.api[endpointConfig.endpoint_id] = { response: result.data };
+        } else {
+          console.error(`[executeUnifiedOutputs] Failed to execute output endpoint ${endpointConfig.endpoint_id}:`, result.error);
         }
         
       } catch (error) {
@@ -1368,6 +1311,26 @@ function resolveVariableReference(
     
     const parts = path.split('.');
     
+    // Handle {test_endpoint_123.id} format - convert to query syntax
+    // This is the format AI generates, we need to support it
+    if (parts.length === 2 && !['api', 'env', 'previous_step'].includes(parts[0])) {
+      // Assume format: {endpoint_name.field} → convert to {query:type=api&endpoint=endpoint_name&path=response.field}
+      const endpoint = parts[0];
+      const field = parts[1];
+      
+      if (endpoint && variables.api && variables.api[endpoint]) {
+        let current: any = variables.api[endpoint];
+        if (current && current.response) {
+          // Try to get the field from response
+          if (current.response && typeof current.response === 'object' && field in current.response) {
+            const value = current.response[field];
+            return typeof value === 'string' || typeof value === 'number' ? String(value) : JSON.stringify(value);
+          }
+        }
+      }
+      return undefined;
+    }
+    
     if (parts[0] === 'api' && parts.length >= 3) {
       // {api.<endpoint_name>.response.<key>} - legacy syntax
       let current: any = variables.api;
@@ -1496,12 +1459,33 @@ export function injectApiResponses(
 ): string {
   let result = instructions;
   
-  // STEP 6: Clean response injection - inject structured variables only
-  // Inject api variables
+  // STEP 1: Add raw API results as JSON at the beginning of instructions
+  // AI gets raw data directly in context, not through variable references
+  if (apiCalls.length > 0) {
+    const apiResultsSection = `
+=== API RESULTS ===
+The following API calls have been executed and their results are available:
+
+${apiCalls.map((call, index) => {
+  const responseData = call.response?.data || call.response;
+  return `API Call ${index + 1}: ${call.endpoint_name} (${call.phase})
+Response: ${JSON.stringify(responseData, null, 2)}`;
+}).join('\n\n')}
+
+=== END API RESULTS ===
+
+`;
+    
+    // Insert API results at the beginning of instructions
+    result = apiResultsSection + result;
+  }
+  
+  // STEP 2: Still support variable substitution for backward compatibility
+  // Inject api variables (legacy support)
   if (variables.api) {
     for (const [endpointName, endpointData] of Object.entries(variables.api)) {
       if (endpointData && typeof endpointData === 'object' && endpointData.response) {
-        // Inject {api.<endpoint_name>.response.<key>} placeholders
+        // Inject {api.<endpoint_name>.response.<key>} placeholders (legacy)
         const response = endpointData.response;
         if (typeof response === 'object') {
           for (const [key, value] of Object.entries(response)) {
@@ -1513,7 +1497,7 @@ export function injectApiResponses(
           }
         }
         
-        // Also inject {api.<endpoint_name>.response} for the whole response
+        // Also inject {api.<endpoint_name>.response} for the whole response (legacy)
         const fullResponsePlaceholder = `{api.${endpointName}.response}`;
         if (result.includes(fullResponsePlaceholder)) {
           result = result.replace(new RegExp(fullResponsePlaceholder, 'g'), 
@@ -1545,7 +1529,7 @@ export function injectApiResponses(
     }
   }
   
-  // Inject last_api_response if we have api calls
+  // Inject last_api_response if we have api calls (legacy)
   if (apiCalls.length > 0) {
     const lastCall = apiCalls[apiCalls.length - 1];
     const placeholder = `{last_api_response}`;

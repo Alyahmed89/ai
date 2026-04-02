@@ -1,5 +1,6 @@
 // Command execution service for AI commands
 import { CommandData } from '../types';
+import { ApiCaller } from './ApiCaller';
 
 export interface CommandRegistryEntry {
   name: string;
@@ -24,6 +25,10 @@ export interface CommandExecutorOptions {
   maxRetries?: number;
   timeoutMs?: number;
   baseUrl?: string;
+  flow_id?: string;
+  flow_run_id?: string;
+  step_id?: string;
+  step_run_id?: string;
 }
 
 /**
@@ -35,6 +40,11 @@ export class CommandExecutor {
   private maxRetries: number;
   private timeoutMs: number;
   private baseUrl: string;
+  private apiCaller: ApiCaller;
+  private flow_id?: string;
+  private flow_run_id?: string;
+  private step_id?: string;
+  private step_run_id?: string;
 
   constructor(options: CommandExecutorOptions) {
     this.env = options.env;
@@ -42,6 +52,11 @@ export class CommandExecutor {
     this.maxRetries = options.maxRetries || 3;
     this.timeoutMs = options.timeoutMs || 10000;
     this.baseUrl = options.baseUrl || 'https://deepseek-agent.alghamdimo89.workers.dev';
+    this.apiCaller = new ApiCaller(this.db);
+    this.flow_id = options.flow_id;
+    this.flow_run_id = options.flow_run_id;
+    this.step_id = options.step_id;
+    this.step_run_id = options.step_run_id;
   }
 
   /**
@@ -123,15 +138,35 @@ export class CommandExecutor {
         };
       }
 
-      // Execute the command
-      const result = await this.executeHttpCommand(command, commandData.params);
+      // Execute the command using ApiCaller
+      const apiResult = await this.apiCaller.callEndpoint(
+        commandData.name,
+        {
+          flow_id: this.flow_id,
+          flow_run_id: this.flow_run_id,
+          step_id: this.step_id,
+          step_run_id: this.step_run_id,
+          parameters: commandData.params || {}
+        },
+        'command',
+        commandData.method // Pass the HTTP method from command
+      );
       
-      return {
-        success: true,
-        data: result,
-        commandName: commandData.name,
-        executionTime: Date.now() - startTime
-      };
+      if (apiResult.success) {
+        return {
+          success: true,
+          data: apiResult.data,
+          commandName: commandData.name,
+          executionTime: Date.now() - startTime
+        };
+      } else {
+        return {
+          success: false,
+          error: apiResult.error || 'Command execution failed',
+          commandName: commandData.name,
+          executionTime: Date.now() - startTime
+        };
+      }
       
     } catch (error: any) {
       console.error(`[COMMAND] Error executing command ${commandData.name}:`, error);
@@ -181,124 +216,40 @@ export class CommandExecutor {
   }
 
   /**
-   * Execute HTTP command
+   * Execute HTTP command (legacy - now handled by ApiCaller)
    */
   private async executeHttpCommand(
     command: CommandRegistryEntry,
     params: Record<string, any> | undefined
   ): Promise<any> {
-    const endpointPath = this.buildCommandUrl(command.endpoint, params, command.method);
-    
-    // Determine if we need to prepend baseUrl
-    let url: string;
-    if (endpointPath.startsWith('http://') || endpointPath.startsWith('https://')) {
-      // Already a full URL, use as-is
-      url = endpointPath;
-    } else {
-      // Relative path, prepend baseUrl
-      url = `${this.baseUrl}${endpointPath}`;
-    }
-    
-    const options: RequestInit = {
-      method: command.method,
-      headers: {
-        'Content-Type': 'application/json',
+    // This method is kept for backward compatibility but now uses ApiCaller
+    const apiResult = await this.apiCaller.callEndpoint(
+      command.name,
+      {
+        flow_id: this.flow_id,
+        flow_run_id: this.flow_run_id,
+        step_id: this.step_id,
+        step_run_id: this.step_run_id,
+        parameters: params || {}
       },
-    };
-
-    // Add body for POST/PUT/PATCH requests
-    if (['POST', 'PUT', 'PATCH'].includes(command.method.toUpperCase())) {
-      options.body = JSON.stringify(params || {});
+      'command',
+      command.method // Pass the HTTP method from command
+    );
+    
+    if (apiResult.success) {
+      return apiResult.data;
+    } else {
+      throw new Error(apiResult.error || 'Command execution failed');
     }
-
-    // Execute with retry logic
-    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
-      try {
-        console.log(`[COMMAND] Attempt ${attempt}/${this.maxRetries}: ${command.method} ${url} (endpoint: ${endpointPath})`);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-        
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          return await response.json();
-        } else {
-          return await response.text();
-        }
-        
-      } catch (error: any) {
-        if (attempt === this.maxRetries) {
-          throw error;
-        }
-        
-        // Exponential backoff
-        const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-        console.log(`[COMMAND] Retry ${attempt} failed, waiting ${backoffMs}ms`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-      }
-    }
-
-    throw new Error(`Failed after ${this.maxRetries} attempts`);
   }
 
   /**
-   * Build command URL with path parameters
+   * Build command URL with path parameters (legacy - now handled by ApiCaller)
    */
   private buildCommandUrl(endpoint: string, params: Record<string, any> | undefined, method?: string): string {
-    let url = endpoint;
-    const usedPathParams = new Set<string>();
-    
-    // Replace path parameters and track which ones were used
-    // Support both :param and {param} syntax
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        if (typeof value === 'string' || typeof value === 'number') {
-          // Try :param syntax first
-          const colonPlaceholder = `:${key}`;
-          if (url.includes(colonPlaceholder)) {
-            url = url.replace(colonPlaceholder, encodeURIComponent(value.toString()));
-            usedPathParams.add(key);
-          } else {
-            // Try {param} syntax
-            const bracePlaceholder = `{${key}}`;
-            if (url.includes(bracePlaceholder)) {
-              url = url.replace(bracePlaceholder, encodeURIComponent(value.toString()));
-              usedPathParams.add(key);
-            }
-          }
-        }
-      }
-    }
-    
-    // Add query parameters for GET/DELETE requests
-    // For POST/PUT/PATCH, params go in the request body, not query string
-    if (params && method && ['GET', 'DELETE'].includes(method.toUpperCase())) {
-      const queryParams = new URLSearchParams();
-      for (const [key, value] of Object.entries(params)) {
-        // Skip path params that were already used in the URL
-        if (!usedPathParams.has(key)) {
-          queryParams.append(key, value.toString());
-        }
-      }
-      
-      const queryString = queryParams.toString();
-      if (queryString) {
-        url += (url.includes('?') ? '&' : '?') + queryString;
-      }
-    }
-    
-    return url;
+    // This method is kept for backward compatibility
+    // ApiCaller handles URL building internally
+    return endpoint;
   }
 
   /**

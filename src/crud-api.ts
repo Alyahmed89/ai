@@ -30,6 +30,7 @@ import {
 import { StepExecutor } from './core/step-executor';
 import { createExecutionContext } from './core/execution-context';
 import { generateId, saveVariable } from './services/database';
+import { ApiCaller } from './services/ApiCaller';
 
 // Helper function to handle database errors
 function handleDbError(error: any) {
@@ -2012,92 +2013,42 @@ crudApi.post('/endpoints/:name/test', async (c) => {
       return c.json(notFoundResponse('Endpoint not found'));
     }
 
-    // Parse JSON fields
+    // Use ApiCaller to test the endpoint
+    const apiCaller = new ApiCaller(db);
+    
+    // Get endpoint to extract HTTP method
+    const endpoint = await db.prepare(`
+      SELECT method FROM endpoint_registry WHERE id = ? OR name = ?
+    `).bind(name, name).first();
+    
+    const result = await apiCaller.callEndpoint(
+      name,
+      {
+        parameters: testParams
+      },
+      'input', // Test endpoints are considered 'input' type
+      endpoint?.method // Pass the actual HTTP method
+    );
+
+      return c.json({
+        success: false,
+        error: result.error || 'Request failed',
+        message: 'The test request failed to execute.',
+        endpoint: {
+          id: endpoint.id,
+          name: endpoint.name
+        },
+        test: {
+          parameters: testParams
+        }
+      }, 500);
+    }
+
+    // Parse JSON fields for response
     const headers = endpoint.headers ? JSON.parse(endpoint.headers) : {};
     const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : {};
     const allowedDomains = endpoint.allowed_domains ? JSON.parse(endpoint.allowed_domains) : [];
-    const tags = endpoint.tags ? JSON.parse(endpoint.tags) : [];
-
-    // Build the actual URL with template variables
-    let url = endpoint.url;
-    
-    // Replace URL template variables with test parameters
-    const urlVariableRegex = /\{([^}]+)\}/g;
-    let match;
-    while ((match = urlVariableRegex.exec(url)) !== null) {
-      const varName = match[1];
-      if (testParams[varName]) {
-        url = url.replace(`{${varName}}`, encodeURIComponent(testParams[varName]));
-      } else {
-        // If variable not provided, return error
-        return c.json({
-          success: false,
-          error: `Missing required URL parameter: ${varName}`,
-          message: `The endpoint URL requires the parameter '${varName}' which was not provided in test parameters.`,
-          required_parameters: [varName],
-          example_test_parameters: { [varName]: "example_value" }
-        }, 400);
-      }
-    }
-
-    // Add query parameters
-    if (Object.keys(queryParams).length > 0) {
-      const urlObj = new URL(url);
-      Object.entries(queryParams).forEach(([key, value]) => {
-        // Replace template variables in query param values
-        let paramValue = String(value);
-        const paramVarRegex = /\{([^}]+)\}/g;
-        let paramMatch;
-        while ((paramMatch = paramVarRegex.exec(paramValue)) !== null) {
-          const paramVarName = paramMatch[1];
-          if (testParams[paramVarName]) {
-            paramValue = paramValue.replace(`{${paramVarName}}`, testParams[paramVarName]);
-          }
-        }
-        urlObj.searchParams.append(key, paramValue);
-      });
-      url = urlObj.toString();
-    }
-
-    // Handle authentication
-    let authHeaders = { ...headers };
-    if (endpoint.auth_type !== 'none' && endpoint.auth_value) {
-      let authValue = endpoint.auth_value;
-      
-      // Check if auth value is an environment variable reference
-      if (authValue.startsWith('env:')) {
-        const envVarName = authValue.substring(4);
-        authValue = c.env[envVarName] || '';
-        
-        if (!authValue) {
-          return c.json({
-            success: false,
-            error: `Environment variable not found: ${envVarName}`,
-            message: `The authentication requires environment variable '${envVarName}' which is not set.`,
-            note: 'Environment variables are not available in test mode for security reasons.'
-          }, 400);
-        }
-      }
-      
-      switch (endpoint.auth_type) {
-        case 'bearer':
-          authHeaders['Authorization'] = `Bearer ${authValue}`;
-          break;
-        case 'basic':
-          // btoa is available in Cloudflare Workers environment
-          authHeaders['Authorization'] = `Basic ${btoa(authValue)}`;
-          break;
-        case 'api_key':
-          // API key can be in header or query param - default to header
-          authHeaders['X-API-Key'] = authValue;
-          break;
-        case 'custom':
-          // Custom auth - assume it's already in the headers
-          break;
-      }
-    }
-
-    // Prepare request body if needed
+    const tags = endpoint.tags ? JSON.parse(endpoint.tags) : [];// Prepare request body if needed
     let requestBody = null;
     if (endpoint.body_template && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(endpoint.method)) {
       let bodyTemplate = endpoint.body_template;
