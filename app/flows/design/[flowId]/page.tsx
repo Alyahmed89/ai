@@ -2333,7 +2333,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               strokeWidth: 2,
             },
             markerEnd: {
-              type: 'arrowclosed' as const as const,
+              type: 'arrowclosed' as const,
               color: '#3b82f6',
             },
             data: {
