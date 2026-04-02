@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import EditStepModal from './EditStepModal';
 import ApiEndpointsModal from './ApiEndpointsModal';
@@ -48,8 +48,39 @@ export default function HierarchicalNav({
   
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
+  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
   
   const pathname = usePathname();
+
+  // Handle flow run selection from URL (when page refreshes)
+  const handleFlowRunFromUrl = useCallback(async (flowRunId: string) => {
+    console.log('handleFlowRunFromUrl called with flowRunId:', flowRunId);
+    setSelectedFlowRunId(flowRunId);
+    onSelectFlowRun?.(flowRunId);
+    
+    try {
+      // Fetch flow run details to get the flow_id
+      const response = await fetch(`/api/proxy/api/flow-runs/${flowRunId}`);
+      if (response.ok) {
+        const data = await response.json();
+        const flowRun = data.flow_run;
+        const flowId = flowRun.flow_id;
+        
+        console.log('Found flow ID from flow run:', flowId);
+        
+        if (flowId) {
+          // Set the flow selection
+          setSelectedFlowId(flowId);
+          onSelectFlow?.(flowId);
+          
+          // Also fetch flows to ensure we have the flow data
+          fetchFlows();
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching flow run details:', error);
+    }
+  }, [setSelectedFlowRunId, onSelectFlowRun, setSelectedFlowId, onSelectFlow, fetchFlows]);
 
   // Parse URL to determine selected project/flow
   useEffect(() => {
@@ -75,12 +106,22 @@ export default function HierarchicalNav({
       return;
     }
     
+    // Check if we're on a flow-run page: /chat/flow-run/[flowRunId]
+    const flowRunMatch = pathname.match(/^\/chat\/flow-run\/([^\/]+)$/);
+    if (flowRunMatch) {
+      const flowRunId = flowRunMatch[1];
+      console.log('HierarchicalNav - Flow run selected from URL:', flowRunId);
+      // We'll handle flow run selection separately
+      handleFlowRunFromUrl(flowRunId);
+      return;
+    }
+    
     // If we're on the main chat page, clear selection
     if (pathname === '/chat') {
       setSelectedProjectId(null);
       setSelectedFlowId(null);
     }
-  }, [pathname]); // Run when pathname changes
+  }, [pathname, handleFlowRunFromUrl]); // Run when pathname changes
 
   // Debug logging for data
   useEffect(() => {
@@ -153,7 +194,7 @@ export default function HierarchicalNav({
     }
   };
 
-  const fetchFlows = async () => {
+  const fetchFlows = useCallback(async () => {
     setLoading(prev => ({ ...prev, flows: true }));
     try {
       const response = await fetch('/api/proxy/api/flow-definitions');
@@ -166,7 +207,7 @@ export default function HierarchicalNav({
     } finally {
       setLoading(prev => ({ ...prev, flows: false }));
     }
-  };
+  }, [setFlows, setLoading]);
 
 
 
