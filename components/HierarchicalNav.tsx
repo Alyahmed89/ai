@@ -135,7 +135,6 @@ export default function HierarchicalNav({
     });
   }, [projects, flows, selectedProjectId, selectedFlowId]);
 
-  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'steps' | 'flowRuns'>('steps');
   const [editingStep, setEditingStep] = useState<FlowStep | null>(null);
