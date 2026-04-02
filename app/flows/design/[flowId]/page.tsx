@@ -388,8 +388,8 @@ const nodeTypes = {
   flow: CustomNode, // Use same component for flow nodes too
 };
 
-// Custom edge component with condition label
-const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
+// Custom edge component with condition label and delete button
+const CustomEdge = (props: any & { onClick?: (edgeId: string) => void; onDelete?: (edgeId: string) => void }) => {
   const {
     id,
     sourceX,
@@ -402,6 +402,7 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
     markerEnd,
     data,
     onClick,
+    onDelete,
   } = props;
   
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -413,11 +414,21 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
     targetPosition,
   });
 
-  const conditionText = data?.condition?.source === 'default' 
+  const conditionText = data?.condition?.source === 'last_step_response' && data?.condition?.operator === 'contains'
+    ? `if contains: ${data?.condition?.value || ''}`
+    : data?.condition?.source === 'default' 
     ? data?.route?.type === 'flow' ? `To flow: ${data?.route?.target_id || 'flow'}` : 'Always' // Show flow name for flow routing edges
     : data?.condition?.source === 'condition' && data?.condition?.operator === 'false'
     ? `If false: ${data?.condition?.value || 'condition'}` // Show condition for loop edges
     : `${data?.condition?.source} ${data?.condition?.operator} ${data?.condition?.value || ''}`;
+
+  // Calculate position for delete button (midpoint of edge)
+  const midX = (sourceX + targetX) / 2;
+  const midY = (sourceY + targetY) / 2;
+  
+  // Adjust position slightly to avoid overlap with label
+  const deleteButtonX = midX + 15;
+  const deleteButtonY = midY - 15;
 
   return (
     <>
@@ -440,6 +451,44 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
           }}
         />
       </g>
+      
+      {/* Delete button */}
+      <EdgeLabelRenderer>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log('Delete edge clicked:', id);
+            if (onDelete) {
+              onDelete(id);
+            }
+          }}
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${deleteButtonX}px,${deleteButtonY}px)`,
+            background: '#ef4444',
+            border: '1px solid #dc2626',
+            borderRadius: '50%',
+            width: '20px',
+            height: '20px',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            color: 'white',
+            cursor: 'pointer',
+            zIndex: 1001,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0,
+            opacity: 0.7,
+            pointerEvents: 'all', // Force button to capture pointer events
+          }}
+          className="hover:opacity-100 hover:bg-red-600"
+          title="Delete edge"
+        >
+          ×
+        </button>
+      </EdgeLabelRenderer>
+      
       {conditionText && (
         <EdgeLabelRenderer>
           <div
@@ -453,18 +502,11 @@ const CustomEdge = (props: any & { onClick?: (edgeId: string) => void }) => {
               fontSize: '9px',
               fontWeight: '400',
               color: '#94a3b8',
-              pointerEvents: 'all',
-              cursor: 'pointer',
+              pointerEvents: 'none', // Changed from 'all' to 'none' to prevent label clicks
               zIndex: 1000,
               opacity: 0.8,
             }}
             className="hover:opacity-100 hover:border-sky-500"
-            onClick={() => {
-              console.log('Edge clicked (on label):', id, data);
-              if (onClick) {
-                onClick(id);
-              }
-            }}
           >
             {conditionText}
           </div>
@@ -1134,7 +1176,7 @@ function createFlowExitNodes(steps: Step[]): CustomNode[] {
   return flowExitNodes;
 }
 
-// Edge popup modal component
+// Simplified Edge popup modal component
 const EdgePopup = ({ 
   edge, 
   nodes, 
@@ -1146,186 +1188,28 @@ const EdgePopup = ({
   onSave: (edge: CustomEdge) => void;
   onClose: () => void;
 }) => {
-  const [condition, setCondition] = useState(() => {
+  const [conditionValue, setConditionValue] = useState(() => {
     const data = edge.data as any;
-    if (data?.condition && typeof data.condition === 'object' && data.condition.source) {
-      return data.condition;
+    if (data?.condition?.value) {
+      return data.condition.value;
     }
-    return {
-      source: 'default',
-      operator: 'always',
-      value: '',
-    };
+    return '';
   });
-  const [route, setRoute] = useState(() => {
-    const data = edge.data as any;
-    if (data?.route && typeof data.route === 'object' && data.route.target_id) {
-      return data.route;
-    }
-    return {
-      type: 'step' as const,
-      target_id: edge.target,
-      context_preservation: 'full' as const,
-      flow_id: null as string | null,
-    };
-  });
-  
-  const [availableFlows, setAvailableFlows] = useState<Array<{id: string, name: string}>>([]);
-  const [loadingFlows, setLoadingFlows] = useState(false);
-
-  // Fetch available flows from backend
-  useEffect(() => {
-    const fetchFlows = async () => {
-      try {
-        setLoadingFlows(true);
-        const response = await fetch('/api/proxy/api/flows');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data?.flows) {
-            setAvailableFlows(data.data.flows.map((flow: any) => ({
-              id: flow.id,
-              name: flow.name || `Flow ${flow.id}`
-            })));
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch flows:', error);
-      } finally {
-        setLoadingFlows(false);
-      }
-    };
-    
-    fetchFlows();
-  }, []);
-
-  // Get all variables from source node's output_keys
-  const sourceNode = nodes.find(n => n.id === edge.source);
-  const sourceStep = sourceNode?.data?.step as Step | undefined;
-  const sourceVariables = sourceStep?.output_keys 
-    ? sourceStep.output_keys.split(',').map(key => key.trim()).filter(key => key)
-    : [];
-  
-  // Get all nodes for variable selection (for cross-step conditions)
-  const allSteps = nodes.map(n => n.data?.step as Step | undefined).filter(Boolean);
-  
-  // Collect variables from all steps for cross-step conditions
-  const allVariables: Array<{value: string, label: string, category: string, stepId: string}> = [];
-  
-  allSteps.forEach(step => {
-    if (!step) return;
-    
-    // Add output variables from this step
-    if (step.output_keys) {
-      const vars = step.output_keys.split(',').map(key => key.trim()).filter(key => key);
-      vars.forEach(variable => {
-        allVariables.push({
-          value: `step_${step.id}.output.${variable}`,
-          label: `${step.title}: ${variable}`,
-          category: 'step_output',
-          stepId: step.id
-        });
-      });
-    }
-    
-    // Add input variables from this step
-    if (step.input_keys) {
-      const vars = step.input_keys.split(',').map(key => key.trim()).filter(key => key);
-      vars.forEach(variable => {
-        allVariables.push({
-          value: `step_${step.id}.input.${variable}`,
-          label: `${step.title} (input): ${variable}`,
-          category: 'step_input',
-          stepId: step.id
-        });
-      });
-    }
-    
-    // Add AI response variables (if step has AI output)
-    if (step.step_type === 'ai' || step.step_type === 'response') {
-      allVariables.push({
-        value: `step_${step.id}.ai_response`,
-        label: `${step.title}: AI Response`,
-        category: 'ai_response',
-        stepId: step.id
-      });
-      allVariables.push({
-        value: `step_${step.id}.ai_intent`,
-        label: `${step.title}: AI Intent`,
-        category: 'ai_intent',
-        stepId: step.id
-      });
-    }
-  });
-  
-  // Group variables by category for better organization
-  const groupedVariables = {
-    ai_responses: allVariables.filter(v => v.category === 'ai_response'),
-    ai_intents: allVariables.filter(v => v.category === 'ai_intent'),
-    step_outputs: allVariables.filter(v => v.category === 'step_output'),
-    step_inputs: allVariables.filter(v => v.category === 'step_input'),
-  };
-  
-  const sourceOptions = [
-    { value: 'default', label: 'Always (no condition)', category: 'system' },
-    { value: 'loop_complete', label: 'Loop Complete', category: 'system' },
-    { value: 'max_iterations_reached', label: 'Max Iterations Reached', category: 'system' },
-    { value: 'condition_met', label: 'Condition Met', category: 'system' },
-    { value: 'error_occurred', label: 'Error Occurred', category: 'system' },
-    { value: 'inputs.approval', label: 'Input: Approval', category: 'input' },
-    { value: 'inputs.status', label: 'Input: Status', category: 'input' },
-    { value: 'data.user_id', label: 'Data: User ID', category: 'data' },
-    { value: 'command.get_tasks.result', label: 'Command: Get Tasks Result', category: 'command' },
-    { value: 'ai_output.intent', label: 'AI Output: Intent', category: 'ai' },
-    // Add flows as condition sources
-    ...availableFlows.map(flow => ({
-      value: `flow.${flow.id}.status`,
-      label: `Flow: ${flow.name} Status`,
-      category: 'flow'
-    })),
-    ...availableFlows.map(flow => ({
-      value: `flow.${flow.id}.result`,
-      label: `Flow: ${flow.name} Result`,
-      category: 'flow'
-    })),
-    ...availableFlows.map(flow => ({
-      value: `flow.${flow.id}.output`,
-      label: `Flow: ${flow.name} Output`,
-      category: 'flow'
-    })),
-    ...sourceVariables.map(variable => ({
-      value: `variables.${variable}`,
-      label: `Variable: ${variable}`,
-      category: 'variable'
-    }))
-  ];
-
-  const operatorOptions = [
-    { value: 'always', label: 'Always' },
-    { value: 'equals', label: 'Equals' },
-    { value: 'not_equals', label: 'Not Equals' },
-    { value: 'contains', label: 'Contains' },
-    { value: 'not_contains', label: 'Does Not Contain' },
-    { value: 'starts_with', label: 'Starts With' },
-    { value: 'ends_with', label: 'Ends With' },
-    { value: 'greater_than', label: 'Greater Than' },
-    { value: 'less_than', label: 'Less Than' },
-    { value: 'greater_than_or_equal', label: 'Greater Than or Equal' },
-    { value: 'less_than_or_equal', label: 'Less Than or Equal' },
-    { value: 'is_empty', label: 'Is Empty' },
-    { value: 'is_not_empty', label: 'Is Not Empty' },
-    { value: 'is_true', label: 'Is True' },
-    { value: 'is_false', label: 'Is False' },
-    { value: 'matches_regex', label: 'Matches Regex' },
-  ];
-
-  const targetNodes = nodes.filter(n => n.id !== edge.source);
 
   const handleSave = () => {
     const updatedEdge = {
       ...edge,
       data: {
-        condition,
-        route,
+        condition: {
+          source: 'last_step_response',
+          operator: 'contains',
+          value: conditionValue,
+        },
+        route: {
+          type: 'step' as const,
+          target_id: edge.target,
+          context_preservation: 'full' as const,
+        },
       },
     };
     onSave(updatedEdge);
@@ -1336,7 +1220,7 @@ const EdgePopup = ({
     <Modal onClose={onClose}>
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h3 className="text-base font-thin">Edge</h3>
+          <h3 className="text-base font-thin">Edge Condition</h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
@@ -1348,105 +1232,32 @@ const EdgePopup = ({
         </div>
         
         <div className="space-y-5">
-          {/* Condition Source */}
-          <div>
-            <select
-              value={condition.source}
-              onChange={(e) => setCondition({...condition, source: e.target.value})}
-              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
-            >
-              {sourceOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+          {/* Simple text label */}
+          <div className="text-sm text-gray-300 font-thin">
+            if last step's response contains...
           </div>
 
-          {/* Condition Operator */}
+          {/* Single input field */}
           <div>
-            <select
-              value={condition.operator}
-              onChange={(e) => setCondition({...condition, operator: e.target.value})}
-              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
-            >
-              {operatorOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              value={conditionValue}
+              onChange={(e) => setConditionValue(e.target.value)}
+              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin placeholder:italic focus:border-gray-500 focus:outline-none"
+              placeholder="Enter text to match..."
+              autoFocus
+            />
           </div>
 
-          {/* Condition Value (if not "always") */}
-          {condition.operator !== 'always' && (
-            <div>
-              <input
-                type="text"
-                value={condition.value || ''}
-                onChange={(e) => setCondition({...condition, value: e.target.value})}
-                className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin placeholder:italic focus:border-gray-500 focus:outline-none"
-                placeholder="condition value..."
-              />
-            </div>
-          )}
-
-          {/* Target Node Selection */}
-          <div>
-            <select
-              value={route.target_id}
-              onChange={(e) => setRoute({...route, target_id: e.target.value, type: 'step' })}
-              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
+          {/* Save button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-thin rounded transition-colors"
             >
-              <option value="">Select target node...</option>
-              {nodes
-                .filter(n => n.id !== edge.source)
-                .map(node => (
-                  <option key={node.id} value={node.id}>
-                    {node.data?.step?.title || `Node ${node.id}`}
-                  </option>
-                ))}
-            </select>
+              Save Condition
+            </button>
           </div>
-
-          {/* Response to Another Flow Selection */}
-          <div>
-            <select
-              value={route.flow_id || ''}
-              onChange={(e) => {
-                const flowId = e.target.value;
-                setRoute({
-                  ...route,
-                  type: flowId ? 'flow' as const : 'step' as const,
-                  flow_id: flowId || null,
-                });
-              }}
-              className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white font-thin focus:border-gray-500 focus:outline-none"
-              disabled={loadingFlows}
-            >
-              <option value="">Response to another flow (optional)...</option>
-              {availableFlows.map(flow => (
-                <option key={flow.id} value={flow.id}>
-                  {flow.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="flex justify-end space-x-2 mt-6 pt-4 border-t border-gray-800">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-gray-400 hover:text-white rounded hover:bg-gray-800 text-sm font-thin border border-gray-700 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-3 py-1.5 bg-black text-white rounded hover:bg-gray-900 text-sm font-thin border border-gray-700 transition-colors"
-          >
-            Save
-          </button>
         </div>
       </div>
     </Modal>
@@ -2491,6 +2302,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     }
   }, [onNodesChange, selectedNode, autoSaveFlow, deletedEdgeIds]);
 
+
+
   // Node types configuration with onClick handler
   const nodeTypes = useMemo(() => ({
     default: (props: any) => {
@@ -2606,20 +2419,6 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     },
   }), [nodes, handleDeleteNode]);
 
-  // Edge types configuration with onClick handler
-  const edgeTypes = useMemo(() => ({
-    default: (props: any) => {
-      const handleClick = (edgeId: string) => {
-        const edge = edges.find(e => e.id === edgeId);
-        if (edge) {
-          setSelectedEdge(edge);
-        }
-      };
-      
-      return <CustomEdge {...props} onClick={handleClick} />;
-    },
-  }), [edges]);
-
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       // Track deleted edge IDs
@@ -2640,6 +2439,50 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     },
     [autoSaveFlow]
   );
+
+  const handleDeleteEdge = useCallback((edgeId: string) => {
+    // Create a remove change for the edge
+    const change: EdgeChange = {
+      id: edgeId,
+      type: 'remove'
+    };
+    
+    // Track deleted edge ID
+    setDeletedEdgeIds(prev => {
+      const updated = [...prev, edgeId];
+      console.log('Updated deletedEdgeIds in handleDeleteEdge:', updated);
+      
+      // Schedule auto-save AFTER state is updated
+      setTimeout(() => {
+        console.log('Auto-saving after edge deletion, deletedEdgeIds includes:', updated);
+        autoSaveFlow(deletedStepIds, updated);
+      }, 100);
+      
+      return updated;
+    });
+    
+    // Trigger the edges change with remove action
+    onEdgesChange([change]);
+    
+    // Also remove from selected edge if it's the one being deleted
+    if (selectedEdge?.id === edgeId) {
+      setSelectedEdge(null);
+    }
+  }, [onEdgesChange, selectedEdge, autoSaveFlow, deletedStepIds]);
+
+  // Edge types configuration with onClick and onDelete handlers
+  const edgeTypes = useMemo(() => ({
+    default: (props: any) => {
+      const handleClick = (edgeId: string) => {
+        const edge = edges.find(e => e.id === edgeId);
+        if (edge) {
+          setSelectedEdge(edge);
+        }
+      };
+      
+      return <CustomEdge {...props} onClick={handleClick} onDelete={handleDeleteEdge} />;
+    },
+  }), [edges, handleDeleteEdge]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
