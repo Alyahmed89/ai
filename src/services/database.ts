@@ -783,48 +783,82 @@ export async function getNextStepBasedOnConditions(
     console.log(`[DATABASE] Getting next step based on conditions for flow ${flow_id}, step ${current_step_id}, response: ${response_text.substring(0, 100)}...`);
     
     // First, check if current step has conditions
+    // Note: Using actual schema - condition column contains the condition text
+    // After migration, we'll have condition_type, condition_value, condition_operator columns
     const conditionsQuery = `
-      SELECT fsc.condition_type, fsc.condition_value, fsc.condition_operator, 
-             fsc.next_step, fsc.next_step_id
+      SELECT fsc.id, fsc.step_id, fsc.condition, fsc.next_step_id, fsc.else_step_id,
+             fsc.condition_type, fsc.condition_value, fsc.condition_operator,
+             fsc.condition_query, fsc.next_flow_id
       FROM flow_step_conditions fsc
-      WHERE fsc.flow_step_id = ?
+      WHERE fsc.flow_step_id = ? OR fsc.step_id = ?
       ORDER BY fsc.created_at
     `;
     
-    const conditionsResult = await db.prepare(conditionsQuery).bind(current_step_id).all();
+    const conditionsResult = await db.prepare(conditionsQuery).bind(current_step_id, current_step_id).all();
     
     if (conditionsResult.results && conditionsResult.results.length > 0) {
       console.log(`[DATABASE] Found ${conditionsResult.results.length} conditions for step ${current_step_id}`);
       
       // Check each condition against the response
       for (const condition of conditionsResult.results) {
-        const { condition_type, condition_value, condition_operator, next_step, next_step_id } = condition;
-        let conditionMet = false;
+        const { id, step_id, condition: condition_text, next_step_id, else_step_id,
+                condition_type, condition_value, condition_operator, condition_query, next_flow_id } = condition;
         
-        switch (condition_type) {
+        let conditionMet = false;
+        let actualConditionType = condition_type;
+        let actualConditionValue = condition_value;
+        
+        // Handle legacy condition format (condition column contains text)
+        if (!condition_type && condition_text) {
+          actualConditionType = 'legacy';
+          actualConditionValue = condition_text;
+          // Try to parse legacy condition format
+          // Legacy format: "response contains X" or "response matches X"
+          const lowerCondition = condition_text.toLowerCase();
+          if (lowerCondition.includes('contains')) {
+            actualConditionType = 'response_contains';
+            actualConditionValue = condition_text.split('contains')[1]?.trim() || '';
+          } else if (lowerCondition.includes('matches')) {
+            actualConditionType = 'response_matches';
+            actualConditionValue = condition_text.split('matches')[1]?.trim() || '';
+          } else if (lowerCondition.includes('starts with')) {
+            actualConditionType = 'response_starts_with';
+            actualConditionValue = condition_text.split('starts with')[1]?.trim() || '';
+          } else if (lowerCondition.includes('ends with')) {
+            actualConditionType = 'response_ends_with';
+            actualConditionValue = condition_text.split('ends with')[1]?.trim() || '';
+          }
+        }
+        
+        // Evaluate condition based on type
+        switch (actualConditionType) {
           case 'response_contains':
-            conditionMet = response_text.toLowerCase().includes(condition_value.toLowerCase());
+            conditionMet = response_text.toLowerCase().includes(actualConditionValue.toLowerCase());
             break;
           case 'response_matches':
             // Simple exact match (case-insensitive)
-            conditionMet = response_text.toLowerCase() === condition_value.toLowerCase();
+            conditionMet = response_text.toLowerCase() === actualConditionValue.toLowerCase();
             break;
           case 'response_starts_with':
-            conditionMet = response_text.toLowerCase().startsWith(condition_value.toLowerCase());
+            conditionMet = response_text.toLowerCase().startsWith(actualConditionValue.toLowerCase());
             break;
           case 'response_ends_with':
-            conditionMet = response_text.toLowerCase().endsWith(condition_value.toLowerCase());
+            conditionMet = response_text.toLowerCase().endsWith(actualConditionValue.toLowerCase());
+            break;
+          case 'legacy':
+            // Default legacy behavior: treat as contains
+            conditionMet = response_text.toLowerCase().includes(actualConditionValue.toLowerCase());
             break;
           default:
-            console.warn(`[DATABASE] Unknown condition type: ${condition_type}`);
+            console.warn(`[DATABASE] Unknown condition type: ${actualConditionType}`);
             continue;
         }
         
         if (conditionMet) {
-          console.log(`[DATABASE] Condition met: ${condition_type} "${condition_value}" -> next_step_id: ${next_step_id}, next_step (legacy): ${next_step}`);
+          console.log(`[DATABASE] Condition met: ${actualConditionType} "${actualConditionValue}" -> next_step_id: ${next_step_id}, next_flow_id: ${next_flow_id}`);
           
-          // Check for termination first (next_step_id = 'TERMINATE_FLOW' or next_step = -1)
-          if (next_step_id === 'TERMINATE_FLOW' || next_step === -1) {
+          // Check for termination first (next_step_id = 'TERMINATE_FLOW')
+          if (next_step_id === 'TERMINATE_FLOW') {
             console.log(`[DATABASE] Termination condition met, flow should end`);
             // Return a special marker to indicate termination
             return {
@@ -1492,63 +1526,97 @@ export async function getNextFlowBasedOnConditions(
   try {
     console.log(`[DATABASE] Getting next flow based on conditions for flow ${flow_id}, last response: ${last_response.substring(0, 100)}...`);
     
-    // Check if current flow has conditions (from flow_flow_conditions table)
+    // Check if current flow has conditions (from flow_step_conditions table with next_flow_id)
+    // Note: flow_flow_conditions table doesn't exist, using flow_step_conditions instead
     const flowConditionsQuery = `
-      SELECT ffc.condition_type, ffc.condition_value, ffc.condition_operator, 
-             ffc.next_flow_id
-      FROM flow_flow_conditions ffc
-      WHERE ffc.flow_id = ?
-      ORDER BY ffc.created_at
+      SELECT fsc.id, fsc.step_id, fsc.condition, fsc.next_step_id, fsc.else_step_id,
+             fsc.condition_type, fsc.condition_value, fsc.condition_operator,
+             fsc.condition_query, fsc.next_flow_id
+      FROM flow_step_conditions fsc
+      JOIN flow_steps fs ON fsc.flow_step_id = fs.id OR fsc.step_id = fs.id
+      WHERE fs.flow_id = ? AND fsc.next_flow_id IS NOT NULL
+      ORDER BY fsc.created_at
     `;
     
     const flowConditionsResult = await db.prepare(flowConditionsQuery).bind(flow_id).all();
     
     if (flowConditionsResult.results && flowConditionsResult.results.length > 0) {
-      console.log(`[DATABASE] Found ${flowConditionsResult.results.length} flow conditions for flow ${flow_id}`);
+      console.log(`[DATABASE] Found ${flowConditionsResult.results.length} flow transition conditions for flow ${flow_id}`);
       
       // Check each condition against the response
       for (const condition of flowConditionsResult.results) {
-        const { condition_type, condition_value, condition_operator, next_flow_id } = condition;
-        let conditionMet = false;
+        const { id, step_id, condition: condition_text, next_step_id, else_step_id,
+                condition_type, condition_value, condition_operator, condition_query, next_flow_id } = condition;
         
-        switch (condition_type) {
+        let conditionMet = false;
+        let actualConditionType = condition_type;
+        let actualConditionValue = condition_value;
+        
+        // Handle legacy condition format (condition column contains text)
+        if (!condition_type && condition_text) {
+          actualConditionType = 'legacy';
+          actualConditionValue = condition_text;
+          // Try to parse legacy condition format
+          const lowerCondition = condition_text.toLowerCase();
+          if (lowerCondition.includes('contains')) {
+            actualConditionType = 'response_contains';
+            actualConditionValue = condition_text.split('contains')[1]?.trim() || '';
+          } else if (lowerCondition.includes('matches')) {
+            actualConditionType = 'response_matches';
+            actualConditionValue = condition_text.split('matches')[1]?.trim() || '';
+          } else if (lowerCondition.includes('starts with')) {
+            actualConditionType = 'response_starts_with';
+            actualConditionValue = condition_text.split('starts with')[1]?.trim() || '';
+          } else if (lowerCondition.includes('ends with')) {
+            actualConditionType = 'response_ends_with';
+            actualConditionValue = condition_text.split('ends with')[1]?.trim() || '';
+          }
+        }
+        
+        // Evaluate condition based on type
+        switch (actualConditionType) {
           case 'response_contains':
-            conditionMet = last_response.toLowerCase().includes(condition_value.toLowerCase());
+            conditionMet = last_response.toLowerCase().includes(actualConditionValue.toLowerCase());
             break;
           case 'response_matches':
-            // Simple exact match (case-insensitive)
-            conditionMet = last_response.toLowerCase() === condition_value.toLowerCase();
+            conditionMet = last_response.toLowerCase() === actualConditionValue.toLowerCase();
             break;
           case 'response_starts_with':
-            conditionMet = last_response.toLowerCase().startsWith(condition_value.toLowerCase());
+            conditionMet = last_response.toLowerCase().startsWith(actualConditionValue.toLowerCase());
             break;
           case 'response_ends_with':
-            conditionMet = last_response.toLowerCase().endsWith(condition_value.toLowerCase());
+            conditionMet = last_response.toLowerCase().endsWith(actualConditionValue.toLowerCase());
+            break;
+          case 'legacy':
+            conditionMet = last_response.toLowerCase().includes(actualConditionValue.toLowerCase());
             break;
           default:
-            console.warn(`[DATABASE] Unknown flow condition type: ${condition_type}`);
+            console.warn(`[DATABASE] Unknown flow condition type: ${actualConditionType}`);
             continue;
         }
         
         if (conditionMet) {
-          console.log(`[DATABASE] Flow condition met: ${condition_type} "${condition_value}" -> next_flow_id: ${next_flow_id}`);
+          console.log(`[DATABASE] Flow transition condition met: ${actualConditionType} "${actualConditionValue}" -> next_flow_id: ${next_flow_id}`);
           return next_flow_id;
         }
       }
       
-      console.log(`[DATABASE] No flow conditions matched for flow ${flow_id}`);
+      console.log(`[DATABASE] No flow transition conditions matched for flow ${flow_id}`);
     } else {
-      console.log(`[DATABASE] No flow conditions found for flow ${flow_id}`);
+      console.log(`[DATABASE] No flow transition conditions found for flow ${flow_id}`);
     }
     
     // Also check flow_step_conditions with next_flow_id for the last step of the flow
+    // This is similar to the first query but focuses on the last step
     const stepConditionsQuery = `
-      SELECT fsc.condition_type, fsc.condition_value, fsc.condition_operator, 
-             fsc.next_flow_id
+      SELECT fsc.id, fsc.step_id, fsc.condition, fsc.next_step_id, fsc.else_step_id,
+             fsc.condition_type, fsc.condition_value, fsc.condition_operator,
+             fsc.condition_query, fsc.next_flow_id
       FROM flow_step_conditions fsc
-      JOIN flow_steps fs ON fsc.flow_step_id = fs.id
+      JOIN flow_steps fs ON fsc.flow_step_id = fs.id OR fsc.step_id = fs.id
       WHERE fs.flow_id = ? AND fsc.next_flow_id IS NOT NULL
       ORDER BY fs.order_index DESC, fsc.created_at
+      LIMIT 10
     `;
     
     const stepConditionsResult = await db.prepare(stepConditionsQuery).bind(flow_id).all();
@@ -1558,30 +1626,58 @@ export async function getNextFlowBasedOnConditions(
       
       // Check each condition against the response
       for (const condition of stepConditionsResult.results) {
-        const { condition_type, condition_value, condition_operator, next_flow_id } = condition;
-        let conditionMet = false;
+        const { id, step_id, condition: condition_text, next_step_id, else_step_id,
+                condition_type, condition_value, condition_operator, condition_query, next_flow_id } = condition;
         
-        switch (condition_type) {
+        let conditionMet = false;
+        let actualConditionType = condition_type;
+        let actualConditionValue = condition_value;
+        
+        // Handle legacy condition format (condition column contains text)
+        if (!condition_type && condition_text) {
+          actualConditionType = 'legacy';
+          actualConditionValue = condition_text;
+          // Try to parse legacy condition format
+          const lowerCondition = condition_text.toLowerCase();
+          if (lowerCondition.includes('contains')) {
+            actualConditionType = 'response_contains';
+            actualConditionValue = condition_text.split('contains')[1]?.trim() || '';
+          } else if (lowerCondition.includes('matches')) {
+            actualConditionType = 'response_matches';
+            actualConditionValue = condition_text.split('matches')[1]?.trim() || '';
+          } else if (lowerCondition.includes('starts with')) {
+            actualConditionType = 'response_starts_with';
+            actualConditionValue = condition_text.split('starts with')[1]?.trim() || '';
+          } else if (lowerCondition.includes('ends with')) {
+            actualConditionType = 'response_ends_with';
+            actualConditionValue = condition_text.split('ends with')[1]?.trim() || '';
+          }
+        }
+        
+        // Evaluate condition based on type
+        switch (actualConditionType) {
           case 'response_contains':
-            conditionMet = last_response.toLowerCase().includes(condition_value.toLowerCase());
+            conditionMet = last_response.toLowerCase().includes(actualConditionValue.toLowerCase());
             break;
           case 'response_matches':
-            // Simple exact match (case-insensitive)
-            conditionMet = last_response.toLowerCase() === condition_value.toLowerCase();
+            conditionMet = last_response.toLowerCase() === actualConditionValue.toLowerCase();
             break;
           case 'response_starts_with':
-            conditionMet = last_response.toLowerCase().startsWith(condition_value.toLowerCase());
+            conditionMet = last_response.toLowerCase().startsWith(actualConditionValue.toLowerCase());
             break;
           case 'response_ends_with':
-            conditionMet = last_response.toLowerCase().endsWith(condition_value.toLowerCase());
+            conditionMet = last_response.toLowerCase().endsWith(actualConditionValue.toLowerCase());
+            break;
+          case 'legacy':
+            conditionMet = last_response.toLowerCase().includes(actualConditionValue.toLowerCase());
             break;
           default:
-            console.warn(`[DATABASE] Unknown step condition type: ${condition_type}`);
+            console.warn(`[DATABASE] Unknown step condition type: ${actualConditionType}`);
             continue;
         }
         
         if (conditionMet) {
-          console.log(`[DATABASE] Step condition met: ${condition_type} "${condition_value}" -> next_flow_id: ${next_flow_id}`);
+          console.log(`[DATABASE] Step condition met: ${actualConditionType} "${actualConditionValue}" -> next_flow_id: ${next_flow_id}`);
           return next_flow_id;
         }
       }

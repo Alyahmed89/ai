@@ -2,7 +2,7 @@
 // ============================================================================
 
 import { SecureVariableResolver } from './secureVariableResolver';
-import { getTaskData } from './database';
+import { getTaskData, saveVariable } from './database';
 import { StepData } from '../types';
 
 // Backward compatibility wrapper for step instructions
@@ -518,6 +518,11 @@ export async function executeUnifiedEndpoints(
     response: any;
     timestamp: string;
   }>;
+  variables: {
+    api: Record<string, { response: any }>;
+    env: Record<string, string>;
+    previous_step: Record<string, any>;
+  };
 }> {
   const apiCalls: Array<{
     endpoint_id: string;
@@ -528,8 +533,15 @@ export async function executeUnifiedEndpoints(
     timestamp: string;
   }> = [];
   
+  // Initialize variables structure
+  const variables = {
+    api: {} as Record<string, { response: any }>,
+    env: { ...env },
+    previous_step: context.previous_step_responses || {}
+  };
+  
   if (!step.use_endpoints || !db || !context.step_run_id) {
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
   }
   
   try {
@@ -537,7 +549,7 @@ export async function executeUnifiedEndpoints(
     
     if (!Array.isArray(useEndpoints)) {
       console.error('[executeUnifiedEndpoints] use_endpoints must be a JSON array');
-      return { api_calls: apiCalls };
+      return { api_calls: apiCalls, variables };
     }
     
     // Normalize endpoints to object format with phase property
@@ -600,6 +612,9 @@ export async function executeUnifiedEndpoints(
         
         apiCalls.push(apiCall);
         
+        // Add to variables.api for {variable} substitution
+        variables.api[endpointConfig.endpoint_id] = { response: response.data };
+        
         // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
         if (endpoint.save_to_db !== false && endpointConfig.save_to_db !== false) {
           const { saveApiCall, generateId } = await import('./database');
@@ -618,16 +633,61 @@ export async function executeUnifiedEndpoints(
           });
         }
         
+        // Save variable to variables table for condition querying
+        if (context.flow_id && context.step_run_id) {
+          await saveVariable(db, {
+            id: generateId(),
+            flow_id: context.flow_id,
+            flow_run_id: context.execution_id,
+            step_id: context.step_id,
+            step_run_id: context.step_run_id,
+            key: `api.${endpointConfig.endpoint_id}.response`,
+            value: response.data,
+            source: 'api'
+          });
+        }
+        
       } catch (error) {
         console.error(`[executeUnifiedEndpoints] Error executing input endpoint ${endpointConfig.endpoint_id}:`, error);
       }
     }
     
-    return { api_calls: apiCalls };
+    // Save environment variables to variables table
+    if (context.flow_id && context.step_run_id && db) {
+      const { generateId } = await import('./database');
+      for (const [key, value] of Object.entries(variables.env)) {
+        await saveVariable(db, {
+          id: generateId(),
+          flow_id: context.flow_id,
+          flow_run_id: context.execution_id,
+          step_id: context.step_id,
+          step_run_id: context.step_run_id,
+          key: `env.${key}`,
+          value: value,
+          source: 'env'
+        });
+      }
+      
+      // Save previous step variables
+      for (const [key, value] of Object.entries(variables.previous_step)) {
+        await saveVariable(db, {
+          id: generateId(),
+          flow_id: context.flow_id,
+          flow_run_id: context.execution_id,
+          step_id: context.step_id,
+          step_run_id: context.step_run_id,
+          key: `previous_step.${key}`,
+          value: value,
+          source: 'previous_step'
+        });
+      }
+    }
+    
+    return { api_calls: apiCalls, variables };
     
   } catch (error) {
     console.error('[executeUnifiedEndpoints] Error parsing use_endpoints:', error);
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
   }
 }
 
@@ -653,6 +713,11 @@ export async function executeUnifiedCommands(
     response: any;
     timestamp: string;
   }>;
+  variables: {
+    api: Record<string, { response: any }>;
+    env: Record<string, string>;
+    previous_step: Record<string, any>;
+  };
 }> {
   const apiCalls: Array<{
     endpoint_id: string;
@@ -663,8 +728,15 @@ export async function executeUnifiedCommands(
     timestamp: string;
   }> = [];
   
+  // Initialize variables structure
+  const variables = {
+    api: {} as Record<string, { response: any }>,
+    env: { ...env },
+    previous_step: context.previous_step_responses || {}
+  };
+  
   if (!step.use_endpoints || !db || !context.step_run_id) {
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
   }
   
   try {
@@ -672,7 +744,7 @@ export async function executeUnifiedCommands(
     
     if (!Array.isArray(useEndpoints)) {
       console.error('[executeUnifiedCommands] use_endpoints must be a JSON array');
-      return { api_calls: apiCalls };
+      return { api_calls: apiCalls, variables };
     }
     
     // Normalize endpoints to object format with phase property
@@ -748,6 +820,9 @@ export async function executeUnifiedCommands(
         
         apiCalls.push(apiCall);
         
+        // Add to variables.api for {variable} substitution
+        variables.api[endpoint.id] = { response: response.data };
+        
         // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
         if (endpoint.save_to_db !== false && matchingEndpoint.save_to_db !== false) {
           const { saveApiCall, generateId } = await import('./database');
@@ -787,11 +862,11 @@ export async function executeUnifiedCommands(
       }
     }
     
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
     
   } catch (error) {
     console.error('[executeUnifiedCommands] Error parsing use_endpoints:', error);
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
   }
 }
 
@@ -896,6 +971,11 @@ export async function executeUnifiedOutputs(
     response: any;
     timestamp: string;
   }>;
+  variables: {
+    api: Record<string, { response: any }>;
+    env: Record<string, string>;
+    previous_step: Record<string, any>;
+  };
 }> {
   const apiCalls: Array<{
     endpoint_id: string;
@@ -906,8 +986,15 @@ export async function executeUnifiedOutputs(
     timestamp: string;
   }> = [];
   
+  // Initialize variables structure
+  const variables = {
+    api: {} as Record<string, { response: any }>,
+    env: { ...env },
+    previous_step: context.previous_step_responses || {}
+  };
+  
   if (!step.use_endpoints || !db || !context.step_run_id) {
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
   }
   
   try {
@@ -915,7 +1002,7 @@ export async function executeUnifiedOutputs(
     
     if (!Array.isArray(useEndpoints)) {
       console.error('[executeUnifiedOutputs] use_endpoints must be a JSON array');
-      return { api_calls: apiCalls };
+      return { api_calls: apiCalls, variables };
     }
     
     // Normalize endpoints to object format with phase property
@@ -991,6 +1078,9 @@ export async function executeUnifiedOutputs(
         
         apiCalls.push(apiCall);
         
+        // Add to variables.api for {variable} substitution
+        variables.api[endpointConfig.endpoint_id] = { response: response.data };
+        
         // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
         if (endpoint.save_to_db !== false && endpointConfig.save_to_db !== false) {
           const { saveApiCall, generateId } = await import('./database');
@@ -1014,11 +1104,11 @@ export async function executeUnifiedOutputs(
       }
     }
     
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
     
   } catch (error) {
     console.error('[executeUnifiedOutputs] Error parsing use_endpoints:', error);
-    return { api_calls: apiCalls };
+    return { api_calls: apiCalls, variables };
   }
 }
 
