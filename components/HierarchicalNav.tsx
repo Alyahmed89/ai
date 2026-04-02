@@ -50,6 +50,13 @@ export default function HierarchicalNav({
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
   
+  const [loading, setLoading] = useState({
+    projects: false,
+    flows: false,
+    flowRuns: false,
+    flowSteps: false,
+  });
+  
   const pathname = usePathname();
 
   const fetchFlows = useCallback(async () => {
@@ -157,13 +164,6 @@ export default function HierarchicalNav({
   const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [stepToDelete, setStepToDelete] = useState<string | null>(null);
-  
-  const [loading, setLoading] = useState({
-    projects: false,
-    flows: false,
-    flowRuns: false,
-    steps: false
-  });
 
   // Fetch projects on mount
   useEffect(() => {
@@ -667,7 +667,7 @@ export default function HierarchicalNav({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
                     </button>
-                    {loading.steps && (
+                    {loading.flowSteps && (
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
                     )}
                   </div>
