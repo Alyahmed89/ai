@@ -1300,11 +1300,12 @@ export async function getFlowDefinition(
   repository: string;
   branch: string;
   agent?: string;
+  system_message?: string;
 } | null> {
   try {
     // Use flow_definitions table (primary table)
     const result = await db.prepare(`
-      SELECT id, name, description, max_iterations, repository, branch, COALESCE(agent, 'openhands') as agent
+      SELECT id, name, description, max_iterations, repository, branch, COALESCE(agent, 'openhands') as agent, system_message
       FROM flow_definitions
       WHERE id = ?
     `).bind(flow_id).first();

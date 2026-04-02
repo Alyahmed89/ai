@@ -28,6 +28,7 @@ export interface ConversationData {
   branch?: string;
   max_iterations: number;
   agent?: string; // Agent type: 'openhands' (default) or 'deepseek'
+  system_message?: string; // Custom system message for DeepSeek
   
   // Current status
   status: 'active' | 'stopped' | 'error' | 'paused';

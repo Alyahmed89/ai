@@ -1480,7 +1480,8 @@ export class ConversationOrchestratorDO_2026A {
         step_status_sent: false, // Track if SENDING STEP status has been sent for current step
         // Initialize execution context with provided inputs
         execution_context: createExecutionContext(flow_id, executionSteps[0]?.step_id || 'step-1'),
-        effective_deepseek_api_key: effectiveDeepSeekApiKey // Store the API key from request
+        effective_deepseek_api_key: effectiveDeepSeekApiKey, // Store the API key from request
+        system_message: flowDefinition.system_message // Load system message from flow definition
       };
       
       console.log(`[DO:${this.state.id}] DEBUG: Conversation object created with state: ${this.conversation.state}`);
@@ -3088,8 +3089,8 @@ export class ConversationOrchestratorDO_2026A {
               branch: this.conversation.branch,
               iteration: this.conversation.iteration,
               max_iterations: this.conversation.max_iterations
-            }
-            // No system message - DeepSeek will execute step directly
+            },
+            this.conversation.system_message // Add this parameter
           );
           
           // Store initial messages in conversation
@@ -3148,8 +3149,8 @@ export class ConversationOrchestratorDO_2026A {
         branch: this.conversation.branch,
         iteration: this.conversation.iteration,
         max_iterations: this.conversation.max_iterations
-      }
-      // No system message - DeepSeek will execute step directly
+      },
+      this.conversation.system_message // Add this parameter
     );
     
     // Store initial messages in conversation
