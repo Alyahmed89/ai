@@ -5434,10 +5434,20 @@ ${messageContent}`;
         key: apiKey?.slice(0,5),
         path: "handleSendingStepState-2"
       });
+      
+      console.log('[DeepSeek REQUEST PAYLOAD]', JSON.stringify({
+        messages: messages,
+        prompt_length: prompt.length
+      }, null, 2));
+      
+      console.log('[DeepSeek PROMPT LENGTH]', prompt.length);
+      
       const deepseekResult = await callDeepSeek(
         apiKey,
         messages
       );
+      
+      console.log('[DeepSeek FULL RESULT]', JSON.stringify(deepseekResult, null, 2));
       
       if (!deepseekResult.success) {
         console.error(`[DO:${this.state.id}] DeepSeek API call failed: ${deepseekResult.error}`);
