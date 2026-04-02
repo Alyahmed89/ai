@@ -633,19 +633,9 @@ export async function executeUnifiedEndpoints(
           });
         }
         
-        // Save variable to variables table for condition querying
-        if (context.flow_id && context.step_run_id) {
-          await saveVariable(db, {
-            id: generateId(),
-            flow_id: context.flow_id,
-            flow_run_id: context.execution_id,
-            step_id: context.step_id,
-            step_run_id: context.step_run_id,
-            key: `api.${endpointConfig.endpoint_id}.response`,
-            value: response.data,
-            source: 'api'
-          });
-        }
+        // API results are stored in api_calls table, not as variables
+        // Variables are optional queries on stored data, not wrappers for API calls
+        // The API call has been saved to step_runs.api_calls via saveApiCall above
         
       } catch (error) {
         console.error(`[executeUnifiedEndpoints] Error executing input endpoint ${endpointConfig.endpoint_id}:`, error);
@@ -1344,10 +1334,42 @@ function resolveVariableReference(
 ): string | undefined {
   if (value.startsWith('{') && value.endsWith('}')) {
     const path = value.slice(1, -1);
+    
+    // Check for query syntax: {query:type=api&endpoint=test_endpoint_123&path=response.id}
+    if (path.startsWith('query:')) {
+      // Parse query parameters
+      const queryPart = path.substring(6); // Remove 'query:'
+      const params = new URLSearchParams(queryPart);
+      const type = params.get('type');
+      
+      if (type === 'api') {
+        const endpoint = params.get('endpoint');
+        const path = params.get('path');
+        
+        if (endpoint && variables.api && variables.api[endpoint]) {
+          let current: any = variables.api[endpoint];
+          if (current && current.response && path) {
+            // Navigate the path (e.g., "response.id")
+            const pathParts = path.split('.');
+            for (const part of pathParts) {
+              if (current && typeof current === 'object' && part in current) {
+                current = current[part];
+              } else {
+                return undefined;
+              }
+            }
+            return typeof current === 'string' || typeof current === 'number' ? String(current) : JSON.stringify(current);
+          }
+        }
+        return undefined;
+      }
+      // Add other query types here if needed
+    }
+    
     const parts = path.split('.');
     
     if (parts[0] === 'api' && parts.length >= 3) {
-      // {api.<endpoint_name>.response.<key>}
+      // {api.<endpoint_name>.response.<key>} - legacy syntax
       let current: any = variables.api;
       for (let i = 1; i < parts.length; i++) {
         if (current && typeof current === 'object' && parts[i] in current) {

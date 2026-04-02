@@ -5461,28 +5461,9 @@ ${messageContent}`;
               });
             }
             
-            // B) Extract → save variables (FROM apiCalls ONLY)
-            for (const call of resolvedStep.api_calls) {
-              const data = call.response?.data;
-              
-              if (!data || typeof data !== 'object') continue;
-              
-              for (const [key, value] of Object.entries(data)) {
-                console.log("PERSISTING_VARIABLE", key);
-                await saveVariable(this.db, {
-                  id: generateId(),
-                  flow_id: this.conversation.flow_id,
-                  flow_run_id: this.conversation.flow_run_id,
-                  step_id: step.id,
-                  step_run_id: stepRunId,
-                  key: `${call.endpoint_name}.${key}`,
-                  value,
-                  source: 'api'
-                });
-              }
-            }
-            
-            console.log(`[DO:${this.state.id}] Persisted ${resolvedStep.api_calls.length} API calls and extracted variables for failed step`);
+            // API results are stored in api_calls table, not extracted as variables
+            // Variables are optional queries on stored data, not wrappers for API calls
+            console.log(`[DO:${this.state.id}] Persisted ${resolvedStep.api_calls.length} API calls for failed step (no variable extraction)`);
           } catch (persistError) {
             console.error(`[DO:${this.state.id}] Error persisting API calls/variables for failed step:`, persistError);
             // Continue with step execution even if persistence fails
@@ -5565,28 +5546,9 @@ ${messageContent}`;
             });
           }
           
-          // B) Extract → save variables (FROM apiCalls ONLY)
-          for (const call of resolvedStep.api_calls) {
-            const data = call.response?.data;
-            
-            if (!data || typeof data !== 'object') continue;
-            
-            for (const [key, value] of Object.entries(data)) {
-              console.log("PERSISTING_VARIABLE", key);
-              await saveVariable(this.db, {
-                id: generateId(),
-                flow_id: this.conversation.flow_id,
-                flow_run_id: this.conversation.flow_run_id,
-                step_id: step.id,
-                step_run_id: stepRunId,
-                key: `${call.endpoint_name}.${key}`,
-                value,
-                source: 'api'
-              });
-            }
-          }
-          
-          console.log(`[DO:${this.state.id}] Persisted ${resolvedStep.api_calls.length} API calls and extracted variables`);
+          // API results are stored in api_calls table, not extracted as variables
+          // Variables are optional queries on stored data, not wrappers for API calls
+          console.log(`[DO:${this.state.id}] Persisted ${resolvedStep.api_calls.length} API calls (no variable extraction)`);
         } catch (persistError) {
           console.error(`[DO:${this.state.id}] Error persisting API calls/variables:`, persistError);
           // Continue with step execution even if persistence fails
