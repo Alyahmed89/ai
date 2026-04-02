@@ -2046,6 +2046,18 @@ crudApi.post('/endpoints/:name/test', async (c) => {
     const allowedDomains = endpoint.allowed_domains ? JSON.parse(endpoint.allowed_domains) : [];
     const tags = endpoint.tags ? JSON.parse(endpoint.tags) : [];
     
+    // Build authentication headers
+    const authHeaders: Record<string, string> = {};
+    if (endpoint.auth_type && endpoint.auth_value) {
+      if (endpoint.auth_type === 'bearer') {
+        authHeaders['Authorization'] = `Bearer ${endpoint.auth_value}`;
+      } else if (endpoint.auth_type === 'basic') {
+        authHeaders['Authorization'] = `Basic ${btoa(endpoint.auth_value)}`;
+      } else if (endpoint.auth_type === 'api_key') {
+        authHeaders['X-API-Key'] = endpoint.auth_value;
+      }
+    }
+    
     // Prepare request body if needed
     let requestBody = null;
     if (endpoint.body_template && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(endpoint.method)) {
@@ -2070,10 +2082,12 @@ crudApi.post('/endpoints/:name/test', async (c) => {
 
     // Make the test request
     const startTime = Date.now();
+    const url = endpoint.url;
     const fetchOptions: RequestInit = {
       method: endpoint.method,
       headers: {
         'Content-Type': 'application/json',
+        ...headers,
         ...authHeaders
       }
     };
