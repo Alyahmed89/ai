@@ -6099,21 +6099,91 @@ ${messageContent}`;
       await this.markTaskAsDone(tokens.skipTask.task_id, `Skipped: ${tokens.skipTask.reason}`);
     }
     
-    // 3. Check for [COMMAND: name] tokens
+    // 3. Unified endpoint system: Execute command and output phases
+    const apiCalls: any[] = [];
+    
+    // Generate step_run_id early for unified execution
+    const { generateStepRunId } = await import('../services/database');
+    const stepRunId = generateStepRunId();
+    
+    // Execute unified commands if step has use_endpoints
+    if (step.use_endpoints && this.env.FLOW_RUNS_DB) {
+      try {
+        const { executeUnifiedCommands } = await import('../services/stepResolver');
+        const commandResult = await executeUnifiedCommands(
+          step,
+          this.env.FLOW_RUNS_DB,
+          this.env as Record<string, string>,
+          response,
+          {
+            flow_id: this.conversation.flow_id,
+            execution_id: this.conversation.flow_run_id,
+            step_id: step.step_id,
+            step_run_id: stepRunId,
+            previous_step_responses: this.conversation.previous_step_responses
+          }
+        );
+        
+        apiCalls.push(...commandResult.api_calls);
+        
+        // If commands were executed, we should NOT continue with old command handling
+        // Command results are stored in step_runs.api_calls, not fed back to AI
+        if (commandResult.api_calls.length > 0) {
+          console.log(`[DO:${this.state.id}] Executed ${commandResult.api_calls.length} commands via unified system`);
+          // Skip old command handling
+          tokens.command = null;
+        }
+      } catch (error) {
+        console.error(`[DO:${this.state.id}] Error executing unified commands:`, error);
+      }
+    }
+    
+    // Execute unified outputs if step has use_endpoints
+    if (step.use_endpoints && this.env.FLOW_RUNS_DB) {
+      try {
+        const { executeUnifiedOutputs } = await import('../services/stepResolver');
+        const outputResult = await executeUnifiedOutputs(
+          step,
+          this.env.FLOW_RUNS_DB,
+          this.env as Record<string, string>,
+          response,
+          {
+            flow_id: this.conversation.flow_id,
+            execution_id: this.conversation.flow_run_id,
+            step_id: step.step_id,
+            step_run_id: stepRunId,
+            previous_step_responses: this.conversation.previous_step_responses
+          }
+        );
+        
+        apiCalls.push(...outputResult.api_calls);
+        
+        // If outputs were executed, skip old output handling
+        if (outputResult.api_calls.length > 0) {
+          console.log(`[DO:${this.state.id}] Executed ${outputResult.api_calls.length} outputs via unified system`);
+          // Skip old output handling
+          step.output = false;
+        }
+      } catch (error) {
+        console.error(`[DO:${this.state.id}] Error executing unified outputs:`, error);
+      }
+    }
+    
+    // 4. Legacy command handling (only if no unified commands were executed)
     if (tokens.command) {
       await this.handleCommand(tokens.command, step, response);
       return; // Command handling will continue the conversation
     }
     
-    // 4. Check for [END_FLOW] tokens
+    // 5. Check for [END_FLOW] tokens
     if (tokens.done.done) {
       await this.handleDoneResponse(response, 'ai_end_flow');
       return;
     }
     
-    // 5. Filter out any status messages from AI response and send output if enabled
+    // 6. Legacy output handling (only if no unified outputs were executed)
     const filteredResponse = this.filterStatusMessages(response);
-    if (filteredResponse) {
+    if (filteredResponse && step.output) {
       await this.sendStepOutputIfEnabled(step, filteredResponse);
     }
     

@@ -1616,29 +1616,56 @@ export async function saveApiCall(db: D1Database, apiCall: {
   method?: string;
   request?: any;
   response?: any;
+  phase?: 'input' | 'command' | 'output';
+  timestamp?: string;
 }): Promise<{success: boolean; error?: string}> {
   try {
+    // Instead of separate api_calls table, we store in step_runs.api_calls JSON column
+    // First, get existing api_calls for this step_run
+    const existingStepRun = await db.prepare(`
+      SELECT api_calls FROM step_runs WHERE id = ?
+    `).bind(apiCall.step_run_id).first();
+    
+    let apiCallsArray: any[] = [];
+    if (existingStepRun?.api_calls) {
+      try {
+        apiCallsArray = JSON.parse(existingStepRun.api_calls);
+        if (!Array.isArray(apiCallsArray)) {
+          apiCallsArray = [];
+        }
+      } catch (e) {
+        apiCallsArray = [];
+      }
+    }
+    
+    // Add new API call to array
+    const newApiCall = {
+      id: apiCall.id,
+      flow_id: apiCall.flow_id,
+      flow_run_id: apiCall.flow_run_id,
+      step_id: apiCall.step_id,
+      step_run_id: apiCall.step_run_id,
+      endpoint_id: apiCall.endpoint_id,
+      endpoint_name: apiCall.endpoint_name,
+      method: apiCall.method,
+      request: apiCall.request,
+      response: apiCall.response,
+      phase: apiCall.phase || 'input',
+      timestamp: apiCall.timestamp || new Date().toISOString()
+    };
+    
+    apiCallsArray.push(newApiCall);
+    
+    // Update step_runs with new api_calls JSON
     await db.prepare(`
-      INSERT INTO api_calls (
-        id, flow_id, flow_run_id, step_id, step_run_id,
-        endpoint_id, endpoint_name, method, request, response
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      apiCall.id,
-      apiCall.flow_id || null,
-      apiCall.flow_run_id || null,
-      apiCall.step_id || null,
-      apiCall.step_run_id || null,
-      apiCall.endpoint_id || null,
-      apiCall.endpoint_name || null,
-      apiCall.method || null,
-      apiCall.request ? JSON.stringify(apiCall.request) : null,
-      apiCall.response ? JSON.stringify(apiCall.response) : null
-    ).run();
+      UPDATE step_runs 
+      SET api_calls = ?
+      WHERE id = ?
+    `).bind(JSON.stringify(apiCallsArray), apiCall.step_run_id).run();
 
     return { success: true };
   } catch (error: any) {
-    console.error(`[DATABASE] Error saving API call: ${error.message}`);
+    console.error(`[DATABASE] Error saving API call to step_runs: ${error.message}`);
     return { success: false, error: error.message };
   }
 }

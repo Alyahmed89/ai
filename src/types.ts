@@ -337,10 +337,11 @@ export interface StepData {
   next_flow_id?: string; // For cross-flow transition to specific flow
   task_id?: string;
   requires_task?: boolean;
-  // input_keys removed per user directive
+  // DEPRECATED: input_keys - Use use_endpoints with phase: 'input' instead
+  // DEPRECATED: output_url - Use use_endpoints with phase: 'output' instead
   output?: boolean;
-  output_url?: string;
-  output_auth_token?: string;
+  output_url?: string; // DEPRECATED: Use use_endpoints with phase: 'output' instead
+  output_auth_token?: string; // DEPRECATED: Use endpoint_registry auth configuration instead
   // NEW: Dual-agent mode fields
   dual_agent?: boolean;
   ruler_agent?: 'deepseek' | 'openhands';
@@ -348,7 +349,7 @@ export interface StepData {
   max_iterations_per_step?: number;
   expected_response?: string; // Expected response that goes after instructions in prompt
   // NEW: Unified endpoint system
-  use_endpoints?: string; // JSON array of endpoint configurations
+  use_endpoints?: string; // JSON array of endpoint configurations with phase: 'input'|'command'|'output'
   extra_step?: boolean; // Whether to run extra step loop
   // NEW: Wait/Resume system
   await_input?: {
@@ -357,6 +358,8 @@ export interface StepData {
   };
   // NEW: Payload export control for flow-to-flow propagation
   export_payload?: boolean; // Whether to export step output as payload for next flow (default: true)
+  // NEW: System message override
+  system_message?: string; // Override system message for this step
 }
 
 // Step data with execution results for in-memory tracking

@@ -497,7 +497,7 @@ export function convertRequiresTaskToInputKeys(
   return JSON.stringify([config]);
 }
 
-// Unified endpoint execution for use_endpoints field
+// Unified endpoint execution for use_endpoints field - INPUT PHASE ONLY
 export async function executeUnifiedEndpoints(
   step: StepData,
   db: D1Database | null,
@@ -506,14 +506,8 @@ export async function executeUnifiedEndpoints(
     flow_id?: string;
     execution_id?: string;
     step_id?: string;
+    step_run_id?: string; // NEW: Required for saving to step_runs.api_calls
     previous_step_responses?: Record<string, any>;
-    api_calls?: Array<{
-      endpoint_id: string;
-      endpoint_name: string;
-      phase: string;
-      request: any;
-      response: any;
-    }>;
   }
 ): Promise<{
   api_calls: Array<{
@@ -522,8 +516,8 @@ export async function executeUnifiedEndpoints(
     phase: string;
     request: any;
     response: any;
+    timestamp: string;
   }>;
-  variables: Record<string, any>;
 }> {
   const apiCalls: Array<{
     endpoint_id: string;
@@ -531,17 +525,11 @@ export async function executeUnifiedEndpoints(
     phase: string;
     request: any;
     response: any;
-  }> = context.api_calls || [];
+    timestamp: string;
+  }> = [];
   
-  // STEP 2: Normalize variable format
-  const variables: Record<string, any> = {
-    api: {},
-    env: env,
-    previous_step: context.previous_step_responses || {}
-  };
-  
-  if (!step.use_endpoints || !db) {
-    return { api_calls: apiCalls, variables };
+  if (!step.use_endpoints || !db || !context.step_run_id) {
+    return { api_calls: apiCalls };
   }
   
   try {
@@ -549,7 +537,7 @@ export async function executeUnifiedEndpoints(
     
     if (!Array.isArray(useEndpoints)) {
       console.error('[executeUnifiedEndpoints] use_endpoints must be a JSON array');
-      return { api_calls: apiCalls, variables };
+      return { api_calls: apiCalls };
     }
     
     // Normalize endpoints to object format with phase property
@@ -562,18 +550,17 @@ export async function executeUnifiedEndpoints(
         return {
           endpoint_id: ep.endpoint_id || ep.endpoint_name || ep.name || ep.id,
           endpoint_name: ep.endpoint_name || ep.name || ep.endpoint_id || ep.id,
-          phase: ep.phase || 'command' // Default to command if not specified
+          phase: ep.phase || 'command', // Default to command if not specified
+          save_to_db: ep.save_to_db !== false, // Default to true
+          validation_schema: ep.validation_schema
         };
       }
       return ep;
     });
     
-    // Group endpoints by phase
+    // Execute input phase endpoints ONLY
     const inputEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'input');
-    const commandEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'command');
-    const outputEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'output');
     
-    // Execute input phase endpoints
     for (const endpointConfig of inputEndpoints) {
       try {
         // Get endpoint details from registry
@@ -581,59 +568,70 @@ export async function executeUnifiedEndpoints(
           SELECT id, name, url, method, auth_type, auth_value,
                  headers, body_template, query_params, response_path,
                  timeout_ms, max_retries, retry_delay_ms,
-                 parameter_schema, sample_response
+                 parameter_schema, sample_response, save_to_db
           FROM endpoint_registry
-          WHERE id = ?
+          WHERE id = ? OR name = ?
         `;
         
-        const endpoint = await db.prepare(endpointSql).bind(endpointConfig.endpoint_id).first();
+        const endpoint = await db.prepare(endpointSql)
+          .bind(endpointConfig.endpoint_id, endpointConfig.endpoint_name)
+          .first();
         
         if (!endpoint) {
           console.error(`[executeUnifiedEndpoints] Endpoint not found: ${endpointConfig.endpoint_id}`);
           continue;
         }
         
-        // Build request with variable substitution
-        const request = await buildEndpointRequest(endpoint, endpointConfig, variables, env);
+        // Build request (no variable substitution for inputs - isolated execution)
+        const request = await buildEndpointRequest(endpoint, endpointConfig, {}, env);
         
         // Execute request
         const response = await executeEndpointRequest(request, endpoint);
         
-        // STEP 3: Standardize API call storage
+        // Create API call record
         const apiCall = {
           endpoint_id: endpointConfig.endpoint_id,
           endpoint_name: endpoint.name,
           phase: 'input',
           request,
-          response
+          response,
+          timestamp: new Date().toISOString()
         };
         
         apiCalls.push(apiCall);
         
-        // STEP 2: Store response in normalized format
-        if (!variables.api[endpoint.name]) {
-          variables.api[endpoint.name] = {};
+        // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
+        if (endpoint.save_to_db !== false && endpointConfig.save_to_db !== false) {
+          const { saveApiCall, generateId } = await import('./database');
+          await saveApiCall(db, {
+            id: generateId(),
+            flow_id: context.flow_id,
+            step_id: context.step_id,
+            step_run_id: context.step_run_id,
+            endpoint_id: endpointConfig.endpoint_id,
+            endpoint_name: endpoint.name,
+            method: endpoint.method,
+            request: request,
+            response: response.data,
+            phase: 'input',
+            timestamp: apiCall.timestamp
+          });
         }
-        variables.api[endpoint.name].response = response.data;
         
       } catch (error) {
         console.error(`[executeUnifiedEndpoints] Error executing input endpoint ${endpointConfig.endpoint_id}:`, error);
       }
     }
     
-    // Execute command phase endpoints (will be handled by AI command parsing)
-    // This is a placeholder for STEP 4 implementation
-    // Command execution happens after AI response parsing
-    
-    return { api_calls: apiCalls, variables };
+    return { api_calls: apiCalls };
     
   } catch (error) {
     console.error('[executeUnifiedEndpoints] Error parsing use_endpoints:', error);
-    return { api_calls: apiCalls, variables };
+    return { api_calls: apiCalls };
   }
 }
 
-// STEP 4: Unified command execution
+// Unified command execution - COMMAND PHASE ONLY
 export async function executeUnifiedCommands(
   step: StepData,
   db: D1Database | null,
@@ -643,14 +641,8 @@ export async function executeUnifiedCommands(
     flow_id?: string;
     execution_id?: string;
     step_id?: string;
+    step_run_id?: string; // NEW: Required for saving to step_runs.api_calls
     previous_step_responses?: Record<string, any>;
-    api_calls?: Array<{
-      endpoint_id: string;
-      endpoint_name: string;
-      phase: string;
-      request: any;
-      response: any;
-    }>;
   }
 ): Promise<{
   api_calls: Array<{
@@ -659,12 +651,7 @@ export async function executeUnifiedCommands(
     phase: string;
     request: any;
     response: any;
-  }>;
-  command_results: Array<{
-    command_name: string;
-    success: boolean;
-    data?: any;
-    error?: string;
+    timestamp: string;
   }>;
 }> {
   const apiCalls: Array<{
@@ -673,17 +660,11 @@ export async function executeUnifiedCommands(
     phase: string;
     request: any;
     response: any;
-  }> = context.api_calls || [];
-  
-  const commandResults: Array<{
-    command_name: string;
-    success: boolean;
-    data?: any;
-    error?: string;
+    timestamp: string;
   }> = [];
   
-  if (!step.use_endpoints || !db) {
-    return { api_calls: apiCalls, command_results: commandResults };
+  if (!step.use_endpoints || !db || !context.step_run_id) {
+    return { api_calls: apiCalls };
   }
   
   try {
@@ -691,7 +672,7 @@ export async function executeUnifiedCommands(
     
     if (!Array.isArray(useEndpoints)) {
       console.error('[executeUnifiedCommands] use_endpoints must be a JSON array');
-      return { api_calls: apiCalls, command_results: commandResults };
+      return { api_calls: apiCalls };
     }
     
     // Normalize endpoints to object format with phase property
@@ -704,7 +685,9 @@ export async function executeUnifiedCommands(
         return {
           endpoint_id: ep.endpoint_id || ep.endpoint_name || ep.name || ep.id,
           endpoint_name: ep.endpoint_name || ep.name || ep.endpoint_id || ep.id,
-          phase: ep.phase || 'command' // Default to command if not specified
+          phase: ep.phase || 'command', // Default to command if not specified
+          save_to_db: ep.save_to_db !== false, // Default to true
+          validation_schema: ep.validation_schema
         };
       }
       return ep;
@@ -733,7 +716,7 @@ export async function executeUnifiedCommands(
           SELECT id, name, url, method, auth_type, auth_value,
                  headers, body_template, query_params, response_path,
                  timeout_ms, max_retries, retry_delay_ms,
-                 parameter_schema, sample_response
+                 parameter_schema, sample_response, save_to_db
           FROM endpoint_registry
           WHERE id = ? OR name = ?
         `;
@@ -747,46 +730,68 @@ export async function executeUnifiedCommands(
           continue;
         }
         
-        // Build request with command parameters
+        // Build request with command parameters (no variable substitution - isolated execution)
         const request = await buildCommandRequest(endpoint, command.params);
         
         // Execute command
         const response = await executeEndpointRequest(request, endpoint);
         
-        // Store API call
+        // Create API call record
         const apiCall = {
           endpoint_id: endpoint.id,
           endpoint_name: endpoint.name,
           phase: 'command',
           request,
-          response
+          response,
+          timestamp: new Date().toISOString()
         };
         
         apiCalls.push(apiCall);
         
-        // Store command result
-        commandResults.push({
-          command_name: command.name,
-          success: response.status >= 200 && response.status < 300,
-          data: response.data,
-          error: response.status >= 400 ? `HTTP ${response.status}` : undefined
-        });
+        // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
+        if (endpoint.save_to_db !== false && matchingEndpoint.save_to_db !== false) {
+          const { saveApiCall, generateId } = await import('./database');
+          await saveApiCall(db, {
+            id: generateId(),
+            flow_id: context.flow_id,
+            step_id: context.step_id,
+            step_run_id: context.step_run_id,
+            endpoint_id: endpoint.id,
+            endpoint_name: endpoint.name,
+            method: endpoint.method,
+            request: request,
+            response: response.data,
+            phase: 'command',
+            timestamp: apiCall.timestamp
+          });
+        }
         
       } catch (error: any) {
         console.error(`[executeUnifiedCommands] Error executing command ${command.name}:`, error);
-        commandResults.push({
-          command_name: command.name,
-          success: false,
-          error: error.message
+        
+        // Save error response to step_runs.api_calls
+        const { saveApiCall, generateId } = await import('./database');
+        await saveApiCall(db, {
+          id: generateId(),
+          flow_id: context.flow_id,
+          step_id: context.step_id,
+          step_run_id: context.step_run_id,
+          endpoint_id: matchingEndpoint.endpoint_id,
+          endpoint_name: command.name,
+          method: 'POST',
+          request: { command: command.name, params: command.params },
+          response: { error: error.message, success: false },
+          phase: 'command',
+          timestamp: new Date().toISOString()
         });
       }
     }
     
-    return { api_calls: apiCalls, command_results: commandResults };
+    return { api_calls: apiCalls };
     
   } catch (error) {
-    console.error('[executeUnifiedCommands] Error:', error);
-    return { api_calls: apiCalls, command_results: commandResults };
+    console.error('[executeUnifiedCommands] Error parsing use_endpoints:', error);
+    return { api_calls: apiCalls };
   }
 }
 
@@ -867,6 +872,287 @@ function parseCommandsFromAIResponse(aiResponse: string): Array<{name: string; p
   }
   
   return commands;
+}
+
+// Unified output execution - OUTPUT PHASE ONLY
+export async function executeUnifiedOutputs(
+  step: StepData,
+  db: D1Database | null,
+  env: Record<string, string>,
+  aiResponse: string,
+  context: {
+    flow_id?: string;
+    execution_id?: string;
+    step_id?: string;
+    step_run_id?: string; // NEW: Required for saving to step_runs.api_calls
+    previous_step_responses?: Record<string, any>;
+  }
+): Promise<{
+  api_calls: Array<{
+    endpoint_id: string;
+    endpoint_name: string;
+    phase: string;
+    request: any;
+    response: any;
+    timestamp: string;
+  }>;
+}> {
+  const apiCalls: Array<{
+    endpoint_id: string;
+    endpoint_name: string;
+    phase: string;
+    request: any;
+    response: any;
+    timestamp: string;
+  }> = [];
+  
+  if (!step.use_endpoints || !db || !context.step_run_id) {
+    return { api_calls: apiCalls };
+  }
+  
+  try {
+    const useEndpoints = JSON.parse(step.use_endpoints);
+    
+    if (!Array.isArray(useEndpoints)) {
+      console.error('[executeUnifiedOutputs] use_endpoints must be a JSON array');
+      return { api_calls: apiCalls };
+    }
+    
+    // Normalize endpoints to object format with phase property
+    const normalizedEndpoints = useEndpoints.map((ep: any) => {
+      if (typeof ep === 'string') {
+        // String format: assume it's a command endpoint
+        return { endpoint_id: ep, endpoint_name: ep, phase: 'command' };
+      } else if (typeof ep === 'object' && ep !== null) {
+        // Object format: ensure it has required properties
+        return {
+          endpoint_id: ep.endpoint_id || ep.endpoint_name || ep.name || ep.id,
+          endpoint_name: ep.endpoint_name || ep.name || ep.endpoint_id || ep.id,
+          phase: ep.phase || 'command', // Default to command if not specified
+          save_to_db: ep.save_to_db !== false, // Default to true
+          validation_schema: ep.validation_schema
+        };
+      }
+      return ep;
+    });
+    
+    // Get output phase endpoints
+    const outputEndpoints = normalizedEndpoints.filter((ep: any) => ep.phase === 'output');
+    
+    // Parse AI response for output data (nested JSON, key/value, arrays)
+    const outputData = parseAIResponseForOutput(aiResponse);
+    
+    // Execute each output endpoint
+    for (const endpointConfig of outputEndpoints) {
+      try {
+        // Get endpoint details from registry
+        const endpointSql = `
+          SELECT id, name, url, method, auth_type, auth_value,
+                 headers, body_template, query_params, response_path,
+                 timeout_ms, max_retries, retry_delay_ms,
+                 parameter_schema, sample_response, save_to_db
+          FROM endpoint_registry
+          WHERE id = ? OR name = ?
+        `;
+        
+        const endpoint = await db.prepare(endpointSql)
+          .bind(endpointConfig.endpoint_id, endpointConfig.endpoint_name)
+          .first();
+        
+        if (!endpoint) {
+          console.error(`[executeUnifiedOutputs] Endpoint not found: ${endpointConfig.endpoint_id}`);
+          continue;
+        }
+        
+        // Validate output data against schema if provided
+        if (endpoint.validation_schema && endpointConfig.validation_schema) {
+          const validationResult = validateOutputData(outputData, endpoint.validation_schema);
+          if (!validationResult.valid) {
+            console.error(`[executeUnifiedOutputs] Output validation failed for ${endpoint.name}:`, validationResult.errors);
+            continue;
+          }
+        }
+        
+        // Build request with output data
+        const request = await buildOutputRequest(endpoint, outputData);
+        
+        // Execute request
+        const response = await executeEndpointRequest(request, endpoint);
+        
+        // Create API call record
+        const apiCall = {
+          endpoint_id: endpointConfig.endpoint_id,
+          endpoint_name: endpoint.name,
+          phase: 'output',
+          request,
+          response,
+          timestamp: new Date().toISOString()
+        };
+        
+        apiCalls.push(apiCall);
+        
+        // Save to step_runs.api_calls via saveApiCall if endpoint.save_to_db is true
+        if (endpoint.save_to_db !== false && endpointConfig.save_to_db !== false) {
+          const { saveApiCall, generateId } = await import('./database');
+          await saveApiCall(db, {
+            id: generateId(),
+            flow_id: context.flow_id,
+            step_id: context.step_id,
+            step_run_id: context.step_run_id,
+            endpoint_id: endpointConfig.endpoint_id,
+            endpoint_name: endpoint.name,
+            method: endpoint.method,
+            request: request,
+            response: response.data,
+            phase: 'output',
+            timestamp: apiCall.timestamp
+          });
+        }
+        
+      } catch (error) {
+        console.error(`[executeUnifiedOutputs] Error executing output endpoint ${endpointConfig.endpoint_id}:`, error);
+      }
+    }
+    
+    return { api_calls: apiCalls };
+    
+  } catch (error) {
+    console.error('[executeUnifiedOutputs] Error parsing use_endpoints:', error);
+    return { api_calls: apiCalls };
+  }
+}
+
+// Helper to parse AI response for output data
+function parseAIResponseForOutput(aiResponse: string): any {
+  // Try to extract JSON from the response
+  const jsonMatch = aiResponse.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      // If JSON parsing fails, fall back to key-value parsing
+    }
+  }
+  
+  // Fall back to key-value parsing
+  const result: Record<string, any> = {};
+  const lines = aiResponse.split('\n');
+  
+  for (const line of lines) {
+    const match = line.match(/^(\w+):\s*(.+)$/);
+    if (match) {
+      const key = match[1];
+      let value = match[2].trim();
+      
+      // Try to parse JSON values
+      try {
+        if (value.startsWith('{') || value.startsWith('[')) {
+          value = JSON.parse(value);
+        } else if (value === 'true' || value === 'false') {
+          value = value === 'true';
+        } else if (!isNaN(Number(value)) && value !== '') {
+          value = Number(value);
+        }
+      } catch (e) {
+        // Keep as string if parsing fails
+      }
+      
+      result[key] = value;
+    }
+  }
+  
+  return result;
+}
+
+// Helper to validate output data against schema
+function validateOutputData(data: any, schema: string): { valid: boolean; errors: string[] } {
+  try {
+    const schemaObj = JSON.parse(schema);
+    const errors: string[] = [];
+    
+    // Simple validation - check required fields
+    if (schemaObj.required && Array.isArray(schemaObj.required)) {
+      for (const field of schemaObj.required) {
+        if (data[field] === undefined) {
+          errors.push(`Missing required field: ${field}`);
+        }
+      }
+    }
+    
+    // Type validation if schema has properties
+    if (schemaObj.properties && typeof schemaObj.properties === 'object') {
+      for (const [field, fieldSchema] of Object.entries(schemaObj.properties)) {
+        if (data[field] !== undefined) {
+          const fieldSchemaObj = fieldSchema as any;
+          if (fieldSchemaObj.type) {
+            const expectedType = fieldSchemaObj.type;
+            const actualType = typeof data[field];
+            
+            if (expectedType === 'number' && isNaN(Number(data[field]))) {
+              errors.push(`Field ${field} should be a number, got: ${actualType}`);
+            } else if (expectedType === 'boolean' && typeof data[field] !== 'boolean') {
+              errors.push(`Field ${field} should be a boolean, got: ${actualType}`);
+            } else if (expectedType === 'string' && typeof data[field] !== 'string') {
+              errors.push(`Field ${field} should be a string, got: ${actualType}`);
+            } else if (expectedType === 'object' && (typeof data[field] !== 'object' || data[field] === null)) {
+              errors.push(`Field ${field} should be an object, got: ${actualType}`);
+            } else if (expectedType === 'array' && !Array.isArray(data[field])) {
+              errors.push(`Field ${field} should be an array, got: ${actualType}`);
+            }
+          }
+        }
+      }
+    }
+    
+    return { valid: errors.length === 0, errors };
+  } catch (e) {
+    return { valid: false, errors: [`Invalid schema: ${e}`] };
+  }
+}
+
+// Helper to build output request
+async function buildOutputRequest(endpoint: any, outputData: any): Promise<any> {
+  let url = endpoint.url;
+  let body = endpoint.body_template ? JSON.parse(endpoint.body_template) : null;
+  const headers = endpoint.headers ? JSON.parse(endpoint.headers) : {};
+  const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : null;
+  
+  // Apply output data to URL, body, and query params
+  if (outputData && typeof outputData === 'object') {
+    for (const [key, value] of Object.entries(outputData)) {
+      if (typeof value === 'string' || typeof value === 'number') {
+        const stringValue = String(value);
+        
+        // Replace in URL
+        url = url.replace(`{${key}}`, encodeURIComponent(stringValue));
+        
+        // Replace in body
+        if (body && typeof body === 'string') {
+          body = body.replace(`{${key}}`, stringValue);
+        } else if (body && typeof body === 'object') {
+          // Deep replace in object
+          body = JSON.parse(JSON.stringify(body).replace(new RegExp(`\\{${key}\\}`, 'g'), stringValue));
+        }
+        
+        // Replace in query params
+        if (queryParams && typeof queryParams === 'object') {
+          for (const [qpKey, qpValue] of Object.entries(queryParams)) {
+            if (typeof qpValue === 'string' && qpValue.includes(`{${key}}`)) {
+              queryParams[qpKey] = qpValue.replace(`{${key}}`, stringValue);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  return {
+    url,
+    method: endpoint.method,
+    headers,
+    body,
+    query_params: queryParams
+  };
 }
 
 // Helper to build command request
