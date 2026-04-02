@@ -114,6 +114,11 @@ function extractKeysFromSampleResponse(sampleResponse: string | null): string[] 
   return [];
 }
 
+// Helper function to parse sample request and extract keys (cosmetic wrapper)
+function extractKeysFromSampleRequest(sampleRequest: string | null): string[] {
+  return extractKeysFromSampleResponse(sampleRequest);
+}
+
 // Create CRUD API router
 export const crudApi = new Hono<{ Bindings: CloudflareBindings }>();
 
@@ -1544,7 +1549,7 @@ crudApi.get('/endpoints/introspect', async (c) => {
     
     if (endpoint.sample_request) {
       console.log("Sample request:", endpoint.sample_request);
-      requestKeys = extractKeysFromSampleResponse(endpoint.sample_request);
+      requestKeys = extractKeysFromSampleRequest(endpoint.sample_request);
       console.log("Extracted request keys:", requestKeys);
       
       // Try to parse sample request for display
@@ -1767,13 +1772,14 @@ crudApi.post('/endpoints', async (c) => {
         cache_ttl_seconds, encrypt_cache, response_validator,
         allowed_domains, require_https, log_level,
         created_at, updated_at, created_by, tags,
-        ai_enabled, endpoint_type, sample_request, sample_response
+        ai_enabled, endpoint_type, sample_request, sample_response,
+        request_keys
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
     `;
 
@@ -1806,7 +1812,9 @@ crudApi.post('/endpoints', async (c) => {
       endpointData.ai_enabled ? 1 : 0,
       endpointData.endpoint_type || 'external_api',
       endpointData.sample_request ? JSON.stringify(endpointData.sample_request) : null,
-      endpointData.sample_response ? (typeof endpointData.sample_response === 'string' ? endpointData.sample_response : JSON.stringify(endpointData.sample_response)) : null
+      endpointData.sample_response ? (typeof endpointData.sample_response === 'string' ? endpointData.sample_response : JSON.stringify(endpointData.sample_response)) : null,
+      // Calculate request_keys from sample_request if provided
+      endpointData.sample_request ? JSON.stringify(extractKeysFromSampleRequest(JSON.stringify(endpointData.sample_request))) : null
     ];
 
     await db.prepare(sql).bind(...params).run();
@@ -1860,7 +1868,8 @@ crudApi.put('/endpoints/:name', async (c) => {
       'timeout_ms', 'max_retries', 'retry_delay_ms', 'cache_key',
       'cache_ttl_seconds', 'encrypt_cache', 'response_validator',
       'allowed_domains', 'require_https', 'log_level', 'tags',
-      'ai_enabled', 'endpoint_type', 'sample_request', 'sample_response'
+      'ai_enabled', 'endpoint_type', 'sample_request', 'sample_response',
+      'request_keys'
     ];
 
     fields.forEach(field => {
@@ -1894,6 +1903,23 @@ crudApi.put('/endpoints/:name', async (c) => {
         params.push(value);
       }
     });
+    
+    // If sample_request is being updated, automatically calculate request_keys
+    if ('sample_request' in endpointData) {
+      const sampleRequestValue = endpointData.sample_request;
+      const requestKeys = sampleRequestValue ? extractKeysFromSampleRequest(JSON.stringify(sampleRequestValue)) : [];
+      
+      // Add or update request_keys in the updates
+      const requestKeysIndex = updates.findIndex(update => update.startsWith('request_keys ='));
+      if (requestKeysIndex !== -1) {
+        // Replace existing request_keys value
+        params[requestKeysIndex] = JSON.stringify(requestKeys);
+      } else {
+        // Add new request_keys update
+        updates.push('request_keys = ?');
+        params.push(JSON.stringify(requestKeys));
+      }
+    }
 
     // Always update updated_at
     updates.push('updated_at = ?');
@@ -2254,6 +2280,7 @@ crudApi.get('/commands', async (c) => {
       method: cmd.method,
       endpoint: cmd.endpoint,
       parameters: cmd.sample_request ? JSON.parse(cmd.sample_request) : null,
+      parameter_keys: cmd.sample_request ? extractKeysFromSampleRequest(cmd.sample_request) : [],
       tags: cmd.tags ? JSON.parse(cmd.tags) : []
     }));
     
@@ -2305,6 +2332,7 @@ crudApi.get('/commands/:name', async (c) => {
       method: result.method,
       endpoint: result.endpoint,
       parameters: result.sample_request ? JSON.parse(result.sample_request) : null,
+      parameter_keys: result.sample_request ? extractKeysFromSampleRequest(result.sample_request) : [],
       response_path: result.response_path,
       tags: result.tags ? JSON.parse(result.tags) : []
     };
