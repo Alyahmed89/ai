@@ -1020,9 +1020,12 @@ function createEdgesFromSteps(steps: Step[]) {
       // If no default_next_step_id is set, try to infer from step order
       // Find the next step in order_index sequence
       const sortedSteps = [...steps].sort((a, b) => a.order_index - b.order_index);
+      console.log(`DEBUG: sortedSteps for step ${step.id}:`, sortedSteps.map(s => ({ id: s.id, order_index: s.order_index })));
       const currentIndex = sortedSteps.findIndex(s => s.id === step.id);
+      console.log(`DEBUG: currentIndex for ${step.id}: ${currentIndex}, sortedSteps.length: ${sortedSteps.length}`);
       if (currentIndex >= 0 && currentIndex < sortedSteps.length - 1) {
         const nextStep = sortedSteps[currentIndex + 1];
+        console.log(`DEBUG: nextStep for ${step.id}: ${nextStep.id} (order_index: ${nextStep.order_index})`);
         // Only create edge if target is different from source (no self-loops)
         if (nextStep.id !== step.id) {
           edges.push({
@@ -1056,6 +1059,8 @@ function createEdgesFromSteps(steps: Step[]) {
         } else {
           console.log(`Skipping self-loop edge for step ${step.id}`);
         }
+      } else {
+        console.log(`DEBUG: No next step for ${step.id} (currentIndex: ${currentIndex}, length: ${sortedSteps.length})`);
       }
     }
     
