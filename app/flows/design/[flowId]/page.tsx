@@ -583,7 +583,13 @@ async function fetchFlowData(flowId: string): Promise<{flowDefinition: FlowDefin
     const storedNextFlowIds = getStoredNextFlowIds(flowId);
     console.log('Loaded next_flow_ids from localStorage:', storedNextFlowIds);
     
-    const flowSteps = stepsArray
+    // Remove duplicate steps (keep only unique step IDs)
+    const uniqueStepsArray = stepsArray.filter((step: any, index: number, array: any[]) => 
+      array.findIndex((s: any) => s.id === step.id) === index
+    );
+    console.log('After removing duplicates:', uniqueStepsArray.map((s: any) => ({ id: s.id, flow_id: s.flow_id, step_type: s.step_type, extra_step: s.extra_step })));
+    
+    const flowSteps = uniqueStepsArray
       .filter((step: any) => step.flow_id === flowId)
       .sort((a: any, b: any) => a.order_index - b.order_index)
       .map((step: any) => ({
@@ -1012,12 +1018,8 @@ function createEdgesFromSteps(steps: Step[]) {
       });
     } else if (!step.default_next_step_id) {
       // If no default_next_step_id is set, try to infer from step order
-      // First, remove duplicate steps (keep only unique step IDs)
-      const uniqueSteps = [...steps].filter((s, index, array) => 
-        array.findIndex(item => item.id === s.id) === index
-      );
       // Find the next step in order_index sequence
-      const sortedSteps = [...uniqueSteps].sort((a, b) => a.order_index - b.order_index);
+      const sortedSteps = [...steps].sort((a, b) => a.order_index - b.order_index);
       const currentIndex = sortedSteps.findIndex(s => s.id === step.id);
       if (currentIndex >= 0 && currentIndex < sortedSteps.length - 1) {
         const nextStep = sortedSteps[currentIndex + 1];
