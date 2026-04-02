@@ -2016,20 +2016,16 @@ crudApi.post('/endpoints/:name/test', async (c) => {
     // Use ApiCaller to test the endpoint
     const apiCaller = new ApiCaller(db);
     
-    // Get endpoint to extract HTTP method
-    const endpoint = await db.prepare(`
-      SELECT method FROM endpoint_registry WHERE id = ? OR name = ?
-    `).bind(name, name).first();
-    
     const result = await apiCaller.callEndpoint(
       name,
       {
         parameters: testParams
       },
       'input', // Test endpoints are considered 'input' type
-      endpoint?.method // Pass the actual HTTP method
+      endpoint.method // Pass the actual HTTP method from the endpoint config
     );
 
+    if (!result.success) {
       return c.json({
         success: false,
         error: result.error || 'Request failed',
@@ -2048,7 +2044,9 @@ crudApi.post('/endpoints/:name/test', async (c) => {
     const headers = endpoint.headers ? JSON.parse(endpoint.headers) : {};
     const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : {};
     const allowedDomains = endpoint.allowed_domains ? JSON.parse(endpoint.allowed_domains) : [];
-    const tags = endpoint.tags ? JSON.parse(endpoint.tags) : [];// Prepare request body if needed
+    const tags = endpoint.tags ? JSON.parse(endpoint.tags) : [];
+    
+    // Prepare request body if needed
     let requestBody = null;
     if (endpoint.body_template && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(endpoint.method)) {
       let bodyTemplate = endpoint.body_template;
