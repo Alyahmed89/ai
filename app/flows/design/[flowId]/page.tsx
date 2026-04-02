@@ -1012,39 +1012,48 @@ function createEdgesFromSteps(steps: Step[]) {
       });
     } else if (!step.default_next_step_id) {
       // If no default_next_step_id is set, try to infer from step order
+      // First, remove duplicate steps (keep only unique step IDs)
+      const uniqueSteps = [...steps].filter((s, index, array) => 
+        array.findIndex(item => item.id === s.id) === index
+      );
       // Find the next step in order_index sequence
-      const sortedSteps = [...steps].sort((a, b) => a.order_index - b.order_index);
+      const sortedSteps = [...uniqueSteps].sort((a, b) => a.order_index - b.order_index);
       const currentIndex = sortedSteps.findIndex(s => s.id === step.id);
       if (currentIndex >= 0 && currentIndex < sortedSteps.length - 1) {
         const nextStep = sortedSteps[currentIndex + 1];
-        edges.push({
-          id: `e-inferred-${step.id}-${nextStep.id}`,
-          source: step.id,
-          target: nextStep.id,
-          animated: false,
-          style: {
-            stroke: '#10b981', // Green color for inferred edges
-            strokeWidth: 2,
-            strokeDasharray: '3,3', // Dashed to indicate inferred
-          },
-          markerEnd: {
-            type: 'arrowclosed' as const,
-            color: '#10b981',
-          },
-          data: {
-            condition: {
-              source: 'default',
-              operator: 'always',
-              value: null,
+        // Only create edge if target is different from source (no self-loops)
+        if (nextStep.id !== step.id) {
+          edges.push({
+            id: `e-inferred-${step.id}-${nextStep.id}`,
+            source: step.id,
+            target: nextStep.id,
+            animated: false,
+            style: {
+              stroke: '#10b981', // Green color for inferred edges
+              strokeWidth: 2,
+              strokeDasharray: '3,3', // Dashed to indicate inferred
             },
-            route: {
-              type: 'step' as const,
-              target_id: nextStep.id,
-              context_preservation: 'full' as const,
+            markerEnd: {
+              type: 'arrowclosed' as const,
+              color: '#10b981',
             },
-          },
-        });
-        console.log(`Created inferred edge from ${step.id} to ${nextStep.id} based on order_index`);
+            data: {
+              condition: {
+                source: 'default',
+                operator: 'always',
+                value: null,
+              },
+              route: {
+                type: 'step' as const,
+                target_id: nextStep.id,
+                context_preservation: 'full' as const,
+              },
+            },
+          });
+          console.log(`Created inferred edge from ${step.id} to ${nextStep.id} based on order_index`);
+        } else {
+          console.log(`Skipping self-loop edge for step ${step.id}`);
+        }
       }
     }
     
