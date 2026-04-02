@@ -52,6 +52,21 @@ export default function HierarchicalNav({
   
   const pathname = usePathname();
 
+  const fetchFlows = useCallback(async () => {
+    setLoading(prev => ({ ...prev, flows: true }));
+    try {
+      const response = await fetch('/api/proxy/api/flow-definitions');
+      if (response.ok) {
+        const data = await response.json();
+        setFlows(data);
+      }
+    } catch (error) {
+      console.error('Error fetching flows:', error);
+    } finally {
+      setLoading(prev => ({ ...prev, flows: false }));
+    }
+  }, [setFlows, setLoading]);
+
   // Handle flow run selection from URL (when page refreshes)
   const handleFlowRunFromUrl = useCallback(async (flowRunId: string) => {
     console.log('handleFlowRunFromUrl called with flowRunId:', flowRunId);
@@ -192,22 +207,6 @@ export default function HierarchicalNav({
       setLoading(prev => ({ ...prev, projects: false }));
     }
   };
-
-  const fetchFlows = useCallback(async () => {
-    setLoading(prev => ({ ...prev, flows: true }));
-    try {
-      const response = await fetch('/api/proxy/api/flow-definitions');
-      if (response.ok) {
-        const data = await response.json();
-        setFlows(data);
-      }
-    } catch (error) {
-      console.error('Error fetching flows:', error);
-    } finally {
-      setLoading(prev => ({ ...prev, flows: false }));
-    }
-  }, [setFlows, setLoading]);
-
 
 
   const fetchFlowRuns = async () => {
