@@ -994,7 +994,7 @@ function createEdgesFromSteps(steps: Step[]) {
           strokeWidth: 2,
         },
         markerEnd: {
-          type: 'arrowclosed',
+          type: 'arrowclosed' as const,
           color: '#3b82f6',
         },
         data: {
@@ -1027,7 +1027,7 @@ function createEdgesFromSteps(steps: Step[]) {
           strokeDasharray: '5,5',
         },
         markerEnd: {
-          type: 'arrowclosed',
+          type: 'arrowclosed' as const,
           color: '#8b5cf6',
         },
         data: {
@@ -2333,7 +2333,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
               strokeWidth: 2,
             },
             markerEnd: {
-              type: 'arrowclosed',
+              type: 'arrowclosed' as const as const,
               color: '#3b82f6',
             },
             data: {
@@ -2343,9 +2343,9 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                 value: null,
               },
               route: edge.route || {
-                type: 'step',
+                type: 'step' as const,
                 target_id: edge.target_step_id,
-                context_preservation: 'full',
+                context_preservation: 'full' as const,
               },
             },
             type: edge.type || 'default',
@@ -2601,7 +2601,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
           strokeWidth: 2,
         },
         markerEnd: {
-          type: 'arrowclosed',
+          type: 'arrowclosed' as const,
           color: '#3b82f6',
         },
         data: {
@@ -2934,7 +2934,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             strokeWidth: 2,
           },
           markerEnd: {
-            type: 'arrowclosed',
+            type: 'arrowclosed' as const,
             color: '#3b82f6',
           },
           data: {
@@ -3118,7 +3118,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             strokeWidth: 2,
           },
           markerEnd: {
-            type: 'arrowclosed',
+            type: 'arrowclosed' as const,
             color: '#3b82f6',
           },
           data: {
