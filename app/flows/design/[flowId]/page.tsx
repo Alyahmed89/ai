@@ -1417,7 +1417,8 @@ const NodePopup = ({
 }) => {
   const nodeData = node.data as NodeData;
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
-  const [selectedCommand, setSelectedCommand] = useState<string>('');
+  const [selectedInputCommand, setSelectedInputCommand] = useState<string>('');
+  const [selectedOutputCommand, setSelectedOutputCommand] = useState<string>('');
   const [availableCommands, setAvailableCommands] = useState<Array<{name: string, description: string, method: string, parameters: any}>>([]);
   const [loadingCommands, setLoadingCommands] = useState(false);
   const [showCreateCommand, setShowCreateCommand] = useState(false);
@@ -1457,13 +1458,29 @@ const NodePopup = ({
   useEffect(() => {
     const fetchCommands = async () => {
       try {
+        console.log('Fetching endpoints from proxy API...');
         setLoadingCommands(true);
-        const response = await fetch('/api/proxy/api/commands');
+        const response = await fetch('/api/proxy/api/endpoints');
+        console.log('Response status:', response.status);
         if (response.ok) {
           const data = await response.json();
-          if (data.success && data.data?.commands) {
-            setAvailableCommands(data.data.commands);
+          console.log('Endpoints data structure:', Object.keys(data));
+          if (data.success && data.data?.endpoints) {
+            // Transform endpoints to match the expected command format
+            const transformedEndpoints = data.data.endpoints.map((endpoint: any) => ({
+              name: endpoint.name,
+              description: endpoint.description || '',
+              method: endpoint.method || 'GET',
+              parameters: endpoint
+            }));
+            console.log('Transformed endpoints:', transformedEndpoints.length);
+            console.log('First endpoint:', transformedEndpoints[0]?.name);
+            setAvailableCommands(transformedEndpoints);
+          } else {
+            console.log('No endpoints found or data structure mismatch:', data);
           }
+        } else {
+          console.log('Failed to fetch endpoints:', response.status);
         }
       } catch (error) {
         console.error('Failed to fetch commands:', error);
@@ -1505,14 +1522,20 @@ const NodePopup = ({
   }, [selectedFlowId, instructions]);
   
   // Get parameters for selected command
-  const getCommandParameters = () => {
-    if (!selectedCommand) return [];
+  const getCommandParameters = (commandName: string) => {
+    if (!commandName) return [];
     
-    const command = availableCommands.find(cmd => cmd.name === selectedCommand);
+    const command = availableCommands.find(cmd => cmd.name === commandName);
     if (!command || !command.parameters) return [];
     
     try {
-      const params = JSON.parse(command.parameters);
+      let params;
+      if (typeof command.parameters === 'string') {
+        params = JSON.parse(command.parameters);
+      } else {
+        params = command.parameters;
+      }
+      
       if (params.properties) {
         return Object.keys(params.properties);
       }
@@ -1523,7 +1546,8 @@ const NodePopup = ({
     return [];
   };
   
-  const commandParameters = getCommandParameters();
+  const inputCommandParameters = getCommandParameters(selectedInputCommand);
+  const outputCommandParameters = getCommandParameters(selectedOutputCommand);
   
   // Handle flow selection change with auto-insertion of [input:message] and auto-save
   const handleFlowChange = (flowId: string) => {
@@ -1749,8 +1773,8 @@ const NodePopup = ({
             onFlowChange={setFlowInput}
             onStepChange={setStepInput}
             onFlowrunChange={setFlowrunInput}
-            selectedCommand={selectedCommand}
-            onCommandChange={setSelectedCommand}
+            selectedCommand={selectedInputCommand}
+            onCommandChange={setSelectedInputCommand}
             availableCommands={availableCommands}
             loadingCommands={loadingCommands}
             onAddCommand={() => setShowCreateCommand(true)}
@@ -1809,8 +1833,8 @@ const NodePopup = ({
             onFlowChange={setFlowInput}
             onStepChange={setStepInput}
             onFlowrunChange={setFlowrunInput}
-            selectedCommand={selectedCommand}
-            onCommandChange={setSelectedCommand}
+            selectedCommand={selectedOutputCommand}
+            onCommandChange={setSelectedOutputCommand}
             availableCommands={availableCommands}
             loadingCommands={loadingCommands}
             onAddCommand={() => setShowCreateCommand(true)}
@@ -1847,13 +1871,13 @@ const NodePopup = ({
           </div>
 
           {/* Command Parameters - only show when command is selected */}
-          {selectedCommand && commandParameters.length > 0 && (
+          {selectedInputCommand && inputCommandParameters.length > 0 && (
             <div>
               <div className="text-xs text-gray-400 mb-1 font-thin">
-                parameters for {selectedCommand}:
+                parameters for {selectedInputCommand}:
               </div>
               <div className="flex flex-wrap gap-1">
-                {commandParameters.map((param, index) => (
+                {inputCommandParameters.map((param, index) => (
                   <div 
                     key={index}
                     className="inline-flex items-center bg-black text-gray-100 border border-gray-700 rounded px-2 py-1 cursor-pointer hover:bg-gray-900 transition-colors text-xs font-thin"

@@ -90,6 +90,11 @@ export default function FlowSection({
   const [outputKeys, setOutputKeys] = useState<string[]>([]);
   const [loadingEndpoint, setLoadingEndpoint] = useState(false);
 
+  // Debug outputKeys changes
+  useEffect(() => {
+    console.log('outputKeys changed:', outputKeys, 'length:', outputKeys.length);
+  }, [outputKeys]);
+
   const flowOptions = ['main_pipeline', 'data_processing', 'etl_job', 'analytics_flow'];
   const stepOptions = ['process_data', 'validate_input', 'transform_results', 'load_final'];
   const flowrunOptions = ['daily_run_001', 'nightly_batch', 'manual_trigger', 'scheduled_flow'];
@@ -190,7 +195,7 @@ export default function FlowSection({
         setLoadingData(prev => ({ ...prev, flows: true }));
         const flowsResponse = await fetch('/api/proxy/api/flow-definitions');
         const flowsData = await flowsResponse.json();
-        const formattedFlows = flowsData.map((flow: any) => ({
+        const formattedFlows = (flowsData.data || []).map((flow: any) => ({
           id: flow.id,
           label: flow.name || flow.id,
           description: flow.description || `Flow ID: ${flow.id}`,
@@ -205,7 +210,7 @@ export default function FlowSection({
           setLoadingData(prev => ({ ...prev, steps: true }));
           const stepsResponse = await fetch(`/api/proxy/api/flow-steps?flow_id=${flowValue}`);
           const stepsData = await stepsResponse.json();
-          const formattedSteps = stepsData.map((step: any) => ({
+          const formattedSteps = (stepsData.data || []).map((step: any) => ({
             id: step.id,
             label: step.name || step.id,
             description: step.description || `Step in flow: ${flowValue}`,
@@ -221,7 +226,7 @@ export default function FlowSection({
           setLoadingData(prev => ({ ...prev, flowruns: true }));
           const flowrunsResponse = await fetch(`/api/proxy/api/flow-runs?flow_id=${flowValue}&limit=10`);
           const flowrunsData = await flowrunsResponse.json();
-          const formattedFlowruns = flowrunsData.map((run: any) => ({
+          const formattedFlowruns = (flowrunsData.data || []).map((run: any) => ({
             id: run.id,
             label: run.name || run.id,
             description: `Status: ${run.status}, Created: ${run.created_at}`,
@@ -254,77 +259,120 @@ export default function FlowSection({
 
   // Fetch endpoint details when command is selected
   useEffect(() => {
+    const abortController = new AbortController();
+    let isCurrent = true;
+
     const fetchEndpointDetails = async () => {
       if (!selectedCommand) {
         setInputKeys([]);
-        setOutputKeys([]);
+        // Don't clear outputKeys - keep previous if available
         return;
       }
 
       setLoadingEndpoint(true);
       try {
-        // STEP 1: Fetch both sources in parallel
+        // STEP 1: Fetch both sources in parallel with abort signal
         const [introspectResponse, endpointResponse] = await Promise.all([
-          fetch(`/api/proxy/api/endpoints/introspect?endpoint_id=${encodeURIComponent(selectedCommand)}`),
-          fetch(`/api/proxy/api/endpoints/${encodeURIComponent(selectedCommand)}`)
+          fetch(`/api/proxy/api/endpoints/introspect?endpoint_id=${encodeURIComponent(selectedCommand)}`, {
+            signal: abortController.signal
+          }),
+          fetch(`/api/proxy/api/endpoints/${encodeURIComponent(selectedCommand)}`, {
+            signal: abortController.signal
+          })
         ]);
 
-        // STEP 2: Extract input keys (parameters) from endpoint config
+        // Check if this request is still relevant
+        if (!isCurrent) return;
+
+        // STEP 2: Combined extraction of request and response keys
         let inputKeys: string[] = [];
-        if (endpointResponse.ok) {
+        let outputKeys: string[] = [];
+
+        if (introspectResponse.ok) {
+          const introspectData = await introspectResponse.json();
+          
+          // Extract request_keys for input parameters
+          inputKeys = introspectData.data?.request_keys || [];
+          
+          // Extract response_keys for available variables
+          outputKeys = introspectData.data?.response_keys || [];
+          
+          console.log('Introspect data received:', {
+            request_keys: inputKeys,
+            response_keys: outputKeys,
+            success: introspectData.success
+          });
+        } else {
+          console.error('Failed to fetch endpoint introspect:', introspectResponse.status);
+          // Don't clear existing keys on partial failure
+        }
+
+        // STEP 3: Fallback for input keys if introspect didn't provide them
+        if (inputKeys.length === 0 && endpointResponse.ok) {
           const endpointData = await endpointResponse.json();
           const endpoint = endpointData.data;
           
-          // First, try to get request_keys from introspect response
-          if (introspectResponse.ok) {
-            const introspectData = await introspectResponse.json();
-            console.log('Introspect request_keys check:', introspectData.data?.request_keys);
-            if (introspectData.data?.request_keys && introspectData.data.request_keys.length > 0) {
-              // Use request_keys from introspect endpoint
-              inputKeys = introspectData.data.request_keys;
-              console.log('Using request_keys from introspect:', inputKeys);
-            } else {
-              // Fall back to extracting from URL patterns and sample_request
-              const urlParams = extractParams(endpoint.url || '');
-              const queryParams = extractParams(endpoint.query_params || '');
-              const bodyParams = extractParams(endpoint.body_template || '');
+          console.log('Fallback triggered. Endpoint data:', {
+            hasSampleRequest: !!endpoint.sample_request,
+            sampleRequest: endpoint.sample_request,
+            url: endpoint.url,
+            query_params: endpoint.query_params,
+            body_template: endpoint.body_template
+          });
+          
+          const urlParams = extractParams(endpoint.url || '');
+          const queryParams = extractParams(endpoint.query_params || '');
+          const bodyParams = extractParams(endpoint.body_template || '');
+          
+          // Also try to extract from sample_request if available
+          let sampleRequestParams: string[] = [];
+          if (endpoint.sample_request) {
+            try {
+              // sample_request might be a JSON string that contains another JSON string
+              let sampleRequestStr = endpoint.sample_request;
+              console.log('Original sample_request string:', sampleRequestStr);
               
-              // Also try to extract from sample_request if available
-              let sampleRequestParams: string[] = [];
-              if (endpoint.sample_request) {
-                try {
-                  // sample_request might be a JSON string that contains another JSON string
-                  let sampleRequestStr = endpoint.sample_request;
-                  // Remove outer quotes if present
-                  if (sampleRequestStr.startsWith('"') && sampleRequestStr.endsWith('"')) {
-                    sampleRequestStr = sampleRequestStr.slice(1, -1);
-                  }
-                  // Parse the JSON
-                  const parsedRequest = JSON.parse(sampleRequestStr);
-                  // If it's still a string, parse again
-                  if (typeof parsedRequest === 'string') {
-                    const innerParsed = JSON.parse(parsedRequest);
-                    sampleRequestParams = Object.keys(innerParsed);
-                  } else {
-                    sampleRequestParams = Object.keys(parsedRequest);
-                  }
-                } catch (e) {
-                  console.warn('Failed to parse sample_request:', e);
-                }
+              // Remove outer quotes if present
+              if (sampleRequestStr.startsWith('"') && sampleRequestStr.endsWith('"')) {
+                sampleRequestStr = sampleRequestStr.slice(1, -1);
+                console.log('After removing outer quotes:', sampleRequestStr);
               }
               
-              // Combine and deduplicate
-              inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams, ...sampleRequestParams])];
+              // Parse the JSON
+              const parsedRequest = JSON.parse(sampleRequestStr);
+              console.log('Parsed request:', parsedRequest, 'type:', typeof parsedRequest);
+              
+              // If it's still a string, parse again
+              if (typeof parsedRequest === 'string') {
+                console.log('Parsed request is still a string, parsing again...');
+                const innerParsed = JSON.parse(parsedRequest);
+                sampleRequestParams = Object.keys(innerParsed);
+                console.log('Inner parsed keys:', sampleRequestParams);
+              } else {
+                sampleRequestParams = Object.keys(parsedRequest);
+                console.log('Direct parsed keys:', sampleRequestParams);
+              }
+            } catch (e) {
+              console.warn('Failed to parse sample_request:', e, 'sample_request:', endpoint.sample_request);
             }
-          } else {
-            // If introspect fails, fall back to URL patterns only
-            const urlParams = extractParams(endpoint.url || '');
-            const queryParams = extractParams(endpoint.query_params || '');
-            const bodyParams = extractParams(endpoint.body_template || '');
-            inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams])];
           }
           
+          console.log('Extracted params:', {
+            urlParams,
+            queryParams,
+            bodyParams,
+            sampleRequestParams
+          });
+          
+          // Combine and deduplicate
+          inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams, ...sampleRequestParams])];
+          console.log('Using fallback extracted params:', inputKeys);
+        }
+
+        // STEP 4: Set state only if this is still the current request
+        if (isCurrent) {
           setInputKeys(inputKeys);
+          setOutputKeys(outputKeys);
           
           // Initialize smartParams with input keys
           const initialParams = inputKeys.map(key => ({
@@ -339,47 +387,40 @@ export default function FlowSection({
               onUpdateQueryParam(index, param.key, param.value);
             }
           });
-        } else {
-          console.error('Failed to fetch endpoint data:', endpointResponse.status);
-          setInputKeys([]);
+          
+          console.log('State updated:', {
+            inputKeys,
+            outputKeys,
+            inputCount: inputKeys.length,
+            outputCount: outputKeys.length
+          });
         }
-
-        // STEP 3: Map output keys from introspect
-        let outputKeys: string[] = [];
-        if (introspectResponse.ok) {
-          const introspectData = await introspectResponse.json();
-          console.log('Introspect data:', introspectData);
-          console.log('Introspect data.data:', introspectData.data);
-          console.log('Introspect data.data?.response_keys:', introspectData.data?.response_keys);
-          // Use response_keys from introspect endpoint
-          outputKeys = introspectData.data?.response_keys || [];
-          console.log('Output keys:', outputKeys);
-          setOutputKeys(outputKeys);
-        } else {
-          console.error('Failed to fetch endpoint introspect:', introspectResponse.status);
-          setOutputKeys([]);
-        }
-
-        // STEP 4: Normalize structure (for debugging/logging)
-        const allKeys = [
-          ...inputKeys.map(name => ({ name, direction: "input" as const })),
-          ...outputKeys.map(name => ({ name, direction: "output" as const }))
-        ];
-        console.log('Endpoint keys loaded:', allKeys);
 
       } catch (error) {
+        if (error.name === 'AbortError') {
+          console.log('Fetch aborted for new endpoint selection');
+          return; // Ignore abort errors
+        }
         console.error('Error fetching endpoint details:', error);
-        setInputKeys([]);
-        setOutputKeys([]);
+        // Don't clear keys on error - preserve existing state
       } finally {
-        setLoadingEndpoint(false);
+        if (isCurrent) {
+          setLoadingEndpoint(false);
+        }
       }
     };
 
     fetchEndpointDetails();
+
+    // Cleanup function
+    return () => {
+      isCurrent = false;
+      abortController.abort();
+    };
   }, [selectedCommand]);
 
   // Backend will provide endpoint metadata including parameters and variables
+  console.log('FlowSection render - outputKeys:', outputKeys, 'length:', outputKeys.length, 'selectedCommand:', selectedCommand);
 
   return (
     <div className="node-popup-collapsible-section">
