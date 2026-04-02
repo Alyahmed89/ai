@@ -76,6 +76,7 @@ export async function resolveStepInstructions(
         flow_id: context.flow_id,
         execution_id: context.execution_id,
         step_id: step.step_id,
+        step_run_id: context.step_run_id,
         previous_step_responses: context.previous_step_responses
       });
       
@@ -527,6 +528,7 @@ export async function executeUnifiedEndpoints(
   };
 }> {
   console.log(`[executeUnifiedEndpoints] START: step_id=${step.step_id}, step_run_id=${context.step_run_id}, use_endpoints=${step.use_endpoints}`);
+  console.log('[executeUnifiedEndpoints] step_run_id:', context.step_run_id);
   
   const apiCalls: Array<{
     endpoint_id: string;
