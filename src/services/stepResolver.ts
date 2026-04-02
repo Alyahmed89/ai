@@ -579,6 +579,10 @@ export async function executeUnifiedEndpoints(
 
     for (const endpointConfig of inputEndpoints) {
       try {
+        console.log('THERE IS INPUT CALL');
+        console.log('CALLING endpoint:', endpointConfig.endpoint_id, 'with phase:', endpointConfig.phase);
+        console.log('WITH REQUEST:', JSON.stringify({ flow_id: context.flow_id, step_run_id: context.step_run_id }));
+        
         // Get endpoint HTTP method
         const endpoint = await db.prepare(`
           SELECT method FROM endpoint_registry WHERE id = ?
@@ -597,6 +601,9 @@ export async function executeUnifiedEndpoints(
           'input',
           endpoint?.method // Pass the HTTP method
         );
+
+        console.log('CALLED endpoint:', endpointConfig.endpoint_id, 'with status:', result.status);
+        console.log('WITH RESPONSE:', JSON.stringify(result.data));
 
         if (result.success && result.data) {
           // Create API call record

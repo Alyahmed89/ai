@@ -1377,6 +1377,10 @@ export class ConversationOrchestratorDO_2026A {
             const allInputs = { ...inputs, ...dbVariables };
             console.log(`[DO:${this.state.id}] All inputs for step resolution:`, Object.keys(allInputs));
             
+            // Generate step_run_id for unified execution (including input endpoints)
+            const { generateStepRunId } = await import('../services/database');
+            const stepRunId = generateStepRunId();
+            
             resolvedStep = await resolveStepInstructions(
               firstStep,
               this.env.FLOW_RUNS_DB,
@@ -1385,6 +1389,7 @@ export class ConversationOrchestratorDO_2026A {
                 flow_id: flow_id,
                 execution_id: `flow-${Date.now()}`,
                 step_id: firstStep.step_id,
+                step_run_id: stepRunId,
                 previous_step_responses: {}, // First step has no previous responses
                 inputs: allInputs // Pass inputs for [input:name] replacement
               }
@@ -5307,6 +5312,10 @@ ${messageContent}`;
       
       console.log(`[DO:${this.state.id}] All inputs for step ${step.step_id}:`, Object.keys(rawInputs));
       
+      // Generate step_run_id early for unified execution (including input endpoints)
+      const { generateStepRunId } = await import('../services/database');
+      const stepRunId = generateStepRunId();
+      
       resolvedStep = await resolveStepInstructions(
         step,
         this.env.FLOW_RUNS_DB,
@@ -5315,6 +5324,7 @@ ${messageContent}`;
           flow_id: this.conversation.flow_id,
           execution_id: this.flowRunId,
           step_id: step.step_id,
+          step_run_id: stepRunId,
           previous_step_responses: previousStepResponses,
           inputs: rawInputs
         }
