@@ -4874,6 +4874,7 @@ ${messageContent}`;
     
     // Declare resolvedStep at function scope so it's available throughout
     let resolvedStep: any = null;
+    let stepRunId: string | null = null;
     
     if (!this.conversation) {
       console.log(`[DO:${this.state.id}] DEBUG: No conversation in handleSendingStepState`);
@@ -5311,10 +5312,13 @@ ${messageContent}`;
       }
       
       console.log(`[DO:${this.state.id}] All inputs for step ${step.step_id}:`, Object.keys(rawInputs));
+      console.log(`[DO:${this.state.id}] Step ${step.step_id} use_endpoints value:`, step.use_endpoints);
+      console.log(`[DO:${this.state.id}] Step ${step.step_id} has use_endpoints:`, !!step.use_endpoints);
       
       // Generate step_run_id early for unified execution (including input endpoints)
       const { generateStepRunId } = await import('../services/database');
-      const stepRunId = generateStepRunId();
+      stepRunId = generateStepRunId();
+      console.log(`[DO:${this.state.id}] Generated step_run_id for input endpoints: ${stepRunId}`);
       
       resolvedStep = await resolveStepInstructions(
         step,
@@ -6073,10 +6077,6 @@ ${messageContent}`;
     
     // 3. Unified endpoint system: Execute command and output phases
     const apiCalls: any[] = [];
-    
-    // Generate step_run_id early for unified execution
-    const { generateStepRunId } = await import('../services/database');
-    const stepRunId = generateStepRunId();
     
     // Execute unified commands if step has use_endpoints
     if (step.use_endpoints && this.env.FLOW_RUNS_DB) {

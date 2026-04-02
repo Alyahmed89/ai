@@ -28,6 +28,7 @@ export async function resolveStepInstructions(
     payload?: any;
   };
 }> {
+  console.log(`[resolveStepInstructions] START: step_id=${step.step_id}, step_run_id=${context.step_run_id}, use_endpoints=${step.use_endpoints}`);
   
   // Load task data if task_id is provided (for both old and new systems)
   let taskData = null;
@@ -525,6 +526,8 @@ export async function executeUnifiedEndpoints(
     previous_step: Record<string, any>;
   };
 }> {
+  console.log(`[executeUnifiedEndpoints] START: step_id=${step.step_id}, step_run_id=${context.step_run_id}, use_endpoints=${step.use_endpoints}`);
+  
   const apiCalls: Array<{
     endpoint_id: string;
     endpoint_name: string;
@@ -542,6 +545,7 @@ export async function executeUnifiedEndpoints(
   };
   
   if (!step.use_endpoints || !db || !context.step_run_id) {
+    console.log(`[executeUnifiedEndpoints] SKIPPING: Missing required parameters - use_endpoints=${!!step.use_endpoints}, db=${!!db}, step_run_id=${!!context.step_run_id}`);
     return { api_calls: apiCalls, variables };
   }
   
