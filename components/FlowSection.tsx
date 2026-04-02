@@ -397,9 +397,11 @@ export default function FlowSection({
         }
 
       } catch (error) {
-        if (error.name === 'AbortError') {
-          console.log('Fetch aborted for new endpoint selection');
-          return; // Ignore abort errors
+        if (error instanceof Error || error instanceof DOMException) {
+          if (error.name === 'AbortError') {
+            console.log('Fetch aborted for new endpoint selection');
+            return; // Ignore abort errors
+          }
         }
         console.error('Error fetching endpoint details:', error);
         // Don't clear keys on error - preserve existing state
