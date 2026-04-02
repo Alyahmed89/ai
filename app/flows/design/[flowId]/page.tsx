@@ -1442,6 +1442,27 @@ const NodePopup = ({
   // Track if we've already auto-inserted [input:message]
   const hasAutoInsertedRef = useRef(false);
   
+  // Initialize selected commands from existing use_endpoints field
+  useEffect(() => {
+    const useEndpoints = nodeData?.step?.use_endpoints;
+    if (useEndpoints) {
+      try {
+        const endpoints = JSON.parse(useEndpoints);
+        if (Array.isArray(endpoints)) {
+          endpoints.forEach((endpoint: any) => {
+            if (endpoint.phase === 'input' && endpoint.endpoint_id) {
+              setSelectedInputCommand(endpoint.endpoint_id);
+            } else if (endpoint.phase === 'output' && endpoint.endpoint_id) {
+              setSelectedOutputCommand(endpoint.endpoint_id);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Failed to parse use_endpoints:', useEndpoints, error);
+      }
+    }
+  }, [nodeData?.step?.use_endpoints]);
+  
   // Enhanced UI states
   const [flowInput, setFlowInput] = useState('main_pipeline');
   const [stepInput, setStepInput] = useState('process_data');
@@ -1577,6 +1598,25 @@ const NodePopup = ({
     console.log('Selected flow ID:', flowId);
     console.log('DOM instructions:', domInstructions);
     console.log('nodeData:', nodeData);
+    console.log('Selected input command:', selectedInputCommand);
+    console.log('Selected output command:', selectedOutputCommand);
+    
+    // Build use_endpoints array based on selected commands
+    const endpointsArray = [];
+    if (selectedInputCommand) {
+      endpointsArray.push({
+        endpoint_id: selectedInputCommand,
+        phase: 'input'
+      });
+    }
+    if (selectedOutputCommand) {
+      endpointsArray.push({
+        endpoint_id: selectedOutputCommand,
+        phase: 'output'
+      });
+    }
+    const useEndpoints = endpointsArray.length > 0 ? JSON.stringify(endpointsArray) : null;
+    console.log('Generated use_endpoints:', useEndpoints);
     
     const currentStep = nodeData?.step;
     const updatedNode = {
@@ -1590,6 +1630,8 @@ const NodePopup = ({
           instructions: domInstructions,
           // Store next_flow_id (empty string becomes null for backend)
           next_flow_id: flowId || null,
+          // Update use_endpoints with selected endpoints
+          use_endpoints: useEndpoints || currentStep.use_endpoints,
         } : {
           // Create a minimal step object if it doesn't exist
           id: node.id || generateStableId('step'),
@@ -1615,7 +1657,7 @@ const NodePopup = ({
           default_next_step_id: null,
           step_number: null,
           requires_task: 0,
-          use_endpoints: null,
+          use_endpoints: useEndpoints,
           extra_step: 0,
           page_key: null,
           // Store next_flow_id for new steps
