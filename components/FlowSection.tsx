@@ -16,7 +16,7 @@ interface FlowSectionProps {
   onFlowrunChange: (value: string) => void;
   selectedCommand: string;
   onCommandChange: (value: string) => void;
-  availableCommands: Array<{ name: string; method: string }>;
+  availableCommands: Array<{ id: string; name: string; method: string }>;
   loadingCommands: boolean;
   onAddCommand: () => void;
   onShowSample: () => void;
@@ -162,7 +162,7 @@ export default function FlowSection({
             cmd.method?.toLowerCase().includes(query.toLowerCase())
           )
           .map(cmd => ({
-            id: cmd.name,
+            id: cmd.id || cmd.name,  // Use id if available, fallback to name
             label: cmd.name,
             description: `Method: ${cmd.method}`
           }));

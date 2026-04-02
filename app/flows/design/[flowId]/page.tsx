@@ -1419,7 +1419,7 @@ const NodePopup = ({
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
   const [selectedInputCommand, setSelectedInputCommand] = useState<string>('');
   const [selectedOutputCommand, setSelectedOutputCommand] = useState<string>('');
-  const [availableCommands, setAvailableCommands] = useState<Array<{name: string, description: string, method: string, parameters: any}>>([]);
+  const [availableCommands, setAvailableCommands] = useState<Array<{id: string, name: string, description: string, method: string, parameters: any}>>([]);
   const [loadingCommands, setLoadingCommands] = useState(false);
   const [showCreateCommand, setShowCreateCommand] = useState(false);
   const [newCommandData, setNewCommandData] = useState({
@@ -1445,14 +1445,18 @@ const NodePopup = ({
   // Initialize selected commands from existing use_endpoints field
   useEffect(() => {
     const useEndpoints = nodeData?.step?.use_endpoints;
+    console.log('Initializing commands from use_endpoints:', useEndpoints);
     if (useEndpoints) {
       try {
         const endpoints = JSON.parse(useEndpoints);
+        console.log('Parsed endpoints:', endpoints);
         if (Array.isArray(endpoints)) {
           endpoints.forEach((endpoint: any) => {
             if (endpoint.phase === 'input' && endpoint.endpoint_id) {
+              console.log('Setting input command:', endpoint.endpoint_id);
               setSelectedInputCommand(endpoint.endpoint_id);
             } else if (endpoint.phase === 'output' && endpoint.endpoint_id) {
+              console.log('Setting output command:', endpoint.endpoint_id);
               setSelectedOutputCommand(endpoint.endpoint_id);
             }
           });
@@ -1489,13 +1493,13 @@ const NodePopup = ({
           if (data.success && data.data?.endpoints) {
             // Transform endpoints to match the expected command format
             const transformedEndpoints = data.data.endpoints.map((endpoint: any) => ({
+              id: endpoint.id,
               name: endpoint.name,
               description: endpoint.description || '',
               method: endpoint.method || 'GET',
               parameters: endpoint
             }));
             console.log('Transformed endpoints:', transformedEndpoints.length);
-            console.log('First endpoint:', transformedEndpoints[0]?.name);
             setAvailableCommands(transformedEndpoints);
           } else {
             console.log('No endpoints found or data structure mismatch:', data);
@@ -2308,11 +2312,17 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         const flowExitNodes = createFlowExitNodes(flowSteps);
         const allNodes = [...initialNodes, ...flowExitNodes];
         
-        // Create edges: use flowEdges if available, otherwise try localStorage, otherwise create from steps
+        // Create edges: always create default edges from step connections, then add conditional edges from backend
         let initialEdges: CustomEdge[] = [];
+        
+        // First, create default edges from step connections (including default_next_step_id)
+        const defaultEdges = createEdgesFromSteps(flowSteps);
+        console.log('Created default edges from step connections:', defaultEdges);
+        
+        // Add conditional edges from backend DAG if available
         if (flowEdges && flowEdges.length > 0) {
           // Convert backend edges to React Flow edges
-          initialEdges = flowEdges.map((edge: any) => ({
+          const conditionalEdges = flowEdges.map((edge: any) => ({
             id: edge.id,
             source: edge.source_step_id,
             target: edge.target_step_id,
@@ -2339,7 +2349,10 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             },
             type: edge.type || 'default',
           }));
-          console.log('Created edges from backend DAG:', initialEdges);
+          console.log('Created conditional edges from backend DAG:', conditionalEdges);
+          
+          // Combine default and conditional edges
+          initialEdges = [...defaultEdges, ...conditionalEdges];
         } else {
           // Try to load edges from localStorage
           const storedEdges = getStoredEdges(currentFlowId);
@@ -2347,9 +2360,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
             initialEdges = storedEdges;
             console.log('Loaded edges from localStorage:', initialEdges);
           } else {
-            // Final fallback: create edges from step connections
-            initialEdges = createEdgesFromSteps(flowSteps);
-            console.log('Created edges from step connections (fallback):', initialEdges);
+            // Use default edges
+            initialEdges = defaultEdges;
           }
         }
         
