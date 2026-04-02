@@ -2274,15 +2274,41 @@ crudApi.get('/commands', async (c) => {
     const result = await db.prepare(query).bind(...params).all();
     
     // Parse JSON fields
-    const commands = result.results.map((cmd: any) => ({
-      name: cmd.name,
-      description: cmd.description,
-      method: cmd.method,
-      endpoint: cmd.endpoint,
-      parameters: cmd.sample_request ? JSON.parse(cmd.sample_request) : null,
-      parameter_keys: cmd.sample_request ? extractKeysFromSampleRequest(cmd.sample_request) : [],
-      tags: cmd.tags ? JSON.parse(cmd.tags) : []
-    }));
+    const commands = result.results.map((cmd: any) => {
+      // Helper function to parse JSON that might be double-stringified
+      const parseJsonField = (field: string | null) => {
+        if (!field) return null;
+        try {
+          // First try to parse as JSON
+          return JSON.parse(field);
+        } catch (e) {
+          // If that fails, try to parse it as a string that might contain JSON
+          try {
+            // Remove surrounding quotes if present
+            let cleaned = field.trim();
+            if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+              cleaned = cleaned.slice(1, -1);
+              // Unescape escaped quotes
+              cleaned = cleaned.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+            }
+            return JSON.parse(cleaned);
+          } catch (e2) {
+            console.error('Failed to parse JSON field:', field, e2);
+            return null;
+          }
+        }
+      };
+
+      return {
+        name: cmd.name,
+        description: cmd.description,
+        method: cmd.method,
+        endpoint: cmd.endpoint,
+        parameters: parseJsonField(cmd.sample_request),
+        parameter_keys: cmd.sample_request ? extractKeysFromSampleRequest(cmd.sample_request) : [],
+        tags: cmd.tags ? parseJsonField(cmd.tags) : []
+      };
+    });
     
     return c.json(successResponse({
       commands,
@@ -2325,16 +2351,40 @@ crudApi.get('/commands/:name', async (c) => {
       return c.json(notFoundResponse(`AI command not found or not enabled: ${name}`));
     }
     
+    // Helper function to parse JSON that might be double-stringified
+    const parseJsonField = (field: string | null) => {
+      if (!field) return null;
+      try {
+        // First try to parse as JSON
+        return JSON.parse(field);
+      } catch (e) {
+        // If that fails, try to parse it as a string that might contain JSON
+        try {
+          // Remove surrounding quotes if present
+          let cleaned = field.trim();
+          if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+            cleaned = cleaned.slice(1, -1);
+            // Unescape escaped quotes
+            cleaned = cleaned.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+          }
+          return JSON.parse(cleaned);
+        } catch (e2) {
+          console.error('Failed to parse JSON field:', field, e2);
+          return null;
+        }
+      }
+    };
+
     // Parse JSON fields
     const command = {
       name: result.name,
       description: result.description,
       method: result.method,
       endpoint: result.endpoint,
-      parameters: result.sample_request ? JSON.parse(result.sample_request) : null,
+      parameters: parseJsonField(result.sample_request),
       parameter_keys: result.sample_request ? extractKeysFromSampleRequest(result.sample_request) : [],
       response_path: result.response_path,
-      tags: result.tags ? JSON.parse(result.tags) : []
+      tags: parseJsonField(result.tags)
     };
     
     return c.json(successResponse({
