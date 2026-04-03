@@ -272,12 +272,12 @@ type CustomNode = Node<NodeData>;
 
 // Simplified node component with single primary type
 const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onClick?: (nodeId: string) => void; onAddNode?: (nodeId: string, event: React.MouseEvent) => void; onDeleteNode?: (nodeId: string) => void }) => {
-  const step = data.step as Step;
-  const nodeType = data.type || (step && step.step_type) || 'default';
+  const step = data?.step as Step | undefined;
+  const nodeType = data?.type || (step && step.step_type) || 'default';
   
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onDeleteNode && step.id) {
+    if (onDeleteNode && step?.id) {
       onDeleteNode(step.id);
     }
   };
@@ -295,8 +295,8 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
         maxWidth: '240px',
       }}
       onClick={() => {
-        console.log('Node clicked:', step.id, step);
-        if (onClick) {
+        console.log('Node clicked:', step?.id, step);
+        if (onClick && step?.id) {
           onClick(step.id);
         }
       }}
@@ -317,12 +317,12 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
       <div className="flex justify-between items-start">
         {/* Hidden title placeholder */}
         <div className="font-thin text-sm truncate italic text-gray-400">
-          {data.instructions ? data.instructions.substring(0, 30) + (data.instructions.length > 30 ? '...' : '') : 
+          {data?.instructions ? data.instructions.substring(0, 30) + (data.instructions.length > 30 ? '...' : '') : 
            step?.instructions ? step.instructions.substring(0, 30) + (step.instructions.length > 30 ? '...' : '') : 'Step'}
         </div>
         <div className="flex items-center space-x-1 ml-2">
           {/* Delete button - visible on hover only */}
-          {onDeleteNode && !data.isFlowExit && (
+          {onDeleteNode && !data?.isFlowExit && (
             <button
               onClick={handleDelete}
               className="text-xs text-red-400 hover:text-red-300 transition-colors p-0.5 rounded hover:bg-red-900/30 opacity-0 group-hover:opacity-100"
@@ -332,18 +332,18 @@ const CustomNode = ({ data, onClick, onAddNode, onDeleteNode }: { data: any; onC
             </button>
           )}
           {/* Add Step button */}
-          {!data.isFlowExit && (
+          {!data?.isFlowExit && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (onAddNode) {
+                if (onAddNode && step?.id) {
                   onAddNode(step.id, e);
                 }
               }}
               draggable
               onDragStart={(e) => {
                 e.stopPropagation();
-                e.dataTransfer.setData('application/node-add', step.id);
+                e.dataTransfer.setData('application/node-add', step?.id || '');
                 e.dataTransfer.effectAllowed = 'copy';
                 const dragIcon = document.createElement('div');
                 dragIcon.textContent = '+';
@@ -1168,6 +1168,36 @@ function createFlowExitNodes(steps: Step[]): CustomNode[] {
         instructions: `Route to flow: ${flowId}`,
         type: 'flow' as const,
         isFlowExit: true, // Mark as flow exit node
+        // Add minimal step object for compatibility with CustomNode component
+        step: {
+          id: `flow-exit-${flowId}`,
+          flow_id: '',
+          step_key: '',
+          title: `Exit to ${flowId}`,
+          instructions: `Route to flow: ${flowId}`,
+          step_type: 'flow',
+          order_index: 0,
+          blocking: 0,
+          auto_fail_on_error: 0,
+          retryable: 0,
+          created_at: '',
+          updated_at: '',
+          task_id: null,
+          output_keys: '',
+          output_url: null,
+          output_payload_template: null,
+          default_next_step: null,
+          output_auth_token: null,
+          input_keys: null,
+          output: 0,
+          default_next_step_id: null,
+          step_number: null,
+          requires_task: 0,
+          use_endpoints: null,
+          extra_step: 0,
+          page_key: null,
+          next_flow_id: flowId,
+        } as Step,
       },
       position: { x: 800, y: 100 + (index * 120) }, // Position to the right of regular nodes
     });
@@ -1279,6 +1309,12 @@ const NodePopup = ({
   onClose: () => void;
   flowId?: string;
 }) => {
+  // Guard clause: if node data is missing, don't render
+  if (!node?.data) {
+    console.error('NodePopup: node.data is missing', node);
+    return null;
+  }
+  
   const nodeData = node.data as NodeData;
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
   const [selectedInputCommand, setSelectedInputCommand] = useState<string>('');
@@ -2099,6 +2135,12 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
   const [saving, setSaving] = useState(false);
   
+  // Refs for tracking nodes/edges to avoid dependency loops
+  const nodesRef = useRef<CustomNode[]>([]);
+  const edgesRef = useRef<CustomEdge[]>([]);
+  const prevNodesRef = useRef<CustomNode[]>([]);
+  const prevEdgesRef = useRef<CustomEdge[]>([]);
+  
   // Flow run state
   const [startingFlow, setStartingFlow] = useState(false);
   const [flowRunId, setFlowRunId] = useState<string | null>(null);
@@ -2111,6 +2153,13 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   useEffect(() => {
     console.log('saving state changed:', saving);
   }, [saving]);
+  
+  // Sync refs with state to avoid dependency loops
+  useEffect(() => {
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+  }, [nodes, edges]);
+  
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   
   // State for modals
@@ -2165,13 +2214,29 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
 
   // Function to auto-save flow changes
   const autoSaveFlow = useCallback(async (deletedStepIdsOverride?: string[], deletedEdgeIdsOverride?: string[]) => {
-    if (saving || !currentFlowId || nodes.length === 0) {
-      console.log('Auto-save skipped:', { saving, currentFlowId, nodesCount: nodes.length });
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
+    
+    if (saving || !currentFlowId || currentNodes.length === 0) {
+      console.log('Auto-save skipped:', { saving, currentFlowId, nodesCount: currentNodes.length });
       return;
     }
 
+    // Check if nodes/edges actually changed
+    const nodesChanged = JSON.stringify(currentNodes) !== JSON.stringify(prevNodesRef.current);
+    const edgesChanged = JSON.stringify(currentEdges) !== JSON.stringify(prevEdgesRef.current);
+    
+    if (!nodesChanged && !edgesChanged) {
+      console.log('Auto-save skipped: no changes detected');
+      return;
+    }
+    
+    // Update previous refs
+    prevNodesRef.current = currentNodes;
+    prevEdgesRef.current = currentEdges;
+
     console.log('=== AUTO-SAVE START ===');
-    console.log('Auto-saving flow with', nodes.length, 'nodes and', edges.length, 'edges');
+    console.log('Auto-saving flow with', currentNodes.length, 'nodes and', currentEdges.length, 'edges');
     
     // Use overridden values if provided, otherwise use state
     const currentDeletedStepIds = deletedStepIdsOverride || deletedStepIds;
@@ -2181,21 +2246,36 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     console.log('Current deletedEdgeIds:', currentDeletedEdgeIds);
     
     // Debug: List all node IDs
-    console.log('All node IDs:', nodes.map(n => n.id));
-    console.log('All step IDs from node data:', nodes.map(n => (n.data as NodeData)?.step?.id).filter(Boolean));
+    console.log('All node IDs:', currentNodes.map(n => n.id));
+    console.log('All step IDs from node data:', currentNodes.map(n => (n.data as NodeData)?.step?.id).filter(Boolean));
     
     try {
       setSaving(true);
       
       // Convert nodes to steps for saving, EXCLUDING deleted steps
-      const updatedSteps: Step[] = nodes
+      const updatedSteps: Step[] = currentNodes
         .filter(node => {
-          const step = (node.data as NodeData)?.step as Step;
+          const step = (node.data as NodeData)?.step as Step | undefined;
           return step?.id && !currentDeletedStepIds.includes(step.id);
         })
         .map((node): Step => {
           const nodeData = node.data as NodeData;
-          const step = nodeData.step as Step;
+          const step = nodeData.step as Step | undefined;
+          if (!step) {
+            // Return a dummy step for nodes without step data (should not happen)
+            return {
+              id: node.id,
+              flow_id: currentFlowId,
+              step_type: 'default',
+              title: nodeData.title || 'Untitled',
+              instructions: nodeData.instructions || '',
+              order_index: 0,
+              extra_step: 0,
+              next_flow_id: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            } as Step;
+          }
           const nodeTitle = nodeData.title;
           const nodeInstructions = nodeData.instructions;
           const nodeStepType = nodeData.step?.step_type;
@@ -2236,7 +2316,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       updatedSteps.sort((a, b) => a.order_index - b.order_index);
       
       // Save complete DAG to backend
-      const success = await saveFlowDAG(currentFlowId, updatedSteps, edges, currentDeletedStepIds, currentDeletedEdgeIds);
+      const success = await saveFlowDAG(currentFlowId, updatedSteps, currentEdges, currentDeletedStepIds, currentDeletedEdgeIds);
       
       if (success) {
         console.log('Auto-save successful');
@@ -2244,7 +2324,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         setDeletedStepIds([]);
         setDeletedEdgeIds([]);
         // Also save edges to localStorage for persistence
-        storeEdges(currentFlowId, edges);
+        storeEdges(currentFlowId, currentEdges);
       } else {
         console.error('Auto-save failed');
       }
@@ -2254,7 +2334,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       setSaving(false);
       console.log('=== AUTO-SAVE END ===');
     }
-  }, [nodes, edges, currentFlowId, saving, deletedStepIds, deletedEdgeIds, setSaving, setDeletedStepIds, setDeletedEdgeIds, storeEdges]);
+  }, [currentFlowId, saving, deletedStepIds, deletedEdgeIds, setSaving, setDeletedStepIds, setDeletedEdgeIds, storeEdges]);
   
   const loadFlowData = async () => {
     setLoading(true);
@@ -2660,11 +2740,14 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
   }, [autoSaveFlow]);
 
   const onSaveFlow = useCallback(async () => {
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
+    
     console.log('=== onSaveFlow START ===');
-    console.log('Current nodes count:', nodes.length);
-    console.log('Current edges count:', edges.length);
+    console.log('Current nodes count:', currentNodes.length);
+    console.log('Current edges count:', currentEdges.length);
     console.log('Current flow ID:', currentFlowId);
-    console.log('Nodes state:', nodes.map(n => ({ id: n.id, instructions: n.data.instructions, next_flow_id: n.data.step?.next_flow_id })));
+    console.log('Nodes state:', currentNodes.map(n => ({ id: n.id, instructions: n.data.instructions, next_flow_id: n.data.step?.next_flow_id })));
     
     try {
       console.log('Setting saving to true');
@@ -2739,24 +2822,39 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       
       // Convert nodes back to steps with updated order_index, EXCLUDING deleted steps
       console.log('=== Converting nodes to steps ===');
-      console.log('Nodes:', nodes.map(n => ({ 
+      console.log('Nodes:', currentNodes.map(n => ({ 
         id: n.id, 
         type: n.data.type, 
         instructions: n.data.instructions, 
         step: n.data.step,
         step_next_flow_id: n.data.step?.next_flow_id 
       })));
-      const updatedSteps: Step[] = nodes
+      const updatedSteps: Step[] = currentNodes
         .filter(node => {
           const nodeData = node.data as NodeData;
-          const step = nodeData.step as Step;
+          const step = nodeData.step as Step | undefined;
           // Keep only nodes whose step ID is NOT in deletedStepIds
           // Also handle cases where step might be undefined
-          return step && step.id && !deletedStepIds.includes(step.id);
+          return step?.id && !deletedStepIds.includes(step.id);
         })
         .map((node): Step => {
         const nodeData = node.data as NodeData;
-        const step = nodeData.step as Step;
+        const step = nodeData.step as Step | undefined;
+        if (!step) {
+          // Return a dummy step for nodes without step data (should not happen)
+          return {
+            id: node.id,
+            flow_id: currentFlowId,
+            step_type: 'default',
+            title: nodeData.title || 'Untitled',
+            instructions: nodeData.instructions || '',
+            order_index: 0,
+            extra_step: 0,
+            next_flow_id: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          } as Step;
+        }
         const nodeTitle = nodeData.title;
         const nodeInstructions = nodeData.instructions;
         const nodeStepType = nodeData.step?.step_type;
@@ -2866,21 +2964,22 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       console.log('Setting saving to false (error case)');
       setSaving(false);
     }
-  }, [nodes, edges, currentFlowId, setSaving, loadFlowData]);
+  }, [currentFlowId, setSaving, loadFlowData]);
 
   // Function to add a new step
   const handleAddStep = useCallback(async () => {
     try {
       // Calculate position for new node (right of existing nodes)
-      const maxX = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) : 250;
-      const maxY = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.y)) : 25;
+      const currentNodes = nodesRef.current;
+      const maxX = currentNodes.length > 0 ? Math.max(...currentNodes.map(n => n.position.x)) : 250;
+      const maxY = currentNodes.length > 0 ? Math.max(...currentNodes.map(n => n.position.y)) : 25;
       
       // Create new step data
       const newStepData: Partial<Step> = {
-        title: `Step ${nodes.length + 1}`,
+        title: `Step ${currentNodes.length + 1}`,
         instructions: 'New step instructions...',
         step_type: 'default',
-        order_index: nodes.length + 1,
+        order_index: currentNodes.length + 1,
         blocking: 0,
         auto_fail_on_error: 0,
         retryable: 0,
@@ -2919,8 +3018,8 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       setNodes(prevNodes => [...prevNodes, newNode]);
       
       // If there are existing nodes, create an edge from the last node to the new one
-      if (nodes.length > 0) {
-        const lastNode = nodes[nodes.length - 1];
+      if (currentNodes.length > 0) {
+        const lastNode = currentNodes[currentNodes.length - 1];
         const newEdge: CustomEdge = {
           id: `e${lastNode.id}-${newStep.id}`,
           source: lastNode.id,
@@ -2962,13 +3061,16 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       console.error('Error adding new step:', error);
       alert('Error adding new step. See console for details.');
     }
-  }, [nodes, currentFlowId, autoSaveFlow]);
+  }, [currentFlowId, autoSaveFlow]);
 
   // Function to add a new node from a source node
   const handleAddNodeFromSource = useCallback(async (sourceNodeId: string, nodeType: 'step' | 'response', dropPosition?: { x: number, y: number }) => {
     try {
-      // Find source node
-      const sourceNode = nodes.find(n => n.id === sourceNodeId);
+      // Find source node using refs
+      const currentNodes = nodesRef.current;
+      const currentEdges = edgesRef.current;
+      
+      const sourceNode = currentNodes.find(n => n.id === sourceNodeId);
       if (!sourceNode) {
         console.error('Source node not found:', sourceNodeId);
         return;
@@ -3053,7 +3155,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       };
       
       // Find and redirect edges from source node
-      const edgesFromSource = edges.filter(edge => edge.source === sourceNodeId);
+      const edgesFromSource = currentEdges.filter(edge => edge.source === sourceNodeId);
       
       // Update nodes: insert new node and update order_index for subsequent nodes
       setNodes(prevNodes => {
@@ -3150,7 +3252,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       console.error('Error adding new node from source:', error);
       alert('Error adding new node. See console for details.');
     }
-  }, [nodes, edges, currentFlowId, reactFlowInstance, autoSaveFlow]);
+  }, [currentFlowId, reactFlowInstance, autoSaveFlow]);
 
   // Function to create first step in empty flow
   const handleCreateFirstStep = useCallback(async () => {
@@ -3243,6 +3345,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
     try {
       // Create new step data based on node type
       const nodeType = draggingNodeType;
+      const currentNodes = nodesRef.current;
       let stepTitle = '';
       let stepType = 'default';
       
@@ -3253,13 +3356,13 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         stepTitle = 'Output Step';
         stepType = 'output';
       } else if (nodeType === 'flow') {
-        stepTitle = `Flow ${nodes.length + 1}`;
+        stepTitle = `Flow ${currentNodes.length + 1}`;
         stepType = 'flow';
       } else if (nodeType === 'response') {
-        stepTitle = `Response Node ${nodes.length + 1}`;
+        stepTitle = `Response Node ${currentNodes.length + 1}`;
         stepType = 'response';
       } else {
-        stepTitle = `Step ${nodes.length + 1}`;
+        stepTitle = `Step ${currentNodes.length + 1}`;
         stepType = 'default';
       }
       
@@ -3268,7 +3371,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
         title: stepTitle,
         instructions: 'New step instructions...',
         step_type: stepType,
-        order_index: nodes.length + 1,
+        order_index: currentNodes.length + 1,
         blocking: 0,
         auto_fail_on_error: 0,
         retryable: 0,
@@ -3320,7 +3423,7 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
       alert('Error creating step. See console for details.');
       setDraggingNodeType(null);
     }
-  }, [reactFlowInstance, draggingNodeType, nodes, currentFlowId]);
+  }, [reactFlowInstance, draggingNodeType, currentFlowId]);
 
   // Initialize React Flow instance
   const onInit = useCallback((instance: ReactFlowInstance<CustomNode, CustomEdge>) => {
