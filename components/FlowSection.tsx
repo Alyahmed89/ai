@@ -110,12 +110,9 @@ export default function FlowSection({
   // This includes parameters (from request sample) and variables (from response sample)
 
   // Smart parameter management
-  useEffect(() => {
-    // Sync with parent component
-    if (JSON.stringify(smartParams) !== JSON.stringify(queryParams)) {
-      setSmartParams(queryParams);
-    }
-  }, [queryParams]);
+  // Note: We removed the useEffect that was causing state synchronization issues
+  // Parameters now flow unidirectionally: child updates parent via callbacks
+  // Parent is responsible for managing queryParams as source of truth
 
   // Auto-add new parameter row when current row is filled
   useEffect(() => {
@@ -360,25 +357,71 @@ export default function FlowSection({
               let sampleRequestStr = endpoint.sample_request;
               console.log('Original sample_request string:', sampleRequestStr);
               
-              // Remove outer quotes if present
-              if (sampleRequestStr.startsWith('"') && sampleRequestStr.endsWith('"')) {
-                sampleRequestStr = sampleRequestStr.slice(1, -1);
-                console.log('After removing outer quotes:', sampleRequestStr);
+              // Try different parsing strategies
+              let parsedRequest: any = null;
+              
+              // Strategy 1: Try to parse directly
+              try {
+                parsedRequest = JSON.parse(sampleRequestStr);
+                console.log('Strategy 1: Direct parse succeeded:', parsedRequest, 'type:', typeof parsedRequest);
+              } catch (e1) {
+                console.log('Strategy 1 failed, trying strategy 2...');
+                
+                // Strategy 2: Remove outer quotes and try again
+                if (sampleRequestStr.startsWith('"') && sampleRequestStr.endsWith('"')) {
+                  const withoutOuterQuotes = sampleRequestStr.slice(1, -1);
+                  console.log('After removing outer quotes:', withoutOuterQuotes);
+                  
+                  try {
+                    parsedRequest = JSON.parse(withoutOuterQuotes);
+                    console.log('Strategy 2: Parse after removing outer quotes succeeded:', parsedRequest, 'type:', typeof parsedRequest);
+                  } catch (e2) {
+                    console.log('Strategy 2 failed, trying strategy 3...');
+                    
+                    // Strategy 3: Try to fix escaped JSON (replace \" with ")
+                    // This handles cases like {\"userId\": 123}
+                    const fixedStr = withoutOuterQuotes.replace(/\\"/g, '"');
+                    console.log('After fixing escaped quotes:', fixedStr);
+                    
+                    try {
+                      parsedRequest = JSON.parse(fixedStr);
+                      console.log('Strategy 3: Parse after fixing escaped quotes succeeded:', parsedRequest, 'type:', typeof parsedRequest);
+                    } catch (e3) {
+                      console.log('Strategy 3 failed, giving up.');
+                      throw new Error('All parsing strategies failed');
+                    }
+                  }
+                } else {
+                  // No outer quotes, try strategy 3 directly
+                  const fixedStr = sampleRequestStr.replace(/\\"/g, '"');
+                  console.log('After fixing escaped quotes:', fixedStr);
+                  
+                  try {
+                    parsedRequest = JSON.parse(fixedStr);
+                    console.log('Strategy 3 (no outer quotes): Parse after fixing escaped quotes succeeded:', parsedRequest, 'type:', typeof parsedRequest);
+                  } catch (e3) {
+                    console.log('Strategy 3 failed, giving up.');
+                    throw new Error('All parsing strategies failed');
+                  }
+                }
               }
               
-              // Parse the JSON
-              const parsedRequest = JSON.parse(sampleRequestStr);
-              console.log('Parsed request:', parsedRequest, 'type:', typeof parsedRequest);
-              
-              // If it's still a string, parse again
-              if (typeof parsedRequest === 'string') {
-                console.log('Parsed request is still a string, parsing again...');
-                const innerParsed = JSON.parse(parsedRequest);
-                sampleRequestParams = Object.keys(innerParsed);
-                console.log('Inner parsed keys:', sampleRequestParams);
-              } else {
-                sampleRequestParams = Object.keys(parsedRequest);
-                console.log('Direct parsed keys:', sampleRequestParams);
+              // If we successfully parsed something, extract keys
+              if (parsedRequest) {
+                // If it's still a string, parse again (nested JSON string)
+                if (typeof parsedRequest === 'string') {
+                  console.log('Parsed request is still a string, parsing again...');
+                  try {
+                    const innerParsed = JSON.parse(parsedRequest);
+                    sampleRequestParams = Object.keys(innerParsed);
+                    console.log('Inner parsed keys:', sampleRequestParams);
+                  } catch (innerError) {
+                    console.warn('Failed to parse inner JSON string:', innerError);
+                  }
+                } else {
+                  sampleRequestParams = Object.keys(parsedRequest);
+                  console.log('Direct parsed keys:', sampleRequestParams);
+                }
               }
             } catch (e) {
               console.warn('Failed to parse sample_request:', e, 'sample_request:', endpoint.sample_request);
