@@ -297,6 +297,41 @@ export default function FlowSection({
           // Extract response_keys for available variables
           outputKeys = introspectData.data?.response_keys || [];
           
+          // Check if keys look like endpoint metadata
+          // Endpoint metadata typically includes: id, name, description, method, url
+          // If we see all or most of these together, they're likely metadata
+          const commonMetadataFields = ['id', 'name', 'description', 'method', 'url'];
+          
+          // Check response_keys for metadata
+          const outputMetadataCount = outputKeys.filter(key => commonMetadataFields.includes(key)).length;
+          
+          // If we have at least 3 of the common metadata fields in response_keys, assume it's metadata
+          // and filter them all out
+          if (outputMetadataCount >= 3) {
+            console.log('Detected metadata fields in response_keys, filtering them out');
+            outputKeys = outputKeys.filter(key => !commonMetadataFields.includes(key));
+          } else {
+            // Otherwise, only filter out fields that are definitely metadata
+            // 'method' and 'url' are almost always endpoint metadata, not response data
+            const definiteMetadataFields = ['method', 'url'];
+            outputKeys = outputKeys.filter(key => !definiteMetadataFields.includes(key));
+          }
+          
+          // Check request_keys for metadata
+          const inputMetadataCount = inputKeys.filter(key => commonMetadataFields.includes(key)).length;
+          
+          // If we have at least 3 of the common metadata fields in request_keys, assume it's metadata
+          // and filter them all out
+          if (inputMetadataCount >= 3) {
+            console.log('Detected metadata fields in request_keys, filtering them out');
+            inputKeys = inputKeys.filter(key => !commonMetadataFields.includes(key));
+          } else {
+            // Otherwise, only filter out fields that are definitely metadata
+            // 'method' and 'url' are almost always endpoint metadata, not request parameters
+            const definiteMetadataFields = ['method', 'url'];
+            inputKeys = inputKeys.filter(key => !definiteMetadataFields.includes(key));
+          }
+          
           console.log('Introspect data received:', {
             request_keys: inputKeys,
             response_keys: outputKeys,
@@ -307,19 +342,12 @@ export default function FlowSection({
           // Don't clear existing keys on partial failure
         }
 
-        // STEP 3: Fallback for input keys if introspect didn't provide them
-        if (inputKeys.length === 0 && endpointResponse.ok) {
+        // STEP 3: Fallback for input keys if introspect didn't provide them or provided incomplete list
+        if (endpointResponse.ok) {
           const endpointData = await endpointResponse.json();
           const endpoint = endpointData.data;
           
-          console.log('Fallback triggered. Endpoint data:', {
-            hasSampleRequest: !!endpoint.sample_request,
-            sampleRequest: endpoint.sample_request,
-            url: endpoint.url,
-            query_params: endpoint.query_params,
-            body_template: endpoint.body_template
-          });
-          
+          // Always extract parameters from endpoint data to ensure we get all possible parameters
           const urlParams = extractParams(endpoint.url || '');
           const queryParams = extractParams(endpoint.query_params || '');
           const bodyParams = extractParams(endpoint.body_template || '');
@@ -357,16 +385,27 @@ export default function FlowSection({
             }
           }
           
-          console.log('Extracted params:', {
+          console.log('Extracted params from endpoint:', {
             urlParams,
             queryParams,
             bodyParams,
-            sampleRequestParams
+            sampleRequestParams,
+            introspectKeys: inputKeys
           });
           
-          // Combine and deduplicate
-          inputKeys = [...new Set([...urlParams, ...queryParams, ...bodyParams, ...sampleRequestParams])];
-          console.log('Using fallback extracted params:', inputKeys);
+          // Combine all extracted parameters with introspect keys and deduplicate
+          const allExtractedParams = [...new Set([...urlParams, ...queryParams, ...bodyParams, ...sampleRequestParams])];
+          
+          // If introspect didn't provide any keys, use extracted params
+          if (inputKeys.length === 0) {
+            inputKeys = allExtractedParams;
+            console.log('Using fallback extracted params (no introspect keys):', inputKeys);
+          } else {
+            // Otherwise, combine introspect keys with extracted params
+            // This ensures we have all parameters even if introspect missed some
+            inputKeys = [...new Set([...inputKeys, ...allExtractedParams])];
+            console.log('Combined introspect keys with extracted params:', inputKeys);
+          }
         }
 
         // STEP 4: Set state only if this is still the current request
