@@ -18,6 +18,7 @@ export const flowStepSchema = z.object({
   auto_fail_on_error: booleanSchema.default(true),
   retryable: booleanSchema.default(false),
   task_id: z.string().optional().nullable().default(null),
+  requires_task: booleanSchema.default(false),
   // output_keys removed per user directive
   output_url: z.string().url().optional().nullable().default(null),
   output_payload_template: z.string().optional().nullable().default(null),
@@ -27,6 +28,21 @@ export const flowStepSchema = z.object({
   // input_keys removed per user directive
   output: booleanSchema.default(false),
   next_flow_id: z.string().optional().nullable().default(null),
+  // NEW: Dual-agent mode fields
+  dual_agent: booleanSchema.default(false),
+  ruler_agent: z.enum(['deepseek', 'openhands']).optional().nullable().default(null),
+  goal_criteria: z.string().optional().nullable().default(null),
+  max_iterations_per_step: z.number().int().positive().optional().nullable().default(null),
+  expected_response: z.string().optional().nullable().default(null),
+  // NEW: Unified endpoint system
+  use_endpoints: z.string().optional().nullable().default(null),
+  extra_step: booleanSchema.default(false),
+  // NEW: Wait/Resume system
+  await_input: z.string().optional().nullable().default(null), // JSON string
+  // NEW: Payload export control for flow-to-flow propagation
+  export_payload: booleanSchema.default(true),
+  // NEW: System message override
+  system_message: z.string().optional().nullable().default(null),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });

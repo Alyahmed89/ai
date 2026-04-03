@@ -586,9 +586,12 @@ crudApi.post('/flow-steps', async (c) => {
       INSERT INTO flow_steps (
         id, flow_id, step_key, title, instructions, order_index,
         page_key, blocking, auto_fail_on_error, retryable, task_id,
-        output_url, output_payload_template, default_next_step,
-        output_auth_token, output, next_flow_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        requires_task, output_url, output_payload_template, default_next_step,
+        output_auth_token, output, next_flow_id,
+        dual_agent, ruler_agent, goal_criteria, max_iterations_per_step,
+        expected_response, use_endpoints, extra_step, await_input,
+        export_payload, system_message, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     // Log bindings for debugging
@@ -604,12 +607,23 @@ crudApi.post('/flow-steps', async (c) => {
       getBoolean(validatedData.auto_fail_on_error, true),
       getBoolean(validatedData.retryable, false),
       dbValue(validatedData.task_id),
+      getBoolean(validatedData.requires_task, false),
       dbValue(validatedData.output_url),
       dbValue(validatedData.output_payload_template),
       dbValue(validatedData.default_next_step),
       dbValue(validatedData.output_auth_token),
       getBoolean(validatedData.output, false),
-      dbValue(validatedData.next_flow_id)
+      dbValue(validatedData.next_flow_id),
+      getBoolean(validatedData.dual_agent, false),
+      dbValue(validatedData.ruler_agent),
+      dbValue(validatedData.goal_criteria),
+      dbValue(validatedData.max_iterations_per_step),
+      dbValue(validatedData.expected_response),
+      dbValue(validatedData.use_endpoints),
+      getBoolean(validatedData.extra_step, false),
+      dbValue(validatedData.await_input),
+      getBoolean(validatedData.export_payload, true),
+      dbValue(validatedData.system_message)
     ];
     
     // Final safety check: ensure no undefined values
@@ -650,41 +664,61 @@ crudApi.put('/flow-steps/:id', async (c) => {
     }
     
     const validatedData = validation.data!;
-    const { 
-      flow_id, step_key, title, instructions, order_index,
-      page_key, blocking, auto_fail_on_error, retryable, task_id,
-      output_url, output_payload_template, default_next_step,
-      output_auth_token, output, next_flow_id
-    } = validatedData;
-
-    const sql = `
-      UPDATE flow_steps SET 
-        flow_id = ?, step_key = ?, title = ?, instructions = ?, order_index = ?,
-        page_key = ?, blocking = ?, auto_fail_on_error = ?, retryable = ?, task_id = ?,
-        output_url = ?, output_payload_template = ?, default_next_step = ?,
-        output_auth_token = ?, output = ?, next_flow_id = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `;
-
-    const result = await db.prepare(sql).bind(
-      flow_id,
-      step_key,
-      title,
-      instructions,
-      order_index,
-      dbValue(page_key),
-      getBoolean(blocking, true),
-      getBoolean(auto_fail_on_error, true),
-      getBoolean(retryable, false),
-      dbValue(task_id),
-      dbValue(output_url),
-      dbValue(output_payload_template),
-      dbValue(default_next_step),
-      dbValue(output_auth_token),
-      getBoolean(output, false),
-      dbValue(next_flow_id),
-      id
-    ).run();
+    
+    // Build dynamic SQL update
+    const updates: string[] = [];
+    const bindings: any[] = [];
+    
+    // Helper to add field to update if provided
+    const addUpdate = (field: string, value: any, transform?: (v: any) => any) => {
+      if (value !== undefined) {
+        updates.push(`${field} = ?`);
+        bindings.push(transform ? transform(value) : value);
+      }
+    };
+    
+    // Add all fields that might be in the update
+    addUpdate('flow_id', validatedData.flow_id);
+    addUpdate('step_key', validatedData.step_key);
+    addUpdate('title', validatedData.title);
+    addUpdate('instructions', validatedData.instructions);
+    addUpdate('order_index', validatedData.order_index);
+    addUpdate('page_key', validatedData.page_key, dbValue);
+    addUpdate('blocking', validatedData.blocking, (v) => getBoolean(v, true));
+    addUpdate('auto_fail_on_error', validatedData.auto_fail_on_error, (v) => getBoolean(v, true));
+    addUpdate('retryable', validatedData.retryable, (v) => getBoolean(v, false));
+    addUpdate('task_id', validatedData.task_id, dbValue);
+    addUpdate('requires_task', validatedData.requires_task, (v) => getBoolean(v, false));
+    addUpdate('output_url', validatedData.output_url, dbValue);
+    addUpdate('output_payload_template', validatedData.output_payload_template, dbValue);
+    addUpdate('default_next_step', validatedData.default_next_step, dbValue);
+    addUpdate('output_auth_token', validatedData.output_auth_token, dbValue);
+    addUpdate('output', validatedData.output, (v) => getBoolean(v, false));
+    addUpdate('next_flow_id', validatedData.next_flow_id, dbValue);
+    
+    // New fields
+    addUpdate('dual_agent', validatedData.dual_agent, (v) => getBoolean(v, false));
+    addUpdate('ruler_agent', validatedData.ruler_agent, dbValue);
+    addUpdate('goal_criteria', validatedData.goal_criteria, dbValue);
+    addUpdate('max_iterations_per_step', validatedData.max_iterations_per_step, dbValue);
+    addUpdate('expected_response', validatedData.expected_response, dbValue);
+    addUpdate('use_endpoints', validatedData.use_endpoints, dbValue);
+    addUpdate('extra_step', validatedData.extra_step, (v) => getBoolean(v, false));
+    addUpdate('await_input', validatedData.await_input, dbValue);
+    addUpdate('export_payload', validatedData.export_payload, (v) => getBoolean(v, true));
+    addUpdate('system_message', validatedData.system_message, dbValue);
+    
+    // Always update updated_at
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    
+    if (updates.length <= 1) { // Only updated_at
+      return c.json(errorResponse('No fields to update', 400));
+    }
+    
+    const sql = `UPDATE flow_steps SET ${updates.join(', ')} WHERE id = ?`;
+    bindings.push(id);
+    
+    const result = await db.prepare(sql).bind(...bindings.map(normalizeForDb)).run();
 
     if (result.meta.changes === 0) {
       return c.json(notFoundResponse('Flow step not found'));
@@ -3200,6 +3234,52 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
             updates.push('output = ?');
             bindings.push(getBoolean(step.output, false));
           }
+          if (step.requires_task !== undefined) {
+            updates.push('requires_task = ?');
+            bindings.push(getBoolean(step.requires_task, false));
+          }
+          
+          // New fields
+          if (step.dual_agent !== undefined) {
+            updates.push('dual_agent = ?');
+            bindings.push(getBoolean(step.dual_agent, false));
+          }
+          if (step.ruler_agent !== undefined) {
+            updates.push('ruler_agent = ?');
+            bindings.push(dbValue(step.ruler_agent));
+          }
+          if (step.goal_criteria !== undefined) {
+            updates.push('goal_criteria = ?');
+            bindings.push(dbValue(step.goal_criteria));
+          }
+          if (step.max_iterations_per_step !== undefined) {
+            updates.push('max_iterations_per_step = ?');
+            bindings.push(dbValue(step.max_iterations_per_step));
+          }
+          if (step.expected_response !== undefined) {
+            updates.push('expected_response = ?');
+            bindings.push(dbValue(step.expected_response));
+          }
+          if (step.use_endpoints !== undefined) {
+            updates.push('use_endpoints = ?');
+            bindings.push(dbValue(step.use_endpoints));
+          }
+          if (step.extra_step !== undefined) {
+            updates.push('extra_step = ?');
+            bindings.push(getBoolean(step.extra_step, false));
+          }
+          if (step.await_input !== undefined) {
+            updates.push('await_input = ?');
+            bindings.push(dbValue(step.await_input));
+          }
+          if (step.export_payload !== undefined) {
+            updates.push('export_payload = ?');
+            bindings.push(getBoolean(step.export_payload, true));
+          }
+          if (step.system_message !== undefined) {
+            updates.push('system_message = ?');
+            bindings.push(dbValue(step.system_message));
+          }
           
           // Always update updated_at
           updates.push('updated_at = CURRENT_TIMESTAMP');
@@ -3216,9 +3296,12 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
             INSERT INTO flow_steps (
               id, flow_id, step_key, title, instructions, order_index,
               page_key, blocking, auto_fail_on_error, retryable, task_id,
-              output_url, output_payload_template, default_next_step,
-              output_auth_token, output, next_flow_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              requires_task, output_url, output_payload_template, default_next_step,
+              output_auth_token, output, next_flow_id,
+              dual_agent, ruler_agent, goal_criteria, max_iterations_per_step,
+              expected_response, use_endpoints, extra_step, await_input,
+              export_payload, system_message, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `;
 
           const bindings = [
@@ -3233,12 +3316,23 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
             getBoolean(step.auto_fail_on_error, true),
             getBoolean(step.retryable, false),
             dbValue(step.task_id),
+            getBoolean(step.requires_task, false),
             dbValue(step.output_url),
             dbValue(step.output_payload_template),
             dbValue(step.default_next_step),
             dbValue(step.output_auth_token),
             getBoolean(step.output, false),
-            dbValue(step.next_flow_id)
+            dbValue(step.next_flow_id),
+            getBoolean(step.dual_agent, false),
+            dbValue(step.ruler_agent),
+            dbValue(step.goal_criteria),
+            dbValue(step.max_iterations_per_step),
+            dbValue(step.expected_response),
+            dbValue(step.use_endpoints),
+            getBoolean(step.extra_step, false),
+            dbValue(step.await_input),
+            getBoolean(step.export_payload, true),
+            dbValue(step.system_message)
           ];
           
           statements.push(db.prepare(sql).bind(...bindings.map(normalizeForDb)));
