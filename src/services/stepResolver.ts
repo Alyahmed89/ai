@@ -5,6 +5,7 @@ import { SecureVariableResolver } from './secureVariableResolver';
 import { getTaskData, saveVariable } from './database';
 import { StepData } from '../types';
 import { ApiCaller } from './ApiCaller';
+import { resolveTextVariables } from './variableResolver';
 
 // Backward compatibility wrapper for step instructions
 export async function resolveStepInstructions(
@@ -130,6 +131,26 @@ export async function resolveStepInstructions(
       // Add command format instructions if step has command endpoints
       instructions = addCommandFormatInstructions(instructions, step);
       
+      // Resolve ƐĐᜃ...ƐĐᜃ variables if present (new system)
+      if (instructions.includes('ƐĐᜃ') && db && context.execution_id) {
+        try {
+          console.log(`[StepResolver] Resolving ƐĐᜃ variables with execution_id: ${context.execution_id}`);
+          instructions = await resolveTextVariables(
+            db,
+            instructions,
+            {
+              flow_id: context.flow_id,
+              flow_run_id: context.execution_id, // execution_id is flow_run_id in ConversationDO
+              step_id: context.step_id
+            }
+          );
+          console.log(`[StepResolver] ƐĐᜃ variables resolved successfully`);
+        } catch (error) {
+          console.error(`[StepResolver] Error resolving ƐĐᜃ variables:`, error);
+          // Don't fail - leave variables unresolved
+        }
+      }
+      
       return {
         instructions,
         variables: unifiedResult.variables,
@@ -215,8 +236,30 @@ export async function resolveStepInstructions(
         }
       );
       
+      let finalInstructions = resolved.instructions;
+      
+      // Resolve ƐĐᜃ...ƐĐᜃ variables if present (new system)
+      if (finalInstructions.includes('ƐĐᜃ') && db && context.execution_id) {
+        try {
+          console.log(`[StepResolver:legacy] Resolving ƐĐᜃ variables with execution_id: ${context.execution_id}`);
+          finalInstructions = await resolveTextVariables(
+            db,
+            finalInstructions,
+            {
+              flow_id: context.flow_id,
+              flow_run_id: context.execution_id, // execution_id is flow_run_id in ConversationDO
+              step_id: context.step_id
+            }
+          );
+          console.log(`[StepResolver:legacy] ƐĐᜃ variables resolved successfully`);
+        } catch (error) {
+          console.error(`[StepResolver:legacy] Error resolving ƐĐᜃ variables:`, error);
+          // Don't fail - leave variables unresolved
+        }
+      }
+      
       return {
-        instructions: resolved.instructions,
+        instructions: finalInstructions,
         variables: resolved.variables,
         api_responses: resolved.api_responses,
         task_data: taskData
@@ -270,6 +313,26 @@ export async function resolveStepInstructions(
   // Apply {variable} substitution
   if (Object.keys(allVariables).length > 0) {
     instructions = substituteVariables(instructions, allVariables, 'old_system');
+  }
+  
+  // Resolve ƐĐᜃ...ƐĐᜃ variables if present (new system)
+  if (instructions.includes('ƐĐᜃ') && db && context.execution_id) {
+    try {
+      console.log(`[StepResolver:old] Resolving ƐĐᜃ variables with execution_id: ${context.execution_id}`);
+      instructions = await resolveTextVariables(
+        db,
+        instructions,
+        {
+          flow_id: context.flow_id,
+          flow_run_id: context.execution_id, // execution_id is flow_run_id in ConversationDO
+          step_id: context.step_id
+        }
+      );
+      console.log(`[StepResolver:old] ƐĐᜃ variables resolved successfully`);
+    } catch (error) {
+      console.error(`[StepResolver:old] Error resolving ƐĐᜃ variables:`, error);
+      // Don't fail - leave variables unresolved
+    }
   }
   
   return {
@@ -1529,6 +1592,20 @@ export function injectApiResponses(
     if (result.includes(placeholder)) {
       result = result.replace(new RegExp(placeholder, 'g'), 
         JSON.stringify(lastCall.response.data, null, 2));
+    }
+  }
+  
+  // Resolve ƐĐᜃ...ƐĐᜃ variables if present (new system)
+  if (result.includes('ƐĐᜃ')) {
+    try {
+      // Note: This requires flow_run_id to be available in the context
+      // The caller must provide it for proper resolution
+      console.log(`[StepResolver:injectApiResponses] Found ƐĐᜃ tags, attempting resolution`);
+      
+      // We can't resolve without flow_run_id, so we'll leave them as-is
+      // The actual resolution happens in resolveStepInstructions where we have context
+    } catch (error) {
+      console.error(`[StepResolver:injectApiResponses] Error handling ƐĐᜃ tags:`, error);
     }
   }
   
