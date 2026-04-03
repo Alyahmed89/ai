@@ -5,7 +5,7 @@ import { SecureVariableResolver } from './secureVariableResolver';
 import { getTaskData, saveVariable } from './database';
 import { StepData } from '../types';
 import { ApiCaller } from './ApiCaller';
-import { resolveTextVariables } from './variableResolver';
+import { resolveTextVariables } from '../utils/variableResolver';
 
 // Backward compatibility wrapper for step instructions
 export async function resolveStepInstructions(
