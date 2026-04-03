@@ -1408,6 +1408,101 @@ const NodePopup = ({
       hasAutoInsertedRef.current = true;
     }
   }, [selectedFlowId, instructions]);
+
+  // Auto-save when selected commands change (including when cleared)
+  useEffect(() => {
+    // Only auto-save if we have a selected flow ID (or empty string to clear)
+    // This ensures we don't save prematurely before user has configured the step
+    if (selectedFlowId !== undefined) {
+      console.log('Auto-saving due to command change:', {
+        selectedInputCommand,
+        selectedOutputCommand,
+        selectedFlowId
+      });
+      
+      // Read from DOM refs to bypass React state timing issues with automation
+      const domInstructions = textareaRef.current?.value || instructions || '';
+      
+      // Build use_endpoints array based on selected commands
+      const endpointsArray = [];
+      if (selectedInputCommand) {
+        endpointsArray.push({
+          endpoint_id: selectedInputCommand,
+          phase: 'input'
+        });
+      }
+      if (selectedOutputCommand) {
+        endpointsArray.push({
+          endpoint_id: selectedOutputCommand,
+          phase: 'output'
+        });
+      }
+      const useEndpoints = endpointsArray.length > 0 ? JSON.stringify(endpointsArray) : null;
+      console.log('Generated use_endpoints:', useEndpoints);
+      
+      const currentStep = nodeData?.step;
+      const updatedNode = {
+        ...node,
+        data: {
+          ...nodeData,
+          instructions: domInstructions,
+          await_input: false, // Always false since we removed the checkbox
+          step: currentStep ? {
+            ...currentStep,
+            instructions: domInstructions,
+            // Store next_flow_id (empty string becomes null for backend)
+            next_flow_id: selectedFlowId || null,
+            // Update use_endpoints with selected endpoints
+            use_endpoints: useEndpoints || currentStep.use_endpoints,
+          } : {
+            // Create a minimal step object if it doesn't exist
+            id: node.id || generateStableId('step'),
+            flow_id: '',
+            step_key: '',
+            title: nodeData?.title || 'Untitled Step',
+            instructions: domInstructions,
+            step_type: 'default',
+            order_index: 0,
+            blocking: 0,
+            auto_fail_on_error: 0,
+            retryable: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            task_id: null,
+            output_keys: '', // Empty since we removed the field
+            output_url: null,
+            output_payload_template: null,
+            default_next_step: null,
+            output_auth_token: null,
+            input_keys: null,
+            output: 0,
+            default_next_step_id: null,
+            step_number: null,
+            requires_task: 0,
+            use_endpoints: useEndpoints,
+            extra_step: 0,
+            page_key: null,
+            // Store next_flow_id for new steps
+            next_flow_id: selectedFlowId || null,
+          },
+        },
+      };
+      console.log('Auto-saving node with command change:', JSON.stringify(updatedNode, null, 2));
+      
+      // Save next_flow_id to localStorage for persistence
+      // Always save (even if flowId is empty string) to clear previous values
+      const stepId = currentStep?.id || node.id;
+      const currentFlowId = currentStep?.flow_id;
+      if (currentFlowId) {
+        storeNextFlowId(currentFlowId, stepId, selectedFlowId || null);
+        console.log(`Saved next_flow_id to localStorage: flow ${currentFlowId}, step ${stepId} -> next_flow ${selectedFlowId || 'null'}`);
+      } else {
+        console.warn('Cannot save next_flow_id to localStorage: current flow ID not found in step');
+      }
+      
+      onSave(updatedNode);
+    }
+  }, [selectedInputCommand, selectedOutputCommand, selectedFlowId, instructions, nodeData, node, onSave]);
   
   // Get parameters for selected command
   const getCommandParameters = (commandName: string) => {
@@ -1451,22 +1546,11 @@ const NodePopup = ({
       hasAutoInsertedRef.current = true;
     }
     
-    // Auto-save when flow is selected
-    autoSaveNode(flowId, updatedInstructions);
-  };
-  
-  // Function to auto-save node when flow is selected
-  const autoSaveNode = (flowId: string, updatedInstructions?: string) => {
-    // Read from DOM refs to bypass React state timing issues with automation
-    // Use updatedInstructions if provided, otherwise get from DOM or state
-    const domInstructions = updatedInstructions || textareaRef.current?.value || instructions || '';
+    // Auto-save when flow is selected - using the same logic as the useEffect
+    console.log('Auto-saving due to flow change:', flowId);
     
-    console.log('NodePopup autoSaveNode called!');
-    console.log('Selected flow ID:', flowId);
-    console.log('DOM instructions:', domInstructions);
-    console.log('nodeData:', nodeData);
-    console.log('Selected input command:', selectedInputCommand);
-    console.log('Selected output command:', selectedOutputCommand);
+    // Read from DOM refs to bypass React state timing issues with automation
+    const domInstructions = updatedInstructions || textareaRef.current?.value || instructions || '';
     
     // Build use_endpoints array based on selected commands
     const endpointsArray = [];
@@ -1532,7 +1616,7 @@ const NodePopup = ({
         },
       },
     };
-    console.log('Auto-saving node with flow selection:', JSON.stringify(updatedNode, null, 2));
+    console.log('Auto-saving node with flow change:', JSON.stringify(updatedNode, null, 2));
     
     // Save next_flow_id to localStorage for persistence
     // Always save (even if flowId is empty string) to clear previous values
@@ -1548,6 +1632,8 @@ const NodePopup = ({
     onSave(updatedNode);
   };
   
+
+  
   console.log('NodePopup rendered! nodeData?.instructions:', nodeData?.instructions, 'instructions state:', instructions);
 
   const handleSave = () => {
@@ -1559,8 +1645,87 @@ const NodePopup = ({
     console.log('nodeData:', nodeData);
     console.log('awaitInput:', awaitInput);
     
-    // Use the autoSaveNode function to save with current selectedFlowId
-    autoSaveNode(selectedFlowId, domInstructions);
+    // Save with current selectedFlowId - using the same logic as the useEffect
+    console.log('Saving node with manual save');
+    
+    // Build use_endpoints array based on selected commands
+    const endpointsArray = [];
+    if (selectedInputCommand) {
+      endpointsArray.push({
+        endpoint_id: selectedInputCommand,
+        phase: 'input'
+      });
+    }
+    if (selectedOutputCommand) {
+      endpointsArray.push({
+        endpoint_id: selectedOutputCommand,
+        phase: 'output'
+      });
+    }
+    const useEndpoints = endpointsArray.length > 0 ? JSON.stringify(endpointsArray) : null;
+    console.log('Generated use_endpoints:', useEndpoints);
+    
+    const currentStep = nodeData?.step;
+    const updatedNode = {
+      ...node,
+      data: {
+        ...nodeData,
+        instructions: domInstructions,
+        await_input: false, // Always false since we removed the checkbox
+        step: currentStep ? {
+          ...currentStep,
+          instructions: domInstructions,
+          // Store next_flow_id (empty string becomes null for backend)
+          next_flow_id: selectedFlowId || null,
+          // Update use_endpoints with selected endpoints
+          use_endpoints: useEndpoints || currentStep.use_endpoints,
+        } : {
+          // Create a minimal step object if it doesn't exist
+          id: node.id || generateStableId('step'),
+          flow_id: '',
+          step_key: '',
+          title: nodeData?.title || 'Untitled Step',
+          instructions: domInstructions,
+          step_type: 'default',
+          order_index: 0,
+          blocking: 0,
+          auto_fail_on_error: 0,
+          retryable: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          task_id: null,
+          output_keys: '', // Empty since we removed the field
+          output_url: null,
+          output_payload_template: null,
+          default_next_step: null,
+          output_auth_token: null,
+          input_keys: null,
+          output: 0,
+          default_next_step_id: null,
+          step_number: null,
+          requires_task: 0,
+          use_endpoints: useEndpoints,
+          extra_step: 0,
+          page_key: null,
+          // Store next_flow_id for new steps
+          next_flow_id: selectedFlowId || null,
+        },
+      },
+    };
+    console.log('Saving node manually:', JSON.stringify(updatedNode, null, 2));
+    
+    // Save next_flow_id to localStorage for persistence
+    // Always save (even if flowId is empty string) to clear previous values
+    const stepId = currentStep?.id || node.id;
+    const currentFlowId = currentStep?.flow_id;
+    if (currentFlowId) {
+      storeNextFlowId(currentFlowId, stepId, selectedFlowId || null);
+      console.log(`Saved next_flow_id to localStorage: flow ${currentFlowId}, step ${stepId} -> next_flow ${selectedFlowId || 'null'}`);
+    } else {
+      console.warn('Cannot save next_flow_id to localStorage: current flow ID not found in step');
+    }
+    
+    onSave(updatedNode);
     
     // Close the popup after saving
     onClose();
