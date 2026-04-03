@@ -1799,7 +1799,7 @@ const NodePopup = ({
   const handleEditCommand = (commandId: string) => {
     console.log('Edit command:', commandId);
     // Find the command in availableCommands to get its ID
-    const command = availableCommands.find(cmd => cmd.name === commandId);
+    const command = availableCommands.find(cmd => cmd.id === commandId);
     if (command) {
       setEditingEndpointId(command.id);
       setShowCreateCommand(true);
