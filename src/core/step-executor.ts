@@ -114,8 +114,28 @@ export class StepExecutor {
          WHERE flow_run_id = ? AND key = ? AND variable_type = 'user_input'`
       ).bind(context.flow_run_id, varName).first();
       
-      if (!variable || variable.value === null || variable.value === 'null') {
+      if (!variable) {
+        // Variable doesn't exist in database
         missingVariables.push(varName);
+      } else {
+        try {
+          // Parse the JSON value
+          const parsedValue = JSON.parse(variable.value as string);
+          // Check if value is empty (null, undefined, empty string, or empty object)
+          if (parsedValue === null || parsedValue === undefined || 
+              (typeof parsedValue === 'string' && parsedValue.trim() === '') ||
+              (typeof parsedValue === 'object' && Object.keys(parsedValue).length === 0)) {
+            missingVariables.push(varName);
+          }
+        } catch (error) {
+          // If JSON parsing fails, check the raw string value
+          const rawValue = variable.value as string;
+          if (rawValue === null || rawValue === undefined || 
+              rawValue === 'null' || rawValue === 'undefined' || 
+              rawValue.trim() === '') {
+            missingVariables.push(varName);
+          }
+        }
       }
     }
     
