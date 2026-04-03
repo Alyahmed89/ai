@@ -654,7 +654,9 @@ app.get('/status/:id', async (c) => {
           // Include all logs from conversation
           logs: data.conversation.logs || [],
           error_message: data.conversation.error_message,
-          deepseek_error_details: data.conversation.deepseek_error_details
+          deepseek_error_details: data.conversation.deepseek_error_details,
+          // Include waiting_for_input for frontend to know when to prompt user
+          waiting_for_input: data.conversation.waiting_for_input
         }
       }
     }), {

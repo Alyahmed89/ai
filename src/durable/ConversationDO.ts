@@ -2417,6 +2417,8 @@ export class ConversationOrchestratorDO_2026A {
         flow_steps: conversation.flow_steps || [],
         error_message: conversation.error_message,
         deepseek_error_details: conversation.deepseek_error_details,
+        // Include waiting_for_input for frontend to know when to prompt user
+        waiting_for_input: conversation.waiting_for_input,
         // Include all logs
         logs: logs
       }
