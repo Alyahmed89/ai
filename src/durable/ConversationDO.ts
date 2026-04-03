@@ -2106,7 +2106,7 @@ export class ConversationOrchestratorDO_2026A {
       'blocking', 'auto_fail_on_error', 'retryable', 'task_id', 'input_keys',
       'output_url', 'output_auth_token', 'requires_task', 'dual_agent',
       'ruler_agent', 'goal_criteria', 'max_iterations_per_step', 
-      'expected_response', 'use_endpoints', 'extra_step', 'next_flow_id', 'created_at', 'updated_at'
+      'expected_response', 'use_endpoints', 'next_flow_id', 'created_at', 'updated_at'
     ];
     
     for (const column of testColumns) {
@@ -2201,7 +2201,7 @@ export class ConversationOrchestratorDO_2026A {
       'page_key', 'blocking', 'auto_fail_on_error', 'retryable', 'task_id',
       'input_keys', 'output_url', 'output_auth_token', 'requires_task',
       'dual_agent', 'ruler_agent', 'goal_criteria', 'max_iterations_per_step',
-      'expected_response', 'use_endpoints', 'extra_step', 'next_flow_id'
+      'expected_response', 'use_endpoints', 'next_flow_id'
     ];
     
     for (const column of optionalColumns) {
@@ -2215,7 +2215,7 @@ export class ConversationOrchestratorDO_2026A {
           columnMappings[column] = 'NULL';
         } else if (column === 'blocking' || column === 'auto_fail_on_error' ||
                   column === 'retryable' || column === 'requires_task' ||
-                  column === 'dual_agent' || column === 'extra_step') {
+                  column === 'dual_agent') {
           columnMappings[column] = '0';
         } else if (column === 'page_key' || column === 'task_id' ||
                   column === 'input_keys' || column === 'ruler_agent' ||
@@ -2275,7 +2275,7 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Ensure boolean fields are properly typed
-      const booleanFields = ['blocking', 'auto_fail_on_error', 'retryable', 'requires_task', 'dual_agent', 'extra_step', 'output'];
+      const booleanFields = ['blocking', 'auto_fail_on_error', 'retryable', 'requires_task', 'dual_agent', 'output'];
       for (const field of booleanFields) {
         if (transformed[field] !== undefined) {
           transformed[field] = Boolean(transformed[field]);
@@ -2308,7 +2308,6 @@ export class ConversationOrchestratorDO_2026A {
         max_iterations_per_step: null,
         expected_response: null,
         use_endpoints: null,
-        extra_step: false,
         next_flow_id: null,
         // Initialize execution fields
         response: null,

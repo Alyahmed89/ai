@@ -350,7 +350,6 @@ export interface StepData {
   expected_response?: string; // Expected response that goes after instructions in prompt
   // NEW: Unified endpoint system
   use_endpoints?: string; // JSON array of endpoint configurations with phase: 'input'|'command'|'output'
-  extra_step?: boolean; // Whether to run extra step loop
   // NEW: Wait/Resume system
   await_input?: {
     name: string;

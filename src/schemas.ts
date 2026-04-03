@@ -30,7 +30,6 @@ export const flowStepSchema = z.object({
   next_flow_id: z.string().optional().nullable().default(null),
   // Unified endpoint system
   use_endpoints: z.string().optional().nullable().default(null),
-  extra_step: booleanSchema.default(false),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
