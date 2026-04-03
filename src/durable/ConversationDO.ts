@@ -2407,17 +2407,182 @@ export class ConversationOrchestratorDO_2026A {
   private handleStatus(): Response {
     const conversation = this.conversation || { state: 'not_initialized' };
     
+    // Collect all logs in chronological order
+    const logs = this.collectAllLogs(conversation);
+    
     return new Response(JSON.stringify({
       conversation: {
         state: conversation.state || 'idle',
         flow_completed: conversation.flow_completed || false,
         flow_steps: conversation.flow_steps || [],
         error_message: conversation.error_message,
-        deepseek_error_details: conversation.deepseek_error_details
+        deepseek_error_details: conversation.deepseek_error_details,
+        // Include all logs
+        logs: logs
       }
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
+  }
+  
+  /**
+   * Collect all logs from conversation in chronological order
+   */
+  private collectAllLogs(conversation: ConversationData | { state: string }): Array<{
+    timestamp: number;
+    type: string;
+    source: string;
+    message: string;
+    details?: any;
+  }> {
+    const logs: Array<{
+      timestamp: number;
+      type: string;
+      source: string;
+      message: string;
+      details?: any;
+    }> = [];
+    
+    const conv = conversation as ConversationData;
+    
+    // 1. Add conversation creation log
+    if (conv.created_at) {
+      logs.push({
+        timestamp: conv.created_at,
+        type: 'conversation_started',
+        source: 'system',
+        message: `Conversation started for repository: ${conv.repository || 'unknown'}`,
+        details: {
+          repository: conv.repository,
+          branch: conv.branch,
+          initial_user_prompt: conv.initial_user_prompt,
+          max_iterations: conv.max_iterations
+        }
+      });
+    }
+    
+    // 2. Add DeepSeek conversation messages as logs
+    if (conv.conversation_messages && conv.conversation_messages.length > 0) {
+      conv.conversation_messages.forEach((msg, index) => {
+        logs.push({
+          timestamp: conv.created_at ? conv.created_at + (index * 1000) : Date.now() - (conv.conversation_messages!.length - index) * 1000,
+          type: 'ai_message',
+          source: msg.role === 'user' ? 'user' : 'deepseek',
+          message: msg.content.substring(0, 500) + (msg.content.length > 500 ? '...' : ''),
+          details: {
+            role: msg.role,
+            message_index: index,
+            full_length: msg.content.length
+          }
+        });
+      });
+    }
+    
+    // 3. Add last DeepSeek response if available
+    if (conv.last_deepseek_response) {
+      logs.push({
+        timestamp: conv.updated_at || Date.now(),
+        type: 'deepseek_response',
+        source: 'deepseek',
+        message: `DeepSeek response: ${conv.last_deepseek_response.substring(0, 200)}${conv.last_deepseek_response.length > 200 ? '...' : ''}`,
+        details: {
+          response_length: conv.last_deepseek_response.length
+        }
+      });
+    }
+    
+    // 4. Add last OpenHands response if available
+    if (conv.last_openhands_response) {
+      logs.push({
+        timestamp: conv.updated_at || Date.now(),
+        type: 'openhands_response',
+        source: 'openhands',
+        message: `OpenHands response: ${conv.last_openhands_response.substring(0, 200)}${conv.last_openhands_response.length > 200 ? '...' : ''}`,
+        details: {
+          response_length: conv.last_openhands_response.length
+        }
+      });
+    }
+    
+    // 5. Add flow step execution logs
+    if (conv.flow_steps && conv.flow_steps.length > 0) {
+      conv.flow_steps.forEach((step, index) => {
+        if (step.response) {
+          logs.push({
+            timestamp: conv.created_at ? conv.created_at + ((index + 1) * 5000) : Date.now() - (conv.flow_steps!.length - index) * 5000,
+            type: 'step_execution',
+            source: 'flow',
+            message: `Step ${index + 1}: ${step.title} - ${step.status || 'unknown'}`,
+            details: {
+              step_id: step.step_id,
+              step_title: step.title,
+              status: step.status,
+              response_preview: step.response.substring(0, 200) + (step.response.length > 200 ? '...' : ''),
+              response_length: step.response.length
+            }
+          });
+        } else if (step.status && step.status !== 'pending') {
+          logs.push({
+            timestamp: conv.created_at ? conv.created_at + ((index + 1) * 5000) : Date.now() - (conv.flow_steps!.length - index) * 5000,
+            type: 'step_status',
+            source: 'flow',
+            message: `Step ${index + 1}: ${step.title} - ${step.status}`,
+            details: {
+              step_id: step.step_id,
+              step_title: step.title,
+              status: step.status
+            }
+          });
+        }
+      });
+    }
+    
+    // 6. Add error logs if any
+    if (conv.error_message) {
+      logs.push({
+        timestamp: conv.updated_at || Date.now(),
+        type: 'error',
+        source: 'system',
+        message: `Error: ${conv.error_message}`,
+        details: conv.deepseek_error_details
+      });
+    }
+    
+    // 7. Add iteration tracking
+    if (conv.iteration > 0) {
+      logs.push({
+        timestamp: conv.updated_at || Date.now(),
+        type: 'iteration',
+        source: 'system',
+        message: `Current iteration: ${conv.iteration}`,
+        details: {
+          iteration: conv.iteration,
+          last_iteration_summary: conv.last_iteration_summary
+        }
+      });
+    }
+    
+    // 8. Add dual agent conversation history if available
+    if (conv.dual_agent_state?.conversation_history) {
+      conv.dual_agent_state.conversation_history.forEach((historyItem, index) => {
+        logs.push({
+          timestamp: historyItem.timestamp || (conv.created_at ? conv.created_at + ((index + 10) * 1000) : Date.now() - (conv.dual_agent_state!.conversation_history.length - index) * 1000),
+          type: 'dual_agent_message',
+          source: historyItem.agent,
+          message: `Dual agent (${historyItem.agent}): ${historyItem.message.substring(0, 200)}${historyItem.message.length > 200 ? '...' : ''}`,
+          details: {
+            iteration: historyItem.iteration,
+            agent: historyItem.agent,
+            message_length: historyItem.message.length
+          }
+        });
+      });
+    }
+    
+    // Sort logs by timestamp
+    logs.sort((a, b) => a.timestamp - b.timestamp);
+    
+    return logs;
   }
   
   private async handleStop(): Promise<Response> {

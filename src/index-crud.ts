@@ -636,7 +636,7 @@ app.get('/status/:id', async (c) => {
     
     const data = await doResponse.json();
     
-    // Return enriched conversation data with execution results
+    // Return enriched conversation data with execution results and logs
     return new Response(JSON.stringify({
       success: true,
       data: {
@@ -650,7 +650,11 @@ app.get('/status/:id', async (c) => {
             // 🔥 REQUIRED FIELDS
             response: step.response || null,
             status: step.status || "pending"
-          }))
+          })),
+          // Include all logs from conversation
+          logs: data.conversation.logs || [],
+          error_message: data.conversation.error_message,
+          deepseek_error_details: data.conversation.deepseek_error_details
         }
       }
     }), {
