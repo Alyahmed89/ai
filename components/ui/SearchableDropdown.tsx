@@ -168,11 +168,37 @@ export default function SearchableDropdown({
               setSearchQuery('');
             }
           }}
+          onBlur={(e) => {
+            // Check if the blur is caused by clicking on the dropdown itself
+            const relatedTarget = e.relatedTarget as HTMLElement;
+            const isClickingDropdown = relatedTarget && containerRef.current?.contains(relatedTarget);
+            
+            // Get the current input value
+            const inputValue = e.target.value;
+            
+            // If user cleared the field (input is empty) and not clicking dropdown, clear the selection
+            if (inputValue === '' && value !== '' && !isClickingDropdown) {
+              onChange('');
+            }
+          }}
           onKeyDown={handleKeyDown}
           placeholder={isOpen ? searchPlaceholder : placeholder}
           disabled={disabled}
           className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
         />
+        {/* Clear button (X) when there's a value and dropdown is not open */}
+        {value && !isOpen && !disabled && (
+          <button
+            type="button"
+            className="absolute right-8 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white focus:outline-none"
+            onClick={() => onChange('')}
+            aria-label="Clear selection"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
         <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
           {loading || isSearching ? (
             <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
