@@ -4012,3 +4012,104 @@ crudApi.put('/variables/:id', async (c) => {
     }, 500);
   }
 });
+
+// New endpoint for resolving variables with ƐĐᜃ syntax
+crudApi.get('/resolve', async (c) => {
+  try {
+    const { tag, flow_id, flow_run_id, step_id, step_run_id } = c.req.query();
+    const db = c.env.FLOW_RUNS_DB;
+    
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+    
+    if (!tag) {
+      return c.json({ 
+        success: false, 
+        error: 'Missing required parameter: tag' 
+      }, 400);
+    }
+    
+    // Import the variable resolver
+    const { parseVariableSpec, resolveVariable } = await import('./utils/variableResolver');
+    
+    // Parse the variable specification
+    const spec = parseVariableSpec(tag);
+    
+    // Resolve the variable
+    const value = await resolveVariable(db, spec, {
+      flow_id,
+      flow_run_id,
+      step_id,
+      step_run_id
+    });
+    
+    return c.json({
+      success: true,
+      tag,
+      spec,
+      value,
+      resolved: value !== ''
+    });
+    
+  } catch (error: any) {
+    console.error('Resolve endpoint error:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Internal server error', 
+      details: error.message 
+    }, 500);
+  }
+});
+
+// Endpoint to resolve multiple variables in text
+crudApi.post('/resolve/text', async (c) => {
+  try {
+    const { text, flow_id, flow_run_id, step_id, step_run_id } = await c.req.json();
+    const db = c.env.FLOW_RUNS_DB;
+    
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+    
+    if (!text) {
+      return c.json({ 
+        success: false, 
+        error: 'Missing required parameter: text' 
+      }, 400);
+    }
+    
+    // Import the variable resolver
+    const { resolveTextVariables, extractVariableTags } = await import('./utils/variableResolver');
+    
+    // Extract all variable tags
+    const tags = extractVariableTags(text);
+    
+    // Resolve the text
+    const resolvedText = await resolveTextVariables(db, text, {
+      flow_id,
+      flow_run_id,
+      step_id,
+      step_run_id
+    });
+    
+    return c.json({
+      success: true,
+      original_text: text,
+      resolved_text: resolvedText,
+      tags_found: tags.length,
+      tags: tags.map(tag => ({
+        tag,
+        spec: tag.replace(/ƐĐᜃ/g, '')
+      }))
+    });
+    
+  } catch (error: any) {
+    console.error('Resolve text endpoint error:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Internal server error', 
+      details: error.message 
+    }, 500);
+  }
+});

@@ -1,5 +1,6 @@
 import { ExecutionContext, StructuredAIOutput } from './execution-context'
 import { CommandExecutor } from '../services/commandExecutor'
+import { resolveTextVariables } from '../utils/variableResolver'
 
 export class StepExecutor {
   private commandExecutor: any
@@ -22,21 +23,20 @@ export class StepExecutor {
     agent: string
   ): Promise<ExecutionContext> {
 
-    // Check for required user variables BEFORE executing
-    const variableCheck = await this.checkRequiredVariables(context, step);
+    // Resolve variables in step instructions before execution
+    const stepInstructions = step.instructions || '';
+    const resolvedInstructions = await resolveTextVariables(
+      this.env.FLOW_RUNS_DB,
+      stepInstructions,
+      {
+        flow_id: context.flow_id,
+        flow_run_id: context.flow_run_id,
+        step_id: step.id
+      }
+    );
     
-    if (variableCheck.shouldPause) {
-      // Set context to indicate pause needed
-      context.awaiting_input = {
-        name: 'user_variables_required',
-        params: {
-          missing_variables: variableCheck.missing,
-          step_id: step.id
-        }
-      };
-      console.log(`[StepExecutor] Pausing for user input: ${variableCheck.missing.join(', ')}`);
-      return context; // Return early without executing
-    }
+    // Update context with resolved instructions
+    context.ai_input = resolvedInstructions;
 
     const prompt = `${context.ai_input}`
 
@@ -98,53 +98,41 @@ export class StepExecutor {
     return context
   }
 
-  async checkRequiredVariables(context: ExecutionContext, step: any): Promise<{missing: string[], shouldPause: boolean}> {
-    const missingVariables: string[] = [];
+  /**
+   * Check for variables in text (for debugging/logging purposes only)
+   * No longer pauses execution - variables resolve to empty string if missing
+   */
+  async checkVariablesInText(
+    db: D1Database,
+    text: string,
+    context?: {
+      flow_id?: string;
+      flow_run_id?: string;
+      step_id?: string;
+    }
+  ): Promise<{found: string[], missing: string[]}> {
+    const found: string[] = [];
+    const missing: string[] = [];
     
-    // Extract template variables from step instructions
-    const templateRegex = /\{([^}]+)\}/g;
-    const stepInstructions = step.instructions || '';
-    const matches = [...stepInstructions.matchAll(templateRegex)];
-    const requiredVars = matches.map(match => match[1]);
+    // Extract both old {variable} and new ƐĐᜃvariableƐĐᜃ syntax
+    const oldRegex = /\{([^}]+)\}/g;
+    const newRegex = /ƐĐᜃ([^ƐĐᜃ]+)ƐĐᜃ/g;
     
-    // Check database for each required variable
-    for (const varName of requiredVars) {
-      // Check for variable in database - look for both user_input and system variables
-      const variable = await this.env.FLOW_RUNS_DB.prepare(
-        `SELECT key, value, variable_type FROM variables 
-         WHERE flow_run_id = ? AND key = ? 
-         AND (variable_type = 'user_input' OR variable_type = 'system')`
-      ).bind(context.flow_run_id, varName).first();
-      
-      if (!variable) {
-        // Variable doesn't exist in database
-        missingVariables.push(varName);
-      } else {
-        try {
-          // Parse the JSON value
-          const parsedValue = JSON.parse(variable.value as string);
-          // Check if value is empty (null, undefined, empty string, or empty object)
-          if (parsedValue === null || parsedValue === undefined || 
-              (typeof parsedValue === 'string' && parsedValue.trim() === '') ||
-              (typeof parsedValue === 'object' && Object.keys(parsedValue).length === 0)) {
-            missingVariables.push(varName);
-          }
-        } catch (error) {
-          // If JSON parsing fails, check the raw string value
-          const rawValue = variable.value as string;
-          if (rawValue === null || rawValue === undefined || 
-              rawValue === 'null' || rawValue === 'undefined' || 
-              rawValue.trim() === '') {
-            missingVariables.push(varName);
-          }
-        }
-      }
+    const oldMatches = [...text.matchAll(oldRegex)];
+    const newMatches = [...text.matchAll(newRegex)];
+    
+    const allVars = [
+      ...oldMatches.map(m => m[1]),
+      ...newMatches.map(m => m[1])
+    ];
+    
+    // Check each variable (for logging only)
+    for (const varSpec of allVars) {
+      // Simple check - just log what we find
+      console.log(`[StepExecutor] Variable found in text: ${varSpec}`);
     }
     
-    return {
-      missing: missingVariables,
-      shouldPause: missingVariables.length > 0
-    };
+    return { found: allVars, missing: [] };
   }
 
   private async callDeepSeek(messages: any[]): Promise<string> {
@@ -162,6 +150,10 @@ export class StepExecutor {
     
     if (!result.success) {
       throw new Error(`DeepSeek failed: ${result.error}`);
+    }
+    
+    if (!result.response) {
+      throw new Error(`DeepSeek returned success but no response`);
     }
     
     return result.response;
@@ -183,6 +175,10 @@ export class StepExecutor {
     
     if (!result.success) {
       throw new Error(`OpenHands failed: ${result.error}`);
+    }
+    
+    if (!result.conversationId) {
+      throw new Error(`OpenHands returned success but no conversationId`);
     }
     
     return result.conversationId;

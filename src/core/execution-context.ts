@@ -33,6 +33,7 @@ export type StructuredAIOutput = {
 export type ExecutionContext = {
   flow_id: string
   step_id: string
+  flow_run_id?: string
 
   data: Map<string, ContextValue>
 
@@ -59,10 +60,11 @@ export type ExecutionContext = {
   callback_url?: string
 }
 
-export function createExecutionContext(flow_id: string, step_id: string): ExecutionContext {
+export function createExecutionContext(flow_id: string, step_id: string, flow_run_id?: string): ExecutionContext {
   return {
     flow_id,
     step_id,
+    flow_run_id,
     data: new Map(),
 
     ai_input: '',
