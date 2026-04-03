@@ -1345,42 +1345,42 @@ const NodePopup = ({
   const [showSampleModal, setShowSampleModal] = useState(false);
   
   // Fetch available commands from API
-  useEffect(() => {
-    const fetchCommands = async () => {
-      try {
-        console.log('Fetching endpoints from proxy API...');
-        setLoadingCommands(true);
-        const response = await fetch('/api/proxy/api/endpoints');
-        console.log('Response status:', response.status);
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Endpoints data structure:', Object.keys(data));
-          if (data.success && data.data?.endpoints) {
-            // Transform endpoints to match the expected command format
-            const transformedEndpoints = data.data.endpoints.map((endpoint: any) => ({
-              id: endpoint.id,
-              name: endpoint.name,
-              description: endpoint.description || '',
-              method: endpoint.method || 'GET',
-              parameters: endpoint
-            }));
-            console.log('Transformed endpoints:', transformedEndpoints.length);
-            setAvailableCommands(transformedEndpoints);
-          } else {
-            console.log('No endpoints found or data structure mismatch:', data);
-          }
+  const fetchCommands = useCallback(async () => {
+    try {
+      console.log('Fetching endpoints from proxy API...');
+      setLoadingCommands(true);
+      const response = await fetch('/api/proxy/api/endpoints');
+      console.log('Response status:', response.status);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Endpoints data structure:', Object.keys(data));
+        if (data.success && data.data?.endpoints) {
+          // Transform endpoints to match the expected command format
+          const transformedEndpoints = data.data.endpoints.map((endpoint: any) => ({
+            id: endpoint.id,
+            name: endpoint.name,
+            description: endpoint.description || '',
+            method: endpoint.method || 'GET',
+            parameters: endpoint
+          }));
+          console.log('Transformed endpoints:', transformedEndpoints.length);
+          setAvailableCommands(transformedEndpoints);
         } else {
-          console.log('Failed to fetch endpoints:', response.status);
+          console.log('No endpoints found or data structure mismatch:', data);
         }
-      } catch (error) {
-        console.error('Failed to fetch commands:', error);
-      } finally {
-        setLoadingCommands(false);
+      } else {
+        console.log('Failed to fetch endpoints:', response.status);
       }
-    };
-    
-    fetchCommands();
+    } catch (error) {
+      console.error('Failed to fetch commands:', error);
+    } finally {
+      setLoadingCommands(false);
+    }
   }, []);
+  
+  useEffect(() => {
+    fetchCommands();
+  }, [fetchCommands]);
   
   // Fetch available flows from backend (simple version like /chat page)
   useEffect(() => {
