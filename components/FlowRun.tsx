@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 
 export type ExecutionEvent = {
   key: string; // for dedupe + react key
-  type: 'FLOW_RUNNING' | 'STEP_PROMPT' | 'STEP_RESPONSE' | 'FLOW_COMPLETED' | 'API_CALL' | 'API_RESPONSE' | 'STATUS_UPDATE';
+  type: 'FLOW_RUNNING' | 'STEP_PROMPT' | 'STEP_RESPONSE' | 'FLOW_COMPLETED' | 'API_CALL' | 'API_RESPONSE' | 'STATUS_UPDATE' | 'FLOW_STATUS' | 'STEP_STATUS';
   content?: string;
   metadata?: {
     apiEndpoint?: string;
@@ -57,6 +57,20 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
 
     const events: ExecutionEvent[] = [];
 
+    // Add FLOW_STATUS event to show overall flow status (always visible, in green)
+    if (conversation.state) {
+      console.log('mapConversationToEvents - Adding FLOW_STATUS event');
+      events.push({
+        key: `FLOW_STATUS_${conversation.state}`,
+        type: 'FLOW_STATUS',
+        content: `Flow Status: ${conversation.state.toUpperCase()}`,
+        metadata: {
+          statusType: conversation.state,
+          timestamp: Date.now()
+        }
+      });
+    }
+
     // Add FLOW_RUNNING event if flow is not completed
     if (conversation.flow_completed !== true && conversation.state && conversation.state !== 'not_initialized') {
       console.log('mapConversationToEvents - Adding FLOW_RUNNING event');
@@ -85,6 +99,22 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
           apiCalls: step.api_calls?.length || 0
         });
         
+        // Add STEP_STATUS event to show step status (always visible, in green)
+        if (step.status) {
+          console.log(`mapConversationToEvents - Adding STEP_STATUS for step ${index + 1}`);
+          events.push({
+            key: `STEP_STATUS:${step.id || index}:${step.status}`,
+            type: 'STEP_STATUS',
+            content: `Step ${index + 1} Status: ${step.status.toUpperCase()}`,
+            metadata: {
+              stepIndex: index + 1,
+              stepTitle: step.title,
+              stepStatus: step.status,
+              timestamp: Date.now()
+            }
+          });
+        }
+
         // Add STEP_PROMPT event for step instructions
         if (step.instructions) {
           const promptContent = step.instructions;
@@ -301,21 +331,21 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
     switch (event.type) {
       case 'FLOW_RUNNING':
         return (
-          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border-b border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900/50 rounded-lg mb-3 transition-all duration-300 opacity-0 animate-fade-in">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
-              <span className="text-gray-300 text-lg">⏳</span>
+          <div key={event.key} className="animate-pulse flex items-start gap-3 p-4 border-b border-green-700 bg-gradient-to-r from-green-900/20 to-green-800/10 rounded-lg mb-3 transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-green-700 to-green-800 flex items-center justify-center shadow-sm">
+              <span className="text-green-300 text-lg">⏳</span>
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-gray-100 flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-400 bg-gray-800 px-2 py-0.5 rounded-full">
+              <div className="font-semibold text-green-100 flex items-center gap-2">
+                <span className="text-xs font-medium text-green-400 bg-green-900/50 px-2 py-0.5 rounded-full">
                   LIVE
                 </span>
               </div>
               <div className="mt-1 flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-gray-600 to-gray-700 text-white shadow-sm">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-green-600 to-green-700 text-white shadow-sm">
                   RUNNING
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-green-400">
                   {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
               </div>
@@ -389,23 +419,26 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
 
       case 'FLOW_COMPLETED':
         return (
-          <div key={event.key} className="flex items-start gap-3 p-4 border border-gray-700 bg-gradient-to-r from-gray-800 to-gray-900/30 rounded-xl mb-3 shadow-sm transition-all duration-300 opacity-0 animate-fade-in">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center shadow-sm">
-              <span className="text-gray-300 text-lg font-bold">✓</span>
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-green-700 bg-gradient-to-r from-green-900/20 to-green-800/10 rounded-xl mb-3 shadow-sm transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-green-700 to-green-800 flex items-center justify-center shadow-sm">
+              <span className="text-green-300 text-lg font-bold">✓</span>
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-gray-100 flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-gray-300 bg-gray-800 px-2 py-0.5 rounded-full">
-                  SUCCESS
+              <div className="font-semibold text-green-100 flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-green-300 bg-green-900/50 px-2 py-0.5 rounded-full">
+                  FLOW COMPLETED
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-gray-600 to-gray-700 text-white shadow-sm">
-                  COMPLETED
-                </span>
-                <span className="text-xs text-gray-400">
-                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
+              <div className="space-y-2">
+                <div className="text-green-100 whitespace-pre-wrap font-medium">Flow execution completed successfully</div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-green-600 to-green-700 text-white shadow-sm">
+                    COMPLETED
+                  </span>
+                  <span className="text-xs text-green-400">
+                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -520,6 +553,57 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
                 <div className="text-gray-100 whitespace-pre-wrap">{event.content}</div>
                 {event.metadata?.timestamp && (
                   <div className="text-xs text-gray-400">
+                    {new Date(event.metadata.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'FLOW_STATUS':
+        return (
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-green-700 bg-gradient-to-r from-green-900/20 to-green-800/10 rounded-xl mb-3 shadow-sm transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-green-700 to-green-800 flex items-center justify-center shadow-sm">
+              <span className="text-green-300 text-lg">📈</span>
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-green-100 flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-green-300 bg-green-900/50 px-2 py-0.5 rounded-full">
+                  FLOW STATUS
+                </span>
+              </div>
+              <div className="space-y-2">
+                <div className="text-green-100 whitespace-pre-wrap font-medium">{event.content}</div>
+                {event.metadata?.timestamp && (
+                  <div className="text-xs text-green-400">
+                    {new Date(event.metadata.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'STEP_STATUS':
+        return (
+          <div key={event.key} className="flex items-start gap-3 p-4 border border-green-700 bg-gradient-to-r from-green-900/20 to-green-800/10 rounded-xl mb-3 shadow-sm transition-all duration-300 opacity-0 animate-fade-in">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-green-700 to-green-800 flex items-center justify-center shadow-sm">
+              <span className="text-green-300 text-lg">✓</span>
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-green-100 flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-green-300 bg-green-900/50 px-2 py-0.5 rounded-full">
+                  STEP STATUS
+                </span>
+                {event.metadata?.stepTitle && (
+                  <span className="text-xs text-green-400 ml-2">{event.metadata.stepTitle}</span>
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="text-green-100 whitespace-pre-wrap font-medium">{event.content}</div>
+                {event.metadata?.timestamp && (
+                  <div className="text-xs text-green-400">
                     {new Date(event.metadata.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </div>
                 )}
