@@ -3638,7 +3638,7 @@ crudApi.post('/query', async (c) => {
 // Variable retrieval endpoint for condition evaluation
 crudApi.get('/variables', async (c) => {
   try {
-    const { flow_id, flow_run_id, step_id, step_run_id, key, source } = c.req.query();
+    const { flow_id, flow_run_id, step_id, step_run_id, key, source, variable_type } = c.req.query();
     const db = c.env.FLOW_RUNS_DB;
     
     if (!db) {
@@ -3672,6 +3672,10 @@ crudApi.get('/variables', async (c) => {
       sql += ' AND source = ?';
       bindings.push(source);
     }
+    if (variable_type) {
+      sql += ' AND variable_type = ?';
+      bindings.push(variable_type);
+    }
 
     sql += ' ORDER BY created_at DESC';
 
@@ -3697,6 +3701,150 @@ crudApi.get('/variables', async (c) => {
 
   } catch (error: any) {
     console.error('Variables endpoint error:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Internal server error', 
+      details: error.message 
+    }, 500);
+  }
+});
+
+// Advanced variable query endpoint with dot notation support
+crudApi.get('/variables/query', async (c) => {
+  try {
+    const { 
+      flow_id, 
+      flow_run_id, 
+      step_id, 
+      step_run_id, 
+      key, 
+      source, 
+      variable_type,
+      key_pattern,
+      value_contains,
+      created_after,
+      created_before,
+      limit = '100',
+      offset = '0'
+    } = c.req.query();
+    
+    const db = c.env.FLOW_RUNS_DB;
+    
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    let sql = 'SELECT * FROM variables WHERE 1=1';
+    const bindings: any[] = [];
+
+    if (flow_id) {
+      sql += ' AND flow_id = ?';
+      bindings.push(flow_id);
+    }
+    if (flow_run_id) {
+      sql += ' AND flow_run_id = ?';
+      bindings.push(flow_run_id);
+    }
+    if (step_id) {
+      sql += ' AND step_id = ?';
+      bindings.push(step_id);
+    }
+    if (step_run_id) {
+      sql += ' AND step_run_id = ?';
+      bindings.push(step_run_id);
+    }
+    if (key) {
+      sql += ' AND key = ?';
+      bindings.push(key);
+    }
+    if (source) {
+      sql += ' AND source = ?';
+      bindings.push(source);
+    }
+    if (variable_type) {
+      sql += ' AND variable_type = ?';
+      bindings.push(variable_type);
+    }
+    if (key_pattern) {
+      sql += ' AND key LIKE ?';
+      bindings.push(`%${key_pattern}%`);
+    }
+    if (created_after) {
+      sql += ' AND created_at >= ?';
+      bindings.push(parseInt(created_after));
+    }
+    if (created_before) {
+      sql += ' AND created_at <= ?';
+      bindings.push(parseInt(created_before));
+    }
+
+    sql += ' ORDER BY created_at DESC';
+    sql += ' LIMIT ? OFFSET ?';
+    bindings.push(parseInt(limit), parseInt(offset));
+
+    const result = await db.prepare(sql).bind(...bindings).all();
+    
+    // Parse JSON values and filter by value_contains if specified
+    const variables = result.results.map((v: any) => {
+      try {
+        const parsedValue = v.value ? JSON.parse(v.value) : null;
+        return {
+          ...v,
+          value: parsedValue
+        };
+      } catch (e) {
+        return v;
+      }
+    }).filter((v: any) => {
+      // Filter by value_contains if specified
+      if (value_contains && v.value) {
+        const valueStr = typeof v.value === 'object' 
+          ? JSON.stringify(v.value).toLowerCase()
+          : String(v.value).toLowerCase();
+        return valueStr.includes(value_contains.toLowerCase());
+      }
+      return true;
+    });
+
+    // Get total count for pagination
+    let countSql = 'SELECT COUNT(*) as total FROM variables WHERE 1=1';
+    const countBindings: any[] = [];
+    
+    // Rebuild conditions for count query
+    const conditions = [
+      { condition: flow_id, sql: ' AND flow_id = ?', value: flow_id },
+      { condition: flow_run_id, sql: ' AND flow_run_id = ?', value: flow_run_id },
+      { condition: step_id, sql: ' AND step_id = ?', value: step_id },
+      { condition: step_run_id, sql: ' AND step_run_id = ?', value: step_run_id },
+      { condition: key, sql: ' AND key = ?', value: key },
+      { condition: source, sql: ' AND source = ?', value: source },
+      { condition: variable_type, sql: ' AND variable_type = ?', value: variable_type },
+      { condition: key_pattern, sql: ' AND key LIKE ?', value: key_pattern ? `%${key_pattern}%` : null },
+      { condition: created_after, sql: ' AND created_at >= ?', value: created_after ? parseInt(created_after) : null },
+      { condition: created_before, sql: ' AND created_at <= ?', value: created_before ? parseInt(created_before) : null }
+    ];
+    
+    for (const cond of conditions) {
+      if (cond.condition) {
+        countSql += cond.sql;
+        countBindings.push(cond.value);
+      }
+    }
+    
+    const countResult = await db.prepare(countSql).bind(...countBindings).first();
+    const total = countResult ? (countResult as any).total : 0;
+
+    return c.json({
+      success: true,
+      count: variables.length,
+      total,
+      page: Math.floor(parseInt(offset) / parseInt(limit)) + 1,
+      total_pages: Math.ceil(total / parseInt(limit)),
+      variables
+    });
+
+  } catch (error: any) {
+    console.error('Variables query endpoint error:', error);
     return c.json({ 
       success: false, 
       error: 'Internal server error', 

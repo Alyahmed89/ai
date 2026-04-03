@@ -2,7 +2,8 @@
 // Handles all API calls: Input, Output, and Command endpoints
 // Stores raw results in api_calls table, no variable wrapping
 
-import { generateId } from './database';
+import { generateId, saveVariable } from './database';
+import { extractVariablesFromResponse, generateVariableId, shouldStoreAsVariable } from '../utils/variableExtractor';
 
 export interface ApiCallResult {
   success: boolean;
@@ -364,7 +365,7 @@ export class ApiCaller {
   }
 
   /**
-   * Save API call to api_calls table
+   * Save API call to api_calls table and extract variables from response
    */
   private async saveApiCall(apiCall: {
     id: string;
@@ -384,6 +385,7 @@ export class ApiCaller {
     created_at?: string;
   }): Promise<void> {
     try {
+      // First save the API call
       await this.db.prepare(`
         INSERT INTO api_calls (
           id, flow_id, flow_run_id, step_id, step_run_id,
@@ -409,9 +411,71 @@ export class ApiCaller {
       ).run();
       
       console.log(`[ApiCaller] Saved API call for ${apiCall.endpoint_name} to api_calls table`);
+      
+      // Extract and save variables from successful API responses
+      if (apiCall.response && apiCall.response.status >= 200 && apiCall.response.status < 300) {
+        await this.extractAndSaveVariables(apiCall);
+      }
+      
     } catch (error) {
       console.error(`[ApiCaller] Failed to save API call to api_calls table:`, error);
       // Don't throw - we still want to return the API result even if saving fails
+    }
+  }
+  
+  /**
+   * Extract variables from API response and save to variables table
+   */
+  private async extractAndSaveVariables(apiCall: {
+    flow_id?: string;
+    flow_run_id?: string;
+    step_id?: string;
+    step_run_id?: string;
+    endpoint_id?: string;
+    endpoint_name?: string;
+    response?: any;
+  }): Promise<void> {
+    try {
+      // Get endpoint config to check for response_path
+      const endpoint = await this.getEndpointConfig(apiCall.endpoint_id || apiCall.endpoint_name || '');
+      
+      // Extract response data
+      const responseData = apiCall.response?.data || apiCall.response?.raw || apiCall.response;
+      
+      if (!responseData) {
+        console.log(`[ApiCaller] No response data to extract variables from`);
+        return;
+      }
+      
+      // Extract variables based on response_path or flatten response
+      const responsePath = endpoint?.response_path;
+      const extractedVars = extractVariablesFromResponse(responseData, responsePath);
+      
+      console.log(`[ApiCaller] Extracted ${Object.keys(extractedVars).length} variables from API response:`, 
+        Object.keys(extractedVars));
+      
+      // Save each extracted variable
+      for (const [key, value] of Object.entries(extractedVars)) {
+        if (shouldStoreAsVariable(value)) {
+          await saveVariable(this.db, {
+            id: generateVariableId(apiCall.flow_run_id || 'unknown', key),
+            flow_id: apiCall.flow_id,
+            flow_run_id: apiCall.flow_run_id,
+            step_id: apiCall.step_id,
+            step_run_id: apiCall.step_run_id,
+            key,
+            value,
+            source: 'api',
+            variable_type: 'system'
+          });
+          
+          console.log(`[ApiCaller] Saved variable: ${key} = ${typeof value === 'object' ? JSON.stringify(value).substring(0, 100) + '...' : value}`);
+        }
+      }
+      
+    } catch (error) {
+      console.error(`[ApiCaller] Error extracting variables:`, error);
+      // Don't throw - variable extraction failure shouldn't break API call
     }
   }
 

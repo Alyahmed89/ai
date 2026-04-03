@@ -109,9 +109,11 @@ export class StepExecutor {
     
     // Check database for each required variable
     for (const varName of requiredVars) {
+      // Check for variable in database - look for both user_input and system variables
       const variable = await this.env.FLOW_RUNS_DB.prepare(
         `SELECT key, value, variable_type FROM variables 
-         WHERE flow_run_id = ? AND key = ? AND variable_type = 'user_input'`
+         WHERE flow_run_id = ? AND key = ? 
+         AND (variable_type = 'user_input' OR variable_type = 'system')`
       ).bind(context.flow_run_id, varName).first();
       
       if (!variable) {
