@@ -1472,28 +1472,8 @@ export function injectApiResponses(
 ): string {
   let result = instructions;
   
-  // STEP 1: Add raw API results as JSON at the beginning of instructions
-  // AI gets raw data directly in context, not through variable references
-  if (apiCalls.length > 0) {
-    const apiResultsSection = `
-=== API RESULTS ===
-The following API calls have been executed and their results are available:
-
-${apiCalls.map((call, index) => {
-  const responseData = call.response?.data || call.response;
-  return `API Call ${index + 1}: ${call.endpoint_name} (${call.phase})
-Response: ${JSON.stringify(responseData, null, 2)}`;
-}).join('\n\n')}
-
-=== END API RESULTS ===
-
-`;
-    
-    // Insert API results at the beginning of instructions
-    result = apiResultsSection + result;
-  }
-  
-  // STEP 2: Still support variable substitution for backward compatibility
+  // Only support variable substitution for backward compatibility
+  // Do NOT inject raw API results into instructions
   // Inject api variables (legacy support)
   if (variables.api) {
     for (const [endpointName, endpointData] of Object.entries(variables.api)) {
