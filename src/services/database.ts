@@ -1772,22 +1772,28 @@ export async function saveVariable(db: D1Database, variable: {
   key: string;
   value: any;
   source?: string;
+  variable_type?: string;
 }): Promise<{success: boolean; error?: string}> {
   try {
     const now = Math.floor(Date.now());
+    
+    // Determine variable type based on source
+    const variableType = variable.variable_type || 
+                       (variable.source === 'user' ? 'user_input' : 'system');
     
     // Insert into variables table (for condition usage)
     await db.prepare(`
       INSERT INTO variables (
         id, flow_id, flow_run_id, step_id, step_run_id, 
-        key, value, source, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        key, value, source, variable_type, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         value = excluded.value,
         flow_run_id = COALESCE(excluded.flow_run_id, variables.flow_run_id),
         step_id = COALESCE(excluded.step_id, variables.step_id),
         step_run_id = COALESCE(excluded.step_run_id, variables.step_run_id),
-        source = COALESCE(excluded.source, variables.source)
+        source = COALESCE(excluded.source, variables.source),
+        variable_type = COALESCE(excluded.variable_type, variables.variable_type)
     `).bind(
       variable.id,
       variable.flow_id || null,
@@ -1797,6 +1803,7 @@ export async function saveVariable(db: D1Database, variable: {
       variable.key,
       variable.value ? JSON.stringify(variable.value) : null,
       variable.source || 'api',
+      variableType,
       now
     ).run();
 

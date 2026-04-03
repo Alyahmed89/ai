@@ -4424,33 +4424,78 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
 
-      const { name: inputName, step_id: stepId } = this.conversation.waiting_for_input;
+      const { name: inputName, step_id: stepId, params } = this.conversation.waiting_for_input;
       
       console.log(`[DO:${this.state.id}] Resuming execution with input for ${inputName}:`, input);
 
-      // Store input in execution context with metadata
-      if (this.conversation.execution_context) {
-        this.conversation.execution_context.inputs[inputName] = {
-          value: input,
-          metadata: {
-            source: 'user',
-            timestamp: Date.now(),
-            step_id: stepId,
-            input_name: inputName
-          }
-        };
-        
-        // Clear awaiting_input
-        this.conversation.execution_context.awaiting_input = undefined;
-      }
+      // Handle different types of input requests
+      if (inputName === 'user_variables') {
+        // Validate input contains all required variables
+        if (!input || typeof input !== 'object') {
+          return new Response(JSON.stringify({
+            error: 'Input must be an object with variable values for user_variables',
+            required_variables: params?.required_variables || []
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
 
-      // Update the paused step with the input result
-      if (this.conversation.flow_steps && this.conversation.current_step) {
-        const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === stepId);
-        if (stepIndex !== -1) {
-          this.conversation.flow_steps[stepIndex].response = `Received input for ${inputName}: ${JSON.stringify(input)}`;
-          this.conversation.flow_steps[stepIndex].status = 'completed';
-          console.log(`[DO:${this.state.id}] Updated step ${stepId} with input result`);
+        const requiredVariables = params?.required_variables || [];
+        const missingVariables = requiredVariables.filter((varName: string) => input[varName] === undefined);
+        
+        if (missingVariables.length > 0) {
+          return new Response(JSON.stringify({
+            error: 'Missing required variables',
+            missing_variables: missingVariables,
+            required_variables: requiredVariables
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Save each variable to database
+        for (const varName of requiredVariables) {
+          if (input[varName] !== undefined) {
+            await this.saveVariable({
+              flow_id: this.conversation.flow_id,
+              flow_run_id: this.conversation.id,
+              step_id: stepId,
+              key: varName,
+              value: input[varName],
+              source: 'user',
+              variable_type: 'user_input'
+            });
+          }
+        }
+
+        console.log(`[DO:${this.state.id}] Saved ${requiredVariables.length} user variables to database`);
+      } else {
+        // Store input in execution context with metadata
+        if (this.conversation.execution_context) {
+          this.conversation.execution_context.inputs[inputName] = {
+            value: input,
+            metadata: {
+              source: 'user',
+              timestamp: Date.now(),
+              step_id: stepId,
+              input_name: inputName
+            }
+          };
+          
+          // Clear awaiting_input
+          this.conversation.execution_context.awaiting_input = undefined;
+        }
+
+        // Update the paused step with the input result
+        if (this.conversation.flow_steps && this.conversation.current_step) {
+          const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === stepId);
+          if (stepIndex !== -1) {
+            this.conversation.flow_steps[stepIndex].response = `Received input for ${inputName}: ${JSON.stringify(input)}`;
+            this.conversation.flow_steps[stepIndex].status = 'completed';
+            console.log(`[DO:${this.state.id}] Updated step ${stepId} with input result`);
+          }
         }
       }
 
@@ -6407,20 +6452,40 @@ ${messageContent}`;
     // Set conversation to WAITING_FOR_INPUT state
     this.conversation.state = 'WAITING_FOR_INPUT';
     this.conversation.status = 'paused';
-    this.conversation.waiting_for_input = {
-      name: inputName,
-      params: params,
-      step_id: step.step_id,
-      timestamp: Date.now()
-    };
+    
+    // Handle different types of input requests
+    if (inputName === 'user_variables_required') {
+      const { missing_variables, step_id } = params;
+      this.conversation.waiting_for_input = {
+        name: 'user_variables',
+        params: { required_variables: missing_variables },
+        step_id: step_id || step.step_id,
+        timestamp: Date.now()
+      };
+      
+      // Save await_input step run to database
+      await this.saveStepRunToDatabase(
+        step,
+        `Awaiting user variables: ${missing_variables.join(', ')}`,
+        `Waiting for user input: ${missing_variables.join(', ')}`,
+        'paused'
+      );
+    } else {
+      this.conversation.waiting_for_input = {
+        name: inputName,
+        params: params,
+        step_id: step.step_id,
+        timestamp: Date.now()
+      };
 
-    // Save await_input step run to database
-    await this.saveStepRunToDatabase(
-      step,
-      `Awaiting input: ${inputName}`,
-      `Waiting for user input: ${inputName}`,
-      'paused'
-    );
+      // Save await_input step run to database
+      await this.saveStepRunToDatabase(
+        step,
+        `Awaiting input: ${inputName}`,
+        `Waiting for user input: ${inputName}`,
+        'paused'
+      );
+    }
 
     // Save state and stop execution
     await this.state.storage.put('conversation', this.conversation);
@@ -7332,6 +7397,48 @@ ${messageContent}`;
     } catch (error) {
       console.error(`[DO:${this.state.id}] Error getting previous step responses:`, error);
       return {};
+    }
+  }
+
+  /**
+   * Save variable to database with proper type
+   */
+  private async saveVariable(variableData: {
+    flow_id: string;
+    flow_run_id: string;
+    step_id: string;
+    key: string;
+    value: any;
+    source: string;
+    variable_type: string;
+  }): Promise<void> {
+    const db = this.env.FLOW_RUNS_DB;
+    if (!db) {
+      console.warn(`[DO:${this.state.id}] No database available to save variable`);
+      return;
+    }
+
+    try {
+      const id = `${variableData.flow_run_id}_${variableData.key}_${Date.now()}`;
+      
+      await db.prepare(
+        `INSERT OR REPLACE INTO variables 
+         (id, flow_id, flow_run_id, step_id, key, value, source, variable_type, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+      ).bind(
+        id,
+        variableData.flow_id,
+        variableData.flow_run_id,
+        variableData.step_id,
+        variableData.key,
+        JSON.stringify(variableData.value),
+        variableData.source,
+        variableData.variable_type
+      ).run();
+
+      console.log(`[DO:${this.state.id}] Saved variable: ${variableData.key} = ${JSON.stringify(variableData.value)} (type: ${variableData.variable_type})`);
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error saving variable ${variableData.key}:`, error.message);
     }
   }
 }

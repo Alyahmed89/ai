@@ -3735,7 +3735,8 @@ crudApi.post('/variables', async (c) => {
       step_run_id: variable.step_run_id || null,
       key: variable.key,
       value: variable.value,
-      source: variable.source || 'api'
+      source: variable.source || 'api',
+      variable_type: variable.source === 'user' ? 'user_input' : 'system'
     });
 
     if (!result.success) {

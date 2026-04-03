@@ -22,6 +22,22 @@ export class StepExecutor {
     agent: string
   ): Promise<ExecutionContext> {
 
+    // Check for required user variables BEFORE executing
+    const variableCheck = await this.checkRequiredVariables(context, step);
+    
+    if (variableCheck.shouldPause) {
+      // Set context to indicate pause needed
+      context.awaiting_input = {
+        name: 'user_variables_required',
+        params: {
+          missing_variables: variableCheck.missing,
+          step_id: step.id
+        }
+      };
+      console.log(`[StepExecutor] Pausing for user input: ${variableCheck.missing.join(', ')}`);
+      return context; // Return early without executing
+    }
+
     const prompt = `${context.ai_input}`
 
     const raw = await this.runAgent(agent, prompt)
@@ -80,6 +96,33 @@ export class StepExecutor {
     context.step_count++
 
     return context
+  }
+
+  async checkRequiredVariables(context: ExecutionContext, step: any): Promise<{missing: string[], shouldPause: boolean}> {
+    const missingVariables: string[] = [];
+    
+    // Extract template variables from step instructions
+    const templateRegex = /\{([^}]+)\}/g;
+    const stepInstructions = step.instructions || '';
+    const matches = [...stepInstructions.matchAll(templateRegex)];
+    const requiredVars = matches.map(match => match[1]);
+    
+    // Check database for each required variable
+    for (const varName of requiredVars) {
+      const variable = await this.env.FLOW_RUNS_DB.prepare(
+        `SELECT key, value, variable_type FROM variables 
+         WHERE flow_run_id = ? AND key = ? AND variable_type = 'user_input'`
+      ).bind(context.flow_run_id, varName).first();
+      
+      if (!variable || variable.value === null || variable.value === 'null') {
+        missingVariables.push(varName);
+      }
+    }
+    
+    return {
+      missing: missingVariables,
+      shouldPause: missingVariables.length > 0
+    };
   }
 
   private async callDeepSeek(messages: any[]): Promise<string> {
