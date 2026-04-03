@@ -192,6 +192,7 @@ import SimpleFlowCreator from '../../../../components/SimpleFlowCreator';
 import Modal from '../../../../components/ui/Modal';
 import FlowSection from '../../../../components/FlowSection';
 import IntelligentTextarea from '../../../../components/ui/IntelligentTextarea';
+import CreateEndpointModal from '../../../../components/CreateEndpointModal';
 
 // Step data structure - matches backend FlowStep
 interface Step {
@@ -1285,6 +1286,7 @@ const NodePopup = ({
   const [availableCommands, setAvailableCommands] = useState<Array<{id: string, name: string, description: string, method: string, parameters: any}>>([]);
   const [loadingCommands, setLoadingCommands] = useState(false);
   const [showCreateCommand, setShowCreateCommand] = useState(false);
+  const [editingEndpointId, setEditingEndpointId] = useState<string | null>(null);
   const [newCommandData, setNewCommandData] = useState({
     name: '',
     description: '',
@@ -1793,6 +1795,19 @@ const NodePopup = ({
     }
   };
 
+  // Handle editing an existing command
+  const handleEditCommand = (commandId: string) => {
+    console.log('Edit command:', commandId);
+    // Find the command in availableCommands to get its ID
+    const command = availableCommands.find(cmd => cmd.name === commandId);
+    if (command) {
+      setEditingEndpointId(command.id);
+      setShowCreateCommand(true);
+    } else {
+      alert(`Command "${commandId}" not found.`);
+    }
+  };
+
   // Handle drag start for variables
   const onVariableDragStart = (event: DragEvent, variableName: string) => {
     event.dataTransfer.setData('text/plain', `{{${variableName}}}`);
@@ -1867,6 +1882,7 @@ const NodePopup = ({
             }}
             onVariableDragStart={onVariableDragStart}
             defaultCollapsed={true}
+            onEditCommand={handleEditCommand}
           />
 
           {/* ========== STEP INSTRUCTIONS ========== */}
@@ -1927,6 +1943,7 @@ const NodePopup = ({
             }}
             onVariableDragStart={onVariableDragStart}
             defaultCollapsed={true}
+            onEditCommand={handleEditCommand}
           />
 
           {/* ========== FLOW DROPDOWN ========== */}
@@ -1996,113 +2013,33 @@ const NodePopup = ({
         </div>
       </div>
 
-      {/* Command Creation Popup */}
-      {showCreateCommand && (
-        <Modal onClose={() => setShowCreateCommand(false)}>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-thin">New Command</h3>
-              <button
-                onClick={() => setShowCreateCommand(false)}
-                className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
-                disabled={creatingCommand}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <input
-                  type="text"
-                  name="name"
-                  value={newCommandData.name}
-                  onChange={handleNewCommandChange}
-                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none"
-                  placeholder="command name..."
-                  disabled={creatingCommand}
-                />
-              </div>
-              
-              <div>
-                <textarea
-                  name="description"
-                  value={newCommandData.description}
-                  onChange={handleNewCommandChange}
-                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none min-h-[60px]"
-                  placeholder="description..."
-                  disabled={creatingCommand}
-                />
-              </div>
-              
-              <div>
-                <select
-                  name="method"
-                  value={newCommandData.method}
-                  onChange={handleNewCommandChange}
-                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin focus:border-gray-500 focus:outline-none"
-                  disabled={creatingCommand}
-                >
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="DELETE">DELETE</option>
-                  <option value="PATCH">PATCH</option>
-                </select>
-              </div>
-              
-              <div>
-                <input
-                  type="text"
-                  name="endpoint"
-                  value={newCommandData.endpoint}
-                  onChange={handleNewCommandChange}
-                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none"
-                  placeholder="endpoint url..."
-                  disabled={creatingCommand}
-                />
-              </div>
-              
-              <div>
-                <textarea
-                  name="parameters"
-                  value={newCommandData.parameters}
-                  onChange={handleNewCommandChange}
-                  className="w-full bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm font-thin placeholder:italic focus:border-gray-500 focus:outline-none min-h-[80px]"
-                  placeholder='parameters json...'
-                  disabled={creatingCommand}
-                />
-              </div>
-              
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setShowCreateCommand(false)}
-                  className="px-3 py-1.5 text-gray-400 hover:text-white rounded hover:bg-gray-800 text-sm font-thin border border-gray-700 transition-colors"
-                  disabled={creatingCommand}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateCommand}
-                  className="px-3 py-1.5 bg-black text-white rounded hover:bg-gray-900 text-sm font-thin border border-gray-700 transition-colors flex items-center gap-2"
-                  disabled={creatingCommand}
-                >
-                  {creatingCommand ? (
-                    <>
-                      <span className="animate-spin">⟳</span>
-                      Creating...
-                    </>
-                  ) : (
-                    'Create'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Command Creation/Edit Popup */}
+      <CreateEndpointModal
+        isOpen={showCreateCommand}
+        onClose={() => {
+          setShowCreateCommand(false);
+          setEditingEndpointId(null);
+        }}
+        endpointName={newCommandData.name}
+        onEndpointCreated={(endpointName) => {
+          // Refresh commands list
+          fetchCommands();
+          // Update the selected command if it matches the created/edited endpoint
+          if (selectedInputCommand === endpointName || selectedOutputCommand === endpointName) {
+            // Trigger a re-render by updating state
+            if (selectedInputCommand === endpointName) {
+              setSelectedInputCommand('');
+              setTimeout(() => setSelectedInputCommand(endpointName), 100);
+            }
+            if (selectedOutputCommand === endpointName) {
+              setSelectedOutputCommand('');
+              setTimeout(() => setSelectedOutputCommand(endpointName), 100);
+            }
+          }
+        }}
+        mode={editingEndpointId ? 'edit' : 'create'}
+        endpointId={editingEndpointId || undefined}
+      />
 
       {/* Sample Response Modal */}
       {showSampleModal && (

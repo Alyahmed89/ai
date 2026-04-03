@@ -27,6 +27,7 @@ interface FlowSectionProps {
   onVariableDragStart: (e: React.DragEvent, variable: string) => void;
   defaultCollapsed?: boolean;
   sampleResponse?: string;
+  onEditCommand?: (commandId: string) => void;
 }
 
 // Endpoint metadata will be provided by backend
@@ -64,7 +65,8 @@ export default function FlowSection({
       "records_processed": 1250
     }
   }
-}`
+}`,
+  onEditCommand
 }: FlowSectionProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [smartParams, setSmartParams] = useState(queryParams);
@@ -535,6 +537,8 @@ export default function FlowSection({
             loading={loadingCommands}
             onCreateOption={handleCreateEndpoint}
             showCreateOption={true}
+            onEditOption={onEditCommand}
+            showEditOption={!!onEditCommand}
           />
         </div>
 

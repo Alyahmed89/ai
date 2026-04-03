@@ -7,6 +7,8 @@ interface CreateEndpointModalProps {
   onClose: () => void;
   endpointName: string;
   onEndpointCreated: (endpointName: string) => void;
+  mode?: 'create' | 'edit';
+  endpointId?: string;
 }
 
 interface EndpointFormData {
@@ -25,7 +27,9 @@ export default function CreateEndpointModal({
   isOpen, 
   onClose, 
   endpointName,
-  onEndpointCreated 
+  onEndpointCreated,
+  mode = 'create',
+  endpointId
 }: CreateEndpointModalProps) {
   const [formData, setFormData] = useState<EndpointFormData>({
     name: endpointName,
@@ -47,14 +51,53 @@ export default function CreateEndpointModal({
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(prev => ({
-        ...prev,
-        name: endpointName
-      }));
+      if (mode === 'edit' && endpointId) {
+        // Fetch endpoint data for editing
+        fetchEndpointData(endpointId);
+      } else {
+        // Reset form for create mode
+        setFormData(prev => ({
+          ...prev,
+          name: endpointName
+        }));
+      }
       setError(null);
       setSuccess(false);
     }
-  }, [isOpen, endpointName]);
+  }, [isOpen, endpointName, mode, endpointId]);
+
+  const fetchEndpointData = async (id: string) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/endpoints/${id}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch endpoint: ${response.status}`);
+      }
+      const data = await response.json();
+      
+      // Map API response to form data
+      setFormData({
+        name: data.name || '',
+        description: data.description || '',
+        url: data.url || '',
+        method: data.method || 'GET',
+        auth_type: data.auth_type || 'none',
+        auth_value: data.auth_value || '',
+        headers: data.headers || { 'Content-Type': 'application/json' },
+        sample_request: data.sample_request || '',
+        sample_response: data.sample_response || ''
+      });
+      
+      // Show auth section if auth is configured
+      if (data.auth_type && data.auth_type !== 'none') {
+        setShowAuth(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch endpoint data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -121,8 +164,16 @@ export default function CreateEndpointModal({
         Object.entries(payload).filter(([_, value]) => value !== undefined)
       );
 
-      const response = await fetch('https://deepseek-agent.alghamdimo89.workers.dev/api/endpoints', {
-        method: 'POST',
+      let url = 'https://deepseek-agent.alghamdimo89.workers.dev/api/endpoints';
+      let method = 'POST';
+      
+      if (mode === 'edit' && endpointId) {
+        url = `${url}/${endpointId}`;
+        method = 'PUT';
+      }
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json'
         },
@@ -132,7 +183,7 @@ export default function CreateEndpointModal({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || `Failed to create endpoint: ${response.status}`);
+        throw new Error(data.error || `Failed to ${mode === 'edit' ? 'update' : 'create'} endpoint: ${response.status}`);
       }
 
       setSuccess(true);
@@ -141,7 +192,7 @@ export default function CreateEndpointModal({
         onClose();
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create endpoint');
+      setError(err instanceof Error ? err.message : `Failed to ${mode === 'edit' ? 'update' : 'create'} endpoint`);
     } finally {
       setLoading(false);
     }
@@ -154,7 +205,7 @@ export default function CreateEndpointModal({
       <div className="bg-gray-900 border border-gray-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-white">Create New Endpoint</h2>
+            <h2 className="text-xl font-semibold text-white">{mode === 'edit' ? 'Edit Endpoint' : 'Create New Endpoint'}</h2>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-white"
@@ -172,8 +223,8 @@ export default function CreateEndpointModal({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-white mb-2">Endpoint Created Successfully!</h3>
-              <p className="text-gray-400">The endpoint "{formData.name}" has been created.</p>
+              <h3 className="text-lg font-medium text-white mb-2">Endpoint {mode === 'edit' ? 'Updated' : 'Created'} Successfully!</h3>
+              <p className="text-gray-400">The endpoint "{formData.name}" has been {mode === 'edit' ? 'updated' : 'created'}.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
@@ -407,10 +458,10 @@ export default function CreateEndpointModal({
                     {loading ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Creating...
+                        {mode === 'edit' ? 'Updating...' : 'Creating...'}
                       </>
                     ) : (
-                      'Create Endpoint'
+                      mode === 'edit' ? 'Update Endpoint' : 'Create Endpoint'
                     )}
                   </button>
                 </div>

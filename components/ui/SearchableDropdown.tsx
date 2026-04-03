@@ -13,6 +13,8 @@ interface SearchableDropdownProps {
   disabled?: boolean;
   onCreateOption?: (query: string) => void;
   showCreateOption?: boolean;
+  onEditOption?: (optionId: string) => void;
+  showEditOption?: boolean;
 }
 
 export default function SearchableDropdown({
@@ -25,7 +27,9 @@ export default function SearchableDropdown({
   loading = false,
   disabled = false,
   onCreateOption,
-  showCreateOption = false
+  showCreateOption = false,
+  onEditOption,
+  showEditOption = false
 }: SearchableDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -140,6 +144,15 @@ export default function SearchableDropdown({
     setSelectedIndex(-1);
   };
 
+  const handleEditClick = (e: React.MouseEvent, optionId: string) => {
+    e.stopPropagation(); // Prevent option click
+    if (onEditOption) {
+      onEditOption(optionId);
+      setIsOpen(false);
+      setSelectedIndex(-1);
+    }
+  };
+
   const handleCreateClick = () => {
     if (onCreateOption && searchQuery.trim()) {
       onCreateOption(searchQuery);
@@ -245,7 +258,7 @@ export default function SearchableDropdown({
               {filteredOptions.map((option, index) => (
                 <li
                   key={option.id}
-                  className={`px-3 py-2 cursor-pointer text-sm ${
+                  className={`px-3 py-2 cursor-pointer text-sm group ${
                     index === selectedIndex
                       ? 'bg-gray-800 text-white'
                       : 'text-gray-300 hover:bg-gray-800'
@@ -253,10 +266,27 @@ export default function SearchableDropdown({
                   onClick={() => handleOptionClick(option.id)}
                   onMouseEnter={() => setSelectedIndex(index)}
                 >
-                  <div className="font-medium">{option.label}</div>
-                  {option.description && (
-                    <div className="text-xs text-gray-400 mt-0.5">{option.description}</div>
-                  )}
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-medium">{option.label}</div>
+                      {option.description && (
+                        <div className="text-xs text-gray-400 mt-0.5">{option.description}</div>
+                      )}
+                    </div>
+                    {showEditOption && onEditOption && (
+                      <button
+                        type="button"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 p-1 text-gray-400 hover:text-white focus:outline-none"
+                        onClick={(e) => handleEditClick(e, option.id)}
+                        aria-label={`Edit ${option.label}`}
+                        title={`Edit ${option.label}`}
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
