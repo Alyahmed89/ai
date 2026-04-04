@@ -273,7 +273,7 @@ export const flowStepsUpdatePayloadSchema = z.object({
 // Variable Schema
 export const variableSchema = z.object({
   id: idSchema,
-  flow_id: z.string().min(1, 'flow_id is required'),
+  flow_id: z.string().optional().nullable().default(null),
   flow_run_id: z.string().optional().nullable().default(null),
   step_id: z.string().optional().nullable().default(null),
   step_run_id: z.string().optional().nullable().default(null),
