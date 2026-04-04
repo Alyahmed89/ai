@@ -966,6 +966,98 @@ export default function ChatPage(props: any) {
         console.error('Error fetching steps:', error);
       }
       
+      // ALSO: Get latest flow run and parse variables from last step's response
+      try {
+        console.log('Getting latest flow run for flow:', selectedFlowId);
+        const flowRunsResponse = await fetch(`/api/proxy/api/flow-runs?flow_id=${selectedFlowId}`);
+        if (flowRunsResponse.ok) {
+          const flowRunsData = await flowRunsResponse.json();
+          console.log('Flow runs data:', flowRunsData);
+          
+          if (Array.isArray(flowRunsData) && flowRunsData.length > 0) {
+            // Get latest flow run (sort by created_at to get most recent)
+            const sortedFlowRuns = [...flowRunsData].sort((a, b) => 
+              (b.created_at || 0) - (a.created_at || 0)
+            );
+            const latestFlowRun = sortedFlowRuns[0];
+            const flowRunId = latestFlowRun.id;
+            console.log('Latest flow run:', flowRunId);
+            
+            // Get step runs for this flow run
+            const stepRunsResponse = await fetch(`/api/proxy/api/flow-runs/${flowRunId}`);
+            if (stepRunsResponse.ok) {
+              const stepRunsData = await stepRunsResponse.json();
+              console.log('Step runs data:', stepRunsData);
+              
+              if (stepRunsData.step_runs && Array.isArray(stepRunsData.step_runs) && stepRunsData.step_runs.length > 0) {
+                // Get last step run (sort by created_at to get most recent)
+                const sortedStepRuns = [...stepRunsData.step_runs].sort((a, b) => 
+                  (b.created_at || 0) - (a.created_at || 0)
+                );
+                const lastStepRun = sortedStepRuns[0];
+                const lastStepResponse = lastStepRun.response;
+                console.log('Last step response:', lastStepResponse);
+                
+                if (lastStepResponse) {
+                  // Parse variables from response (same pattern as from instructions)
+                  const variablePattern = /ƐĐᜃ([^ƐĐᜃ]+)ƐĐᜃ/g;
+                  const variableMatches = [...lastStepResponse.matchAll(variablePattern)];
+                  console.log('Variables found in last step response:', variableMatches.map(m => m[1]));
+                  
+                  // Update each variable with prompt as value
+                  for (const match of variableMatches) {
+                    const variableKey = match[1];
+                    try {
+                      const variableResponse = await fetch('/api/proxy/api/variables', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          key: variableKey,
+                          value: prompt,
+                          flow_id: selectedFlowId
+                        }),
+                      });
+                      
+                      if (!variableResponse.ok) {
+                        const errorText = await variableResponse.text();
+                        console.error('Failed to update variable from last step response:', variableKey, errorText);
+                      } else {
+                        const variableResult = await variableResponse.json();
+                        console.log('Variable updated from last step response:', variableKey, variableResult);
+                        
+                        // Add variable update confirmation message
+                        const variableMessage: ChatMessage = {
+                          id: `${Date.now()}_laststepvar_${variableKey}`,
+                          type: 'assistant',
+                          content: `✅ Variable from last step response updated: \`${variableKey}\` = "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`,
+                          timestamp: new Date(),
+                        };
+                        setChatMessages(prev => [...prev, variableMessage]);
+                      }
+                    } catch (error) {
+                      console.error('Error updating variable from last step response:', variableKey, error);
+                    }
+                  }
+                }
+              } else {
+                console.log('No step runs found for flow run');
+              }
+            } else {
+              console.log('Failed to fetch step runs for flow run');
+            }
+          } else {
+            console.log('No flow runs found for flow');
+          }
+        } else {
+          console.log('Failed to fetch flow runs');
+        }
+      } catch (error) {
+        console.error('Error parsing variables from last step response:', error);
+        // Continue anyway - this is optional enhancement
+      }
+      
       // Start the flow with inputs
       const flowResponse = await fetch('/api/proxy/start', {
         method: 'POST',
