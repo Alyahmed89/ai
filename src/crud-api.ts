@@ -4065,7 +4065,7 @@ crudApi.get('/resolve', async (c) => {
 // Endpoint to resolve multiple variables in text
 crudApi.post('/resolve/text', async (c) => {
   try {
-    const { text, flow_id, flow_run_id, step_id, step_run_id } = await c.req.json();
+    const { text, flow_id, flow_run_id, step_id, step_run_id, table } = await c.req.json();
     const db = c.env.FLOW_RUNS_DB;
     
     if (!db) {
@@ -4085,12 +4085,13 @@ crudApi.post('/resolve/text', async (c) => {
     // Extract all variable tags
     const tags = extractVariableTags(text);
     
-    // Resolve the text
+    // Resolve the text with optional table parameter
     const resolvedText = await resolveTextVariables(db, text, {
       flow_id,
       flow_run_id,
       step_id,
-      step_run_id
+      step_run_id,
+      table
     });
     
     return c.json({

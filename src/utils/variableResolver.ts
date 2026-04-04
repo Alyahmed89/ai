@@ -75,6 +75,7 @@ export async function resolveVariable(
     flow_run_id?: string;
     step_id?: string;
     step_run_id?: string;
+    table?: string;
   }
 ): Promise<string> {
   try {
@@ -126,12 +127,17 @@ async function resolveFromVariablesTable(
   variable_type?: string
 ): Promise<string> {
   try {
+    // Build query to find variable, preferring exact flow_run_id match, then global (NULL)
     const conditions: string[] = ['key = ?'];
     const bindings: any[] = [key];
     
     if (context?.flow_run_id) {
-      conditions.push('flow_run_id = ?');
+      // Look for either exact flow_run_id match OR global (NULL) variable
+      conditions.push('(flow_run_id = ? OR flow_run_id IS NULL)');
       bindings.push(context.flow_run_id);
+    } else {
+      // No flow_run_id in context, only look for global variables
+      conditions.push('flow_run_id IS NULL');
     }
     
     if (variable_type) {
@@ -139,13 +145,22 @@ async function resolveFromVariablesTable(
       bindings.push(variable_type);
     }
     
-    // Order by most recent
+    // Order by: exact flow_run_id match first, then global (NULL), then by recency
+    const orderBy = context?.flow_run_id 
+      ? `ORDER BY CASE WHEN flow_run_id = ? THEN 0 ELSE 1 END, created_at DESC`
+      : `ORDER BY created_at DESC`;
+    
     const query = `
       SELECT value FROM variables 
       WHERE ${conditions.join(' AND ')} 
-      ORDER BY created_at DESC 
+      ${orderBy}
       LIMIT 1
     `;
+    
+    // Add flow_run_id again for ORDER BY if needed
+    if (context?.flow_run_id) {
+      bindings.push(context.flow_run_id);
+    }
     
     const result = await db.prepare(query).bind(...bindings).first();
     
@@ -338,6 +353,7 @@ export async function resolveTextVariables(
     flow_run_id?: string;
     step_id?: string;
     step_run_id?: string;
+    table?: string;
   }
 ): Promise<string> {
   const tags = extractVariableTags(text);
