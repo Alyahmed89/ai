@@ -461,7 +461,7 @@ export default function FlowSection({
           // Initialize smartParams with input keys
           const initialParams = inputKeys.map(key => ({
             key,
-            value: `{{${key}}}`
+            value: `ƐĐᜃ${key}`
           }));
           setSmartParams(initialParams);
           
@@ -632,7 +632,7 @@ export default function FlowSection({
                     className="node-popup-var-tag"
                     draggable
                     onDragStart={(e) => onVariableDragStart(e, variable)}
-                    title={`{{${variable}}} - Drag into text`}
+                    title={`ƐĐᜃ${variable} - Drag into text`}
                   >
                     {variable}
                   </div>

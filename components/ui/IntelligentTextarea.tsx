@@ -53,7 +53,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
           id: 'new-variable',
           label: `New Variable: "${currentSearchQuery}"`,
           description: 'Create a new variable with this name',
-          value: `{${currentSearchQuery}} `,
+          value: `ƐĐᜃ${currentSearchQuery} `,
           type: 'variable'
         };
         
