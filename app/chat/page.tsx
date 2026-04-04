@@ -644,8 +644,8 @@ export default function ChatPage(props: any) {
       console.log('Detected variable creation:', { variableName, variableValue });
     }
     
-    // Check for {variable} pattern in the prompt
-    const variablePattern = /\{(\w+)\}/g;
+    // Check for ƐĐᜃvariableƐĐᜃ pattern in the prompt
+    const variablePattern = /ƐĐᜃ(\w+)ƐĐᜃ/g;
     const variableMatches = [...prompt.matchAll(variablePattern)];
     const variablesToUpdate: Array<{name: string, value: string}> = [];
     
