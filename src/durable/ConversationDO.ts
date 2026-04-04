@@ -6434,7 +6434,14 @@ ${messageContent}`;
     }
 
     if (!inputName) {
-      return false;
+      // Check for missing user variables referenced in step instructions
+      const missingUserVars = await this.checkMissingUserVariables(step);
+      if (missingUserVars.length > 0) {
+        inputName = 'user_variables_required';
+        params = { missing_variables: missingUserVars, step_id: step.step_id };
+      } else {
+        return false;
+      }
     }
 
     // Check if input is already provided (e.g., from /start endpoint)
@@ -6491,6 +6498,46 @@ ${messageContent}`;
     await this.state.storage.put('conversation', this.conversation);
     console.log(`[DO:${this.state.id}] Execution paused, waiting for input: ${inputName}`);
     return true;
+  }
+
+  /**
+   * Check for missing user variables referenced in step instructions
+   */
+  private async checkMissingUserVariables(step: StepData): Promise<string[]> {
+    try {
+      if (!this.env.FLOW_RUNS_DB || !step.instructions) {
+        return [];
+      }
+
+      // Extract variable keys from instructions (ƐĐᜃkeyƐĐᜃ format)
+      const regex = /ƐĐᜃ([^ƐĐᜃ]+)ƐĐᜃ/g;
+      const matches = [...step.instructions.matchAll(regex)];
+      const variableKeys = matches.map(match => match[1]);
+
+      if (variableKeys.length === 0) {
+        return [];
+      }
+
+      // Query for user variables with null value
+      const placeholders = variableKeys.map(() => '?').join(',');
+      const query = `
+        SELECT key FROM variables 
+        WHERE key IN (${placeholders}) 
+        AND source = 'user' 
+        AND value IS NULL
+      `;
+      
+      const result = await this.env.FLOW_RUNS_DB.prepare(query).bind(...variableKeys).all();
+      
+      if (result.results && result.results.length > 0) {
+        return result.results.map((row: any) => row.key);
+      }
+      
+      return [];
+    } catch (error) {
+      console.error(`[DO:${this.state.id}] Error checking missing user variables:`, error);
+      return [];
+    }
   }
 
   /**
