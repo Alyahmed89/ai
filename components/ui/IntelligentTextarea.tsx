@@ -207,8 +207,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
           body: JSON.stringify({
             key: variableName,
             value: '', // Empty value, user will fill it
-            source: 'user',
-            flow_id: flowId || 'default-flow-id'
+            ...(flowId ? { flow_id: flowId } : {})
           }),
         });
         

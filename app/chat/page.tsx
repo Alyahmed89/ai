@@ -903,6 +903,69 @@ export default function ChatPage(props: any) {
       let createdTaskId = null;
       console.log('Skipping task creation - updating variables instead');
       
+      // NEW: Get first step's variables and update them with prompt value
+      try {
+        console.log('Getting first step for flow:', selectedFlowId);
+        const stepsResponse = await fetch(`/api/proxy/api/flow-steps?flow_id=${selectedFlowId}`);
+        if (stepsResponse.ok) {
+          const stepsData = await stepsResponse.json();
+          console.log('Steps data:', stepsData);
+          
+          if (stepsData.success && stepsData.data && stepsData.data.length > 0) {
+            const firstStep = stepsData.data[0];
+            console.log('First step instructions:', firstStep.instructions);
+            
+            // Parse ƐĐᜃvariableKeyƐĐᜃ from step instructions
+            const variablePattern = /ƐĐᜃ([^ƐĐᜃ]+)ƐĐᜃ/g;
+            const variableMatches = [...firstStep.instructions.matchAll(variablePattern)];
+            console.log('Variables found in first step:', variableMatches.map(m => m[1]));
+            
+            // Update each variable with prompt as value
+            for (const match of variableMatches) {
+              const variableKey = match[1];
+              try {
+                const variableResponse = await fetch('/api/proxy/api/variables', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    key: variableKey,
+                    value: prompt,
+                    flow_id: selectedFlowId
+                  }),
+                });
+                
+                if (!variableResponse.ok) {
+                  const errorText = await variableResponse.text();
+                  console.error('Failed to update variable from step:', variableKey, errorText);
+                } else {
+                  const variableResult = await variableResponse.json();
+                  console.log('Variable updated from first step:', variableKey, variableResult);
+                  
+                  // Add variable update confirmation message
+                  const variableMessage: ChatMessage = {
+                    id: `${Date.now()}_stepvar_${variableKey}`,
+                    type: 'assistant',
+                    content: `✅ Variable from step updated: \`${variableKey}\` = "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`,
+                    timestamp: new Date(),
+                  };
+                  setChatMessages(prev => [...prev, variableMessage]);
+                }
+              } catch (error) {
+                console.error('Error updating variable from step:', variableKey, error);
+              }
+            }
+          } else {
+            console.log('No steps found for flow or API error');
+          }
+        } else {
+          console.log('Failed to fetch steps for flow');
+        }
+      } catch (error) {
+        console.error('Error fetching steps:', error);
+      }
+      
       // Start the flow with inputs
       const flowResponse = await fetch('/api/proxy/start', {
         method: 'POST',
