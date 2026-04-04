@@ -1317,6 +1317,7 @@ const NodePopup = ({
   
   const nodeData = node.data as NodeData;
   const [instructions, setInstructions] = useState<string>(typeof nodeData?.instructions === 'string' ? nodeData.instructions : '');
+  const [expectedResponse, setExpectedResponse] = useState<string>('');
   const [selectedInputCommand, setSelectedInputCommand] = useState<string>('');
   const [selectedOutputCommand, setSelectedOutputCommand] = useState<string>('');
   const [availableCommands, setAvailableCommands] = useState<Array<{id: string, name: string, description: string, method: string, parameters: any}>>([]);
@@ -1478,16 +1479,21 @@ const NodePopup = ({
       const useEndpoints = endpointsArray.length > 0 ? JSON.stringify(endpointsArray) : null;
       console.log('Generated use_endpoints:', useEndpoints);
       
+      // Combine instructions and expected response
+      const combinedInstructions = expectedResponse 
+        ? `${domInstructions}\n(expected response: ${expectedResponse})`
+        : domInstructions;
+      
       const currentStep = nodeData?.step;
       const updatedNode = {
         ...node,
         data: {
           ...nodeData,
-          instructions: domInstructions,
+          instructions: combinedInstructions,
           await_input: false, // Always false since we removed the checkbox
           step: currentStep ? {
             ...currentStep,
-            instructions: domInstructions,
+            instructions: combinedInstructions,
             // Store next_flow_id (empty string becomes null for backend)
             next_flow_id: selectedFlowId || null,
             // Update use_endpoints with selected endpoints
@@ -1846,7 +1852,7 @@ const NodePopup = ({
 
   // Handle drag start for variables
   const onVariableDragStart = (event: DragEvent, variableName: string) => {
-    event.dataTransfer.setData('text/plain', `ƐĐᜃ${variableName}`);
+    event.dataTransfer.setData('text/plain', `ƐĐᜃ${variableName}ƐĐᜃ`);
     event.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -1926,22 +1932,51 @@ const NodePopup = ({
             <IntelligentTextarea
               value={instructions || ''}
               onChange={(value) => setInstructions(value)}
-              placeholder="expected response: ƐĐᜃcommand_output"
+              placeholder="Step instructions..."
               className="node-popup-textarea"
               commands={availableCommands.map(cmd => ({
                 id: cmd.name,
                 label: cmd.name,
                 description: `Command: ${cmd.method}`,
                 type: 'command' as const,
-                value: `ƐĐᜃ${cmd.name}`
+                value: `ƐĐᜃ${cmd.name}ƐĐᜃ`
               }))}
               variables={[
-                { id: 'command_output', label: 'command_output', description: 'Output from the command', type: 'variable', value: 'ƐĐᜃcommand_output' },
-                { id: 'flow_id', label: 'flow_id', description: 'Current flow ID', type: 'variable', value: 'ƐĐᜃflow_id' },
-                { id: 'step_id', label: 'step_id', description: 'Current step ID', type: 'variable', value: 'ƐĐᜃstep_id' },
-                { id: 'user_input', label: 'user_input', description: 'User input variable', type: 'variable', value: 'ƐĐᜃuser_input' },
-                { id: 'timestamp', label: 'timestamp', description: 'Current timestamp', type: 'variable', value: 'ƐĐᜃtimestamp' },
-                { id: 'inputs.user_prompt', label: 'inputs.user_prompt', description: 'User prompt from chat input', type: 'variable', value: 'ƐĐᜃinputs.user_prompt' }
+                { id: 'command_output', label: 'command_output', description: 'Output from the command', type: 'variable', value: 'ƐĐᜃcommand_outputƐĐᜃ' },
+                { id: 'flow_id', label: 'flow_id', description: 'Current flow ID', type: 'variable', value: 'ƐĐᜃflow_idƐĐᜃ' },
+                { id: 'step_id', label: 'step_id', description: 'Current step ID', type: 'variable', value: 'ƐĐᜃstep_idƐĐᜃ' },
+                { id: 'user_input', label: 'user_input', description: 'User input variable', type: 'variable', value: 'ƐĐᜃuser_inputƐĐᜃ' },
+                { id: 'timestamp', label: 'timestamp', description: 'Current timestamp', type: 'variable', value: 'ƐĐᜃtimestampƐĐᜃ' },
+                { id: 'inputs.user_prompt', label: 'inputs.user_prompt', description: 'User prompt from chat input', type: 'variable', value: 'ƐĐᜃinputs.user_promptƐĐᜃ' }
+              ]}
+              flows={[]} // Will be populated from API
+              steps={[]} // Will be populated from API
+              flowruns={[]} // Will be populated from API
+              flowId={flowId}
+            />
+          </div>
+
+          {/* ========== EXPECTED RESPONSE ========== */}
+          <div className="node-popup-textarea-container" style={{ marginTop: '10px' }}>
+            <IntelligentTextarea
+              value={expectedResponse || ''}
+              onChange={(value) => setExpectedResponse(value)}
+              placeholder="(expected response:)"
+              className="node-popup-textarea"
+              commands={availableCommands.map(cmd => ({
+                id: cmd.name,
+                label: cmd.name,
+                description: `Command: ${cmd.method}`,
+                type: 'command' as const,
+                value: `ƐĐᜃ${cmd.name}ƐĐᜃ`
+              }))}
+              variables={[
+                { id: 'command_output', label: 'command_output', description: 'Output from the command', type: 'variable', value: 'ƐĐᜃcommand_outputƐĐᜃ' },
+                { id: 'flow_id', label: 'flow_id', description: 'Current flow ID', type: 'variable', value: 'ƐĐᜃflow_idƐĐᜃ' },
+                { id: 'step_id', label: 'step_id', description: 'Current step ID', type: 'variable', value: 'ƐĐᜃstep_idƐĐᜃ' },
+                { id: 'user_input', label: 'user_input', description: 'User input variable', type: 'variable', value: 'ƐĐᜃuser_inputƐĐᜃ' },
+                { id: 'timestamp', label: 'timestamp', description: 'Current timestamp', type: 'variable', value: 'ƐĐᜃtimestampƐĐᜃ' },
+                { id: 'inputs.user_prompt', label: 'inputs.user_prompt', description: 'User prompt from chat input', type: 'variable', value: 'ƐĐᜃinputs.user_promptƐĐᜃ' }
               ]}
               flows={[]} // Will be populated from API
               steps={[]} // Will be populated from API

@@ -7,7 +7,7 @@ import { IntelligentTextareaProps, CommandItem } from '@/types';
 const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string }> = ({
   value,
   onChange,
-  placeholder = 'Type / for commands or # for variables...',
+  placeholder = 'Type / for commands or & for variables...',
   className = '',
   commands = [],
   variables = [],
@@ -19,7 +19,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showPalette, setShowPalette] = useState(false);
   const [palettePosition, setPalettePosition] = useState({ x: 0, y: 0 });
-  const [triggerType, setTriggerType] = useState<'/' | '#' | null>(null);
+  const [triggerType, setTriggerType] = useState<'/' | '&' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [cursorPosition, setCursorPosition] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -47,13 +47,13 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
           ...steps.map(s => ({ ...s, type: 'step' as const })),
           ...flowruns.map(fr => ({ ...fr, type: 'flowrun' as const })),
         ];
-      case '#':
-        // Add "New Variable" option at the top when typing #
+      case '&':
+        // Add "New Variable" option at the top when typing &
         const newVariableItem: CommandItem = {
           id: 'new-variable',
           label: `New Variable: "${currentSearchQuery}"`,
           description: 'Create a new variable with this name',
-          value: `ƐĐᜃ${currentSearchQuery} `,
+          value: `ƐĐᜃ${currentSearchQuery}ƐĐᜃ `,
           type: 'variable'
         };
         
@@ -82,17 +82,17 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
     checkForTriggers(newValue, newCursorPos);
   };
 
-  // Check for / or # triggers
+  // Check for / or & triggers
   const checkForTriggers = (text: string, cursorPos: number) => {
     // Get text before cursor
     const textBeforeCursor = text.substring(0, cursorPos);
     
     // Find the last trigger character
     const lastSlashIndex = textBeforeCursor.lastIndexOf('/');
-    const lastHashIndex = textBeforeCursor.lastIndexOf('#');
+    const lastAmpersandIndex = textBeforeCursor.lastIndexOf('&');
     
     // Determine which trigger is more recent
-    const maxIndex = Math.max(lastSlashIndex, lastHashIndex);
+    const maxIndex = Math.max(lastSlashIndex, lastAmpersandIndex);
     
     if (maxIndex === -1) {
       // No trigger found
@@ -120,7 +120,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
     const query = textBeforeCursor.substring(maxIndex + 1);
     
     // Update state
-    setTriggerType(triggerChar as '/' | '#');
+    setTriggerType(triggerChar as '/' | '&');
     setSearchQuery(query);
     setSelectedIndex(0); // Reset selection when trigger changes
     
@@ -186,7 +186,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
     }
     
     // Check if this is a "New Variable" creation
-    if (item.id === 'new-variable' && triggerType === '#') {
+    if (item.id === 'new-variable' && triggerType === '&') {
       // Extract variable name from search query
       const variableName = searchQuery.trim();
       
@@ -296,7 +296,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
       const textBeforeCursor = value.substring(0, cursorPosition);
       const lastTriggerIndex = Math.max(
         textBeforeCursor.lastIndexOf('/'),
-        textBeforeCursor.lastIndexOf('#')
+        textBeforeCursor.lastIndexOf('&')
       );
       
       if (lastTriggerIndex !== -1 && cursorPosition === lastTriggerIndex + 1) {
@@ -350,7 +350,7 @@ const IntelligentTextarea: React.FC<IntelligentTextareaProps & { flowId?: string
         
         {/* Trigger hint */}
         <div className="absolute bottom-2 right-2 text-xs text-gray-500">
-          Type / or # for suggestions
+          Type / or & for suggestions
         </div>
       </div>
       

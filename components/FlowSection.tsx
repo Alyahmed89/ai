@@ -632,7 +632,7 @@ export default function FlowSection({
                     className="node-popup-var-tag"
                     draggable
                     onDragStart={(e) => onVariableDragStart(e, variable)}
-                    title={`ƐĐᜃ${variable} - Drag into text`}
+                    title={`ƐĐᜃ${variable}ƐĐᜃ - Drag into text`}
                   >
                     {variable}
                   </div>
