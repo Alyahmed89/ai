@@ -726,7 +726,7 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         retryable: Boolean(step.retryable),
         output_keys: step.output_keys || null,
         input_keys: step.input_keys || null,
-        use_endpoints: step.use_endpoints || null,
+        use_endpoints: typeof step.use_endpoints === "string" ? step.use_endpoints : (Array.isArray(step.use_endpoints) ? JSON.stringify(step.use_endpoints) : null),
         extra_step: step.extra_step || 0,
         page_key: step.page_key || null,
         // Include next_flow_id if present
@@ -766,7 +766,7 @@ async function saveFlowSteps(flowId: string, steps: Step[]): Promise<boolean> {
         retryable: Boolean(step.retryable),
         output_keys: step.output_keys || null,
         input_keys: step.input_keys || null,
-        use_endpoints: step.use_endpoints || null,
+        use_endpoints: typeof step.use_endpoints === "string" ? step.use_endpoints : (Array.isArray(step.use_endpoints) ? JSON.stringify(step.use_endpoints) : null),
         extra_step: step.extra_step || 0,
         page_key: step.page_key || null,
         // Include next_flow_id if present
@@ -861,7 +861,8 @@ async function saveFlowDAG(
       default_next_step_id: step.default_next_step_id || null,
       step_number: step.step_number || null,
       requires_task: Boolean(step.requires_task || 0), // Also fix this boolean
-      use_endpoints: step.use_endpoints || null,
+      use_endpoints: typeof step.use_endpoints === 'string' ? step.use_endpoints : 
+                    (Array.isArray(step.use_endpoints) ? JSON.stringify(step.use_endpoints) : null),
       extra_step: step.extra_step || 0,
       // Include next_flow_id if present
       next_flow_id: step.next_flow_id || null,
