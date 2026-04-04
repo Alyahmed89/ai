@@ -461,7 +461,7 @@ export default function FlowSection({
           // Initialize smartParams with input keys
           const initialParams = inputKeys.map(key => ({
             key,
-            value: `ƐĐᜃ${key}`
+            value: ''  // Empty value instead of ƐĐᜃ${key}
           }));
           setSmartParams(initialParams);
           
