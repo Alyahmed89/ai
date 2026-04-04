@@ -589,7 +589,7 @@ crudApi.post('/flow-steps', async (c) => {
         requires_task, output_url, output_payload_template, default_next_step,
         output_auth_token, output, next_flow_id,
         use_endpoints, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     // Log bindings for debugging
@@ -3243,7 +3243,7 @@ crudApi.put('/flows/:flowId/steps', async (c) => {
               requires_task, output_url, output_payload_template, default_next_step,
               output_auth_token, output, next_flow_id,
               use_endpoints, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `;
 
           const bindings = [
