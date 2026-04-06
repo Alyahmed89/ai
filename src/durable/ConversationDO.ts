@@ -4433,30 +4433,15 @@ export class ConversationOrchestratorDO_2026A {
             });
           }
           
-          // Try to get last completed step with flexible table join
-          let lastStepResult;
-          try {
-            // First try joining with steps table (new schema)
-            lastStepResult = await this.env.FLOW_RUNS_DB.prepare(`
-              SELECT sr.step_id, sr.status, s.title, s.content as instructions, s.content as description
-              FROM step_runs sr
-              JOIN steps s ON sr.step_id = s.id
-              WHERE sr.flow_run_id = ? AND sr.status = 'completed'
-              ORDER BY sr.created_at DESC
-              LIMIT 1
-            `).bind(this.flowRunId).first();
-          } catch (error) {
-            // If that fails, try flow_steps table (old schema)
-            console.log(`[DO:${this.state.id}] Trying flow_steps table after steps table failed: ${error.message}`);
-            lastStepResult = await this.env.FLOW_RUNS_DB.prepare(`
-              SELECT sr.step_id, sr.status, fs.prompt as title, fs.prompt as description, fs.prompt as instructions
-              FROM step_runs sr
-              JOIN flow_steps fs ON sr.step_id = fs.id
-              WHERE sr.flow_run_id = ? AND sr.status = 'completed'
-              ORDER BY sr.created_at DESC
-              LIMIT 1
-            `).bind(this.flowRunId).first();
-          }
+          // Get last completed step from step_runs joined with flow_steps
+          const lastStepResult = await this.env.FLOW_RUNS_DB.prepare(`
+            SELECT sr.step_id, sr.status, fs.title, fs.instructions, fs.instructions as description
+            FROM step_runs sr
+            JOIN flow_steps fs ON sr.step_id = fs.id
+            WHERE sr.flow_run_id = ? AND sr.status = 'completed'
+            ORDER BY sr.created_at DESC
+            LIMIT 1
+          `).bind(this.flowRunId).first();
           
           if (!lastStepResult) {
             return new Response(JSON.stringify({
