@@ -3146,8 +3146,8 @@ export class ConversationOrchestratorDO_2026A {
             throw new Error('No resolved instructions found in execution_context.ai_input');
           }
           
-          // Guard: Ensure no unresolved variables
-          if (aiInput.includes('{')) {
+          // Guard: Ensure no unresolved variables (check for ƐĐᜃ delimiter, not {})
+          if (aiInput.includes('ƐĐᜃ')) {
             throw new Error(`UNRESOLVED VARIABLES in ai_input: ${aiInput.substring(0, 200)}`);
           }
           
@@ -3246,8 +3246,8 @@ export class ConversationOrchestratorDO_2026A {
             throw new Error('No resolved instructions found in execution_context.ai_input for OpenHands');
           }
           
-          // Guard: Ensure no unresolved variables
-          if (aiInput.includes('{')) {
+          // Guard: Ensure no unresolved variables (check for ƐĐᜃ delimiter, not {})
+          if (aiInput.includes('ƐĐᜃ')) {
             throw new Error(`UNRESOLVED VARIABLES in ai_input for OpenHands: ${aiInput.substring(0, 200)}`);
           }
           
@@ -3306,8 +3306,8 @@ export class ConversationOrchestratorDO_2026A {
       throw new Error('No user prompt available for DeepSeek');
     }
     
-    // Guard: Check for unresolved variables if using execution_context.ai_input
-    if (this.conversation.execution_context?.ai_input && this.conversation.execution_context.ai_input.includes('{')) {
+    // Guard: Check for unresolved variables if using execution_context.ai_input (check for ƐĐᜃ delimiter, not {})
+    if (this.conversation.execution_context?.ai_input && this.conversation.execution_context.ai_input.includes('ƐĐᜃ')) {
       throw new Error(`UNRESOLVED VARIABLES in ai_input: ${this.conversation.execution_context.ai_input.substring(0, 200)}`);
     }
     
@@ -5629,8 +5629,8 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Prompt preview: ${prompt.substring(0, 200)}...`);
       
       // Build messages for DeepSeek WITHOUT system message
-      // Guard: Ensure no unresolved variables
-      if (prompt.includes('{')) {
+      // Guard: Ensure no unresolved variables (check for ƐĐᜃ delimiter, not {})
+      if (prompt.includes('ƐĐᜃ')) {
         throw new Error(`UNRESOLVED VARIABLES in prompt: ${prompt.substring(0, 200)}`);
       }
       

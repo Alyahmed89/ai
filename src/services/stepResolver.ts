@@ -121,12 +121,10 @@ export async function resolveStepInstructions(
         allVariables.task_description = taskData.description;
       }
       
-      console.log(`[StepResolver:unified] Combined variables for {variable} substitution: ${Object.keys(allVariables).join(', ')}`);
+      console.log(`[StepResolver:unified] Combined variables for ƐĐᜃvariableƐĐᜃ substitution: ${Object.keys(allVariables).join(', ')}`);
       
-      // Apply {variable} substitution
-      if (Object.keys(allVariables).length > 0) {
-        instructions = substituteVariables(instructions, allVariables, 'unified_system');
-      }
+      // Apply ƐĐᜃvariableƐĐᜃ substitution (new system only)
+      // Note: {variable} syntax is deprecated and not supported
       
       // Add command format instructions if step has command endpoints
       instructions = addCommandFormatInstructions(instructions, step);
@@ -308,12 +306,10 @@ export async function resolveStepInstructions(
     allVariables.task_description = taskData.description;
   }
   
-  console.log(`[StepResolver] Combined variables for {variable} substitution: ${Object.keys(allVariables).join(', ')}`);
+  console.log(`[StepResolver] Combined variables for ƐĐᜃvariableƐĐᜃ substitution: ${Object.keys(allVariables).join(', ')}`);
   
-  // Apply {variable} substitution
-  if (Object.keys(allVariables).length > 0) {
-    instructions = substituteVariables(instructions, allVariables, 'old_system');
-  }
+  // Apply ƐĐᜃvariableƐĐᜃ substitution (new system only)
+  // Note: {variable} syntax is deprecated and not supported
   
   // Resolve ƐĐᜃ...ƐĐᜃ variables if present (new system)
   if (instructions.includes('ƐĐᜃ') && db && context.execution_id) {
@@ -1643,56 +1639,14 @@ export function injectInputValues(
   return result;
 }
 
-// Helper to substitute {variable} placeholders in instructions
+// Helper to substitute ƐĐᜃvariableƐĐᜃ placeholders in instructions
 export function substituteVariables(
   instructions: string,
   variables: Record<string, any>,
   source: string = 'unknown'
 ): string {
-  let result = instructions;
-  
-  // Find all {variable} placeholders
-  const variableRegex = /\{([^}]+)\}/g;
-  const matches = [...result.matchAll(variableRegex)];
-  
-  console.log(`[StepResolver:substituteVariables] Source: ${source}`);
-  console.log(`[StepResolver:substituteVariables] Found ${matches.length} {variable} placeholders: ${matches.map(m => m[1]).join(', ')}`);
-  console.log(`[StepResolver:substituteVariables] Available variables: ${Object.keys(variables).join(', ')}`);
-  
-  // DEBUG: Log ALL_VARIABLES with full structure
-  console.log(`[StepResolver:substituteVariables] ALL_VARIABLES FULL OBJECT:`, JSON.stringify(variables, null, 2));
-  
-  // Create a SecureVariableResolver for proper substitution
-  const resolver = new SecureVariableResolver({});
-  
-  try {
-    // Use safeSubstitute for proper variable replacement
-    result = resolver.safeSubstitute(instructions, variables);
-    console.log(`[StepResolver:substituteVariables] Substitution completed successfully`);
-    
-    // Check for any remaining placeholders
-    const remainingMatches = [...result.matchAll(variableRegex)];
-    if (remainingMatches.length > 0) {
-      console.log(`[StepResolver:substituteVariables] WARNING: ${remainingMatches.length} unresolved placeholders remain: ${remainingMatches.map(m => m[1]).join(', ')}`);
-    }
-    
-  } catch (error) {
-    console.error(`[StepResolver:substituteVariables] Error during variable substitution:`, error);
-    // Fall back to manual replacement
-    for (const match of matches) {
-      const fullMatch = match[0];
-      const varName = match[1];
-      
-      if (variables[varName] !== undefined) {
-        const value = variables[varName];
-        result = result.replace(new RegExp(fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 
-          typeof value === 'string' ? value : JSON.stringify(value));
-        console.log(`[StepResolver:substituteVariables] Manually replaced ${fullMatch}`);
-      } else {
-        console.log(`[StepResolver:substituteVariables] WARNING: Variable ${varName} not found`);
-      }
-    }
-  }
-  
-  return result;
+  // This function is deprecated and no longer performs {variable} substitution
+  // {variable} syntax is not supported to avoid conflicts with command JSON
+  console.log(`[StepResolver:substituteVariables] WARNING: {variable} substitution is deprecated. Use ƐĐᜃvariableƐĐᜃ syntax instead.`);
+  return instructions;
 }
