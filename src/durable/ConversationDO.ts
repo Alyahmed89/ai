@@ -2892,7 +2892,7 @@ export class ConversationOrchestratorDO_2026A {
       // Build step prompt with step details
       // Remove "Step X: " prefix from title to prevent AI from inferring progress
       const stepTitleWithoutNumber = nextStep.title.replace(/^Step \d+: /, '');
-      let taskPrompt = `Execute step: ${stepTitleWithoutNumber}`;
+      let taskPrompt = `${stepTitleWithoutNumber}`;
       
       // Inject task data if available
       if (taskData) {
@@ -4112,7 +4112,7 @@ export class ConversationOrchestratorDO_2026A {
         // Build step command
         // Remove "Step X: " prefix from title to prevent AI from inferring progress
         const stepTitleWithoutNumber = nextStep.title.replace(/^Step \d+: /, '');
-        let stepCommand = `Execute step: ${stepTitleWithoutNumber}`;
+        let stepCommand = `${stepTitleWithoutNumber}`;
         if (nextStep.description) {
           stepCommand += `\n${nextStep.description}`;
         }
@@ -5370,7 +5370,7 @@ ${messageContent}`;
       // Build new prompt with step instructions
       // Remove "Step X: " prefix from title to prevent AI from inferring progress
       const stepTitleWithoutNumber = step.title.replace(/^Step \d+: /, '');
-      prompt = `Execute step: ${stepTitleWithoutNumber}`;
+      prompt = `${stepTitleWithoutNumber}`;
       
       // Check for task injection
       // Priority: 1. Static task_id, 2. Dynamic requires_task
