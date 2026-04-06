@@ -193,7 +193,7 @@ export class ApiCaller {
     }
     
     // Build body
-    let body: any = null;
+    let body: any = {};
     if (endpoint.body_template) {
       try {
         let bodyTemplate = endpoint.body_template;

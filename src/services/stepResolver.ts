@@ -1208,7 +1208,7 @@ function validateOutputData(data: any, schema: string): { valid: boolean; errors
 // Helper to build output request
 async function buildOutputRequest(endpoint: any, outputData: any): Promise<any> {
   let url = endpoint.url;
-  let body = endpoint.body_template ? JSON.parse(endpoint.body_template) : null;
+  let body = endpoint.body_template ? JSON.parse(endpoint.body_template) : {};
   const headers = endpoint.headers ? JSON.parse(endpoint.headers) : {};
   const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : null;
   
@@ -1256,7 +1256,7 @@ async function buildCommandRequest(
   params: Record<string, any>
 ): Promise<any> {
   let url = endpoint.url;
-  let body = endpoint.body_template ? JSON.parse(endpoint.body_template) : null;
+  let body = endpoint.body_template ? JSON.parse(endpoint.body_template) : {};
   const headers = endpoint.headers ? JSON.parse(endpoint.headers) : {};
   const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : null;
   
@@ -1306,7 +1306,7 @@ async function buildEndpointRequest(
   env: Record<string, string>
 ): Promise<any> {
   let url = endpoint.url;
-  let body = endpoint.body_template ? JSON.parse(endpoint.body_template) : null;
+  let body = endpoint.body_template ? JSON.parse(endpoint.body_template) : {};
   const headers = endpoint.headers ? JSON.parse(endpoint.headers) : {};
   const queryParams = endpoint.query_params ? JSON.parse(endpoint.query_params) : null;
   
