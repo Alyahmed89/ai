@@ -6065,8 +6065,8 @@ ${messageContent}`;
       // Save updated conversation state
       await this.state.storage.put('conversation', this.conversation);
       
-      // Continue the conversation with command result
-      await this.continueWithCommandResult(step, originalResponse, resultMessage);
+      // Command executed, continue processing step (don't send result back to AI)
+      await this.handleSendingStepState();
       
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Error handling command ${commandData.name}:`, error);
@@ -6089,8 +6089,8 @@ ${messageContent}`;
       // Save updated conversation state
       await this.state.storage.put('conversation', this.conversation);
       
-      // Continue with error message
-      await this.continueWithCommandResult(step, originalResponse, `Command failed: ${error.message}`);
+      // Command failed, continue processing step (don't send error back to AI)
+      await this.handleSendingStepState();
     }
   }
 
