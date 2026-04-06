@@ -194,7 +194,6 @@ export class ApiCaller {
     
     // Build body
     let body: any = {};
-    console.log(`[ApiCaller.buildRequest] Endpoint ${endpoint.name}, body_template: ${endpoint.body_template}, parameters:`, parameters);
     if (endpoint.body_template) {
       try {
         let bodyTemplate = endpoint.body_template;
@@ -227,7 +226,6 @@ export class ApiCaller {
     } else if (parameters && Object.keys(parameters).length > 0) {
       // If no body template, use parameters directly as body
       body = parameters;
-      console.log(`[ApiCaller.buildRequest] Using parameters as body:`, body);
     }
     
     // Build query parameters
