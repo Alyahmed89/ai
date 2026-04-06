@@ -1067,15 +1067,15 @@ export default function ChatPage(props: any) {
       
       // Start or resume the flow with inputs
       let flowResponse;
-      if (conversationId) {
-        // Resume existing conversation
+      if (selectedFlowRunId) {
+        // Resume existing flow run
         flowResponse = await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            conversation_id: conversationId,
+            flow_run_id: selectedFlowRunId,
             step_id: "(last)",
             input: prompt
           }),
