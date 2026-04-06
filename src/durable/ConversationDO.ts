@@ -4404,6 +4404,13 @@ export class ConversationOrchestratorDO_2026A {
       const body = await request.json() as { input: any, step_id?: string, flow_run_id?: string };
       const { input, step_id: requestedStepId, flow_run_id } = body;
       
+      console.log(`[DO:${this.state.id}] handleResume called with:`, { 
+        requestedStepId, 
+        flow_run_id, 
+        hasFlowRunId: !!this.flowRunId,
+        hasEnvDB: !!this.env.FLOW_RUNS_DB 
+      });
+      
       // If flow_run_id provided in request, set it (for backward compatibility)
       if (flow_run_id && !this.flowRunId) {
         this.flowRunId = flow_run_id;
