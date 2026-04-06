@@ -262,6 +262,11 @@ export default function ChatPage(props: any) {
         const flowRun = flowRunData.flow_run;
         const conversationId = flowRun.conversation_id;
         
+        // Store conversationId from flow run for resuming
+        if (conversationId) {
+          setConversationId(conversationId);
+        }
+        
         // Extract step runs from flow run data
         const stepRuns = flowRunData.step_runs || [];
         console.log('Flow run step_runs:', stepRuns.length, 'steps available');
@@ -1062,15 +1067,15 @@ export default function ChatPage(props: any) {
       
       // Start or resume the flow with inputs
       let flowResponse;
-      if (selectedFlowRunId) {
-        // Resume existing flow run
+      if (conversationId) {
+        // Resume existing conversation
         flowResponse = await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            flow_run_id: selectedFlowRunId,
+            conversation_id: conversationId,
             step_id: "(last)",
             input: prompt
           }),
