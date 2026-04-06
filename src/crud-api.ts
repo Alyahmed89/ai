@@ -4114,3 +4114,85 @@ crudApi.post('/resolve/text', async (c) => {
     }, 500);
   }
 });
+
+// Simple query endpoint: Get last value from table column
+crudApi.get('/query', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json({ error: 'Database not configured' }, 500);
+    }
+
+    const table = c.req.query('table');
+    const column = c.req.query('column');
+    const jsonPath = c.req.query('json_path'); // Optional: for JSON columns like api_calls
+    
+    if (!table || !column) {
+      return c.json({ 
+        success: false, 
+        error: 'Missing required parameters: table and column' 
+      }, 400);
+    }
+
+    let sql = `SELECT ${column} FROM ${table} ORDER BY created_at DESC LIMIT 1`;
+    let result: any;
+    
+    try {
+      result = await db.prepare(sql).first();
+      
+      if (!result) {
+        return c.json({ 
+          success: true, 
+          value: null,
+          message: 'No rows found in table' 
+        });
+      }
+
+      let value = result[column];
+      
+      // If json_path provided and value is JSON string, extract nested value
+      if (jsonPath && value && typeof value === 'string') {
+        try {
+          const jsonValue = JSON.parse(value);
+          // Simple dot notation path extraction
+          const pathParts = jsonPath.split('.');
+          let current = jsonValue;
+          for (const part of pathParts) {
+            if (current && typeof current === 'object' && part in current) {
+              current = current[part];
+            } else {
+              current = undefined;
+              break;
+            }
+          }
+          value = current;
+        } catch (e) {
+          // Not valid JSON, keep original value
+        }
+      }
+
+      return c.json({ 
+        success: true, 
+        value,
+        table,
+        column,
+        json_path: jsonPath || null
+      });
+      
+    } catch (dbError: any) {
+      return c.json({ 
+        success: false, 
+        error: 'Database query error',
+        details: dbError.message 
+      }, 500);
+    }
+
+  } catch (error: any) {
+    console.error('Query endpoint error:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Internal server error', 
+      details: error.message 
+    }, 500);
+  }
+});
