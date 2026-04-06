@@ -4417,17 +4417,46 @@ export class ConversationOrchestratorDO_2026A {
         
         let stepToRepeat;
         if (requestedStepId === '(last)') {
-          // Find the last completed step
-          const completedSteps = this.conversation.flow_steps.filter(s => s.status === 'completed');
-          if (completedSteps.length === 0) {
+          // Query database for last completed step
+          if (!this.env.FLOW_RUNS_DB || !this.flowRunId) {
             return new Response(JSON.stringify({
-              error: 'No completed steps found to repeat'
+              error: 'Database connection or flow run ID not available'
+            }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          
+          const lastStepResult = await this.env.FLOW_RUNS_DB.prepare(`
+            SELECT sr.step_id, sr.status, fs.title, fs.description, fs.instructions
+            FROM step_runs sr
+            JOIN flow_steps fs ON sr.step_id = fs.id
+            WHERE sr.flow_run_id = ? AND sr.status = 'completed'
+            ORDER BY sr.created_at DESC
+            LIMIT 1
+          `).bind(this.flowRunId).first();
+          
+          if (!lastStepResult) {
+            return new Response(JSON.stringify({
+              error: 'No completed steps found in database'
             }), {
               status: 400,
               headers: { 'Content-Type': 'application/json' }
             });
           }
-          stepToRepeat = completedSteps[completedSteps.length - 1];
+          
+          // Find matching step in flow_steps array
+          stepToRepeat = this.conversation.flow_steps.find(s => s.step_id === lastStepResult.step_id);
+          if (!stepToRepeat) {
+            return new Response(JSON.stringify({
+              error: `Step ${lastStepResult.step_id} from database not found in flow steps`,
+              db_step_id: lastStepResult.step_id,
+              available_steps: this.conversation.flow_steps.map(s => s.step_id)
+            }), {
+              status: 404,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
         } else {
           stepToRepeat = this.conversation.flow_steps.find(s => s.step_id === requestedStepId);
         }
