@@ -202,6 +202,7 @@ export default function ChatPage(props: any) {
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(initialFlowId || null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(initialFlowRunId || null);
   const [conversationData, setConversationData] = useState<ConversationData | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -517,6 +518,7 @@ export default function ChatPage(props: any) {
   useEffect(() => {
     if (selectedFlowId) {
       setConversationData(null);
+      setConversationId(null); // Clear conversationId when flow changes
     }
   }, [selectedFlowId]);
 
@@ -1058,21 +1060,38 @@ export default function ChatPage(props: any) {
         // Continue anyway - this is optional enhancement
       }
       
-      // Start the flow with inputs
-      const flowResponse = await fetch('/api/proxy/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          flow_id: selectedFlowId,
-          inputs: {
-            user_prompt: prompt
-          }
-        }),
-      });
+      // Start or resume the flow with inputs
+      let flowResponse;
+      if (conversationId) {
+        // Resume existing conversation
+        flowResponse = await fetch('/api/proxy/resume', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            step_id: "(last)",
+            input: prompt
+          }),
+        });
+      } else {
+        // Start new flow
+        flowResponse = await fetch('/api/proxy/start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            flow_id: selectedFlowId,
+            inputs: {
+              user_prompt: prompt
+            }
+          }),
+        });
+      }
       
-      if (!flowResponse.ok) throw new Error('Failed to start flow');
+      if (!flowResponse.ok) throw new Error('Failed to start/resume flow');
       
       const flowResult = await flowResponse.json();
       
@@ -1085,8 +1104,13 @@ export default function ChatPage(props: any) {
         throw new Error(flowResult.error || 'Failed to start flow execution');
       }
       
-      const conversationId = flowResult.data?.conversation_id;
+      const newConversationId = flowResult.data?.conversation_id;
       const flowRunId = flowResult.data?.flow_run_id;
+      
+      // Update conversationId state if we got a new one
+      if (newConversationId) {
+        setConversationId(newConversationId);
+      }
       
       // Add status message (api_response type) for flow start
       const statusMessage: ChatMessage = {
@@ -1155,6 +1179,7 @@ export default function ChatPage(props: any) {
       };
       
       setChatMessages(prev => [...prev, errorMessage]);
+      setConversationId(null); // Clear conversationId on error
     } finally {
       setIsRunning(false);
     }
@@ -1204,8 +1229,13 @@ export default function ChatPage(props: any) {
         throw new Error(flowResult.error || 'Failed to start flow execution');
       }
       
-      const conversationId = flowResult.data?.conversation_id;
+      const newConversationId = flowResult.data?.conversation_id;
       const flowRunId = flowResult.data?.flow_run_id;
+      
+      // Update conversationId state if we got a new one
+      if (newConversationId) {
+        setConversationId(newConversationId);
+      }
       
       // Add status message (api_response type) for flow start
       const statusMessage: ChatMessage = {
@@ -1245,6 +1275,7 @@ export default function ChatPage(props: any) {
       };
       
       setChatMessages(prev => [...prev, errorMessage]);
+      setConversationId(null); // Clear conversationId on error
     } finally {
       setIsRunning(false);
     }
@@ -1295,6 +1326,9 @@ export default function ChatPage(props: any) {
           // Check for completion
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             console.log('✅ FLOW COMPLETED DETECTED!');
+            
+            // Clear conversationId when flow is completed
+            setConversationId(null);
             
             // Update UI to show completion - SIMPLIFIED VERSION
             const completionMsg: ChatMessage = {
