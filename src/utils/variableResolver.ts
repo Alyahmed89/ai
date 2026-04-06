@@ -26,6 +26,10 @@ export function parseVariableSpec(spec: string): VariableSpec {
   // Remove ƐĐᜃ tags if present
   const cleanSpec = spec.replace(/ƐĐᜃ/g, '');
   
+  // Check if it has query format: variable_nameƐĐᜃtable=X/column=Y/json_path=Z
+  // Actually, the format is: ƐĐᜃvariable_nameƐĐᜃquery_params
+  // So spec is just "variable_name", query params are handled separately
+  
   if (cleanSpec.includes(':')) {
     const parts = cleanSpec.split(':');
     
@@ -312,16 +316,126 @@ async function resolveEnvVariable(key: string): Promise<string> {
 /**
  * Extract all variable tags from text
  */
-export function extractVariableTags(text: string): string[] {
-  const regex = /ƐĐᜃ([^ƐĐᜃ]+)ƐĐᜃ/g;
-  const matches: string[] = [];
+export function extractVariableTags(text: string): { tag: string; variableName: string; queryParams?: string }[] {
+  // Updated regex to capture query format: ƐĐᜃvariable_nameƐĐᜃquery_params
+  // The query_params should be until next ƐĐᜃ, whitespace, or end of string
+  const regex = /ƐĐᜃ([^ƐĐᜃ]+)ƐĐᜃ([^\sƐĐᜃ]*)/g;
+  const matches: { tag: string; variableName: string; queryParams?: string }[] = [];
   let match;
   
   while ((match = regex.exec(text)) !== null) {
-    matches.push(match[0]); // Full tag including ƐĐᜃ
+    const fullTag = match[0];
+    const variableName = match[1];
+    const queryParams = match[2];
+    
+    matches.push({
+      tag: fullTag,
+      variableName,
+      queryParams: queryParams || undefined
+    });
   }
   
   return matches;
+}
+
+
+
+/**
+ * Execute query directly using database
+ */
+async function executeQuery(db: D1Database, queryParams: string): Promise<string> {
+  try {
+    // Parse query params: table=api_calls/column=response/json_path=data.stdout
+    const params = new URLSearchParams(queryParams.replace(/\//g, '&'));
+    
+    const table = params.get('table');
+    const column = params.get('column');
+    const jsonPath = params.get('json_path');
+    
+    if (!table || !column) {
+      return '';
+    }
+    
+    // Direct database query (same logic as /api/query endpoint)
+    let sql = `SELECT ${column} FROM ${table} ORDER BY created_at DESC LIMIT 1`;
+    
+    const result = await db.prepare(sql).first();
+    
+    if (!result || result[column] === null || result[column] === undefined) {
+      return '';
+    }
+    
+    let value = result[column];
+    
+    // If json_path provided and value is JSON string, extract nested value
+    if (jsonPath && value && typeof value === 'string') {
+      try {
+        const jsonValue = JSON.parse(value);
+        // Simple dot notation path extraction
+        const pathParts = jsonPath.split('.');
+        let current = jsonValue;
+        for (const part of pathParts) {
+          if (current && typeof current === 'object' && part in current) {
+            current = current[part];
+          } else {
+            current = undefined;
+            break;
+          }
+        }
+        value = current;
+      } catch (e) {
+        // Not valid JSON, keep original value
+      }
+    }
+    
+    return typeof value === 'string' ? value : JSON.stringify(value);
+  } catch (error) {
+    console.error(`[VariableResolver] Error executing query:`, error);
+    return '';
+  }
+}
+
+/**
+ * Save variable to database
+ */
+async function saveVariableValue(
+  db: D1Database,
+  variableName: string,
+  value: string,
+  context?: {
+    flow_id?: string;
+    flow_run_id?: string;
+    step_id?: string;
+    step_run_id?: string;
+  }
+): Promise<void> {
+  try {
+    // Check if variable already exists
+    const existing = await db.prepare(
+      'SELECT id FROM variables WHERE key = ? AND flow_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).bind(variableName, context?.flow_id || '').first();
+    
+    if (!existing) {
+      // Create new variable
+      await db.prepare(`
+        INSERT INTO variables (id, key, value, flow_id, flow_run_id, step_id, step_run_id, source, variable_type, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).bind(
+        `var-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        variableName,
+        value,
+        context?.flow_id || null,
+        context?.flow_run_id || null,
+        context?.step_id || null,
+        context?.step_run_id || null,
+        'query',
+        'system'
+      ).run();
+    }
+    // If variable exists, we don't update it (as per requirement)
+  } catch (error) {
+    console.error(`[VariableResolver] Error saving variable:`, error);
+  }
 }
 
 /**
@@ -346,13 +460,24 @@ export async function resolveTextVariables(
   
   let resolvedText = text;
   
-  for (const tag of tags) {
-    // Extract spec from tag
-    const specStr = tag.replace(/ƐĐᜃ/g, '');
-    const spec = parseVariableSpec(specStr);
+  for (const tagInfo of tags) {
+    const { tag, variableName, queryParams } = tagInfo;
     
-    // Resolve value
-    const value = await resolveVariable(db, spec, context);
+    let value = '';
+    
+    if (queryParams) {
+      // Execute query to get value
+      value = await executeQuery(db, queryParams);
+      
+      // Save variable value if we got one
+      if (value) {
+        await saveVariableValue(db, variableName, value, context);
+      }
+    } else {
+      // Regular variable resolution
+      const spec = parseVariableSpec(variableName);
+      value = await resolveVariable(db, spec, context);
+    }
     
     // Replace tag with value (empty string if not found)
     resolvedText = resolvedText.replace(tag, value);
