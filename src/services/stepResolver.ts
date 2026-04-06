@@ -829,6 +829,7 @@ export async function executeUnifiedCommands(
       }
       
       try {
+        console.log(`[executeUnifiedCommands] Calling endpoint ${command.name} with params:`, command.params);
         // Use ApiCaller to execute the command endpoint
         const result = await apiCaller.callEndpoint(
           command.name,
