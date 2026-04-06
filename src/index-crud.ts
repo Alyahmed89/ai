@@ -736,7 +736,7 @@ app.post('/stop', async (c) => {
 app.post('/resume', async (c) => {
   try {
     const body = await c.req.json();
-    const { conversation_id, input, source } = body;
+    const { conversation_id, input, source, step_id } = body;
     
     if (!conversation_id) {
       return c.json(errorResponse('Missing conversation_id parameter', 400));
@@ -760,7 +760,7 @@ app.post('/resume', async (c) => {
     const doResponse = await conversationDo.fetch('http://placeholder/resume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, source })
+      body: JSON.stringify({ input, source, step_id })
     });
     
     if (!doResponse.ok) {

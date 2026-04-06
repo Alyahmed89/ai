@@ -4400,7 +4400,86 @@ export class ConversationOrchestratorDO_2026A {
    */
   private async handleResume(request: Request): Promise<Response> {
     try {
-      // Check if conversation is in WAITING_FOR_INPUT state
+      const body = await request.json() as { input: any, step_id?: string };
+      const { input, step_id: requestedStepId } = body;
+      
+      // Check if we're repeating a specific step
+      if (requestedStepId) {
+        // Find the step to repeat
+        if (!this.conversation?.flow_steps) {
+          return new Response(JSON.stringify({
+            error: 'No flow steps available to repeat'
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        let stepToRepeat;
+        if (requestedStepId === '(last)') {
+          // Find the last completed step
+          const completedSteps = this.conversation.flow_steps.filter(s => s.status === 'completed');
+          if (completedSteps.length === 0) {
+            return new Response(JSON.stringify({
+              error: 'No completed steps found to repeat'
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          stepToRepeat = completedSteps[completedSteps.length - 1];
+        } else {
+          stepToRepeat = this.conversation.flow_steps.find(s => s.step_id === requestedStepId);
+        }
+        
+        if (!stepToRepeat) {
+          return new Response(JSON.stringify({
+            error: `Step ${requestedStepId} not found`,
+            available_steps: this.conversation.flow_steps.map(s => ({ step_id: s.step_id, title: s.title }))
+          }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        // Reset the step to pending and set it as current step
+        stepToRepeat.status = 'pending';
+        stepToRepeat.response = undefined;
+        
+        // If user provided input, append it to step instructions
+        if (input && typeof input === 'string' && input.trim()) {
+          const originalInstructions = stepToRepeat.description || stepToRepeat.title || '';
+          stepToRepeat.description = `${originalInstructions}\n\nUser input: ${input}`;
+          console.log(`[DO:${this.state.id}] Added user input to step instructions: ${input.substring(0, 100)}...`);
+        }
+        
+        // Set current step to the repeated step
+        this.conversation.current_step = stepToRepeat;
+        this.conversation.current_step_index = this.conversation.flow_steps.findIndex(s => s.step_id === stepToRepeat.step_id);
+        
+        // Clear waiting state if any
+        this.conversation.state = 'SENDING_STEP';
+        this.conversation.status = 'active';
+        this.conversation.waiting_for_input = undefined;
+        
+        // Save state
+        await this.state.storage.put('conversation', this.conversation);
+        
+        // Continue execution with the repeated step
+        await this.handleSendingStepState();
+        
+        return new Response(JSON.stringify({
+          success: true,
+          message: `Repeating step ${requestedStepId}: ${stepToRepeat.title}`,
+          step_id: requestedStepId,
+          step_title: stepToRepeat.title
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Original resume logic for waiting for input
       if (this.conversation.state !== 'WAITING_FOR_INPUT' || !this.conversation.waiting_for_input) {
         return new Response(JSON.stringify({
           error: 'Not waiting for input',
@@ -4411,9 +4490,6 @@ export class ConversationOrchestratorDO_2026A {
           headers: { 'Content-Type': 'application/json' }
         });
       }
-
-      const body = await request.json() as { input: any };
-      const { input } = body;
       
       if (input === undefined) {
         return new Response(JSON.stringify({
