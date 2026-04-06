@@ -223,6 +223,9 @@ export class ApiCaller {
         console.warn(`[ApiCaller] Failed to parse body template for endpoint ${endpoint.name}:`, e);
         body = endpoint.body_template;
       }
+    } else if (parameters && Object.keys(parameters).length > 0) {
+      // If no body template, use parameters directly as body
+      body = parameters;
     }
     
     // Build query parameters
