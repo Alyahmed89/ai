@@ -4400,8 +4400,14 @@ export class ConversationOrchestratorDO_2026A {
    */
   private async handleResume(request: Request): Promise<Response> {
     try {
-      const body = await request.json() as { input: any, step_id?: string };
-      const { input, step_id: requestedStepId } = body;
+      const body = await request.json() as { input: any, step_id?: string, flow_run_id?: string };
+      const { input, step_id: requestedStepId, flow_run_id } = body;
+      
+      // If flow_run_id provided in request, set it (for backward compatibility)
+      if (flow_run_id && !this.flowRunId) {
+        this.flowRunId = flow_run_id;
+        console.log(`[DO:${this.state.id}] Set flowRunId from request: ${flow_run_id}`);
+      }
       
       // Check if we're repeating a specific step
       if (requestedStepId) {

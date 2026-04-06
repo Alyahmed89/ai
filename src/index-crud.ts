@@ -736,10 +736,31 @@ app.post('/stop', async (c) => {
 app.post('/resume', async (c) => {
   try {
     const body = await c.req.json();
-    const { conversation_id, input, source, step_id } = body;
+    const { flow_run_id, conversation_id, input, source, step_id } = body;
     
-    if (!conversation_id) {
-      return c.json(errorResponse('Missing conversation_id parameter', 400));
+    // Accept either flow_run_id or conversation_id (backward compatibility)
+    let targetConversationId = conversation_id;
+    
+    if (flow_run_id) {
+      // Get conversation_id from flow_runs table
+      if (!c.env.FLOW_RUNS_DB) {
+        return c.json(errorResponse('Database not configured', 500));
+      }
+      
+      const flowRun = await c.env.FLOW_RUNS_DB.prepare(
+        'SELECT conversation_id FROM flow_runs WHERE id = ?'
+      ).bind(flow_run_id).first();
+      
+      if (!flowRun) {
+        return c.json(notFoundResponse(`Flow run not found: ${flow_run_id}`));
+      }
+      
+      targetConversationId = (flowRun as any).conversation_id;
+      console.log(`[HTTP:RESUME] Resolved flow_run_id ${flow_run_id} to conversation_id ${targetConversationId}`);
+    }
+    
+    if (!targetConversationId) {
+      return c.json(errorResponse('Missing flow_run_id or conversation_id parameter', 400));
     }
     
     if (!c.env.CONVERSATIONS) {
@@ -749,7 +770,7 @@ app.post('/resume', async (c) => {
     // Get the Durable Object
     let id;
     try {
-      id = c.env.CONVERSATIONS.idFromString(conversation_id);
+      id = c.env.CONVERSATIONS.idFromString(targetConversationId);
     } catch (error) {
       return c.json(errorResponse('Invalid conversation ID', 400));
     }
