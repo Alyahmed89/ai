@@ -1062,15 +1062,15 @@ export default function ChatPage(props: any) {
       
       // Start or resume the flow with inputs
       let flowResponse;
-      if (conversationId) {
-        // Resume existing conversation
+      if (selectedFlowRunId) {
+        // Resume existing flow run
         flowResponse = await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            conversation_id: conversationId,
+            flow_run_id: selectedFlowRunId,
             step_id: "(last)",
             input: prompt
           }),
@@ -1148,12 +1148,12 @@ export default function ChatPage(props: any) {
       }
       
       // Start polling for actual results if we have a conversation ID
-      if (conversationId) {
-        startPollingForResults(conversationId, assistantMessageId, prompt, restoreOriginalInstructions);
+      if (newConversationId) {
+        startPollingForResults(newConversationId, assistantMessageId, prompt, restoreOriginalInstructions);
         
         // Only poll for flow run if we don't already have the flowRunId
         if (!flowRunId) {
-          pollForFlowRunByConversationId(conversationId);
+          pollForFlowRunByConversationId(newConversationId);
         }
       }
       
@@ -1259,8 +1259,8 @@ export default function ChatPage(props: any) {
       }
       
       // Start polling for actual results if we have a conversation ID
-      if (conversationId) {
-        startPollingForResults(conversationId, assistantMessageId, "");
+      if (newConversationId) {
+        startPollingForResults(newConversationId, assistantMessageId, "");
       }
       
     } catch (error) {
