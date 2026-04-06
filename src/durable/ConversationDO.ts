@@ -6158,7 +6158,7 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Continuing conversation with command result`);
     
     // Build new prompt with command result
-    const newPrompt = `${originalResponse}\n\nCommand Result:\n${commandResult}\n\nContinue with the task.`;
+    const newPrompt = `${originalResponse}`;
     
     // Update conversation with new prompt
     this.conversation.current_prompt = newPrompt;
