@@ -781,7 +781,7 @@ app.post('/resume', async (c) => {
     const doResponse = await conversationDo.fetch('http://placeholder/resume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, source, step_id })
+      body: JSON.stringify({ input, source, step_id, flow_run_id })
     });
     
     if (!doResponse.ok) {
