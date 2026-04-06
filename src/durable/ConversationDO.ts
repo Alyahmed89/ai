@@ -5094,6 +5094,7 @@ ${messageContent}`;
     
     console.log(`[DO:${this.state.id}] SENDING_STEP: Sending step to OpenHands`);
     console.log(`[DO:${this.state.id}] DEBUG: Current flow_id: ${this.conversation.flow_id}, flow_steps count: ${this.conversation.flow_steps?.length || 0}`);
+    console.log(`[DO:${this.state.id}] DEBUG: Conversation state: ${this.conversation.state}, current_step: ${this.conversation.current_step?.step_id || 'null'}, last_step_response: ${this.conversation.last_step_response ? 'present' : 'null'}`);
     
     // Check if we have flow steps
     if (!this.conversation.flow_steps || this.conversation.flow_steps.length === 0) {
