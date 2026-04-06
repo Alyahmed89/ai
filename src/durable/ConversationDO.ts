@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens, extractStructuredOutput } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, generateId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions, saveApiCall, saveVariable, getVariablesForFlow } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, generateId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions, saveApiCall, saveVariable, getVariablesForFlow, saveStepMemory, getFlowMemory } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
@@ -12,6 +12,7 @@ import { CommandExecutor } from '../services/commandExecutor';
 import { ConditionEvaluator } from '../core/condition-evaluator';
 import { Router } from '../core/router';
 import { createExecutionContext } from '../core/execution-context';
+import { summarizeConversationToMemory, formatMemoryForInstructions } from '../services/memorySummarizer';
 import { 
   MAX_ITERATIONS, 
   END_FLOW_TOKEN, 
@@ -5709,9 +5710,20 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Final prompt length: ${prompt.length} chars`);
     console.log(`[DO:${this.state.id}] Final prompt preview: ${prompt.substring(0, 200)}...`);
     
+    // Get memory context if available
+    const memoryContext = await this.getMemoryEnhancedInstructions(step);
+    
+    // Build final prompt with memory context
+    let finalPrompt = prompt;
+    if (memoryContext && memoryContext.trim()) {
+      finalPrompt = `MEMORY:\n${memoryContext}\n\nCURRENT TASK:\n${prompt}`;
+      console.log(`[DO:${this.state.id}] Memory context added to prompt`);
+      console.log(`[DO:${this.state.id}] Final prompt with memory length: ${finalPrompt.length} chars`);
+    }
+    
     // Set AI input in execution context for new condition system
     if (this.conversation.execution_context) {
-      this.conversation.execution_context.ai_input = prompt;
+      this.conversation.execution_context.ai_input = finalPrompt;
     }
     
     // Store debug information for observability
@@ -6513,11 +6525,113 @@ ${messageContent}`;
       return;
     }
     
-    // 9. Continue with next step in current flow
+    // 9. Summarize conversation to structured memory and save to database
+    await this.summarizeAndSaveMemory(step, response);
+    
+    // 10. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
     // Flow transitions only happen via flow_steps.next_flow_id
     // when flow completes (next_step == -1)
     await this.moveToNextStep();
+  }
+
+  /**
+   * Get memory-enhanced step instructions
+   */
+  private async getMemoryEnhancedInstructions(step: StepData): Promise<string> {
+    if (!this.conversation || !this.env.FLOW_RUNS_DB || !this.flowRunId) {
+      return '';
+    }
+
+    try {
+      // Get previous memory from database
+      const memoryJson = await getFlowMemory(this.env.FLOW_RUNS_DB, this.flowRunId);
+      if (!memoryJson) {
+        // No previous memory, return empty string
+        return '';
+      }
+
+      try {
+        const memory = JSON.parse(memoryJson);
+        return formatMemoryForInstructions(memory);
+      } catch (parseError) {
+        console.error(`[DO:${this.state.id}] Error parsing memory JSON: ${parseError}`);
+        return '';
+      }
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error getting memory: ${error.message}`);
+      return '';
+    }
+  }
+
+  /**
+   * Summarize conversation to structured memory and save to database
+   */
+  private async summarizeAndSaveMemory(step: StepData, response: string): Promise<void> {
+    if (!this.conversation || !this.env.FLOW_RUNS_DB || !this.flowRunId) {
+      console.log(`[DO:${this.state.id}] Cannot summarize memory: missing conversation, database, or flowRunId`);
+      return;
+    }
+
+    try {
+      // Get API key for DeepSeek call
+      const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
+      if (!apiKey) {
+        console.log(`[DO:${this.state.id}] Cannot summarize memory: no API key available`);
+        return;
+      }
+
+      // Get conversation history
+      const conversationHistory = this.conversation.conversation_messages || [];
+      if (conversationHistory.length === 0) {
+        console.log(`[DO:${this.state.id}] Cannot summarize memory: no conversation history`);
+        return;
+      }
+
+      // Get step instructions
+      const stepInstructions = step.instructions || step.description || step.title || '';
+
+      // Summarize conversation to structured memory
+      console.log(`[DO:${this.state.id}] Summarizing conversation to structured memory...`);
+      const memoryResult = await summarizeConversationToMemory(
+        apiKey,
+        conversationHistory,
+        stepInstructions
+      );
+
+      if (!memoryResult.success || !memoryResult.memory) {
+        console.error(`[DO:${this.state.id}] Memory summarization failed: ${memoryResult.error}`);
+        return;
+      }
+
+      // Get the latest step run ID for this step to save memory
+      // We need to find the step run that was just saved
+      const stepRunResult = await this.env.FLOW_RUNS_DB.prepare(`
+        SELECT id FROM step_runs 
+        WHERE flow_run_id = ? AND step_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `).bind(this.flowRunId, step.step_id).first();
+
+      if (!stepRunResult) {
+        console.error(`[DO:${this.state.id}] Cannot find step run to save memory`);
+        return;
+      }
+
+      const stepRunId = (stepRunResult as any).id;
+      const memoryJson = JSON.stringify(memoryResult.memory);
+
+      // Save memory to step run
+      const saveResult = await saveStepMemory(this.env.FLOW_RUNS_DB, stepRunId, memoryJson);
+      if (!saveResult.success) {
+        console.error(`[DO:${this.state.id}] Failed to save memory to database: ${saveResult.error}`);
+      } else {
+        console.log(`[DO:${this.state.id}] Structured memory saved to step run ${stepRunId}`);
+        console.log(`[DO:${this.state.id}] Memory summary: Goal="${memoryResult.memory.goal}", ${memoryResult.memory.decisions.length} decisions`);
+      }
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error in memory summarization: ${error.message}`);
+    }
   }
 
   /**
@@ -7428,13 +7542,13 @@ ${messageContent}`;
     status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' = 'completed',
     attempt: number = 1,
     apiCalls?: any[] // Optional API calls data from unified endpoint system
-  ): Promise<void> {
-    if (!this.conversation || !this.flowRunId) return;
+  ): Promise<string | null> {
+    if (!this.conversation || !this.flowRunId) return null;
     
     // Check if database is configured
     if (!this.env.FLOW_RUNS_DB) {
       console.log(`[DO:${this.state.id}] Database not configured, skipping step run save`);
-      return;
+      return null;
     }
 
     // Get current iteration (step index)
@@ -7446,9 +7560,12 @@ ${messageContent}`;
     // Check if step should export payload (default: true)
     const shouldExportPayload = step.export_payload !== false; // Default to true if not explicitly false
     
+    // Generate step run ID
+    const stepRunId = generateStepRunId();
+    
     // Prepare step run data
     const stepRunData = {
-      id: generateStepRunId(),
+      id: stepRunId,
       flow_run_id: this.flowRunId,
       step_id: step.step_id,
       iteration,
@@ -7473,13 +7590,15 @@ ${messageContent}`;
     const result = await saveStepRun(this.env.FLOW_RUNS_DB, stepRunData);
     if (!result.success) {
       console.error(`[DO:${this.state.id}] Failed to save step run to database: ${result.error}`);
+      return null;
     } else {
-      console.log(`[DO:${this.state.id}] Step run saved to database: ${step.step_id}, iteration ${iteration}, attempt ${attempt}`);
+      console.log(`[DO:${this.state.id}] Step run saved to database: ${step.step_id}, iteration ${iteration}, attempt ${attempt}, id: ${stepRunId}`);
       if (outputPayload && shouldExportPayload) {
         console.log(`[DO:${this.state.id}] Structured output payload saved (${outputPayload.length} chars)`);
       } else if (!shouldExportPayload) {
         console.log(`[DO:${this.state.id}] Step configured with export_payload=false, skipping payload export`);
       }
+      return stepRunId;
     }
   }
 

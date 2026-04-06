@@ -140,8 +140,8 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
     await db.prepare(`
       INSERT INTO step_runs (
         id, flow_run_id, step_id, iteration, attempt, prompt, response,
-        input_payload, output_payload, status, created_at, duration_ms, api_calls
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        input_payload, output_payload, status, created_at, duration_ms, api_calls, memory_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(flow_run_id, step_id, iteration, attempt) 
       DO UPDATE SET
         prompt = excluded.prompt,
@@ -150,7 +150,8 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
         output_payload = excluded.output_payload,
         status = excluded.status,
         duration_ms = excluded.duration_ms,
-        api_calls = excluded.api_calls
+        api_calls = excluded.api_calls,
+        memory_json = excluded.memory_json
     `).bind(
       stepRun.id,
       stepRun.flow_run_id,
@@ -164,7 +165,8 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
       stepRun.status,
       stepRun.created_at,
       stepRun.duration_ms,
-      stepRun.api_calls || null
+      stepRun.api_calls || null,
+      stepRun.memory_json || null
     ).run();
 
     return { success: true };
@@ -1844,5 +1846,61 @@ export async function getVariablesForFlow(db: D1Database, flow_id: string): Prom
   } catch (error: any) {
     console.error(`[DATABASE] Error loading variables for flow ${flow_id}: ${error.message}`);
     return {};
+  }
+}
+
+// ==========================================================================
+// MEMORY FUNCTIONS
+// ==========================================================================
+
+/**
+ * Save memory JSON to step run
+ * @param db D1Database instance
+ * @param stepRunId Step run ID
+ * @param memoryJson Memory JSON string
+ * @returns Promise with success status
+ */
+export async function saveStepMemory(
+  db: D1Database,
+  stepRunId: string,
+  memoryJson: string
+): Promise<{success: boolean; error?: string}> {
+  try {
+    await db.prepare(`
+      UPDATE step_runs 
+      SET memory_json = ?
+      WHERE id = ?
+    `).bind(memoryJson, stepRunId).run();
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[DATABASE] Error saving step memory: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get latest memory JSON for a flow run
+ * @param db D1Database instance
+ * @param flowRunId Flow run ID
+ * @returns Promise with memory JSON string or null
+ */
+export async function getFlowMemory(
+  db: D1Database,
+  flowRunId: string
+): Promise<string | null> {
+  try {
+    const result = await db.prepare(`
+      SELECT memory_json 
+      FROM step_runs 
+      WHERE flow_run_id = ? AND memory_json IS NOT NULL
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `).bind(flowRunId).first();
+
+    return result ? (result as any).memory_json : null;
+  } catch (error: any) {
+    console.error(`[DATABASE] Error getting flow memory: ${error.message}`);
+    return null;
   }
 }

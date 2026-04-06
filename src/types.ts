@@ -297,6 +297,7 @@ export interface StepRunData {
   created_at: number;
   duration_ms: number;
   api_calls?: string; // JSON string of API calls for unified endpoint system
+  memory_json?: string; // JSON string of structured conversation memory
 }
 
 export interface DoneResponseData {
