@@ -4556,11 +4556,11 @@ export class ConversationOrchestratorDO_2026A {
         stepToRepeat.response = undefined;
         stepToRepeat.attempt = nextAttempt; // Store attempt on step object
         
-        // If user provided input, append it to step instructions
+        // If user provided input, store it separately to preserve original instructions
         if (input && typeof input === 'string' && input.trim()) {
-          const originalInstructions = stepToRepeat.description || stepToRepeat.title || '';
-          stepToRepeat.description = `${originalInstructions}\n\nUser input: ${input}`;
-          console.log(`[DO:${this.state.id}] Added user input to step instructions: ${input.substring(0, 100)}...`);
+          // Store user input separately to preserve original step instructions
+          stepToRepeat.user_input = input;
+          console.log(`[DO:${this.state.id}] Stored user input for step: ${input.substring(0, 100)}...`);
         }
         
         // Set current step to the repeated step
@@ -4581,8 +4581,13 @@ export class ConversationOrchestratorDO_2026A {
         
         // Continue execution with the repeated step
         console.log(`[DO:${this.state.id}] RESUME DEBUG: Calling handleSendingStepState for step ${stepToRepeat.step_id}`);
-        await this.handleSendingStepState();
-        console.log(`[DO:${this.state.id}] RESUME DEBUG: handleSendingStepState completed`);
+        try {
+          await this.handleSendingStepState();
+          console.log(`[DO:${this.state.id}] RESUME DEBUG: handleSendingStepState completed successfully`);
+        } catch (error) {
+          console.error(`[DO:${this.state.id}] RESUME DEBUG: handleSendingStepState failed: ${error}`);
+          console.error(`[DO:${this.state.id}] RESUME DEBUG: Error stack: ${error.stack}`);
+        }
         
         return new Response(JSON.stringify({
           success: true,
@@ -5750,12 +5755,27 @@ ${messageContent}`;
       
       if (resolvedStep.instructions) {
         prompt += `\n\n${resolvedStep.instructions}`;
+        
+        // Add user input if provided (from resume)
+        if (step.user_input) {
+          console.log(`[DO:${this.state.id}] DEBUG: Adding user input to prompt (resolved instructions): ${step.user_input.substring(0, 100)}...`);
+          prompt += `\n\nUser input: ${step.user_input}`;
+        }
+        
         // Add expected_response after instructions if provided
         if (step.expected_response) {
           prompt += `\n\nExpected response format:\n${step.expected_response}`;
         }
       } else if (step.description) {
+        console.log(`[DO:${this.state.id}] DEBUG: Adding step.description to prompt (normal path): ${step.description.substring(0, 200)}...`);
         prompt += `\n\n${step.description}`;
+        
+        // Add user input if provided (from resume)
+        if (step.user_input) {
+          console.log(`[DO:${this.state.id}] DEBUG: Adding user input to prompt: ${step.user_input.substring(0, 100)}...`);
+          prompt += `\n\nUser input: ${step.user_input}`;
+        }
+        
         // Add expected_response after description if provided
         if (step.expected_response) {
           prompt += `\n\nExpected response format:\n${step.expected_response}`;
@@ -5779,7 +5799,14 @@ ${messageContent}`;
       console.error(`[DO:${this.state.id}] Error resolving step instructions: ${error.message}`);
       // Fall back to original description
       if (step.description) {
+        console.log(`[DO:${this.state.id}] DEBUG: Adding step.description to prompt: ${step.description.substring(0, 200)}...`);
         prompt += `\n\n${step.description}`;
+        
+        // Add user input if provided (from resume)
+        if (step.user_input) {
+          console.log(`[DO:${this.state.id}] DEBUG: Adding user input to prompt (fallback): ${step.user_input.substring(0, 100)}...`);
+          prompt += `\n\nUser input: ${step.user_input}`;
+        }
       }
       // Initialize resolvedStep with empty api_calls if not set
       if (!resolvedStep) {
