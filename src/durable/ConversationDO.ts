@@ -4522,9 +4522,39 @@ export class ConversationOrchestratorDO_2026A {
           });
         }
         
+        // Get max attempt number for this step iteration
+        const iteration = this.conversation.flow_steps.findIndex(s => s.step_id === stepToRepeat.step_id);
+        let maxAttempt = 1;
+        
+        if (this.env.FLOW_RUNS_DB) {
+          try {
+            const attemptQuery = `
+              SELECT MAX(attempt) as max_attempt 
+              FROM step_runs 
+              WHERE flow_run_id = ? 
+                AND step_id = ? 
+                AND iteration = ?
+            `;
+            const attemptResult = await this.env.FLOW_RUNS_DB.prepare(attemptQuery)
+              .bind(this.flowRunId, stepToRepeat.step_id, iteration)
+              .all();
+            
+            if (attemptResult.results && attemptResult.results.length > 0) {
+              maxAttempt = (attemptResult.results[0] as any).max_attempt || 0;
+              console.log(`[DO:${this.state.id}] Found max attempt ${maxAttempt} for step ${stepToRepeat.step_id}, iteration ${iteration}`);
+            }
+          } catch (error) {
+            console.error(`[DO:${this.state.id}] Error getting max attempt: ${error}`);
+          }
+        }
+        
+        const nextAttempt = maxAttempt + 1;
+        console.log(`[DO:${this.state.id}] Repeating step ${stepToRepeat.step_id} with attempt ${nextAttempt} (iteration ${iteration})`);
+        
         // Reset the step to pending and set it as current step
         stepToRepeat.status = 'pending';
         stepToRepeat.response = undefined;
+        stepToRepeat.attempt = nextAttempt; // Store attempt on step object
         
         // If user provided input, append it to step instructions
         if (input && typeof input === 'string' && input.trim()) {
@@ -4535,7 +4565,7 @@ export class ConversationOrchestratorDO_2026A {
         
         // Set current step to the repeated step
         this.conversation.current_step = stepToRepeat;
-        this.conversation.current_step_index = this.conversation.flow_steps.findIndex(s => s.step_id === stepToRepeat.step_id);
+        this.conversation.current_step_index = iteration;
         
         // Clear waiting state if any
         this.conversation.state = 'SENDING_STEP';
@@ -7593,7 +7623,14 @@ ${messageContent}`;
     attempt: number = 1,
     apiCalls?: any[] // Optional API calls data from unified endpoint system
   ): Promise<string | null> {
-    if (!this.conversation || !this.flowRunId) return null;
+    // Use attempt from step object if available (for resume/repeat)
+    const finalAttempt = step.attempt || attempt;
+    console.log(`[DO:${this.state.id}] DEBUG saveStepRunToDatabase called: step=${step.step_id}, status=${status}, attempt=${finalAttempt} (step.attempt=${step.attempt}, param=${attempt}), flowRunId=${this.flowRunId}`);
+    
+    if (!this.conversation || !this.flowRunId) {
+      console.log(`[DO:${this.state.id}] DEBUG: No conversation or flowRunId, skipping step run save`);
+      return null;
+    }
     
     // Check if database is configured
     if (!this.env.FLOW_RUNS_DB) {
@@ -7619,7 +7656,7 @@ ${messageContent}`;
       flow_run_id: this.flowRunId,
       step_id: step.step_id,
       iteration,
-      attempt,
+      attempt: finalAttempt,
       prompt,
       response,
       input_payload: JSON.stringify({
