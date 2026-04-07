@@ -831,25 +831,15 @@ app.post('/resume', async (c) => {
         console.log(`[HTTP:RESUME] Updated flow_runs table: flow_run_id ${flow_run_id} now linked to new conversation_id ${newConversationId}`);
       }
       
-      // Now try resume on the new Durable Object
-      const newDoResponse = await newConversationDo.fetch('http://placeholder/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, source, step_id, flow_run_id })
-      });
-      
-      if (!newDoResponse.ok) {
-        const newErrorText = await newDoResponse.text();
-        console.error(`[HTTP:RESUME] New Durable Object resume failed: ${newDoResponse.status} - ${newErrorText}`);
-        return c.json(errorResponse(`Failed to resume new conversation: ${newDoResponse.status}`, 500));
-      }
-      
-      const result = await newDoResponse.json();
-      return c.json(successResponse('Created new conversation and resumed successfully', {
-        ...result,
-        note: 'Original conversation was missing, created new one attached to same flow_run_id',
+      // Don't try to resume the new conversation - it's fresh and not in a resumable state
+      // Just return success that new conversation was created
+      return c.json(successResponse('Created new conversation attached to existing flow_run_id', {
+        flow_run_id: flow_run_id,
+        flow_id: flowId,
+        new_conversation_id: newConversationId,
         original_conversation_id: targetConversationId,
-        new_conversation_id: newConversationId
+        note: 'Original conversation was missing. New conversation created and will start from beginning.',
+        check_status_url: `${new URL(c.req.url).origin}/status/${newConversationId}`
       }));
     }
     
