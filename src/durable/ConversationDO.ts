@@ -4550,7 +4550,9 @@ export class ConversationOrchestratorDO_2026A {
         await this.state.storage.put('conversation', this.conversation);
         
         // Continue execution with the repeated step
+        console.log(`[DO:${this.state.id}] RESUME DEBUG: Calling handleSendingStepState for step ${stepToRepeat.step_id}`);
         await this.handleSendingStepState();
+        console.log(`[DO:${this.state.id}] RESUME DEBUG: handleSendingStepState completed`);
         
         return new Response(JSON.stringify({
           success: true,
@@ -5242,6 +5244,7 @@ ${messageContent}`;
   // Ultra-minimal flow execution: Send step directly to OpenHands
   private async handleSendingStepState(): Promise<void> {
     console.log(`[DO:${this.state.id}] DEBUG: handleSendingStepState called at ${Date.now()}`);
+    console.log(`[DO:${this.state.id}] DEBUG: conversation.state = ${this.conversation?.state}, current_step = ${this.conversation?.current_step?.step_id}, last_step_response = ${this.conversation?.last_step_response ? 'present' : 'undefined'}`);
     
     // Declare resolvedStep at function scope so it's available throughout
     let resolvedStep: any = null;
