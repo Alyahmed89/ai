@@ -740,15 +740,16 @@ app.post('/resume', async (c) => {
     
     // Accept either flow_run_id or conversation_id (backward compatibility)
     let targetConversationId = conversation_id;
+    let flowId = null;
     
     if (flow_run_id) {
-      // Get conversation_id from flow_runs table
+      // Get conversation_id and flow_id from flow_runs table
       if (!c.env.FLOW_RUNS_DB) {
         return c.json(errorResponse('Database not configured', 500));
       }
       
       const flowRun = await c.env.FLOW_RUNS_DB.prepare(
-        'SELECT conversation_id FROM flow_runs WHERE id = ?'
+        'SELECT conversation_id, flow_id FROM flow_runs WHERE id = ?'
       ).bind(flow_run_id).first();
       
       if (!flowRun) {
@@ -756,7 +757,8 @@ app.post('/resume', async (c) => {
       }
       
       targetConversationId = (flowRun as any).conversation_id;
-      console.log(`[HTTP:RESUME] Resolved flow_run_id ${flow_run_id} to conversation_id ${targetConversationId}`);
+      flowId = (flowRun as any).flow_id;
+      console.log(`[HTTP:RESUME] Resolved flow_run_id ${flow_run_id} to conversation_id ${targetConversationId}, flow_id ${flowId}`);
     }
     
     if (!targetConversationId) {
@@ -784,10 +786,71 @@ app.post('/resume', async (c) => {
       body: JSON.stringify({ input, source, step_id, flow_run_id })
     });
     
+    // If Durable Object returns error (400/500), create new Durable Object with existing flow_run_id
     if (!doResponse.ok) {
       const errorText = await doResponse.text();
-      console.error(`[HTTP:RESUME] Durable Object error: ${doResponse.status} - ${errorText}`);
-      return c.json(errorResponse(`Failed to resume conversation: ${doResponse.status}`, 500));
+      console.log(`[HTTP:RESUME] Original Durable Object failed (${doResponse.status}): ${errorText}. Creating new Durable Object.`);
+      
+      // Create new Durable Object
+      const newId = c.env.CONVERSATIONS.newUniqueId();
+      const newConversationDo = c.env.CONVERSATIONS.get(newId);
+      
+      // We need flow_id to start a new conversation
+      if (!flowId) {
+        return c.json(errorResponse(`Cannot create new conversation: flow_id not found for flow_run_id ${flow_run_id}`, 400));
+      }
+      
+      // Start new conversation with existing flow_run_id
+      const startResponse = await newConversationDo.fetch('http://placeholder/start-flow', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-DeepSeek-API-Key': c.env.DEEPSEEK_API_KEY || ''
+        },
+        body: JSON.stringify({
+          flow_id: flowId,
+          inputs: {},
+          deepseek_api_key: c.env.DEEPSEEK_API_KEY
+        })
+      });
+      
+      if (!startResponse.ok) {
+        const startErrorText = await startResponse.text();
+        console.error(`[HTTP:RESUME] Failed to start new conversation: ${startResponse.status} - ${startErrorText}`);
+        return c.json(errorResponse(`Failed to create new conversation: ${startResponse.status}`, 500));
+      }
+      
+      const startResult = await startResponse.json();
+      const newConversationId = newId.toString();
+      
+      // Update flow_runs table with new conversation_id
+      if (c.env.FLOW_RUNS_DB) {
+        await c.env.FLOW_RUNS_DB.prepare(
+          'UPDATE flow_runs SET conversation_id = ? WHERE id = ?'
+        ).bind(newConversationId, flow_run_id).run();
+        console.log(`[HTTP:RESUME] Updated flow_runs table: flow_run_id ${flow_run_id} now linked to new conversation_id ${newConversationId}`);
+      }
+      
+      // Now try resume on the new Durable Object
+      const newDoResponse = await newConversationDo.fetch('http://placeholder/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input, source, step_id, flow_run_id })
+      });
+      
+      if (!newDoResponse.ok) {
+        const newErrorText = await newDoResponse.text();
+        console.error(`[HTTP:RESUME] New Durable Object resume failed: ${newDoResponse.status} - ${newErrorText}`);
+        return c.json(errorResponse(`Failed to resume new conversation: ${newDoResponse.status}`, 500));
+      }
+      
+      const result = await newDoResponse.json();
+      return c.json(successResponse('Created new conversation and resumed successfully', {
+        ...result,
+        note: 'Original conversation was missing, created new one attached to same flow_run_id',
+        original_conversation_id: targetConversationId,
+        new_conversation_id: newConversationId
+      }));
     }
     
     const result = await doResponse.json();
