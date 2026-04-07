@@ -4542,6 +4542,10 @@ export class ConversationOrchestratorDO_2026A {
         this.conversation.status = 'active';
         this.conversation.waiting_for_input = undefined;
         
+        // Clear last_step_response to prevent routing logic from interfering with step repetition
+        this.conversation.last_step_response = undefined;
+        this.conversation.last_response = undefined;
+        
         // Save state
         await this.state.storage.put('conversation', this.conversation);
         
