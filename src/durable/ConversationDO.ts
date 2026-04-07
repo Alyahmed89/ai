@@ -1172,9 +1172,17 @@ export class ConversationOrchestratorDO_2026A {
       const deepseekApiKeyFromHeader = request.headers.get('X-DeepSeek-API-Key');
       console.log(`[DO:${this.state.id}] DEBUG: X-DeepSeek-API-Key header: ${deepseekApiKeyFromHeader ? deepseekApiKeyFromHeader.substring(0, 8) + '...' : 'MISSING'}`);
       
-      const body = await request.json() as { flow_id: string; inputs?: Record<string, any>; callback_url?: string; deepseek_api_key?: string };
+      const body = await request.json() as { 
+        flow_id: string; 
+        inputs?: Record<string, any>; 
+        callback_url?: string; 
+        deepseek_api_key?: string;
+        start_from_step_id?: string;
+        user_input?: string;
+        flow_run_id?: string;
+      };
       flow_id = body.flow_id;
-      const { inputs = {}, callback_url, deepseek_api_key } = body;
+      const { inputs = {}, callback_url, deepseek_api_key, start_from_step_id, user_input, flow_run_id } = body;
       
       console.log(`[DO:${this.state.id}] DEBUG: Request body - flow_id: ${flow_id}, inputs: ${JSON.stringify(inputs)}, callback_url: ${callback_url || 'none'}`);
       console.log(`[DO:${this.state.id}] DEBUG: deepseek_api_key in body: ${deepseek_api_key ? deepseek_api_key.substring(0, 8) + '...' : 'MISSING'}`);
@@ -1466,6 +1474,34 @@ export class ConversationOrchestratorDO_2026A {
         stepsCount: executionSteps.length
       });
       
+      // Handle start_from_step_id if provided
+      let startStepIndex = 0;
+      let startStep = executionSteps[0];
+      
+      if (start_from_step_id) {
+        const foundIndex = executionSteps.findIndex(s => s.step_id === start_from_step_id);
+        if (foundIndex >= 0) {
+          startStepIndex = foundIndex;
+          startStep = executionSteps[foundIndex];
+          
+          // If user_input provided, append it to step instructions (like in resume)
+          if (user_input && typeof user_input === 'string' && user_input.trim()) {
+            const originalInstructions = startStep.description || startStep.title || '';
+            startStep.description = `${originalInstructions}\n\nUser input: ${user_input}`;
+            console.log(`[DO:${this.state.id}] Added user input to step ${start_from_step_id} instructions: ${user_input.substring(0, 100)}...`);
+          }
+          
+          // Mark all previous steps as completed
+          for (let i = 0; i < foundIndex; i++) {
+            executionSteps[i].status = 'completed';
+          }
+          
+          console.log(`[DO:${this.state.id}] Starting flow from step ${start_from_step_id} (index ${foundIndex})`);
+        } else {
+          console.warn(`[DO:${this.state.id}] start_from_step_id ${start_from_step_id} not found, starting from first step`);
+        }
+      }
+      
       this.conversation = {
         state: 'SENDING_STEP',
         initial_user_prompt: initialPrompt,
@@ -1480,12 +1516,12 @@ export class ConversationOrchestratorDO_2026A {
         flow_id: flow_id,
         flow_steps: executionSteps,
         flow_completed: false, // Track if flow execution is complete
-        current_step_index: 0,
+        current_step_index: startStepIndex,
         agent: flowDefinition.agent, // Set agent from flow definition (validated above)
         flow_execution_mode: true, // Enable flow execution mode for step-by-step execution
         step_status_sent: false, // Track if SENDING STEP status has been sent for current step
         // Initialize execution context with provided inputs
-        execution_context: createExecutionContext(flow_id, executionSteps[0]?.step_id || 'step-1'),
+        execution_context: createExecutionContext(flow_id, startStep?.step_id || 'step-1'),
         effective_deepseek_api_key: effectiveDeepSeekApiKey, // Store the API key from request
         system_message: flowDefinition.system_message // Load system message from flow definition
       };
@@ -1517,7 +1553,7 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Set current_step (guaranteed to exist after validation)
-      this.conversation.current_step = executionSteps[0];
+      this.conversation.current_step = startStep;
       
       // DEBUG: Log current_step details
       console.log(`[DO:${this.state.id}] DEBUG: Setting current_step in handleStartFlow:`, {
@@ -1530,9 +1566,9 @@ export class ConversationOrchestratorDO_2026A {
       
       await this.state.storage.put('conversation', this.conversation);
       
-      // Generate flow run ID and save to database
-      this.flowRunId = generateFlowRunId();
-      console.log(`[DO:${this.state.id}] Generated flow run ID: ${this.flowRunId}`);
+      // Use provided flow_run_id or generate new one
+      this.flowRunId = flow_run_id || generateFlowRunId();
+      console.log(`[DO:${this.state.id}] Using flow run ID: ${this.flowRunId} ${flow_run_id ? '(provided)' : '(generated)'}`);
       console.log(`[DO:${this.state.id}] Database available: ${!!this.env.FLOW_RUNS_DB}`);
       console.log(`[DO:${this.state.id}] Conversation flow_id: ${this.conversation?.flow_id}`);
       console.log(`[DO:${this.state.id}] Conversation created_at: ${this.conversation?.created_at}`);

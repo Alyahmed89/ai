@@ -762,6 +762,12 @@ app.post('/resume', async (c) => {
     }
     
     if (!targetConversationId) {
+      // If flow_run_id exists but conversation_id is NULL, create new conversation
+      if (flow_run_id && flowId) {
+        console.log(`[HTTP:RESUME] Flow run ${flow_run_id} has no conversation_id, creating new conversation`);
+        // Skip to creating new conversation
+        return await createNewConversationForFlowRun(c, flow_run_id, flowId, step_id, input);
+      }
       return c.json(errorResponse('Missing flow_run_id or conversation_id parameter', 400));
     }
     
@@ -800,6 +806,27 @@ app.post('/resume', async (c) => {
         return c.json(errorResponse(`Cannot create new conversation: flow_id not found for flow_run_id ${flow_run_id}`, 400));
       }
       
+      // Get last completed step_id if step_id is "(last)"
+      let actualStepId = step_id;
+      if (step_id === '(last)' && c.env.FLOW_RUNS_DB) {
+        try {
+          const lastStepResult = await c.env.FLOW_RUNS_DB.prepare(
+            'SELECT step_id FROM step_runs WHERE flow_run_id = ? AND status = "completed" ORDER BY created_at DESC LIMIT 1'
+          ).bind(flow_run_id).first();
+          
+          if (lastStepResult && lastStepResult.step_id) {
+            actualStepId = lastStepResult.step_id;
+            console.log(`[HTTP:RESUME] Found last completed step_id: ${actualStepId} for flow_run_id ${flow_run_id}`);
+          } else {
+            console.log(`[HTTP:RESUME] No completed steps found for flow_run_id ${flow_run_id}, starting from first step`);
+            actualStepId = undefined;
+          }
+        } catch (dbError) {
+          console.error(`[HTTP:RESUME] Error querying last step: ${dbError}`);
+          actualStepId = undefined;
+        }
+      }
+      
       // Start new conversation with existing flow_run_id
       const startResponse = await newConversationDo.fetch('http://placeholder/start-flow', {
         method: 'POST',
@@ -810,7 +837,10 @@ app.post('/resume', async (c) => {
         body: JSON.stringify({
           flow_id: flowId,
           inputs: {},
-          deepseek_api_key: c.env.DEEPSEEK_API_KEY
+          deepseek_api_key: c.env.DEEPSEEK_API_KEY,
+          flow_run_id: flow_run_id,
+          start_from_step_id: actualStepId,
+          user_input: input
         })
       });
       
@@ -838,7 +868,11 @@ app.post('/resume', async (c) => {
         flow_id: flowId,
         new_conversation_id: newConversationId,
         original_conversation_id: targetConversationId,
-        note: 'Original conversation was missing. New conversation created and will start from beginning.',
+        note: actualStepId ? 
+          `Original conversation was missing. New conversation created and will resume from step ${actualStepId} with provided input.` :
+          `Original conversation was missing. New conversation created and will start from beginning.`,
+        resumed_from_step: actualStepId,
+        user_input_provided: !!input,
         check_status_url: `${new URL(c.req.url).origin}/status/${newConversationId}`
       }));
     }
