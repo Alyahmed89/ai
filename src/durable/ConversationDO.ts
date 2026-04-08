@@ -772,7 +772,7 @@ export class ConversationOrchestratorDO_2026A {
         await this.sendStepOutputIfEnabled(this.conversation.current_step, body.response);
         
         // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
-        await this.handleStepCompletion(this.conversation.current_step, body.response);
+        await this.handleStepCompletion(this.conversation.current_step, body.response, undefined);
         
         // Update execution context with OpenHands response for new condition system
         if (this.conversation.execution_context) {
@@ -1855,7 +1855,7 @@ export class ConversationOrchestratorDO_2026A {
     const currentStep = this.conversation.flow_steps.find(s => s.step_id === dualState.step_id);
     if (currentStep) {
       // Handle step completion with the final response
-      await this.handleStepCompletion(currentStep, lastResponse);
+      await this.handleStepCompletion(currentStep, lastResponse, undefined);
     }
     
     // Clear dual-agent state
@@ -3259,7 +3259,7 @@ export class ConversationOrchestratorDO_2026A {
           }
           
           // For deepseek-only flows, complete the step immediately
-          await this.handleStepCompletion(this.conversation.current_step, filteredResponse);
+          await this.handleStepCompletion(this.conversation.current_step, filteredResponse, undefined);
           return;
         } else {
           // For openhands or both agents, send to OpenHands
@@ -3852,7 +3852,7 @@ export class ConversationOrchestratorDO_2026A {
               if (this.conversation.current_step) {
                 await this.sendStepOutputIfEnabled(this.conversation.current_step, `Status: ${parsed.status}`);
                 // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
-                await this.handleStepCompletion(this.conversation.current_step, `Status: ${parsed.status}`);
+                await this.handleStepCompletion(this.conversation.current_step, `Status: ${parsed.status}`, undefined);
               }
             } else {
               // Use the full content as response
@@ -3862,7 +3862,7 @@ export class ConversationOrchestratorDO_2026A {
               if (this.conversation.current_step) {
                 await this.sendStepOutputIfEnabled(this.conversation.current_step, content);
                 // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
-                await this.handleStepCompletion(this.conversation.current_step, content);
+                await this.handleStepCompletion(this.conversation.current_step, content, undefined);
               }
             }
           } else {
@@ -3873,7 +3873,7 @@ export class ConversationOrchestratorDO_2026A {
             if (this.conversation.current_step) {
               await this.sendStepOutputIfEnabled(this.conversation.current_step, content);
               // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
-              await this.handleStepCompletion(this.conversation.current_step, content);
+              await this.handleStepCompletion(this.conversation.current_step, content, undefined);
             }
           }
         } catch (error) {
@@ -3884,7 +3884,7 @@ export class ConversationOrchestratorDO_2026A {
           if (this.conversation.current_step && this.conversation.pending_event_content) {
             await this.sendStepOutputIfEnabled(this.conversation.current_step, this.conversation.pending_event_content);
             // STORE STEP RESPONSE: Call handleStepCompletion to store response in step's response field
-            await this.handleStepCompletion(this.conversation.current_step, this.conversation.pending_event_content);
+            await this.handleStepCompletion(this.conversation.current_step, this.conversation.pending_event_content, undefined);
           }
         }
       }
@@ -5970,7 +5970,7 @@ ${messageContent}`;
         }
         
         try {
-          await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`);
+          await this.handleStepCompletion(step, `DeepSeek API error: ${deepseekResult.error}`, undefined);
         } catch (stepError) {
           console.error(`[DO:${this.state.id}] Error in handleStepCompletion:`, stepError);
           // Continue anyway to clear state and move forward
@@ -6029,7 +6029,7 @@ ${messageContent}`;
       
       await this.saveStepRunToDatabase(
         step,
-        prompt,
+        finalPrompt, // Save finalPrompt (with memory instruction) not original prompt
         response,
         'completed',
         1,
@@ -6055,7 +6055,7 @@ ${messageContent}`;
       
       try {
         // Complete the step with DeepSeek response
-        await this.handleStepCompletion(step, response);
+        await this.handleStepCompletion(step, response, finalPrompt);
       } catch (stepError) {
         console.error(`[DO:${this.state.id}] Error in handleStepCompletion:`, stepError);
         // Continue anyway to clear state and move forward
@@ -6475,7 +6475,7 @@ ${messageContent}`;
   /**
    * Enhanced flow transition with condition engine and loop prevention
    */
-  private async handleStepCompletion(step: StepData, response: string): Promise<void> {
+  private async handleStepCompletion(step: StepData, response: string, finalPrompt?: string): Promise<void> {
     if (!this.conversation) return;
     
     console.log(`[DO:${this.state.id}] Handling step completion for step: ${step.step_id}`);
