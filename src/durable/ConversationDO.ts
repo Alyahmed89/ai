@@ -758,8 +758,12 @@ export class ConversationOrchestratorDO_2026A {
       
       // Save OpenHands step run to database
       if (this.conversation.current_step) {
-        // Get the prompt that was sent to OpenHands (from conversation history or step data)
-        const prompt = this.conversation.current_step.description || this.conversation.current_step.title || "OpenHands step";
+        // Get the prompt that was sent to OpenHands (from execution context or step data)
+        // Use finalPrompt (with memory instruction) if available in execution context
+        const prompt = this.conversation.execution_context?.ai_input || 
+                      this.conversation.current_step.description || 
+                      this.conversation.current_step.title || 
+                      "OpenHands step";
         
         await this.saveStepRunToDatabase(
           this.conversation.current_step,
@@ -5284,6 +5288,7 @@ ${messageContent}`;
     // Declare resolvedStep at function scope so it's available throughout
     let resolvedStep: any = null;
     let stepRunId: string | null = null;
+    let finalPrompt: string = '';
     
     if (!this.conversation) {
       console.log(`[DO:${this.state.id}] DEBUG: No conversation in handleSendingStepState`);
@@ -5817,27 +5822,6 @@ ${messageContent}`;
     console.log(`[DO:${this.state.id}] Final prompt length: ${prompt.length} chars`);
     console.log(`[DO:${this.state.id}] Final prompt preview: ${prompt.substring(0, 200)}...`);
     
-    // Get memory context if available
-    const memoryContext = await this.getMemoryEnhancedInstructions(step);
-    
-    // Build final prompt with memory context
-    let finalPrompt = prompt;
-    if (memoryContext && memoryContext.trim()) {
-      finalPrompt = `MEMORY:\n${memoryContext}\n\nCURRENT TASK:\n${prompt}`;
-      console.log(`[DO:${this.state.id}] Memory context added to prompt`);
-      console.log(`[DO:${this.state.id}] Final prompt with memory length: ${finalPrompt.length} chars`);
-    }
-    
-    // Add memory instruction to prompt
-    finalPrompt += `\n\nIMPORTANT: At the end of your response, include a memory section using [MEMORY:...] format. 
-    The memory should summarize key decisions, learnings, and context from this step that should be remembered for future steps.
-    Example: [MEMORY:Decided to use Python for automation. Learned that API requires authentication.]`;
-    
-    // Set AI input in execution context for new condition system
-    if (this.conversation.execution_context) {
-      this.conversation.execution_context.ai_input = finalPrompt;
-    }
-    
     // Store debug information for observability
     this.conversation.last_step_debug = {
       step_id: step.step_id,
@@ -5854,6 +5838,27 @@ ${messageContent}`;
     };
     } // End of else block (not using existing prompt)
     
+    // Get memory context if available
+    const memoryContext = await this.getMemoryEnhancedInstructions(step);
+    
+    // Build final prompt with memory context
+    finalPrompt = prompt;
+    if (memoryContext && memoryContext.trim()) {
+      finalPrompt = `MEMORY:\n${memoryContext}\n\nCURRENT TASK:\n${prompt}`;
+      console.log(`[DO:${this.state.id}] Memory context added to prompt`);
+      console.log(`[DO:${this.state.id}] Final prompt with memory length: ${finalPrompt.length} chars`);
+    }
+    
+    // Add memory instruction to prompt
+    finalPrompt += `\n\nIMPORTANT: At the end of your response, include a memory section using [MEMORY:...] format. 
+    The memory should summarize key decisions, learnings, and context from this step that should be remembered for future steps.
+    Example: [MEMORY:Decided to use Python for automation. Learned that API requires authentication.]`;
+    
+    // Set AI input in execution context for new condition system
+    if (this.conversation.execution_context) {
+      this.conversation.execution_context.ai_input = finalPrompt;
+    }
+    
 
 
 
@@ -5862,18 +5867,18 @@ ${messageContent}`;
     if (this.conversation.agent === 'deepseek') {
       console.log(`[DO:${this.state.id}] Agent is 'deepseek', calling DeepSeek API instead of OpenHands`);
       console.log(`[DO:${this.state.id}] Flow ID: ${this.conversation.flow_id}, Step: ${this.conversation.current_flow_step}`);
-      console.log(`[DO:${this.state.id}] Prompt preview: ${prompt.substring(0, 200)}...`);
+      console.log(`[DO:${this.state.id}] Final prompt preview: ${finalPrompt.substring(0, 200)}...`);
       
       // Build messages for DeepSeek WITHOUT system message
       // Guard: Ensure no unresolved variables (check for ƐĐᜃ delimiter, not {})
-      if (prompt.includes('ƐĐᜃ')) {
-        throw new Error(`UNRESOLVED VARIABLES in prompt: ${prompt.substring(0, 200)}`);
+      if (finalPrompt.includes('ƐĐᜃ')) {
+        throw new Error(`UNRESOLVED VARIABLES in finalPrompt: ${finalPrompt.substring(0, 200)}`);
       }
       
-      console.log('FINAL_INSTRUCTIONS (first 500 chars):', prompt.substring(0, 500));
+      console.log('FINAL_INSTRUCTIONS (first 500 chars):', finalPrompt.substring(0, 500));
       
       const messages = [
-        { role: 'user', content: prompt }
+        { role: 'user', content: finalPrompt }
       ];
       
       // Call DeepSeek API
@@ -5945,7 +5950,7 @@ ${messageContent}`;
         // Save failed step run to database with API calls
         await this.saveStepRunToDatabase(
           step,
-          prompt,
+          finalPrompt,
           `DeepSeek API error: ${deepseekResult.error}`,
           'failed',
           1,
@@ -6141,7 +6146,7 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Creating new OpenHands conversation`);
       const createResult = await createOpenHandsConversation(
         this.env.OPENHANDS_API_URL,
-        prompt,
+        finalPrompt,
         this.conversation.repository,
         this.conversation.branch
       );
@@ -6159,16 +6164,16 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Injecting message to existing OpenHands conversation: ${this.conversation.openhands_conversation_id}`);
       
       // CRITICAL LOG: What is actually being sent to OpenHands?
-      console.log(`[DO:${this.state.id}] SENT TO OPENHANDS (first 500 chars):`, prompt.substring(0, 500));
-      if (prompt.includes('{task_data')) {
-        console.log(`[DO:${this.state.id}] WARNING: Template variables still present in prompt!`);
-        console.log(`[DO:${this.state.id}] Contains {task_data:`, prompt.includes('{task_data'));
+      console.log(`[DO:${this.state.id}] SENT TO OPENHANDS (first 500 chars):`, finalPrompt.substring(0, 500));
+      if (finalPrompt.includes('{task_data')) {
+        console.log(`[DO:${this.state.id}] WARNING: Template variables still present in finalPrompt!`);
+        console.log(`[DO:${this.state.id}] Contains {task_data:`, finalPrompt.includes('{task_data'));
       }
       
       const injectResult = await injectMessageToOpenHands(
         this.env.OPENHANDS_API_URL,
         this.conversation.openhands_conversation_id,
-        prompt
+        finalPrompt
       );
       
       if (!injectResult.success) {
