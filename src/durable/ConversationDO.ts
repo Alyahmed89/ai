@@ -5828,6 +5828,11 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Final prompt with memory length: ${finalPrompt.length} chars`);
     }
     
+    // Add memory instruction to prompt
+    finalPrompt += `\n\nIMPORTANT: At the end of your response, include a memory section using [MEMORY:...] format. 
+    The memory should summarize key decisions, learnings, and context from this step that should be remembered for future steps.
+    Example: [MEMORY:Decided to use Python for automation. Learned that API requires authentication.]`;
+    
     // Set AI input in execution context for new condition system
     if (this.conversation.execution_context) {
       this.conversation.execution_context.ai_input = finalPrompt;
@@ -6596,13 +6601,16 @@ ${messageContent}`;
       }
     }
     
-    // 4. Legacy command handling (only if no unified commands were executed)
+    // 4. Extract and save simple memory from response (do this BEFORE early returns)
+    await this.extractAndSaveSimpleMemory(step, response);
+    
+    // 5. Legacy command handling (only if no unified commands were executed)
     if (tokens.command) {
       await this.handleCommand(tokens.command, step, response);
       return; // Command handling will continue the conversation
     }
     
-    // 5. Check for [END_FLOW] tokens
+    // 6. Check for [END_FLOW] tokens
     if (tokens.done.done) {
       await this.handleDoneResponse(response, 'ai_end_flow');
       return;
@@ -6668,6 +6676,64 @@ ${messageContent}`;
     } catch (error: any) {
       console.error(`[DO:${this.state.id}] Error getting memory: ${error.message}`);
       return '';
+    }
+  }
+
+  /**
+   * Extract simple memory from response and save to database
+   */
+  private async extractAndSaveSimpleMemory(step: StepData, response: string): Promise<void> {
+    if (!this.env.FLOW_RUNS_DB || !this.flowRunId) {
+      console.log(`[DO:${this.state.id}] Cannot save simple memory: missing database or flowRunId`);
+      return;
+    }
+
+    try {
+      // Extract memory from response using [MEMORY:...] pattern
+      const memoryMatch = response.match(/\[MEMORY:(.*?)\]/);
+      if (!memoryMatch) {
+        console.log(`[DO:${this.state.id}] No [MEMORY:...] found in response`);
+        return;
+      }
+
+      const memoryText = memoryMatch[1].trim();
+      console.log(`[DO:${this.state.id}] Extracted memory: ${memoryText}`);
+
+      // Create simple memory object
+      const memory = {
+        goal: `Step: ${step.title}`,
+        decisions: [memoryText],
+        context: `From step: ${step.title}`,
+        constraints: []
+      };
+
+      const memoryJson = JSON.stringify(memory);
+
+      // Get the latest step run ID for this step to save memory
+      const stepRunResult = await this.env.FLOW_RUNS_DB.prepare(`
+        SELECT id FROM step_runs 
+        WHERE flow_run_id = ? AND step_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `).bind(this.flowRunId, step.step_id).first();
+
+      if (!stepRunResult) {
+        console.error(`[DO:${this.state.id}] Cannot find step run to save simple memory`);
+        return;
+      }
+
+      const stepRunId = (stepRunResult as any).id;
+
+      // Save memory to step run
+      const { saveStepMemory } = await import('../services/database');
+      const saveResult = await saveStepMemory(this.env.FLOW_RUNS_DB, stepRunId, memoryJson);
+      if (!saveResult.success) {
+        console.error(`[DO:${this.state.id}] Failed to save simple memory to database: ${saveResult.error}`);
+      } else {
+        console.log(`[DO:${this.state.id}] Simple memory saved to step run ${stepRunId}: ${memoryText}`);
+      }
+    } catch (error: any) {
+      console.error(`[DO:${this.state.id}] Error in simple memory extraction: ${error.message}`);
     }
   }
 
