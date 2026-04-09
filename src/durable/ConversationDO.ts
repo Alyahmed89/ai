@@ -1527,7 +1527,8 @@ export class ConversationOrchestratorDO_2026A {
         // Initialize execution context with provided inputs
         execution_context: createExecutionContext(flow_id, startStep?.step_id || 'step-1'),
         effective_deepseek_api_key: effectiveDeepSeekApiKey, // Store the API key from request
-        system_message: flowDefinition.system_message // Load system message from flow definition
+        system_message: flowDefinition.system_message, // Load system message from flow definition
+        memory_prompt: flowDefinition.memory_prompt // Load memory prompt from flow definition
       };
       
       console.log(`[DO:${this.state.id}] DEBUG: Conversation object created with state: ${this.conversation.state}`);
@@ -5849,10 +5850,10 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Final prompt with memory length: ${finalPrompt.length} chars`);
     }
     
-    // Add memory instruction to prompt
-    finalPrompt += `\n\nIMPORTANT: At the end of your response, include a memory section using [MEMORY:...] format. 
-    The memory should summarize key decisions, learnings, and context from this step that should be remembered for future steps.
-    Example: [MEMORY:Decided to use Python for automation. Learned that API requires authentication.]`;
+    // Add memory instruction to prompt (use flow-specific memory prompt if available)
+    if (this.conversation.memory_prompt) {
+      finalPrompt += `\n\n${this.conversation.memory_prompt}`;
+    }
     
     // Set AI input in execution context for new condition system
     if (this.conversation.execution_context) {

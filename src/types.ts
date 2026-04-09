@@ -29,6 +29,7 @@ export interface ConversationData {
   max_iterations: number;
   agent?: string; // Agent type: 'openhands' (default) or 'deepseek'
   system_message?: string; // Custom system message for DeepSeek
+  memory_prompt?: string; // Custom memory prompt for flow
   
   // Current status
   status: 'active' | 'stopped' | 'error' | 'paused';
