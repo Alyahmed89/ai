@@ -254,7 +254,7 @@ export default function ChatPage(props: any) {
       const flowRunResponse = await fetch(`/api/proxy/api/flow-runs/${flowRunId}`);
       if (!flowRunResponse.ok) {
         console.error('Failed to fetch flow run details');
-        return;
+        return null;
       }
 
       const flowRunData = await flowRunResponse.json();
