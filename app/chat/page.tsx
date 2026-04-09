@@ -1633,7 +1633,12 @@ export default function ChatPage(props: any) {
 
                 {/* Chat input */}
                 <div className="p-4">
-                  <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="space-y-3">
+                  <form onSubmit={(e) => { 
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    handleSend(); 
+                    return false;
+                  }} className="space-y-3">
                     <div className="relative">
                       <IntelligentTextarea
                         value={inputPrompt}
@@ -1649,7 +1654,11 @@ export default function ChatPage(props: any) {
                       <div className="absolute right-3 bottom-3 flex space-x-2">
                         <button
                           type="button"
-                          onClick={handlePlay}
+                          onClick={(e) => { 
+                            e.preventDefault(); 
+                            e.stopPropagation();
+                            handlePlay(); 
+                          }}
                           disabled={isRunning || !selectedFlowId}
                           className="p-2 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           title={!selectedFlowId ? "Select a flow first" : "Start flow without prompt"}
