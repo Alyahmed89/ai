@@ -6,6 +6,7 @@ import { crudApi } from './crud-api';
 import { graphApi } from './graph-api';
 import { successResponse, errorResponse, notFoundResponse } from './response';
 import { VERSION, BUILD_TIME } from './version';
+import { resolveTextVariables } from './utils/variableResolver';
 
 // Dummy FlowControllerDO to satisfy existing binding
 export class FlowControllerDO {
@@ -636,6 +637,42 @@ app.get('/status/:id', async (c) => {
     
     const data = await doResponse.json();
     
+    // Get flow_run_id from conversation data to use for variable resolution
+    const flowRunId = data.conversation.flow_run_id;
+    
+    // Process steps to resolve variables in responses
+    const processedSteps = [];
+    for (const step of (data.conversation.flow_steps || [])) {
+      let resolvedResponse = step.response || null;
+      
+      // If response contains ƐĐᜃ variables, resolve them
+      if (resolvedResponse && typeof resolvedResponse === 'string' && resolvedResponse.includes('ƐĐᜃ')) {
+        try {
+          // Resolve variables in the response text
+          resolvedResponse = await resolveTextVariables(
+            c.env.FLOW_RUNS_DB,
+            resolvedResponse,
+            {
+              flow_run_id: flowRunId,
+              flow_id: data.conversation.flow_id
+            }
+          );
+        } catch (resolveError) {
+          console.error(`[HTTP:STATUS] Error resolving variables in step response:`, resolveError);
+          // Keep original response if resolution fails
+        }
+      }
+      
+      processedSteps.push({
+        id: step.step_id, // Use step_id from StepData interface
+        title: step.title,
+        instructions: step.rendered_instructions || step.description || '', // Use rendered instructions first, fallback to description
+        // 🔥 REQUIRED FIELDS - with resolved variables
+        response: resolvedResponse,
+        status: step.status || "pending"
+      });
+    }
+    
     // Return enriched conversation data with execution results and logs
     return new Response(JSON.stringify({
       success: true,
@@ -643,20 +680,16 @@ app.get('/status/:id', async (c) => {
         conversation: {
           state: data.conversation.state,
           flow_completed: data.conversation.flow_completed,
-          flow_steps: (data.conversation.flow_steps || []).map((step: any) => ({
-            id: step.step_id, // Use step_id from StepData interface
-            title: step.title,
-            instructions: step.rendered_instructions || step.description || '', // Use rendered instructions first, fallback to description
-            // 🔥 REQUIRED FIELDS
-            response: step.response || null,
-            status: step.status || "pending"
-          })),
+          flow_steps: processedSteps,
           // Include all logs from conversation
           logs: data.conversation.logs || [],
           error_message: data.conversation.error_message,
           deepseek_error_details: data.conversation.deepseek_error_details,
           // Include waiting_for_input for frontend to know when to prompt user
-          waiting_for_input: data.conversation.waiting_for_input
+          waiting_for_input: data.conversation.waiting_for_input,
+          // Include flow metadata for frontend
+          flow_id: data.conversation.flow_id,
+          flow_run_id: flowRunId
         }
       }
     }), {
