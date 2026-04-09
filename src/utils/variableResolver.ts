@@ -389,7 +389,9 @@ function findValueInJson(jsonValue: any, key: string): any {
 async function executeQuery(db: D1Database, queryParams: string): Promise<string> {
   try {
     // Parse query params: table=api_calls/column=response/json_path=data.stdout/keys=stdout,stderr
-    const params = new URLSearchParams(queryParams.replace(/\//g, '&'));
+    // Support both / and & separators
+    const normalized = queryParams.replace(/[&/]+/g, '&').replace(/^&|&$/g, '');
+    const params = new URLSearchParams(normalized);
     
     const table = params.get('table');
     const column = params.get('column');
