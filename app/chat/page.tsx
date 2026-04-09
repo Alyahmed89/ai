@@ -238,14 +238,14 @@ export default function ChatPage(props: any) {
   }, [inputPrompt]);
 
   // Function to fetch flow run conversation data
-  const fetchFlowRunConversation = async (flowRunId: string | null) => {
+  const fetchFlowRunConversation = async (flowRunId: string | null): Promise<string | null> => {
     console.log('DEBUG: fetchFlowRunConversation called with flowRunId:', flowRunId);
     if (!flowRunId) {
       // Clear chat messages when no flow run is selected
       console.log('DEBUG: No flow run selected, clearing chat');
       setChatMessages([]);
       setConversationData(null);
-      return;
+      return null;
     }
 
     try {
@@ -348,14 +348,14 @@ export default function ChatPage(props: any) {
         
         setConversationData(conversationDataForFlowRun);
         setChatMessages(messages);
-        return;
+        return conversationId;
       }
 
       // Fetch conversation details
       const conversationResponse = await fetch(`/api/proxy/status/${conversationId}`);
       if (!conversationResponse.ok) {
         console.error('Failed to fetch conversation details');
-        return;
+        return conversationId;
       }
 
       const conversationData = await conversationResponse.json();
@@ -509,10 +509,12 @@ export default function ChatPage(props: any) {
         
         setConversationData(conversationDataForFlowRun);
         setChatMessages(messages);
+        return conversationId;
       }
     } catch (error) {
       console.error('Error fetching flow run conversation:', error);
     }
+    return null;
   };
 
   // Handle flow run selection - fetch conversation messages
@@ -1155,8 +1157,14 @@ export default function ChatPage(props: any) {
       if (flowRunId) {
         console.log('Setting flow run ID from response:', flowRunId);
         setSelectedFlowRunId(flowRunId);
-        // After resuming, fetch updated flow run data
-        fetchFlowRunConversation(flowRunId);
+        // After resuming, fetch updated flow run data and get conversation ID
+        const conversationIdFromFlowRun = await fetchFlowRunConversation(flowRunId);
+        
+        // Start polling for updates to this flow run if we have a conversation ID
+        if (conversationIdFromFlowRun) {
+          console.log('Starting polling for resumed conversation:', conversationIdFromFlowRun);
+          startPollingForResults(conversationIdFromFlowRun, assistantMessageId, prompt, restoreOriginalInstructions);
+        }
       }
       
       // Start polling for actual results if we have a conversation ID
