@@ -676,7 +676,10 @@ export default function ChatPage(props: any) {
     };
     
     setChatMessages(prev => [...prev, userMessage]);
-    setConversationData(null); // Reset conversation data for new flow
+    // Only reset conversation data when starting a new flow, not when resuming
+    if (!selectedFlowRunId) {
+      setConversationData(null); // Reset conversation data for new flow
+    }
     setInputPrompt('');
     setIsRunning(true);
     
@@ -1150,6 +1153,8 @@ export default function ChatPage(props: any) {
       if (flowRunId) {
         console.log('Setting flow run ID from response:', flowRunId);
         setSelectedFlowRunId(flowRunId);
+        // After resuming, fetch updated flow run data
+        fetchFlowRunConversation(flowRunId);
       }
       
       // Start polling for actual results if we have a conversation ID
