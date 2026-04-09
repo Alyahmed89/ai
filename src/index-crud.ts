@@ -640,10 +640,29 @@ app.get('/status/:id', async (c) => {
     // Get flow_run_id from conversation data to use for variable resolution
     const flowRunId = data.conversation.flow_run_id;
     
-    // Process steps to resolve variables in responses
+    // Process steps to resolve variables in both instructions and responses
     const processedSteps = [];
     for (const step of (data.conversation.flow_steps || [])) {
+      let resolvedInstructions = step.rendered_instructions || step.description || '';
       let resolvedResponse = step.response || null;
+      
+      // If instructions contain ƐĐᜃ variables, resolve them
+      if (resolvedInstructions && typeof resolvedInstructions === 'string' && resolvedInstructions.includes('ƐĐᜃ')) {
+        try {
+          // Resolve variables in the instructions text
+          resolvedInstructions = await resolveTextVariables(
+            c.env.FLOW_RUNS_DB,
+            resolvedInstructions,
+            {
+              flow_run_id: flowRunId,
+              flow_id: data.conversation.flow_id
+            }
+          );
+        } catch (resolveError) {
+          console.error(`[HTTP:STATUS] Error resolving variables in step instructions:`, resolveError);
+          // Keep original instructions if resolution fails
+        }
+      }
       
       // If response contains ƐĐᜃ variables, resolve them
       if (resolvedResponse && typeof resolvedResponse === 'string' && resolvedResponse.includes('ƐĐᜃ')) {
@@ -666,7 +685,7 @@ app.get('/status/:id', async (c) => {
       processedSteps.push({
         id: step.step_id, // Use step_id from StepData interface
         title: step.title,
-        instructions: step.rendered_instructions || step.description || '', // Use rendered instructions first, fallback to description
+        instructions: resolvedInstructions,
         // 🔥 REQUIRED FIELDS - with resolved variables
         response: resolvedResponse,
         status: step.status || "pending"
