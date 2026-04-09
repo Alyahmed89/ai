@@ -367,10 +367,19 @@ async function executeQuery(db: D1Database, queryParams: string): Promise<string
     
     let value = result[column];
     
-    // If json_path provided and value is JSON string, extract nested value
-    if (jsonPath && value && typeof value === 'string') {
+    // If json_path provided, extract nested value
+    if (jsonPath && value) {
       try {
-        const jsonValue = JSON.parse(value);
+        // Handle both string JSON and already-parsed object
+        let jsonValue;
+        if (typeof value === 'string') {
+          jsonValue = JSON.parse(value);
+        } else if (typeof value === 'object' && value !== null) {
+          jsonValue = value;
+        } else {
+          return '';
+        }
+        
         // Simple dot notation path extraction
         const pathParts = jsonPath.split('.');
         let current = jsonValue;
@@ -384,7 +393,8 @@ async function executeQuery(db: D1Database, queryParams: string): Promise<string
         }
         value = current;
       } catch (e) {
-        // Not valid JSON, keep original value
+        console.error(`[VariableResolver] Error parsing JSON or extracting path ${jsonPath}:`, e);
+        return '';
       }
     }
     
