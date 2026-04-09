@@ -343,14 +343,58 @@ export function extractVariableTags(text: string): { tag: string; variableName: 
 /**
  * Execute query directly using database
  */
+/**
+ * Extract value from JSON using dot notation path
+ */
+function extractJsonPath(jsonValue: any, path: string): any {
+  try {
+    const parts = path.split('.');
+    let current = jsonValue;
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        return undefined;
+      }
+    }
+    return current;
+  } catch (e) {
+    return undefined;
+  }
+}
+
+/**
+ * Find value in JSON using common paths
+ */
+function findValueInJson(jsonValue: any, key: string): any {
+  // Try common paths
+  const commonPaths = [
+    `data.${key}`,
+    `raw.${key}`,
+    key,
+    `response.${key}`,
+    `body.${key}`
+  ];
+  
+  for (const path of commonPaths) {
+    const value = extractJsonPath(jsonValue, path);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  
+  return undefined;
+}
+
 async function executeQuery(db: D1Database, queryParams: string): Promise<string> {
   try {
-    // Parse query params: table=api_calls/column=response/json_path=data.stdout
+    // Parse query params: table=api_calls/column=response/json_path=data.stdout/keys=stdout,stderr
     const params = new URLSearchParams(queryParams.replace(/\//g, '&'));
     
     const table = params.get('table');
     const column = params.get('column');
     const jsonPath = params.get('json_path');
+    const keysParam = params.get('keys'); // New: comma-separated keys
     
     if (!table || !column) {
       return '';
@@ -367,37 +411,48 @@ async function executeQuery(db: D1Database, queryParams: string): Promise<string
     
     let value = result[column];
     
-    // If json_path provided, extract nested value
-    if (jsonPath && value) {
-      try {
-        // Handle both string JSON and already-parsed object
-        let jsonValue;
-        if (typeof value === 'string') {
-          jsonValue = JSON.parse(value);
-        } else if (typeof value === 'object' && value !== null) {
-          jsonValue = value;
-        } else {
+    // Parse JSON value
+    let jsonValue;
+    try {
+      jsonValue = typeof value === 'string' ? JSON.parse(value) : value;
+    } catch (e) {
+      console.error(`[VariableResolver] Error parsing JSON:`, e);
+      return '';
+    }
+    
+    // If keys specified, extract multiple values
+    if (keysParam) {
+      const keys = keysParam.split(',').map(k => k.trim());
+      const extracted: Record<string, any> = {};
+      
+      for (const key of keys) {
+        // Try to find key in common paths
+        const foundValue = findValueInJson(jsonValue, key);
+        
+        // If any key is null, return empty string (fail flow)
+        if (foundValue === null) {
+          console.log(`[VariableResolver] Key "${key}" is null, failing flow`);
           return '';
         }
         
-        // Simple dot notation path extraction
-        const pathParts = jsonPath.split('.');
-        let current = jsonValue;
-        for (const part of pathParts) {
-          if (current && typeof current === 'object' && part in current) {
-            current = current[part];
-          } else {
-            current = undefined;
-            break;
-          }
-        }
-        value = current;
-      } catch (e) {
-        console.error(`[VariableResolver] Error parsing JSON or extracting path ${jsonPath}:`, e);
-        return '';
+        extracted[key] = foundValue !== undefined ? foundValue : '';
       }
+      
+      return JSON.stringify(extracted);
     }
     
+    // Single key extraction (backward compatible)
+    if (jsonPath) {
+      const foundValue = extractJsonPath(jsonValue, jsonPath);
+      // If value is null, fail flow
+      if (foundValue === null) {
+        console.log(`[VariableResolver] Path "${jsonPath}" is null, failing flow`);
+        return '';
+      }
+      return foundValue !== undefined ? String(foundValue) : '';
+    }
+    
+    // No path specified, return raw value
     return typeof value === 'string' ? value : JSON.stringify(value);
   } catch (error) {
     console.error(`[VariableResolver] Error executing query:`, error);
