@@ -475,38 +475,111 @@ async function saveVariableValue(
   }
 ): Promise<void> {
   try {
-    // Check if variable already exists
-    const existing = await db.prepare(
-      'SELECT id FROM variables WHERE key = ? AND flow_id = ? ORDER BY created_at DESC LIMIT 1'
-    ).bind(variableName, context?.flow_id || '').first();
+    // ALWAYS UPSERT: Create if doesn't exist, update if it does
+    // Priority: flow_run_id + flow_id > flow_id > no context
     
-    if (!existing) {
-      // Create new variable
-      await db.prepare(`
-        INSERT INTO variables (id, key, value, flow_id, flow_run_id, step_id, step_run_id, source, variable_type, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `).bind(
-        `var-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        variableName,
-        value,
-        context?.flow_id || null,
-        context?.flow_run_id || null,
-        context?.step_id || null,
-        context?.step_run_id || null,
-        'query',
-        'system'
-      ).run();
+    if (context?.flow_run_id && context?.flow_id) {
+      // Check if exists with flow_run_id
+      const existing = await db.prepare(
+        'SELECT id FROM variables WHERE key = ? AND flow_id = ? AND flow_run_id = ? ORDER BY created_at DESC LIMIT 1'
+      ).bind(variableName, context.flow_id, context.flow_run_id).first();
+      
+      if (!existing) {
+        // Create new variable for this flow run
+        await db.prepare(`
+          INSERT INTO variables (id, key, value, flow_id, flow_run_id, step_id, step_run_id, source, variable_type, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `).bind(
+          `var-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          variableName,
+          value,
+          context.flow_id,
+          context.flow_run_id,
+          context?.step_id || null,
+          context?.step_run_id || null,
+          'query',
+          'system'
+        ).run();
+      } else {
+        // Update existing variable for this flow run
+        await db.prepare(`
+          UPDATE variables 
+          SET value = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE key = ? AND flow_id = ? AND flow_run_id = ?
+        `).bind(
+          value,
+          variableName,
+          context.flow_id,
+          context.flow_run_id
+        ).run();
+      }
+    } else if (context?.flow_id) {
+      // Flow-level variable (no specific run)
+      const existing = await db.prepare(
+        'SELECT id FROM variables WHERE key = ? AND flow_id = ? AND flow_run_id IS NULL ORDER BY created_at DESC LIMIT 1'
+      ).bind(variableName, context.flow_id).first();
+      
+      if (!existing) {
+        // Create new flow-level variable
+        await db.prepare(`
+          INSERT INTO variables (id, key, value, flow_id, flow_run_id, step_id, step_run_id, source, variable_type, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `).bind(
+          `var-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          variableName,
+          value,
+          context.flow_id,
+          null,
+          context?.step_id || null,
+          context?.step_run_id || null,
+          'query',
+          'system'
+        ).run();
+      } else {
+        // Update existing flow-level variable
+        await db.prepare(`
+          UPDATE variables 
+          SET value = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE key = ? AND flow_id = ? AND flow_run_id IS NULL
+        `).bind(
+          value,
+          variableName,
+          context.flow_id
+        ).run();
+      }
     } else {
-      // Update existing variable
-      await db.prepare(`
-        UPDATE variables 
-        SET value = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE key = ? AND flow_id = ?
-      `).bind(
-        value,
-        variableName,
-        context?.flow_id || ''
-      ).run();
+      // No context - check if exists without any context
+      const existing = await db.prepare(
+        'SELECT id FROM variables WHERE key = ? AND flow_id IS NULL AND flow_run_id IS NULL ORDER BY created_at DESC LIMIT 1'
+      ).bind(variableName).first();
+      
+      if (!existing) {
+        // Create new global variable
+        await db.prepare(`
+          INSERT INTO variables (id, key, value, flow_id, flow_run_id, step_id, step_run_id, source, variable_type, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `).bind(
+          `var-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          variableName,
+          value,
+          null,
+          null,
+          null,
+          null,
+          'query',
+          'system'
+        ).run();
+      } else {
+        // Update existing global variable
+        await db.prepare(`
+          UPDATE variables 
+          SET value = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE key = ? AND flow_id IS NULL AND flow_run_id IS NULL
+        `).bind(
+          value,
+          variableName
+        ).run();
+      }
     }
   } catch (error) {
     console.error(`[VariableResolver] Error saving variable:`, error);
@@ -544,10 +617,8 @@ export async function resolveTextVariables(
       // Execute query to get value
       value = await executeQuery(db, queryParams);
       
-      // Save variable value if we got one
-      if (value) {
-        await saveVariableValue(db, variableName, value, context);
-      }
+      // ALWAYS save variable (create or update) when query is used
+      await saveVariableValue(db, variableName, value || '', context);
     } else {
       // Regular variable resolution
       const spec = parseVariableSpec(variableName);
