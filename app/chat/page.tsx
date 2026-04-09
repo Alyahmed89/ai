@@ -454,10 +454,20 @@ export default function ChatPage(props: any) {
           });
         }
 
-        // Add flow steps as assistant messages
+        // Add flow steps as assistant messages (only show response, not raw instructions)
         mergedConversation.flow_steps.forEach((step: any, index: number) => {
           console.log(`Step ${index}:`, JSON.stringify(step, null, 2));
-          if (step.instructions) {
+          
+          // Only add message if step has a response (skip raw ƐĐᜃ instructions)
+          if (step.response && step.response.trim()) {
+            messages.push({
+              id: `step-${step.id}-${index}`,
+              type: 'assistant',
+              content: `Step ${index + 1}: ${step.title || 'Untitled'}\n\n${step.response}`,
+              timestamp: new Date(flowRun.started_at * 1000 + index * 1000) // Stagger timestamps
+            });
+          } else if (step.instructions && !step.instructions.includes('ƐĐᜃ')) {
+            // Only show instructions if they don't contain raw syntax
             messages.push({
               id: `step-${step.id}-${index}`,
               type: 'assistant',
@@ -465,7 +475,7 @@ export default function ChatPage(props: any) {
               timestamp: new Date(flowRun.started_at * 1000 + index * 1000) // Stagger timestamps
             });
           } else {
-            console.log(`Step ${index} has no instructions property`);
+            console.log(`Step ${index} skipped - no response or contains raw syntax`);
           }
         });
 
@@ -1340,8 +1350,41 @@ export default function ChatPage(props: any) {
           const conversation = data.data.conversation;
           console.log(`State: ${conversation.state}, Flow Completed: ${conversation.flow_completed}`);
           
-          // Store conversation data for FlowRun component
+          // Store conversation data for FlowRun component - ALWAYS update on every poll
           setConversationData(conversation);
+          
+          // Show incremental progress updates
+          if (conversation.flow_steps && conversation.flow_steps.length > 0) {
+            // Get the latest step
+            const latestStep = conversation.flow_steps[conversation.flow_steps.length - 1];
+            console.log('Latest step:', latestStep);
+            
+            // Check if this step has a response that we haven't shown yet
+            if (latestStep.response && latestStep.response.trim()) {
+              // Create a progress update message
+              const progressMsg: ChatMessage = {
+                id: `progress_${conversationId}_${Date.now()}_${latestStep.id}`,
+                type: 'api_response',
+                content: `📝 **Step Update:** ${latestStep.title || 'Step'}\n\n${latestStep.response}`,
+                timestamp: new Date(),
+              };
+              
+              // Add to chat messages
+              setChatMessages(prev => {
+                // Check if we already have this step update
+                const existingStepUpdate = prev.find(msg => 
+                  msg.id.includes(`progress_${conversationId}`) && 
+                  msg.id.includes(latestStep.id)
+                );
+                
+                if (!existingStepUpdate) {
+                  console.log('Adding new step progress update:', latestStep.title);
+                  return [...prev, progressMsg];
+                }
+                return prev;
+              });
+            }
+          }
           
           // Check for completion
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {

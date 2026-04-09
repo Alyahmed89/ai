@@ -115,22 +115,29 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
           });
         }
 
-        // Add STEP_PROMPT event for step instructions
+        // Add STEP_PROMPT event for step instructions (only if it doesn't contain raw ƐĐᜃ syntax)
         if (step.instructions) {
           const promptContent = step.instructions;
           
-          console.log(`mapConversationToEvents - Adding STEP_PROMPT for step ${index + 1}`);
-          events.push({
-            key: `STEP_PROMPT:${step.id || index}`,
-            type: 'STEP_PROMPT',
-            content: promptContent,
-            metadata: {
-              timestamp: Date.now(),
-              stepIndex: index + 1,
-              stepTitle: step.title,
-              stepStatus: step.status
-            }
-          });
+          // Check if instructions contain raw ƐĐᜃ syntax
+          const hasRawSyntax = promptContent.includes('ƐĐᜃ');
+          
+          if (!hasRawSyntax) {
+            console.log(`mapConversationToEvents - Adding STEP_PROMPT for step ${index + 1}`);
+            events.push({
+              key: `STEP_PROMPT:${step.id || index}`,
+              type: 'STEP_PROMPT',
+              content: promptContent,
+              metadata: {
+                timestamp: Date.now(),
+                stepIndex: index + 1,
+                stepTitle: step.title,
+                stepStatus: step.status
+              }
+            });
+          } else {
+            console.log(`mapConversationToEvents - Skipping STEP_PROMPT for step ${index + 1} (contains raw ƐĐᜃ syntax)`);
+          }
         }
 
         // Add API calls for this step (if any) - attached to the prompt
