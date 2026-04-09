@@ -324,8 +324,8 @@ export function extractVariableTags(text: string): { tag: string; variableName: 
   let match;
   
   while ((match = regex.exec(text)) !== null) {
-    const fullTag = match[0];
-    const variableName = match[1];
+    const fullTag = match[0] || '';
+    const variableName = match[1] || '';
     const queryParams = match[2];
     
     matches.push({

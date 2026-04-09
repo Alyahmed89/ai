@@ -4119,7 +4119,7 @@ crudApi.post('/resolve/text', async (c) => {
         tag: obj.tag,
         variable_name: obj.variableName,
         query_params: obj.queryParams,
-        spec: obj.tag.replace(/ƐĐᜃ/g, '')
+        spec: obj.tag ? obj.tag.replace(/ƐĐᜃ/g, '') : ''
       }))
     });
     
