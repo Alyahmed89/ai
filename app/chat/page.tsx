@@ -237,286 +237,288 @@ export default function ChatPage(props: any) {
     }
   }, [inputPrompt]);
 
-  // Handle flow run selection - fetch conversation messages
-  useEffect(() => {
-    console.log('DEBUG: useEffect triggered with selectedFlowRunId:', selectedFlowRunId);
-    const fetchFlowRunConversation = async () => {
-      if (!selectedFlowRunId) {
-        // Clear chat messages when no flow run is selected
-        console.log('DEBUG: No flow run selected, clearing chat');
-        setChatMessages([]);
-        setConversationData(null);
+  // Function to fetch flow run conversation data
+  const fetchFlowRunConversation = async (flowRunId: string | null) => {
+    console.log('DEBUG: fetchFlowRunConversation called with flowRunId:', flowRunId);
+    if (!flowRunId) {
+      // Clear chat messages when no flow run is selected
+      console.log('DEBUG: No flow run selected, clearing chat');
+      setChatMessages([]);
+      setConversationData(null);
+      return;
+    }
+
+    try {
+      console.log('DEBUG: Fetching flow run details for:', flowRunId);
+      // Fetch flow run details to get conversation_id
+      const flowRunResponse = await fetch(`/api/proxy/api/flow-runs/${flowRunId}`);
+      if (!flowRunResponse.ok) {
+        console.error('Failed to fetch flow run details');
         return;
       }
 
-      try {
-        console.log('DEBUG: Fetching flow run details for:', selectedFlowRunId);
-        // Fetch flow run details to get conversation_id
-        const flowRunResponse = await fetch(`/api/proxy/api/flow-runs/${selectedFlowRunId}`);
-        if (!flowRunResponse.ok) {
-          console.error('Failed to fetch flow run details');
-          return;
+      const flowRunData = await flowRunResponse.json();
+      const flowRun = flowRunData.flow_run;
+      const conversationId = flowRun.conversation_id;
+      
+      // Store conversationId from flow run for resuming
+      if (conversationId) {
+        setConversationId(conversationId);
+      }
+      
+      // Extract step runs from flow run data
+      const stepRuns = flowRunData.step_runs || [];
+      console.log('Flow run step_runs:', stepRuns.length, 'steps available');
+      
+      // Transform step_runs into flow_steps format for FlowRun component
+      const transformedFlowSteps = stepRuns.map((stepRun: any, index: number) => {
+        // Extract step title from step_id or prompt
+        let title = stepRun.step_id || `Step ${index + 1}`;
+        if (stepRun.prompt && stepRun.prompt.includes('Execute step:')) {
+          const titleMatch = stepRun.prompt.match(/Execute step:\s*(.+?)\n/);
+          if (titleMatch) {
+            title = titleMatch[1];
+          }
+        }
+        
+        // Extract API calls from step run data
+        let api_calls = [];
+        if (stepRun.api_calls && Array.isArray(stepRun.api_calls)) {
+          api_calls = stepRun.api_calls.map((apiCall: any) => ({
+            endpoint: apiCall.endpoint || apiCall.url || '',
+            method: apiCall.method || 'GET',
+            params: apiCall.params || apiCall.parameters || {},
+            response: apiCall.response || apiCall.result || null,
+            timestamp: apiCall.timestamp || Date.now(),
+            duration: apiCall.duration || 0
+          }));
+        }
+        
+        return {
+          id: stepRun.id,
+          title: title,
+          instructions: stepRun.prompt || '',
+          response: stepRun.response || null,
+          status: stepRun.status || 'unknown',
+          api_calls: api_calls.length > 0 ? api_calls : undefined
+        };
+      });
+      
+      console.log('Transformed flow steps:', transformedFlowSteps.length);
+
+      if (!conversationId) {
+        // Show flow run info in chat
+        const messages: ChatMessage[] = [];
+        
+        // Add flow run info as a system message
+        messages.push({
+          id: `flow-run-info-${flowRun.id}`,
+          type: 'assistant',
+          content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
+          timestamp: new Date(flowRun.started_at * 1000)
+        });
+
+        // Add input prompt if available
+        if (flowRun.input_prompt) {
+          messages.push({
+            id: `input-${flowRun.id}`,
+            type: 'user',
+            content: flowRun.input_prompt,
+            timestamp: new Date(flowRun.started_at * 1000)
+          });
         }
 
-        const flowRunData = await flowRunResponse.json();
-        const flowRun = flowRunData.flow_run;
-        const conversationId = flowRun.conversation_id;
-        
-        // Store conversationId from flow run for resuming
-        if (conversationId) {
-          setConversationId(conversationId);
+        // Add output response if available
+        if (flowRun.output_response) {
+          messages.push({
+            id: `output-${flowRun.id}`,
+            type: 'assistant',
+            content: flowRun.output_response,
+            timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
+          });
         }
         
-        // Extract step runs from flow run data
-        const stepRuns = flowRunData.step_runs || [];
-        console.log('Flow run step_runs:', stepRuns.length, 'steps available');
+        // Create conversation data with transformed flow steps for FlowRun component
+        const conversationDataForFlowRun = {
+          flow_completed: flowRun.status === 'completed',
+          state: flowRun.status,
+          flow_steps: transformedFlowSteps,
+          last_step_response: flowRun.output_response || ''
+        };
         
-        // Transform step_runs into flow_steps format for FlowRun component
-        const transformedFlowSteps = stepRuns.map((stepRun: any, index: number) => {
-          // Extract step title from step_id or prompt
-          let title = stepRun.step_id || `Step ${index + 1}`;
-          if (stepRun.prompt && stepRun.prompt.includes('Execute step:')) {
-            const titleMatch = stepRun.prompt.match(/Execute step:\s*(.+?)\n/);
-            if (titleMatch) {
-              title = titleMatch[1];
-            }
-          }
-          
-          // Extract API calls from step run data
-          let api_calls = [];
-          if (stepRun.api_calls && Array.isArray(stepRun.api_calls)) {
-            api_calls = stepRun.api_calls.map((apiCall: any) => ({
-              endpoint: apiCall.endpoint || apiCall.url || '',
-              method: apiCall.method || 'GET',
-              params: apiCall.params || apiCall.parameters || {},
-              response: apiCall.response || apiCall.result || null,
-              timestamp: apiCall.timestamp || Date.now(),
-              duration: apiCall.duration || 0
-            }));
-          }
-          
-          return {
-            id: stepRun.id,
-            title: title,
-            instructions: stepRun.prompt || '',
-            response: stepRun.response || null,
-            status: stepRun.status || 'unknown',
-            api_calls: api_calls.length > 0 ? api_calls : undefined
-          };
+        setConversationData(conversationDataForFlowRun);
+        setChatMessages(messages);
+        return;
+      }
+
+      // Fetch conversation details
+      const conversationResponse = await fetch(`/api/proxy/status/${conversationId}`);
+      if (!conversationResponse.ok) {
+        console.error('Failed to fetch conversation details');
+        return;
+      }
+
+      const conversationData = await conversationResponse.json();
+      console.log('Full API response:', JSON.stringify(conversationData, null, 2));
+      
+      if (conversationData.success && conversationData.data?.conversation) {
+        const conversation = conversationData.data.conversation;
+        console.log('Conversation:', JSON.stringify(conversation, null, 2));
+        const flowSteps = conversation.flow_steps || [];
+        const lastStepResponse = conversation.last_step_response || '';
+        console.log('Flow steps from conversation API:', flowSteps.length, 'Last step response:', lastStepResponse);
+        
+        // Merge conversation data with transformed flow steps from step_runs
+        // Use step_runs data if conversation flow_steps is empty
+        const mergedConversation = {
+          ...conversation,
+          // Override flow_completed and state from flow run data since conversation API
+          // returns incorrect values (not_initialized, false)
+          flow_completed: flowRun.status === 'completed',
+          state: flowRun.status,
+          flow_steps: flowSteps.length > 0 ? flowSteps : transformedFlowSteps,
+          last_step_response: lastStepResponse || flowRun.output_response || ''
+        };
+        
+        console.log('Merged conversation data:', {
+          hasFlowSteps: !!mergedConversation.flow_steps,
+          flowStepsCount: mergedConversation.flow_steps?.length || 0,
+          hasLastStepResponse: !!mergedConversation.last_step_response,
+          flowCompleted: mergedConversation.flow_completed,
+          state: mergedConversation.state
         });
         
-        console.log('Transformed flow steps:', transformedFlowSteps.length);
-
-        if (!conversationId) {
-          // Show flow run info in chat
-          const messages: ChatMessage[] = [];
-          
-          // Add flow run info as a system message
-          messages.push({
-            id: `flow-run-info-${flowRun.id}`,
-            type: 'assistant',
-            content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
-            timestamp: new Date(flowRun.started_at * 1000)
-          });
-
-          // Add input prompt if available
-          if (flowRun.input_prompt) {
-            messages.push({
-              id: `input-${flowRun.id}`,
-              type: 'user',
-              content: flowRun.input_prompt,
-              timestamp: new Date(flowRun.started_at * 1000)
-            });
-          }
-
-          // Add output response if available
-          if (flowRun.output_response) {
-            messages.push({
-              id: `output-${flowRun.id}`,
-              type: 'assistant',
-              content: flowRun.output_response,
-              timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
-            });
-          }
-          
-          // Create conversation data with transformed flow steps for FlowRun component
-          const conversationDataForFlowRun = {
-            flow_completed: flowRun.status === 'completed',
-            state: flowRun.status,
-            flow_steps: transformedFlowSteps,
-            last_step_response: flowRun.output_response || ''
-          };
-          
-          setConversationData(conversationDataForFlowRun);
-          setChatMessages(messages);
-          return;
+        // DEBUG: Show alert with flow steps count
+        if (typeof window !== 'undefined') {
+          console.log('DEBUG ALERT: Flow steps count =', mergedConversation.flow_steps?.length || 0);
         }
-
-        // Fetch conversation details
-        const conversationResponse = await fetch(`/api/proxy/status/${conversationId}`);
-        if (!conversationResponse.ok) {
-          console.error('Failed to fetch conversation details');
-          return;
-        }
-
-        const conversationData = await conversationResponse.json();
-        console.log('Full API response:', JSON.stringify(conversationData, null, 2));
         
-        if (conversationData.success && conversationData.data?.conversation) {
-          const conversation = conversationData.data.conversation;
-          console.log('Conversation:', JSON.stringify(conversation, null, 2));
-          const flowSteps = conversation.flow_steps || [];
-          const lastStepResponse = conversation.last_step_response || '';
-          console.log('Flow steps from conversation API:', flowSteps.length, 'Last step response:', lastStepResponse);
-          
-          // Merge conversation data with transformed flow steps from step_runs
-          // Use step_runs data if conversation flow_steps is empty
-          const mergedConversation = {
-            ...conversation,
-            // Override flow_completed and state from flow run data since conversation API
-            // returns incorrect values (not_initialized, false)
-            flow_completed: flowRun.status === 'completed',
-            state: flowRun.status,
-            flow_steps: flowSteps.length > 0 ? flowSteps : transformedFlowSteps,
-            last_step_response: lastStepResponse || flowRun.output_response || ''
-          };
-          
-          console.log('Merged conversation data:', {
-            hasFlowSteps: !!mergedConversation.flow_steps,
-            flowStepsCount: mergedConversation.flow_steps?.length || 0,
-            hasLastStepResponse: !!mergedConversation.last_step_response,
-            flowCompleted: mergedConversation.flow_completed,
-            state: mergedConversation.state
-          });
-          
-          // DEBUG: Show alert with flow steps count
-          if (typeof window !== 'undefined') {
-            console.log('DEBUG ALERT: Flow steps count =', mergedConversation.flow_steps?.length || 0);
-          }
-          
-          // Store merged conversation data for FlowRun component
-          setConversationData(mergedConversation);
-          
-          // DEBUG: Log conversation data structure
-          console.log('DEBUG - Conversation data structure:', {
-            hasFlowSteps: !!mergedConversation.flow_steps,
-            flowStepsCount: mergedConversation.flow_steps?.length || 0,
-            hasLastStepResponse: !!mergedConversation.last_step_response,
-            lastStepResponseLength: mergedConversation.last_step_response?.length || 0,
-            lastStepResponsePreview: mergedConversation.last_step_response ? mergedConversation.last_step_response.substring(0, 100) + '...' : 'EMPTY',
-            flowCompleted: mergedConversation.flow_completed,
-            state: mergedConversation.state,
-            conversationId: conversation.id,
-            rawFlowSteps: mergedConversation.flow_steps?.map((step: any, i: number) => ({
-              index: i,
+        // Store merged conversation data for FlowRun component
+        setConversationData(mergedConversation);
+        
+        // DEBUG: Log conversation data structure
+        console.log('DEBUG - Conversation data structure:', {
+          hasFlowSteps: !!mergedConversation.flow_steps,
+          flowStepsCount: mergedConversation.flow_steps?.length || 0,
+          hasLastStepResponse: !!mergedConversation.last_step_response,
+          lastStepResponseLength: mergedConversation.last_step_response?.length || 0,
+          lastStepResponsePreview: mergedConversation.last_step_response ? mergedConversation.last_step_response.substring(0, 100) + '...' : 'EMPTY',
+          flowCompleted: mergedConversation.flow_completed,
+          state: mergedConversation.state,
+          conversationId: conversation.id,
+          rawFlowSteps: mergedConversation.flow_steps?.map((step: any, i: number) => ({
+            index: i,
+            title: step.title,
+            hasInstructions: !!step.instructions,
+            instructionsLength: step.instructions?.length || 0,
+            hasResponse: !!step.response,
+            responseLength: step.response?.length || 0,
+            status: step.status
+          }))
+        });
+        
+        // DEBUG: Log step responses
+        if (mergedConversation.flow_steps) {
+          console.log('DEBUG - Step responses:');
+          mergedConversation.flow_steps.forEach((step: any, index: number) => {
+            console.log(`  Step ${index + 1}:`, {
               title: step.title,
               hasInstructions: !!step.instructions,
-              instructionsLength: step.instructions?.length || 0,
+              instructionsPreview: step.instructions ? step.instructions.substring(0, 100) + '...' : 'NO INSTRUCTIONS',
               hasResponse: !!step.response,
               responseLength: step.response?.length || 0,
+              responsePreview: step.response ? step.response.substring(0, 100) + '...' : 'NO RESPONSE',
               status: step.status
-            }))
-          });
-          
-          // DEBUG: Log step responses
-          if (mergedConversation.flow_steps) {
-            console.log('DEBUG - Step responses:');
-            mergedConversation.flow_steps.forEach((step: any, index: number) => {
-              console.log(`  Step ${index + 1}:`, {
-                title: step.title,
-                hasInstructions: !!step.instructions,
-                instructionsPreview: step.instructions ? step.instructions.substring(0, 100) + '...' : 'NO INSTRUCTIONS',
-                hasResponse: !!step.response,
-                responseLength: step.response?.length || 0,
-                responsePreview: step.response ? step.response.substring(0, 100) + '...' : 'NO RESPONSE',
-                status: step.status
-              });
             });
-          }
-          
-          // Build chat messages from conversation (for backward compatibility)
-          const messages: ChatMessage[] = [];
-          
-          // Add flow run info as a system message
-          messages.push({
-            id: `flow-run-info-${flowRun.id}`,
-            type: 'assistant',
-            content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
-            timestamp: new Date(flowRun.started_at * 1000)
           });
-
-          // Add input prompt if available
-          if (flowRun.input_prompt) {
-            messages.push({
-              id: `input-${flowRun.id}`,
-              type: 'user',
-              content: flowRun.input_prompt,
-              timestamp: new Date(flowRun.started_at * 1000)
-            });
-          }
-
-          // Add flow steps as assistant messages
-          mergedConversation.flow_steps.forEach((step: any, index: number) => {
-            console.log(`Step ${index}:`, JSON.stringify(step, null, 2));
-            if (step.instructions) {
-              messages.push({
-                id: `step-${step.id}-${index}`,
-                type: 'assistant',
-                content: `Step ${index + 1}: ${step.title || 'Untitled'}\n\n${step.instructions}`,
-                timestamp: new Date(flowRun.started_at * 1000 + index * 1000) // Stagger timestamps
-              });
-            } else {
-              console.log(`Step ${index} has no instructions property`);
-            }
-          });
-
-          // Add last step response if available
-          if (mergedConversation.last_step_response) {
-            messages.push({
-              id: `response-${flowRun.id}`,
-              type: 'assistant',
-              content: mergedConversation.last_step_response,
-              timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
-            });
-          }
-
-          setChatMessages(messages);
-        } else {
-          // Fallback to showing just flow run info
-          const messages: ChatMessage[] = [];
-          messages.push({
-            id: `flow-run-info-${flowRun.id}`,
-            type: 'assistant',
-            content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
-            timestamp: new Date(flowRun.started_at * 1000)
-          });
-
-          if (flowRun.input_prompt) {
-            messages.push({
-              id: `input-${flowRun.id}`,
-              type: 'user',
-              content: flowRun.input_prompt,
-              timestamp: new Date(flowRun.started_at * 1000)
-            });
-          }
-          
-          // Create conversation data with transformed flow steps for FlowRun component
-          const conversationDataForFlowRun = {
-            flow_completed: flowRun.status === 'completed',
-            state: flowRun.status,
-            flow_steps: transformedFlowSteps,
-            last_step_response: flowRun.output_response || ''
-          };
-          
-          setConversationData(conversationDataForFlowRun);
-          setChatMessages(messages);
         }
-      } catch (error) {
-        console.error('Error fetching flow run conversation:', error);
-      }
-    };
+        
+        // Build chat messages from conversation (for backward compatibility)
+        const messages: ChatMessage[] = [];
+        
+        // Add flow run info as a system message
+        messages.push({
+          id: `flow-run-info-${flowRun.id}`,
+          type: 'assistant',
+          content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
+          timestamp: new Date(flowRun.started_at * 1000)
+        });
 
-    fetchFlowRunConversation();
+        // Add input prompt if available
+        if (flowRun.input_prompt) {
+          messages.push({
+            id: `input-${flowRun.id}`,
+            type: 'user',
+            content: flowRun.input_prompt,
+            timestamp: new Date(flowRun.started_at * 1000)
+          });
+        }
+
+        // Add flow steps as assistant messages
+        mergedConversation.flow_steps.forEach((step: any, index: number) => {
+          console.log(`Step ${index}:`, JSON.stringify(step, null, 2));
+          if (step.instructions) {
+            messages.push({
+              id: `step-${step.id}-${index}`,
+              type: 'assistant',
+              content: `Step ${index + 1}: ${step.title || 'Untitled'}\n\n${step.instructions}`,
+              timestamp: new Date(flowRun.started_at * 1000 + index * 1000) // Stagger timestamps
+            });
+          } else {
+            console.log(`Step ${index} has no instructions property`);
+          }
+        });
+
+        // Add last step response if available
+        if (mergedConversation.last_step_response) {
+          messages.push({
+            id: `response-${flowRun.id}`,
+            type: 'assistant',
+            content: mergedConversation.last_step_response,
+            timestamp: new Date(flowRun.completed_at ? flowRun.completed_at * 1000 : flowRun.started_at * 1000)
+          });
+        }
+
+        setChatMessages(messages);
+      } else {
+        // Fallback to showing just flow run info
+        const messages: ChatMessage[] = [];
+        messages.push({
+          id: `flow-run-info-${flowRun.id}`,
+          type: 'assistant',
+          content: `Flow Run: ${flowRun.flow_id}\nStatus: ${flowRun.status}\nStarted: ${new Date(flowRun.started_at * 1000).toLocaleString()}`,
+          timestamp: new Date(flowRun.started_at * 1000)
+        });
+
+        if (flowRun.input_prompt) {
+          messages.push({
+            id: `input-${flowRun.id}`,
+            type: 'user',
+            content: flowRun.input_prompt,
+            timestamp: new Date(flowRun.started_at * 1000)
+          });
+        }
+        
+        // Create conversation data with transformed flow steps for FlowRun component
+        const conversationDataForFlowRun = {
+          flow_completed: flowRun.status === 'completed',
+          state: flowRun.status,
+          flow_steps: transformedFlowSteps,
+          last_step_response: flowRun.output_response || ''
+        };
+        
+        setConversationData(conversationDataForFlowRun);
+        setChatMessages(messages);
+      }
+    } catch (error) {
+      console.error('Error fetching flow run conversation:', error);
+    }
+  };
+
+  // Handle flow run selection - fetch conversation messages
+  useEffect(() => {
+    console.log('DEBUG: useEffect triggered with selectedFlowRunId:', selectedFlowRunId);
+    fetchFlowRunConversation(selectedFlowRunId);
   }, [selectedFlowRunId]);
 
   // Clear conversation data when a new flow is selected
