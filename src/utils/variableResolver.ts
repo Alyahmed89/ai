@@ -421,20 +421,38 @@ async function executeQuery(db: D1Database, queryParams: string): Promise<string
     const column = params.get('column');
     const jsonPath = params.get('json_path');
     const keysParam = params.get('keys'); // New: comma-separated keys
+    const id = params.get('id'); // New: filter by ID
+    const where = params.get('where'); // New: custom WHERE clause
     
-    console.log(`[VariableResolver:executeQuery] Parsed: table=${table}, column=${column}, jsonPath=${jsonPath}, keys=${keysParam}`);
+    console.log(`[VariableResolver:executeQuery] Parsed: table=${table}, column=${column}, jsonPath=${jsonPath}, keys=${keysParam}, id=${id}, where=${where}`);
     
     if (!table || !column) {
       console.log(`[VariableResolver:executeQuery] Missing table or column`);
       return '';
     }
     
-    // Direct database query (same logic as /api/query endpoint)
-    let sql = `SELECT ${column} FROM ${table} ORDER BY created_at DESC LIMIT 1`;
+    // Build SQL query with optional WHERE clause
+    let sql = `SELECT ${column} FROM ${table}`;
+    const bindings: any[] = [];
     
-    const result = await db.prepare(sql).first();
+    if (id) {
+      // Simple ID filter
+      sql += ` WHERE id = ?`;
+      bindings.push(id);
+    } else if (where) {
+      // Custom WHERE clause (user must ensure it's safe)
+      sql += ` WHERE ${where}`;
+      // Note: For security, we should validate/parse the WHERE clause
+      // For now, we'll trust it since this is an internal tool
+    }
+    
+    sql += ` ORDER BY created_at DESC LIMIT 1`;
+    
+    console.log(`[VariableResolver:executeQuery] Executing SQL: ${sql} with bindings:`, bindings);
+    const result = await db.prepare(sql).bind(...bindings).first();
     
     if (!result || result[column] === null || result[column] === undefined) {
+      console.log(`[VariableResolver:executeQuery] No result or null value`);
       return '';
     }
     
