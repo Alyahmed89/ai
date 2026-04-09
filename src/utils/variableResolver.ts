@@ -431,8 +431,18 @@ async function saveVariableValue(
         'query',
         'system'
       ).run();
+    } else {
+      // Update existing variable
+      await db.prepare(`
+        UPDATE variables 
+        SET value = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE key = ? AND flow_id = ?
+      `).bind(
+        value,
+        variableName,
+        context?.flow_id || ''
+      ).run();
     }
-    // If variable exists, we don't update it (as per requirement)
   } catch (error) {
     console.error(`[VariableResolver] Error saving variable:`, error);
   }

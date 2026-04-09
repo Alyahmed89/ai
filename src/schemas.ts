@@ -63,6 +63,9 @@ export const flowDefinitionBaseSchema = z.object({
   next_flow_id: z.string().optional().nullable(),
   priority: z.number().int().default(0),
   agent: z.string().default('openhands'),
+  system_message: z.string().optional().nullable(),
+  memory_prompt: z.string().optional().nullable(),
+  resume_step: z.string().optional().nullable(),
 });
 
 // Flow Definition Schema with refinement

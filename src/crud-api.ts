@@ -2680,14 +2680,14 @@ crudApi.post('/flow-definitions', async (c) => {
     }
     
     const validatedData = validation.data!;
-    const { id, name, description, max_iterations, repository, branch, next_flow_id, priority, agent } = validatedData;
+    const { id, name, description, max_iterations, repository, branch, next_flow_id, priority, agent, system_message, memory_prompt, resume_step } = validatedData;
     
     // Generate ID if not provided
     const flowDefinitionId = id || `flow-def-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     const sql = `
-      INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, priority, agent, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO flow_definitions (id, name, description, max_iterations, repository, branch, priority, agent, system_message, memory_prompt, resume_step, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `;
 
     await db.prepare(sql).bind(
@@ -2698,7 +2698,10 @@ crudApi.post('/flow-definitions', async (c) => {
       repository,
       branch || 'main',
       priority || 0,
-      agent
+      agent,
+      dbValue(system_message),
+      dbValue(memory_prompt),
+      dbValue(resume_step)
     ).run();
     
     return c.json(apiResponse(true, { id: flowDefinitionId, message: 'Flow definition created successfully' }, undefined, 201));
@@ -2725,7 +2728,7 @@ crudApi.put('/flow-definitions/:id', async (c) => {
     }
     
     const validatedData = validation.data!;
-    const { name, description, max_iterations, repository, branch, next_flow_id, priority, agent } = validatedData;
+    const { name, description, max_iterations, repository, branch, next_flow_id, priority, agent, system_message, memory_prompt, resume_step } = validatedData;
 
     // Build dynamic SQL for partial updates
     const updates: string[] = [];
@@ -2760,6 +2763,18 @@ crudApi.put('/flow-definitions/:id', async (c) => {
     if (agent !== undefined) {
       updates.push('agent = ?');
       values.push(agent);
+    }
+    if (system_message !== undefined) {
+      updates.push('system_message = ?');
+      values.push(dbValue(system_message));
+    }
+    if (memory_prompt !== undefined) {
+      updates.push('memory_prompt = ?');
+      values.push(dbValue(memory_prompt));
+    }
+    if (resume_step !== undefined) {
+      updates.push('resume_step = ?');
+      values.push(dbValue(resume_step));
     }
     
     // Always update the updated_at timestamp
