@@ -1076,7 +1076,7 @@ export default function ChatPage(props: any) {
           },
           body: JSON.stringify({
             flow_run_id: selectedFlowRunId,
-            step_id: "step-1775485095925-205799",
+            step_id: "",
             input: prompt
           }),
         });
