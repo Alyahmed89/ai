@@ -388,6 +388,7 @@ function findValueInJson(jsonValue: any, key: string): any {
 
 async function executeQuery(db: D1Database, queryParams: string): Promise<string> {
   try {
+    console.log(`[VariableResolver:executeQuery] Parsing query params: ${queryParams}`);
     // Parse query params: table=api_calls/column=response/json_path=data.stdout/keys=stdout,stderr
     // Support both / and & separators
     const normalized = queryParams.replace(/[&/]+/g, '&').replace(/^&|&$/g, '');
@@ -398,7 +399,10 @@ async function executeQuery(db: D1Database, queryParams: string): Promise<string
     const jsonPath = params.get('json_path');
     const keysParam = params.get('keys'); // New: comma-separated keys
     
+    console.log(`[VariableResolver:executeQuery] Parsed: table=${table}, column=${column}, jsonPath=${jsonPath}, keys=${keysParam}`);
+    
     if (!table || !column) {
+      console.log(`[VariableResolver:executeQuery] Missing table or column`);
       return '';
     }
     
