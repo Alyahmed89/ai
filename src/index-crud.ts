@@ -790,6 +790,22 @@ app.post('/resume', async (c) => {
           }
         }
         
+        // Check if flow definition has resume_step (only if user didn't specify step_id)
+        if (flowId && c.env.FLOW_RUNS_DB && !step_id) {
+          try {
+            const flowDefResult = await c.env.FLOW_RUNS_DB.prepare(
+              'SELECT resume_step FROM flow_definitions WHERE id = ?'
+            ).bind(flowId).first();
+            
+            if (flowDefResult && flowDefResult.resume_step) {
+              console.log(`[HTTP:RESUME] Flow definition has resume_step: ${flowDefResult.resume_step} for flow_id ${flowId}`);
+              actualStepId = flowDefResult.resume_step;
+            }
+          } catch (dbError) {
+            console.error(`[HTTP:RESUME] Error querying flow definition: ${dbError}`);
+          }
+        }
+        
         // Start new conversation with existing flow_run_id
         const startResponse = await newConversationDo.fetch('http://placeholder/start-flow', {
           method: 'POST',
@@ -877,6 +893,22 @@ app.post('/resume', async (c) => {
         } catch (dbError) {
           console.error(`[HTTP:RESUME] Error querying last step: ${dbError}`);
           actualStepId = undefined;
+        }
+      }
+      
+      // Check if flow definition has resume_step (only if user didn't specify step_id)
+      if (flowId && c.env.FLOW_RUNS_DB && !step_id) {
+        try {
+          const flowDefResult = await c.env.FLOW_RUNS_DB.prepare(
+            'SELECT resume_step FROM flow_definitions WHERE id = ?'
+          ).bind(flowId).first();
+          
+          if (flowDefResult && flowDefResult.resume_step) {
+            console.log(`[HTTP:RESUME] Flow definition has resume_step: ${flowDefResult.resume_step} for flow_id ${flowId}`);
+            actualStepId = flowDefResult.resume_step;
+          }
+        } catch (dbError) {
+          console.error(`[HTTP:RESUME] Error querying flow definition: ${dbError}`);
         }
       }
       

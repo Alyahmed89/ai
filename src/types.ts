@@ -30,6 +30,7 @@ export interface ConversationData {
   agent?: string; // Agent type: 'openhands' (default) or 'deepseek'
   system_message?: string; // Custom system message for DeepSeek
   memory_prompt?: string; // Custom memory prompt for flow
+  resume_step?: string; // Step ID to resume from (from flow definition)
   
   // Current status
   status: 'active' | 'stopped' | 'error' | 'paused';
