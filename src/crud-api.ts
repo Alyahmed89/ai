@@ -4098,7 +4098,8 @@ crudApi.post('/resolve/text', async (c) => {
     const { resolveTextVariables, extractVariableTags } = await import('./utils/variableResolver');
     
     // Extract all variable tags
-    const tags = extractVariableTags(text);
+    const tagObjects = extractVariableTags(text);
+    const tags = tagObjects.map(obj => obj.tag);
     
     // Resolve the text with optional table parameter
     const resolvedText = await resolveTextVariables(db, text, {
@@ -4114,9 +4115,11 @@ crudApi.post('/resolve/text', async (c) => {
       original_text: text,
       resolved_text: resolvedText,
       tags_found: tags.length,
-      tags: tags.map(tag => ({
-        tag,
-        spec: tag.replace(/ƐĐᜃ/g, '')
+      tags: tagObjects.map(obj => ({
+        tag: obj.tag,
+        variable_name: obj.variableName,
+        query_params: obj.queryParams,
+        spec: obj.tag.replace(/ƐĐᜃ/g, '')
       }))
     });
     
