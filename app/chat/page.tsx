@@ -205,6 +205,7 @@ export default function ChatPage(props: any) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch flow definitions, flow runs, and variables on component mount
   useEffect(() => {
@@ -236,6 +237,38 @@ export default function ChatPage(props: any) {
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [inputPrompt]);
+
+  // Clean up polling intervals when component unmounts or conversationId changes
+  useEffect(() => {
+    return () => {
+      // Clean up polling interval when component unmounts
+      if (pollingIntervalRef.current) {
+        console.log('Cleaning up polling interval on unmount:', pollingIntervalRef.current);
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, []); // Empty dependency array - runs on mount/unmount only
+
+  // Also clean up when conversationId changes (user starts a new flow)
+  useEffect(() => {
+    // Clean up previous polling interval when conversationId changes
+    if (pollingIntervalRef.current) {
+      console.log('Cleaning up polling interval due to conversationId change:', pollingIntervalRef.current);
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, [conversationId]);
+
+  // Clean up when selectedFlowRunId changes (user selects a different flow run)
+  useEffect(() => {
+    // Clean up previous polling interval when selectedFlowRunId changes
+    if (pollingIntervalRef.current) {
+      console.log('Cleaning up polling interval due to selectedFlowRunId change:', pollingIntervalRef.current);
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, [selectedFlowRunId]);
 
   // Function to fetch flow run conversation data
   const fetchFlowRunConversation = async (flowRunId: string | null): Promise<string | null> => {
@@ -1446,16 +1479,25 @@ export default function ChatPage(props: any) {
       }
       
       console.log('Starting polling interval...');
+      
+      // Clear any existing interval first
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      
       const intervalId = setInterval(async () => {
         const completed = await pollForCompletion();
         if (completed) {
           console.log('Stopping polling interval');
           clearInterval(intervalId);
+          pollingIntervalRef.current = null;
         }
       }, pollInterval);
       
-      // Store interval ID for cleanup if needed
-      console.log('Polling interval ID:', intervalId);
+      // Store interval ID for cleanup
+      pollingIntervalRef.current = intervalId;
+      console.log('Polling interval ID stored:', intervalId);
     });
   };
 
