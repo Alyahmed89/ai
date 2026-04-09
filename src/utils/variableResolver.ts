@@ -364,6 +364,29 @@ function extractJsonPath(jsonValue: any, path: string): any {
 }
 
 /**
+ * Convert any value to a renderable string
+ */
+function valueToString(value: any): string {
+  if (value === null) return 'null';
+  if (value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    try {
+      if (Array.isArray(value)) return `[${value.length} items]`;
+      // For simple objects, show key-value pairs
+      const entries = Object.entries(value);
+      if (entries.length <= 3) {
+        return entries.map(([k, v]) => `${k}: ${valueToString(v)}`).join(', ');
+      }
+      return `{${entries.length} properties}`;
+    } catch {
+      return '[object]';
+    }
+  }
+  return String(value);
+}
+
+/**
  * Find value in JSON using common paths
  */
 function findValueInJson(jsonValue: any, key: string): any {
@@ -435,31 +458,37 @@ async function executeQuery(db: D1Database, queryParams: string): Promise<string
         // Try to find key in common paths
         const foundValue = findValueInJson(jsonValue, key);
         
-        // If any key is null, return empty string (fail flow)
+        // If value is null, use empty string but don't fail
         if (foundValue === null) {
-          console.log(`[VariableResolver] Key "${key}" is null, failing flow`);
-          return '';
+          console.log(`[VariableResolver] Key "${key}" is null, using empty string`);
+          extracted[key] = '';
+        } else {
+          extracted[key] = foundValue !== undefined ? foundValue : '';
         }
-        
-        extracted[key] = foundValue !== undefined ? foundValue : '';
       }
       
-      return JSON.stringify(extracted);
+      // Convert extracted object to readable string
+      const parts = [];
+      for (const key of keys) {
+        const val = extracted[key];
+        parts.push(`${key}: ${valueToString(val)}`);
+      }
+      return parts.join(', ');
     }
     
     // Single key extraction (backward compatible)
     if (jsonPath) {
       const foundValue = extractJsonPath(jsonValue, jsonPath);
-      // If value is null, fail flow
+      // If value is null, use 'null' string but don't fail
       if (foundValue === null) {
-        console.log(`[VariableResolver] Path "${jsonPath}" is null, failing flow`);
-        return '';
+        console.log(`[VariableResolver] Path "${jsonPath}" is null, rendering as 'null'`);
+        return 'null';
       }
-      return foundValue !== undefined ? String(foundValue) : '';
+      return foundValue !== undefined ? valueToString(foundValue) : '';
     }
     
-    // No path specified, return raw value
-    return typeof value === 'string' ? value : JSON.stringify(value);
+    // No path specified, return raw value as renderable string
+    return valueToString(value);
   } catch (error) {
     console.error(`[VariableResolver] Error executing query:`, error);
     return '';
