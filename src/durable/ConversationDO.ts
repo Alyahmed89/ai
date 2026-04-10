@@ -3,7 +3,7 @@
 import { callDeepSeek, buildInitialMessages } from '../services/deepseek';
 import { createOpenHandsConversation, getOpenHandsConversation, injectMessageToOpenHands, stopOpenHandsConversation } from '../services/openhands';
 import { parseDoneResponse, extractPromptsAndResponses, parseCreateTask, parseSkipTask, extractAllTokens, extractStructuredOutput } from '../utils/parsing';
-import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, generateId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions, saveApiCall, saveVariable, getVariablesForFlow, saveStepMemory, getFlowMemory } from '../services/database';
+import { saveFlowRun, updateFlowRunStatus, saveIteration, saveStepRun, generateFlowRunId, generateStepRunId, generateId, getTaskData, getFirstPendingTask, getLastFlowResponse, getNextFlowBasedOnConditions, saveApiCall, saveVariable, getVariablesForFlow } from '../services/database';
 import { shouldCompleteTask } from '../services/verification';
 import { validateFactUsage, resolveFactPlaceholders } from '../utils/factValidation';
 import { resolveStepInstructions } from '../services/stepResolver';
@@ -12,7 +12,7 @@ import { CommandExecutor } from '../services/commandExecutor';
 import { ConditionEvaluator } from '../core/condition-evaluator';
 import { Router } from '../core/router';
 import { createExecutionContext } from '../core/execution-context';
-import { summarizeConversationToMemory, formatMemoryForInstructions } from '../services/memorySummarizer';
+// Memory summarization imports removed
 import { 
   MAX_ITERATIONS, 
   END_FLOW_TOKEN, 
@@ -1528,7 +1528,7 @@ export class ConversationOrchestratorDO_2026A {
         execution_context: createExecutionContext(flow_id, startStep?.step_id || 'step-1'),
         effective_deepseek_api_key: effectiveDeepSeekApiKey, // Store the API key from request
         system_message: flowDefinition.system_message, // Load system message from flow definition
-        memory_prompt: flowDefinition.memory_prompt // Load memory prompt from flow definition
+        // memory_prompt removed
       };
       
       console.log(`[DO:${this.state.id}] DEBUG: Conversation object created with state: ${this.conversation.state}`);
@@ -5839,21 +5839,8 @@ ${messageContent}`;
     };
     } // End of else block (not using existing prompt)
     
-    // Get memory context if available
-    const memoryContext = await this.getMemoryEnhancedInstructions(step);
-    
-    // Build final prompt with memory context
+    // Memory injection removed - use original prompt directly
     finalPrompt = prompt;
-    if (memoryContext && memoryContext.trim()) {
-      finalPrompt = `MEMORY:\n${memoryContext}\n\nCURRENT TASK:\n${prompt}`;
-      console.log(`[DO:${this.state.id}] Memory context added to prompt`);
-      console.log(`[DO:${this.state.id}] Final prompt with memory length: ${finalPrompt.length} chars`);
-    }
-    
-    // Add memory instruction to prompt (use flow-specific memory prompt if available)
-    if (this.conversation.memory_prompt) {
-      finalPrompt += `\n\n${this.conversation.memory_prompt}`;
-    }
     
     // Set AI input in execution context for new condition system
     if (this.conversation.execution_context) {
@@ -6607,8 +6594,7 @@ ${messageContent}`;
       }
     }
     
-    // 4. Extract and save simple memory from response (do this BEFORE early returns)
-    await this.extractAndSaveSimpleMemory(step, response);
+    // 4. Memory extraction removed
     
     // 5. Legacy command handling (only if no unified commands were executed)
     if (tokens.command) {
@@ -6646,8 +6632,7 @@ ${messageContent}`;
       return;
     }
     
-    // 9. Summarize conversation to structured memory and save to database
-    await this.summarizeAndSaveMemory(step, response);
+    // 9. Memory summarization removed
     
     // 10. Continue with next step in current flow
     // System arbitration for flow switching is DISABLED
@@ -6656,162 +6641,9 @@ ${messageContent}`;
     await this.moveToNextStep();
   }
 
-  /**
-   * Get memory-enhanced step instructions
-   */
-  private async getMemoryEnhancedInstructions(step: StepData): Promise<string> {
-    if (!this.conversation || !this.env.FLOW_RUNS_DB || !this.flowRunId) {
-      return '';
-    }
+  // Memory injection methods removed
 
-    try {
-      // Get previous memory from database
-      const memoryJson = await getFlowMemory(this.env.FLOW_RUNS_DB, this.flowRunId);
-      if (!memoryJson) {
-        // No previous memory, return empty string
-        return '';
-      }
-
-      try {
-        const memory = JSON.parse(memoryJson);
-        return formatMemoryForInstructions(memory);
-      } catch (parseError) {
-        console.error(`[DO:${this.state.id}] Error parsing memory JSON: ${parseError}`);
-        return '';
-      }
-    } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Error getting memory: ${error.message}`);
-      return '';
-    }
-  }
-
-  /**
-   * Extract simple memory from response and save to database
-   */
-  private async extractAndSaveSimpleMemory(step: StepData, response: string): Promise<void> {
-    if (!this.env.FLOW_RUNS_DB || !this.flowRunId) {
-      console.log(`[DO:${this.state.id}] Cannot save simple memory: missing database or flowRunId`);
-      return;
-    }
-
-    try {
-      // Extract memory from response using [MEMORY:...] pattern
-      const memoryMatch = response.match(/\[MEMORY:(.*?)\]/);
-      if (!memoryMatch) {
-        console.log(`[DO:${this.state.id}] No [MEMORY:...] found in response`);
-        return;
-      }
-
-      const memoryText = memoryMatch[1].trim();
-      console.log(`[DO:${this.state.id}] Extracted memory: ${memoryText}`);
-
-      // Create simple memory object
-      const memory = {
-        goal: `Step: ${step.title}`,
-        decisions: [memoryText],
-        context: `From step: ${step.title}`,
-        constraints: []
-      };
-
-      const memoryJson = JSON.stringify(memory);
-
-      // Get the latest step run ID for this step to save memory
-      const stepRunResult = await this.env.FLOW_RUNS_DB.prepare(`
-        SELECT id FROM step_runs 
-        WHERE flow_run_id = ? AND step_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 1
-      `).bind(this.flowRunId, step.step_id).first();
-
-      if (!stepRunResult) {
-        console.error(`[DO:${this.state.id}] Cannot find step run to save simple memory`);
-        return;
-      }
-
-      const stepRunId = (stepRunResult as any).id;
-
-      // Save memory to step run
-      const { saveStepMemory } = await import('../services/database');
-      const saveResult = await saveStepMemory(this.env.FLOW_RUNS_DB, stepRunId, memoryJson);
-      if (!saveResult.success) {
-        console.error(`[DO:${this.state.id}] Failed to save simple memory to database: ${saveResult.error}`);
-      } else {
-        console.log(`[DO:${this.state.id}] Simple memory saved to step run ${stepRunId}: ${memoryText}`);
-      }
-    } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Error in simple memory extraction: ${error.message}`);
-    }
-  }
-
-  /**
-   * Summarize conversation to structured memory and save to database
-   */
-  private async summarizeAndSaveMemory(step: StepData, response: string): Promise<void> {
-    if (!this.conversation || !this.env.FLOW_RUNS_DB || !this.flowRunId) {
-      console.log(`[DO:${this.state.id}] Cannot summarize memory: missing conversation, database, or flowRunId`);
-      return;
-    }
-
-    try {
-      // Get API key for DeepSeek call
-      const apiKey = this.effectiveDeepSeekApiKey || this.env.DEEPSEEK_API_KEY;
-      if (!apiKey) {
-        console.log(`[DO:${this.state.id}] Cannot summarize memory: no API key available`);
-        return;
-      }
-
-      // Get conversation history
-      const conversationHistory = this.conversation.conversation_messages || [];
-      if (conversationHistory.length === 0) {
-        console.log(`[DO:${this.state.id}] Cannot summarize memory: no conversation history`);
-        return;
-      }
-
-      // Get step instructions
-      const stepInstructions = step.instructions || step.description || step.title || '';
-
-      // Summarize conversation to structured memory
-      console.log(`[DO:${this.state.id}] Summarizing conversation to structured memory...`);
-      const memoryResult = await summarizeConversationToMemory(
-        apiKey,
-        conversationHistory,
-        stepInstructions
-      );
-
-      if (!memoryResult.success || !memoryResult.memory) {
-        console.error(`[DO:${this.state.id}] Memory summarization failed: ${memoryResult.error}`);
-        return;
-      }
-
-      // Get the latest step run ID for this step to save memory
-      // We need to find the step run that was just saved
-      const stepRunResult = await this.env.FLOW_RUNS_DB.prepare(`
-        SELECT id FROM step_runs 
-        WHERE flow_run_id = ? AND step_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 1
-      `).bind(this.flowRunId, step.step_id).first();
-
-      if (!stepRunResult) {
-        console.error(`[DO:${this.state.id}] Cannot find step run to save memory`);
-        return;
-      }
-
-      const stepRunId = (stepRunResult as any).id;
-      const memoryJson = JSON.stringify(memoryResult.memory);
-
-      // Save memory to step run
-      const saveResult = await saveStepMemory(this.env.FLOW_RUNS_DB, stepRunId, memoryJson);
-      if (!saveResult.success) {
-        console.error(`[DO:${this.state.id}] Failed to save memory to database: ${saveResult.error}`);
-      } else {
-        console.log(`[DO:${this.state.id}] Structured memory saved to step run ${stepRunId}`);
-        console.log(`[DO:${this.state.id}] Memory summary: Goal="${memoryResult.memory.goal}", ${memoryResult.memory.decisions.length} decisions`);
-      }
-    } catch (error: any) {
-      console.error(`[DO:${this.state.id}] Error in memory summarization: ${error.message}`);
-    }
-  }
+  // Memory summarization method removed
 
   /**
    * Check if we need to pause for user input and handle pausing
