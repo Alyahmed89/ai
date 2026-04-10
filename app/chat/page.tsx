@@ -1470,9 +1470,29 @@ export default function ChatPage(props: any) {
             }
           }
           
-          // Check for completion
-          if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
-            console.log('✅ FLOW COMPLETED DETECTED!');
+          // Check for completion - STOP ONLY WHEN:
+          // 1. conversation.state === "DONE" AND
+          // 2. flow_steps EXISTS AND AT LEAST ONE step.response IS NOT NULL
+          const hasCompletedState = conversation.state === 'DONE' || conversation.state === 'COMPLETED' || conversation.flow_completed;
+          const hasFlowStepsWithResponse = conversation.flow_steps && 
+            Array.isArray(conversation.flow_steps) && 
+            conversation.flow_steps.some(step => step.response && step.response.trim() !== '');
+          
+          if (hasCompletedState && hasFlowStepsWithResponse) {
+            console.log('✅ FLOW COMPLETED DETECTED WITH RESPONSES!');
+            
+            // Add safety log
+            console.log('FINAL_STATE_CHECK:', {
+              state: conversation.state,
+              flow_completed: conversation.flow_completed,
+              flow_steps_count: conversation.flow_steps?.length || 0,
+              steps_with_responses: conversation.flow_steps?.filter(step => step.response && step.response.trim() !== '').length || 0,
+              step_responses: conversation.flow_steps?.map(step => ({
+                title: step.title,
+                has_response: !!(step.response && step.response.trim()),
+                response_length: step.response?.length || 0
+              }))
+            });
             
             // TEST SIGNAL: Set global flag when polling detects completion
             if (typeof window !== 'undefined') {
