@@ -1126,6 +1126,7 @@ export default function ChatPage(props: any) {
           },
           body: JSON.stringify({
             flow_run_id: selectedFlowRunId,
+            conversation_id: conversationId,
             step_id: "",
             input: prompt
           }),
@@ -1138,10 +1139,7 @@ export default function ChatPage(props: any) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            flow_id: selectedFlowId,
-            inputs: {
-              user_prompt: prompt
-            }
+            flow_id: selectedFlowId
           }),
         });
       }
@@ -1153,6 +1151,8 @@ export default function ChatPage(props: any) {
       // Debug log
       console.log('Flow start result:', flowResult);
       console.log('Flow data:', flowResult.data);
+      console.log('DEBUG - Resume response keys:', Object.keys(flowResult));
+      console.log('DEBUG - Resume data keys:', flowResult.data ? Object.keys(flowResult.data) : 'NO DATA');
       
       // Check if flow actually started successfully
       if (!flowResult.success) {
@@ -1161,6 +1161,8 @@ export default function ChatPage(props: any) {
       
       const newConversationId = flowResult.data?.conversation_id;
       const flowRunId = flowResult.data?.flow_run_id;
+      console.log('DEBUG - newConversationId:', newConversationId);
+      console.log('DEBUG - flowRunId:', flowRunId);
       
       // Update conversationId state if we got a new one
       if (newConversationId) {
@@ -1205,8 +1207,10 @@ export default function ChatPage(props: any) {
         // (like we do for new flows). This ensures polling starts even if
         // fetchFlowRunConversation doesn't return a conversation ID immediately.
         if (newConversationId) {
-          console.log('Starting polling with conversation ID from resume response:', newConversationId);
+          console.log('DEBUG - Starting polling with conversation ID from resume response:', newConversationId);
           startPollingForResults(newConversationId, assistantMessageId, prompt, restoreOriginalInstructions);
+        } else {
+          console.log('DEBUG - No newConversationId in resume response, cannot start polling immediately');
         }
         
         // After resuming, fetch updated flow run data and get conversation ID
@@ -1290,8 +1294,7 @@ export default function ChatPage(props: any) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          flow_id: selectedFlowId,
-          input_prompt: ''
+          flow_id: selectedFlowId
         }),
       });
       
