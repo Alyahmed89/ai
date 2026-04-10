@@ -424,7 +424,10 @@ const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
               </div>
               {!isStepResponseCollapsed && (
                 <div className="bg-gray-900/30 rounded-lg p-3 border border-gray-700">
-                  <div className="text-gray-100 whitespace-pre-wrap font-mono text-sm leading-relaxed">
+                  <div 
+                    data-test="flow-result"
+                    className="text-gray-100 whitespace-pre-wrap font-mono text-sm leading-relaxed"
+                  >
                     {event.content}
                   </div>
                 </div>

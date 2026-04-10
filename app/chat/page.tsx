@@ -1769,7 +1769,10 @@ export default function ChatPage(props: any) {
                   className="flex-1 overflow-y-auto p-6 space-y-4"
                 >
                   {conversationData ? (
-                    <FlowRun data={conversationData} />
+                    <FlowRun 
+                      key={conversationData._updatedAt || Date.now()}
+                      data={conversationData} 
+                    />
                   ) : chatMessages.length === 0 ? (
                     <div className="h-full flex items-center justify-center">
                       <div className="text-center">
@@ -1814,6 +1817,7 @@ export default function ChatPage(props: any) {
                       <div className="absolute right-3 bottom-3 flex space-x-2">
                         <button
                           type="button"
+                          data-test="start-flow-empty"
                           onClick={(e) => { 
                             e.preventDefault(); 
                             e.stopPropagation();
@@ -1830,6 +1834,7 @@ export default function ChatPage(props: any) {
                         </button>
                         <button
                           type="submit"
+                          data-test="start-flow"
                           disabled={!inputPrompt.trim() || isRunning || !selectedFlowId}
                           className="p-2 rounded-lg bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           title={!selectedFlowId ? "Select a flow first" : "Send message"}
