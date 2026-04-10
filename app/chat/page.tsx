@@ -1200,18 +1200,30 @@ export default function ChatPage(props: any) {
       if (flowRunId) {
         console.log('Setting flow run ID from response:', flowRunId);
         setSelectedFlowRunId(flowRunId);
+        
+        // Start polling immediately if we have a conversation ID from the response
+        // (like we do for new flows). This ensures polling starts even if
+        // fetchFlowRunConversation doesn't return a conversation ID immediately.
+        if (newConversationId) {
+          console.log('Starting polling with conversation ID from resume response:', newConversationId);
+          startPollingForResults(newConversationId, assistantMessageId, prompt, restoreOriginalInstructions);
+        }
+        
         // After resuming, fetch updated flow run data and get conversation ID
         const conversationIdFromFlowRun = await fetchFlowRunConversation(flowRunId);
         
         // Start polling for updates to this flow run if we have a conversation ID
-        if (conversationIdFromFlowRun) {
-          console.log('Starting polling for resumed conversation:', conversationIdFromFlowRun);
+        // (This is a backup in case newConversationId was null)
+        if (conversationIdFromFlowRun && !newConversationId) {
+          console.log('Starting polling for resumed conversation (from flow run fetch):', conversationIdFromFlowRun);
           startPollingForResults(conversationIdFromFlowRun, assistantMessageId, prompt, restoreOriginalInstructions);
         }
       }
       
       // Start polling for actual results if we have a conversation ID
-      if (newConversationId) {
+      // Only run this for NEW flows (not resume), because for resume we already
+      // started polling inside the if (flowRunId) block above
+      if (newConversationId && !selectedFlowRunId) {
         startPollingForResults(newConversationId, assistantMessageId, prompt, restoreOriginalInstructions);
         
         // Only poll for flow run if we don't already have the flowRunId
@@ -1379,11 +1391,25 @@ export default function ChatPage(props: any) {
         
         // Check if we have valid conversation data
         // Note: The response has data.success (top level) and data.data.success (nested)
+        console.log('DEBUG - Checking conversation data:', {
+          hasDataSuccess: data.success,
+          hasDataData: !!data.data,
+          hasDataDataSuccess: data.data?.success,
+          hasDataDataConversation: !!data.data?.conversation,
+          conversationKeys: data.data?.conversation ? Object.keys(data.data.conversation) : 'NO CONVERSATION'
+        });
+        
         if (data.success && data.data?.success && data.data?.conversation) {
           const conversation = data.data.conversation;
           console.log(`State: ${conversation.state}, Flow Completed: ${conversation.flow_completed}`);
           
           // Store conversation data for FlowRun component - ALWAYS update on every poll
+          console.log('DEBUG - Setting conversation data:', {
+            hasFlowSteps: !!conversation.flow_steps,
+            flowStepsCount: conversation.flow_steps?.length || 0,
+            flowCompleted: conversation.flow_completed,
+            state: conversation.state
+          });
           setConversationData(conversation);
           
           // Show incremental progress updates
