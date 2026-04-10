@@ -40,6 +40,7 @@ export type ConversationData = {
     }>;
   }>;
   last_step_response?: string;
+  _updatedAt?: number; // Internal timestamp for React re-renders
 };
 
 interface FlowRunProps {
