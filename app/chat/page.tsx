@@ -379,7 +379,10 @@ export default function ChatPage(props: any) {
           last_step_response: flowRun.output_response || ''
         };
         
-        setConversationData(conversationDataForFlowRun);
+        setConversationData({
+          ...conversationDataForFlowRun,
+          _updatedAt: Date.now()
+        });
         setChatMessages(messages);
         return conversationId;
       }
@@ -427,7 +430,10 @@ export default function ChatPage(props: any) {
         }
         
         // Store merged conversation data for FlowRun component
-        setConversationData(mergedConversation);
+        setConversationData({
+          ...mergedConversation,
+          _updatedAt: Date.now()
+        });
         
         // DEBUG: Log conversation data structure
         console.log('DEBUG - Conversation data structure:', {
@@ -550,7 +556,10 @@ export default function ChatPage(props: any) {
           last_step_response: flowRun.output_response || ''
         };
         
-        setConversationData(conversationDataForFlowRun);
+        setConversationData({
+          ...conversationDataForFlowRun,
+          _updatedAt: Date.now()
+        });
         setChatMessages(messages);
         return conversationId;
       }
@@ -573,6 +582,14 @@ export default function ChatPage(props: any) {
       setConversationId(null); // Clear conversationId when flow changes
     }
   }, [selectedFlowId]);
+
+  // Poll for flow run when conversation completes
+  useEffect(() => {
+    if (conversationData?.flow_completed && conversationId) {
+      console.log('Conversation completed, polling for flow run...');
+      pollForFlowRunByConversationId(conversationId);
+    }
+  }, [conversationData, conversationId]);
 
   const fetchFlowDefinitions = async () => {
     try {
@@ -622,6 +639,7 @@ export default function ChatPage(props: any) {
           
           // Automatically select this flow run
           setSelectedFlowRunId(matchingFlowRun.id);
+          setSelectedFlowRun(matchingFlowRun); // FIX: Also update selectedFlowRun state
           
           // Update flow runs list
           const sortedRuns = flowRuns.sort((a: SharedFlowRun, b: SharedFlowRun) => 
@@ -1413,7 +1431,11 @@ export default function ChatPage(props: any) {
             flowCompleted: conversation.flow_completed,
             state: conversation.state
           });
-          setConversationData(conversation);
+          // FIX: Create new object reference to force React re-render
+          setConversationData({
+            ...conversation,
+            _updatedAt: Date.now() // Add timestamp to ensure unique reference
+          });
           
           // Show incremental progress updates
           if (conversation.flow_steps && conversation.flow_steps.length > 0) {
