@@ -261,6 +261,14 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
 };
 
 const FlowRun: React.FC<FlowRunProps> = ({ data }) => {
+  // TEST SIGNAL: Set global flag when FlowRun renders
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__FLOW_RENDERED__ = true;
+      console.log('TEST SIGNAL: window.__FLOW_RENDERED__ = true');
+    }
+  }, []);
+  
   // State to track which events are collapsed
   const [collapsedEvents, setCollapsedEvents] = React.useState<Record<string, boolean>>({});
   // State to track which STATUS_UPDATE events should be hidden (flashed away)

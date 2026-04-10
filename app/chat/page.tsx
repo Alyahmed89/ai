@@ -1474,6 +1474,12 @@ export default function ChatPage(props: any) {
           if (conversation.flow_completed || conversation.state === 'DONE' || conversation.state === 'COMPLETED') {
             console.log('✅ FLOW COMPLETED DETECTED!');
             
+            // TEST SIGNAL: Set global flag when polling detects completion
+            if (typeof window !== 'undefined') {
+              (window as any).__POLL_DONE__ = true;
+              console.log('TEST SIGNAL: window.__POLL_DONE__ = true');
+            }
+            
             // Clear conversationId when flow is completed
             setConversationId(null);
             
@@ -1493,6 +1499,9 @@ export default function ChatPage(props: any) {
               console.log('New messages after adding completion:', newMessages.length);
               return newMessages;
             });
+            
+            // Refresh flow runs to update status in sidebar
+            fetchFlowRuns();
             
             return true; // Completed
           }
