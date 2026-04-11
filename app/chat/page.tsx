@@ -55,7 +55,7 @@ export default function ChatPage(props: any) {
   // Fetch flow definitions
   useEffect(() => {
     const loadFlows = async () => {
-      const res = await fetch('/api/flow-definitions');
+      const res = await fetch('/api/proxy/api/flow-definitions');
       const data = await res.json();
 
       setFlowDefinitions(Array.isArray(data) ? data : []);
@@ -67,7 +67,7 @@ export default function ChatPage(props: any) {
   // Fetch flow runs
   useEffect(() => {
     const loadRuns = async () => {
-      const res = await fetch('/api/flow-runs');
+      const res = await fetch('/api/proxy/api/flow-runs');
       const data = await res.json();
 
       setFlowRuns(Array.isArray(data) ? data : []);
@@ -135,7 +135,7 @@ export default function ChatPage(props: any) {
       setSelectedFlowRunId(data?.flow_run?.id || null);
       
       // Refresh flow runs list to show the new run
-      const runsResponse = await fetch('/api/flow-runs');
+      const runsResponse = await fetch('/api/proxy/api/flow-runs');
       if (runsResponse.ok) {
         const runsData = await runsResponse.json();
         setFlowRuns(Array.isArray(runsData) ? runsData : []);
