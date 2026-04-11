@@ -10,7 +10,7 @@ import {
 import {
   mapAllToEvents
 } from './FlowRun/parsing';
-import { FlowRunPoller } from './FlowRun/polling';
+import { FlowRunPoller } from './poller';
 import { renderEvent } from './FlowRun/renderers';
 
 // Re-export types for backward compatibility
@@ -40,16 +40,17 @@ const FlowRun: React.FC<FlowRunProps> = ({
   // State to track which events are currently showing (for animation)
   const [showingEvents, setShowingEvents] = React.useState<Set<string>>(new Set());
   
-  // Internal state for data
-  const [internalData, setInternalData] = useState<ConversationData | null>(data);
+  // Internal state for data - ONLY internalData drives UI
+  const [internalData, setInternalData] = useState<ConversationData | null>(null);
   const [internalChatMessages, setInternalChatMessages] = useState<ChatMessage[]>(chatMessages);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pollerRef = useRef<FlowRunPoller | null>(null);
+  const pollerRef = useRef(new FlowRunPoller());
   
-  // Update internal state when props change
+  // Initialize with prop data once (only on mount)
   useEffect(() => {
-    setInternalData(data);
-  }, [data]);
+    if (data) {
+      setInternalData(data);
+    }
+  }, []); // Only on mount
   
   useEffect(() => {
     setInternalChatMessages(chatMessages);
@@ -61,45 +62,28 @@ const FlowRun: React.FC<FlowRunProps> = ({
     return events;
   }, [internalData, internalChatMessages]);
 
-  // Polling effect
+  // Poller effect - updates internalData only
   useEffect(() => {
     if (!conversationId) return;
     
     console.log('=== FLOWRUN: Starting polling for conversation:', conversationId);
     
-    const poller = new FlowRunPoller({
-      onConversationUpdate: (conversation) => {
-        console.log('=== FLOWRUN: Conversation update received:', conversation);
-        setInternalData({
-          ...conversation,
-          _updatedAt: Date.now()
-        });
-      },
-      onChatMessage: (message) => {
-        console.log('=== FLOWRUN: Chat message received:', message);
-        setInternalChatMessages(prev => [...prev, message]);
-      },
-      onPollingComplete: () => {
-        console.log('=== FLOWRUN: Polling completed');
-        if (pollerRef.current) {
-          pollerRef.current.stopPolling();
-        }
-      },
-      onPollingError: (error) => {
-        console.error('=== FLOWRUN: Polling error:', error);
-      }
+    pollerRef.current.start(conversationId, (polledData) => {
+      console.log('=== FLOWRUN: Polled data received:', polledData);
+      setInternalData(polledData);
     });
     
-    pollerRef.current = poller;
-    poller.startPolling(conversationId);
-    
     return () => {
-      if (pollerRef.current) {
-        pollerRef.current.stopPolling();
-        pollerRef.current = null;
-      }
+      pollerRef.current.stop();
     };
   }, [conversationId]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      pollerRef.current.stop();
+    };
+  }, []);
 
   // Auto-show events with delay for sequential appearance
   React.useEffect(() => {

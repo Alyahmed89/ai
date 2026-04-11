@@ -47,7 +47,7 @@ export default function ChatPage(props: any) {
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(initialFlowId || null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(initialFlowRunId || null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [conversationData, setConversationData] = useState<ConversationData | null>(null);
+  // DO NOT store conversationData - FlowRun poller will handle it
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -107,65 +107,50 @@ export default function ChatPage(props: any) {
   }, []);
 
   // Handle sending a message
-  const handleSend = async () => {
-    if (!inputPrompt.trim() || !selectedFlowId) return;
-
+  const handleSendMessage = async (content: string) => {
+    if (!selectedFlowId) return;
+    
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       type: 'user',
-      content: inputPrompt,
+      content: content,
       timestamp: new Date()
     };
-
+    
     // Add user message to chat
     setChatMessages(prev => [...prev, userMessage]);
     setInputPrompt('');
     setIsRunning(true);
-
+    
     try {
-      // Start flow with the prompt using the /start endpoint
-      const response = await fetch('/api/proxy/start', {
+      const res = await fetch('/api/proxy/start', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           flow_id: selectedFlowId,
-          input_prompt: inputPrompt
+          input_prompt: content
         })
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const flowRunId = data.flow_run?.id || data.id;
       
-      if (flowRunId) {
-        setSelectedFlowRunId(flowRunId);
-        
-        // Refresh flow runs list to show the new run
-        const runsResponse = await fetch('/api/proxy/api/flow-runs');
-        if (runsResponse.ok) {
-          const runsData = await runsResponse.json();
-          setFlowRuns(runsData.flow_runs || []);
-        }
-        
-        // Add assistant message
-        const assistantMessage: ChatMessage = {
-          id: `assistant-${Date.now()}`,
-          type: 'assistant',
-          content: `Flow started with ID: ${flowRunId}. Processing your request...`,
-          timestamp: new Date()
-        };
-        setChatMessages(prev => [...prev, assistantMessage]);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      setConversationId(data.conversation_id || data.id);
+      setSelectedFlowRunId(data.flow_run?.id || null);
+      // DO NOT set conversationData - FlowRun poller will handle it
+      
+      // Refresh flow runs list to show the new run
+      const runsResponse = await fetch('/api/proxy/api/flow-runs');
+      if (runsResponse.ok) {
+        const runsData = await runsResponse.json();
+        setFlowRuns(runsData.flow_runs || []);
       }
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message. Please try again.');
       
-      // Add error message
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         type: 'assistant',
@@ -276,11 +261,11 @@ export default function ChatPage(props: any) {
           >
             <FlowRun 
               key={conversationId || selectedFlowRunId || 'default'}
-              data={conversationData}
+              data={null} // FlowRun will initialize from poller
               chatMessages={chatMessages}
               conversationId={conversationId}
               flowRunId={selectedFlowRunId}
-              onSendMessage={handleSend}
+              onSendMessage={handleSendMessage}
               isRunning={isRunning}
               selectedFlowId={selectedFlowId}
             />
@@ -291,7 +276,7 @@ export default function ChatPage(props: any) {
             <form onSubmit={(e) => { 
               e.preventDefault(); 
               e.stopPropagation();
-              handleSend(); 
+              handleSendMessage(inputPrompt); 
               return false;
             }} className="space-y-3">
               <div className="relative">

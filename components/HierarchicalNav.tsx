@@ -56,9 +56,20 @@ export default function HierarchicalNav({
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>(externalFlowRuns || []);
   const [flowSteps, setFlowSteps] = useState<FlowStep[]>([]);
   
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
-  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(externalSelectedFlowRunId || null);
+  const [activePath, setActivePath] = useState({
+    projectId: null as string | null,
+    flowId: null as string | null,
+    runId: externalSelectedFlowRunId || null as string | null
+  });
+  
+  // Reset on mount
+  useEffect(() => {
+    setActivePath({
+      projectId: null,
+      flowId: null,
+      runId: externalSelectedFlowRunId || null
+    });
+  }, []);
   
   const [loading, setLoading] = useState({
     projects: false,
@@ -91,7 +102,7 @@ export default function HierarchicalNav({
   // Handle flow run selection from URL (when page refreshes)
   const handleFlowRunFromUrl = useCallback(async (flowRunId: string) => {
     console.log('handleFlowRunFromUrl called with flowRunId:', flowRunId);
-    setSelectedFlowRunId(flowRunId);
+    setActivePath(prev => ({ ...prev, runId: flowRunId }));
     onSelectFlowRun?.(flowRunId);
     
     try {
@@ -106,7 +117,7 @@ export default function HierarchicalNav({
         
         if (flowId) {
           // Set the flow selection
-          setSelectedFlowId(flowId);
+          setActivePath(prev => ({ ...prev, flowId }));
           onSelectFlow?.(flowId);
           
           // Also fetch flows to ensure we have the flow data
@@ -116,7 +127,7 @@ export default function HierarchicalNav({
     } catch (error) {
       console.error('Error fetching flow run details:', error);
     }
-  }, [setSelectedFlowRunId, onSelectFlowRun, setSelectedFlowId, onSelectFlow, fetchFlows]);
+  }, [onSelectFlowRun, onSelectFlow, fetchFlows]);
 
   // Parse URL to determine selected project/flow
   useEffect(() => {
@@ -127,8 +138,7 @@ export default function HierarchicalNav({
     if (projectMatch) {
       const projectId = projectMatch[1];
       console.log('HierarchicalNav - Project selected from URL:', projectId);
-      setSelectedProjectId(projectId);
-      setSelectedFlowId(null);
+      setActivePath({ projectId, flowId: null, runId: null });
       return;
     }
     
@@ -137,8 +147,7 @@ export default function HierarchicalNav({
     if (flowMatch) {
       const flowId = flowMatch[1];
       console.log('HierarchicalNav - Flow selected from URL:', flowId);
-      setSelectedFlowId(flowId);
-      setSelectedProjectId(null); // Clear project selection when on flow page
+      setActivePath({ projectId: null, flowId, runId: null });
       return;
     }
     
@@ -154,8 +163,7 @@ export default function HierarchicalNav({
     
     // If we're on the main chat page, clear selection
     if (pathname === '/chat') {
-      setSelectedProjectId(null);
-      setSelectedFlowId(null);
+      setActivePath({ projectId: null, flowId: null, runId: null });
     }
   }, [pathname, handleFlowRunFromUrl]); // Run when pathname changes
 
@@ -164,12 +172,12 @@ export default function HierarchicalNav({
     console.log('HierarchicalNav data debug:', {
       projectsCount: projects.length,
       flowsCount: flows.length,
-      selectedProjectId,
-      selectedFlowId,
+      selectedProjectId: activePath.projectId,
+      selectedFlowId: activePath.flowId,
       projects: projects.map(p => ({ id: p.id, name: p.name })),
       flows: flows.map(f => ({ id: f.id, name: f.name, agent: f.agent }))
     });
-  }, [projects, flows, selectedProjectId, selectedFlowId]);
+  }, [projects, flows, activePath.projectId, activePath.flowId]);
 
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'steps' | 'flowRuns'>('steps');
@@ -188,22 +196,22 @@ export default function HierarchicalNav({
 
   // Fetch flows when project changes (for now, fetch all)
   useEffect(() => {
-    if (selectedProjectId) {
+    if (activePath.projectId) {
       // In future, filter flows by project
       fetchFlows();
     }
-  }, [selectedProjectId]);
+  }, [activePath.projectId]);
 
   // Fetch flow runs and steps when flow changes
   useEffect(() => {
-    if (selectedFlowId) {
+    if (activePath.flowId) {
       fetchFlowRuns();
       fetchFlowSteps();
     } else {
       setFlowSteps([]);
       setSelectedStepId(null);
     }
-  }, [selectedFlowId]);
+  }, [activePath.flowId]);
 
   const fetchProjects = async () => {
     setLoading(prev => ({ ...prev, projects: true }));
@@ -243,11 +251,11 @@ export default function HierarchicalNav({
   };
 
   const fetchFlowSteps = async () => {
-    if (!selectedFlowId) return;
+    if (!activePath.flowId) return;
     
     setLoading(prev => ({ ...prev, steps: true }));
     try {
-      const response = await fetch(`/api/proxy/api/flow-steps?flow_id=${selectedFlowId}`);
+      const response = await fetch(`/api/proxy/api/flow-steps?flow_id=${activePath.flowId}`);
       if (response.ok) {
         const data = await response.json();
         
@@ -263,7 +271,7 @@ export default function HierarchicalNav({
         
         // Filter steps for this flow and sort by order_index
         const filteredSteps = stepsArray
-          .filter((step: any) => step.flow_id === selectedFlowId)
+          .filter((step: any) => step.flow_id === activePath.flowId)
           .sort((a: any, b: any) => a.order_index - b.order_index);
         setFlowSteps(filteredSteps);
       }
@@ -276,9 +284,11 @@ export default function HierarchicalNav({
 
   const handleProjectSelect = (projectId: string | null) => {
     console.log('handleProjectSelect called with projectId:', projectId);
-    setSelectedProjectId(projectId);
-    setSelectedFlowId(null);
-    setSelectedFlowRunId(null);
+    setActivePath({
+      projectId,
+      flowId: null,
+      runId: null
+    });
     onSelectProject?.(projectId);
     
     // Navigate to chat view with project
@@ -290,8 +300,11 @@ export default function HierarchicalNav({
 
   const handleFlowSelect = (flowId: string | null) => {
     console.log('handleFlowSelect called with flowId:', flowId);
-    setSelectedFlowId(flowId);
-    setSelectedFlowRunId(null);
+    setActivePath(prev => ({
+      ...prev,
+      flowId,
+      runId: null
+    }));
     setActiveSection('steps'); // Reset to steps when selecting a new flow
     
     // Use external handler if provided
@@ -311,7 +324,10 @@ export default function HierarchicalNav({
 
 
   const handleFlowRunSelect = async (flowRunId: string | null) => {
-    setSelectedFlowRunId(flowRunId);
+    setActivePath(prev => ({
+      ...prev,
+      runId: flowRunId
+    }));
     
     // Use external handler if provided
     if (flowRunId && externalOnFlowRunSelect) {
@@ -332,7 +348,7 @@ export default function HierarchicalNav({
   };
 
   const handleCreateStep = async () => {
-    if (!selectedFlowId) {
+    if (!activePath.flowId) {
       alert('Please select a flow first');
       return;
     }
@@ -340,7 +356,7 @@ export default function HierarchicalNav({
     try {
       // Create a new step
       const newStep = {
-        flow_id: selectedFlowId,
+        flow_id: activePath.flowId,
         step_key: `step_${Date.now()}`,
         title: 'New Step',
         instructions: 'New step instructions...',
@@ -451,13 +467,13 @@ export default function HierarchicalNav({
   };
 
   // Filter flow runs by selected flow
-  const filteredFlowRuns = selectedFlowId
-    ? flowRuns.filter(run => run.flow_id === selectedFlowId)
+  const filteredFlowRuns = activePath.flowId
+    ? flowRuns.filter(run => run.flow_id === activePath.flowId)
     : [];
 
   // Filter steps by selected flow (already filtered in fetch, but keep for consistency)
-  const filteredSteps = selectedFlowId
-    ? flowSteps.filter(step => step.flow_id === selectedFlowId)
+  const filteredSteps = activePath.flowId
+    ? flowSteps.filter(step => step.flow_id === activePath.flowId)
     : [];
 
   // Format time ago
@@ -479,13 +495,13 @@ export default function HierarchicalNav({
   return (
     <div className="h-full flex flex-col bg-gray-900 border-r border-gray-800">
       {/* Header with back button when not at root */}
-      {(selectedProjectId || selectedFlowId) && (
+      {(activePath.projectId || activePath.flowId) && (
         <div className="p-4 border-b border-gray-800">
           <button
             onClick={() => {
-              if (selectedFlowId) {
+              if (activePath.flowId) {
                 handleFlowSelect(null);
-              } else if (selectedProjectId) {
+              } else if (activePath.projectId) {
                 handleProjectSelect(null);
               }
             }}
@@ -494,163 +510,122 @@ export default function HierarchicalNav({
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
-            Back {selectedFlowId ? 'to Flows' : 'to Projects'}
+            Back {activePath.flowId ? 'to Flows' : 'to Projects'}
           </button>
         </div>
       )}
 
-      {/* Projects Section (shown when no project is selected) */}
-      {!selectedProjectId && !selectedFlowId && (
-        <div className="p-4 border-b border-gray-800 flex-1">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center">
-              <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <span className="text-sm font-medium text-gray-300">Projects</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setShowApiEndpointsModal(true)}
-                className="text-xs text-purple-400 hover:text-purple-300 flex items-center"
-                title="View API Endpoints"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-              </button>
-              {onCreateProject && (
-                <button
-                  onClick={onCreateProject}
-                  className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
-                  title="Create New Project"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              )}
-              {loading.projects && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
-              )}
-            </div>
-          </div>
-          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
+      {/* Clean hierarchical navigation */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {/* Projects list */}
+        {!activePath.projectId && !activePath.flowId && (
+          <div className="space-y-0.5 p-2">
             {projects.map(project => (
+              <div key={project.id} className="group relative">
+                <button
+                  onClick={() => handleProjectSelect(project.id)}
+                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                    activePath.projectId === project.id 
+                      ? 'bg-gray-900/30 text-gray-300' 
+                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center min-w-0 flex-1">
+                    <svg className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    <span className="truncate">{project.name}</span>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Flows list (when project is selected) */}
+        {activePath.projectId && !activePath.flowId && (
+          <div className="space-y-0.5 p-2">
+            <div className="flex items-center justify-between px-3 py-1 mb-1">
+              <div className="text-xs text-gray-500 uppercase tracking-wider">Flows</div>
+              <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onCreateFlow && (
+                  <button
+                    onClick={onCreateFlow}
+                    className="text-xs text-gray-400 hover:text-gray-300 p-1"
+                    title="Create New Flow"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+            {flows.map(flow => (
+              <div key={flow.id} className="group relative">
+                <button
+                  onClick={() => handleFlowSelect(flow.id)}
+                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                    activePath.flowId === flow.id 
+                      ? 'bg-gray-900/30 text-gray-300' 
+                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center min-w-0 flex-1">
+                    <svg className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span className="truncate">{flow.name}</span>
+                  </div>
+                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/flows/design/${flow.id}`);
+                      }}
+                      className="text-xs text-gray-400 hover:text-blue-400 p-1"
+                      title="Edit Flow Design"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Flow Runs list (when flow is selected) */}
+        {selectedFlowId && (
+          <div className="space-y-0.5 p-2">
+            <div className="flex items-center justify-between px-3 py-1 mb-1">
+              <div className="text-xs text-gray-500 uppercase tracking-wider">Runs</div>
+            </div>
+            {filteredFlowRuns.map(run => (
               <button
-                key={project.id}
-                onClick={() => handleProjectSelect(project.id)}
+                key={run.id}
+                onClick={() => handleFlowRunSelect(run.id)}
                 className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                  selectedProjectId === project.id 
+                  activePath.runId === run.id 
                     ? 'bg-gray-900/30 text-gray-300' 
                     : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                 }`}
               >
                 <div className="flex items-center min-w-0 flex-1">
-                  {/* Project icon */}
-                  <svg className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
-                  <span className="truncate">{project.name}</span>
+                  <span className="truncate">{run.id.substring(0, 8)}...</span>
+                  <div className={`ml-2 w-2 h-2 rounded-full flex-shrink-0 ${
+                    run.status === 'active' ? 'bg-green-500' :
+                    run.status === 'completed' ? 'bg-gray-500' :
+                    'bg-gray-500'
+                  }`} />
                 </div>
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Flows Section at Root Level (shown when no project is selected) */}
-      {!selectedProjectId && !selectedFlowId && (
-        <div className="p-4 border-b border-gray-800 flex-1">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center">
-              <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span className="text-sm font-medium text-gray-300">Flows</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {onCreateFlow && (
-                <button
-                  onClick={onCreateFlow}
-                  className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
-                  title="Create New Flow"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              )}
-              {loading.flows && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
-              )}
-            </div>
-          </div>
-          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
-            {flows.map(flow => (
-              <div key={flow.id} className="group flex items-center">
-                <button
-                  onClick={() => handleFlowSelect(flow.id)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                    selectedFlowId === flow.id 
-                      ? 'bg-gray-900/30 text-gray-300' 
-                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center min-w-0 flex-1">
-                    <span className="truncate">{flow.name}</span>
-                  </div>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Project-Specific Flows Section (shown when project is selected) */}
-      {selectedProjectId && !selectedFlowId && (
-        <div className="p-4 border-b border-gray-800 flex-1">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center">
-              <span className="text-sm font-medium text-gray-300">Flows</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              {onCreateFlow && (
-                <button
-                  onClick={onCreateFlow}
-                  className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
-                  title="Create New Flow"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              )}
-              {loading.flows && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
-              )}
-            </div>
-          </div>
-          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
-            {flows.map(flow => (
-              <div key={flow.id} className="group flex items-center">
-                <button
-                  onClick={() => handleFlowSelect(flow.id)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                    selectedFlowId === flow.id 
-                      ? 'bg-gray-900/30 text-gray-300' 
-                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center min-w-0 flex-1">
-                    <span className="truncate">{flow.name}</span>
-                  </div>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Flow Details Section (shown when flow is selected) */}
       {selectedFlowId && (
@@ -833,7 +808,7 @@ export default function HierarchicalNav({
                       key={run.id}
                       onClick={() => handleFlowRunSelect(run.id)}
                       className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
-                        selectedFlowRunId === run.id 
+                        activePath.runId === run.id 
                           ? 'bg-gray-900/30 text-gray-300' 
                           : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
                       }`}
