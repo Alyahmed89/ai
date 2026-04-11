@@ -167,7 +167,6 @@ export default function ChatPage(props: any) {
   const handleFlowRunSelect = async (flowRunId: string) => {
     setSelectedFlowRunId(flowRunId);
     setConversationId(null);
-    setConversationData(null);
     setChatMessages([]);
 
     try {

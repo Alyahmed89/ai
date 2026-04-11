@@ -598,7 +598,7 @@ export default function HierarchicalNav({
         )}
 
         {/* Flow Runs list (when flow is selected) */}
-        {selectedFlowId && (
+        {activePath.flowId && (
           <div className="space-y-0.5 p-2">
             <div className="flex items-center justify-between px-3 py-1 mb-1">
               <div className="text-xs text-gray-500 uppercase tracking-wider">Runs</div>
@@ -628,7 +628,7 @@ export default function HierarchicalNav({
       </div>
 
       {/* Flow Details Section (shown when flow is selected) */}
-      {selectedFlowId && (
+      {activePath.flowId && (
         <div className="flex-1 overflow-y-auto">
           {/* Flow Info Header */}
           <div className="p-4 border-b border-gray-800">
@@ -638,11 +638,11 @@ export default function HierarchicalNav({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 <span className="text-sm font-medium text-gray-300 truncate">
-                  {flows.find(f => f.id === selectedFlowId)?.name || 'Flow'}
+                  {flows.find(f => f.id === activePath.flowId)?.name || 'Flow'}
                 </span>
                 {/* Flow designer icon */}
                 <button
-                  onClick={() => router.push(`/flows/design/${selectedFlowId}`)}
+                  onClick={() => router.push(`/flows/design/${activePath.flowId}`)}
                   className="ml-2 text-gray-400 hover:text-gray-400 flex-shrink-0"
                   title="Open Flow Designer"
                 >
@@ -651,9 +651,9 @@ export default function HierarchicalNav({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </button>
-                {onEditFlow && selectedFlowId && (
+                {onEditFlow && activePath.flowId && (
                   <button
-                    onClick={() => onEditFlow(selectedFlowId)}
+                    onClick={() => onEditFlow(activePath.flowId!)}
                     className="invisible group-hover:visible ml-2 text-gray-400 hover:text-gray-300 flex-shrink-0"
                     title="Edit Flow"
                   >

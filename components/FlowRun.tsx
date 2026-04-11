@@ -10,7 +10,7 @@ import {
 import {
   mapAllToEvents
 } from './FlowRun/parsing';
-import { FlowRunPoller } from './poller';
+import { FlowRunPoller } from './FlowRun/poller';
 import { renderEvent } from './FlowRun/renderers';
 
 // Re-export types for backward compatibility
