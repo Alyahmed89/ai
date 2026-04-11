@@ -36,6 +36,9 @@ export type ExecutionEvent = {
 export type ConversationData = {
   flow_completed?: boolean;
   state?: string;
+  status?: string;
+  progress?: number;
+  current_step?: string;
   flow_steps?: Array<{
     id?: string;
     title?: string;
