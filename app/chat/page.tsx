@@ -1483,7 +1483,7 @@ export default function ChatPage(props: any) {
               // Add to chat messages
               setChatMessages(prev => {
                 // Check if we already have this step update
-                const existingStepUpdate = prev.find(msg => 
+                const existingStepUpdate = prev.find((msg: any) => 
                   msg.id.includes(`progress_${conversationId}`) && 
                   msg.id.includes(latestStep.id)
                 );
@@ -1503,7 +1503,7 @@ export default function ChatPage(props: any) {
           const hasCompletedState = conversation.state === 'DONE' || conversation.state === 'COMPLETED' || conversation.flow_completed;
           const hasFlowStepsWithResponse = conversation.flow_steps && 
             Array.isArray(conversation.flow_steps) && 
-            conversation.flow_steps.some(step => step.response && step.response.trim() !== '');
+            conversation.flow_steps.some((step: any) => step.response && step.response.trim() !== '');
           
           console.log('DEBUG - Completion check:', {
             hasCompletedState,
@@ -1511,7 +1511,7 @@ export default function ChatPage(props: any) {
             state: conversation.state,
             flow_completed: conversation.flow_completed,
             flow_steps_count: conversation.flow_steps?.length || 0,
-            steps_with_responses: conversation.flow_steps?.filter(step => step.response && step.response.trim() !== '').length || 0
+            steps_with_responses: conversation.flow_steps?.filter((step: any) => step.response && step.response.trim() !== '').length || 0
           });
           
           if (hasCompletedState && hasFlowStepsWithResponse) {
@@ -1522,7 +1522,7 @@ export default function ChatPage(props: any) {
               state: conversation.state,
               flow_completed: conversation.flow_completed,
               flow_steps_count: conversation.flow_steps?.length || 0,
-              steps_with_responses: conversation.flow_steps?.filter(step => step.response && step.response.trim() !== '').length || 0,
+              steps_with_responses: conversation.flow_steps?.filter((step: any) => step.response && step.response.trim() !== '').length || 0,
               step_responses: conversation.flow_steps?.map((step: any) => ({
                 title: step.title,
                 has_response: !!(step.response && step.response.trim()),
