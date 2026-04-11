@@ -14,7 +14,7 @@ import { FlowRunPoller } from './FlowRun/polling';
 import { renderEvent } from './FlowRun/renderers';
 
 // Re-export types for backward compatibility
-export type { ExecutionEvent, ConversationData };
+export type { ExecutionEvent, ConversationData, ChatMessage };
 
 const FlowRun: React.FC<FlowRunProps> = ({ 
   data,
