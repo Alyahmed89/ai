@@ -100,6 +100,9 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
           apiCalls: step.api_calls?.length || 0
         });
         
+        // STEP 1 — DEBUG REAL DATA SHAPE
+        console.log("STEP RAW:", step);
+        
         // Add STEP_STATUS event to show step status (always visible, in green)
         if (step.status) {
           console.log(`mapConversationToEvents - Adding STEP_STATUS for step ${index + 1}`);
@@ -178,14 +181,23 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
         }
 
         // Add STEP_RESPONSE event for step response (if exists and not null)
-        if (step.response && step.response.trim() !== '') {
+        // STEP 2 — FIX ROOT ISSUE (MANDATORY)
+        const responseValue =
+          step.response ??
+          step.output ??
+          step.result ??
+          step.response_preview ??
+          step.execution?.response ??
+          step.execution?.response_preview ??
+          '';
+        
+        if (typeof responseValue === 'string' && responseValue.trim() !== '') {
           console.log(`mapConversationToEvents - Adding STEP_RESPONSE for step ${index + 1}`);
-          const responseContent = step.response;
           
           events.push({
             key: `STEP_RESPONSE:${step.id || index}`,
             type: 'STEP_RESPONSE',
-            content: responseContent,
+            content: responseValue,
             metadata: {
               stepIndex: index + 1,
               stepTitle: step.title,
@@ -206,10 +218,17 @@ export const mapConversationToEvents = (conversation: ConversationData | null): 
               stepTitle: step.title
             }
           });
-        } else if (step.response === null || step.response === undefined) {
-          console.log(`mapConversationToEvents - Step ${index + 1} response is null or undefined`);
-        } else if (step.response.trim() === '') {
-          console.log(`mapConversationToEvents - Step ${index + 1} response is empty or whitespace`);
+        } else if (responseValue === null || responseValue === undefined || responseValue === '') {
+          console.log(`mapConversationToEvents - Step ${index + 1} response is null/undefined/empty`);
+          console.log(`mapConversationToEvents - Step ${index + 1} response fields:`, {
+            response: step.response,
+            output: step.output,
+            result: step.result,
+            response_preview: step.response_preview,
+            execution: step.execution
+          });
+        } else if (typeof responseValue === 'string' && responseValue.trim() === '') {
+          console.log(`mapConversationToEvents - Step ${index + 1} response is whitespace only`);
         }
       });
     } else {

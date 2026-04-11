@@ -1420,9 +1420,36 @@ export default function ChatPage(props: any) {
           conversationKeys: data.data?.conversation ? Object.keys(data.data.conversation) : 'NO CONVERSATION'
         });
         
-        if (data.success && data.data?.success && data.data?.conversation) {
-          const conversation = data.data.conversation;
+        console.log('DEBUG - Condition check:', {
+          dataSuccess: data.success,
+          dataDataConversation: data.data?.conversation,
+          dataDataConversationType: typeof data.data?.conversation,
+          dataDataConversationValue: data.data?.conversation,
+          conditionResult: !!(data.success && data.data?.conversation)
+        });
+        
+        // TEMP: Log full data structure for debugging
+        console.log('DEBUG - Full data structure:', JSON.stringify(data).substring(0, 500));
+        
+        // FIX: Handle different response structures
+        // Original: {success: true, data: {conversation: {...}}}
+        // Alternative: {success: true, conversation: {...}} (no data wrapper)
+        const conversationData = data.data?.conversation || data.conversation;
+        
+        if (data.success && conversationData) {
+          const conversation = conversationData;
           console.log(`State: ${conversation.state}, Flow Completed: ${conversation.flow_completed}`);
+          
+          // DEBUG: Log flow steps details
+          console.log('DEBUG - Flow steps details:', {
+            hasFlowSteps: !!conversation.flow_steps,
+            flowStepsCount: conversation.flow_steps?.length || 0,
+            flowSteps: conversation.flow_steps?.map(step => ({
+              title: step.title,
+              has_response: !!(step.response && step.response.trim()),
+              response_length: step.response?.length || 0
+            })) || []
+          });
           
           // Store conversation data for FlowRun component - ALWAYS update on every poll
           console.log('DEBUG - Setting conversation data:', {
@@ -1477,6 +1504,15 @@ export default function ChatPage(props: any) {
           const hasFlowStepsWithResponse = conversation.flow_steps && 
             Array.isArray(conversation.flow_steps) && 
             conversation.flow_steps.some(step => step.response && step.response.trim() !== '');
+          
+          console.log('DEBUG - Completion check:', {
+            hasCompletedState,
+            hasFlowStepsWithResponse,
+            state: conversation.state,
+            flow_completed: conversation.flow_completed,
+            flow_steps_count: conversation.flow_steps?.length || 0,
+            steps_with_responses: conversation.flow_steps?.filter(step => step.response && step.response.trim() !== '').length || 0
+          });
           
           if (hasCompletedState && hasFlowStepsWithResponse) {
             console.log('✅ FLOW COMPLETED DETECTED WITH RESPONSES!');
