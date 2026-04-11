@@ -56,6 +56,19 @@ export default function HierarchicalNav({
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>(externalFlowRuns || []);
   const [flowSteps, setFlowSteps] = useState<FlowStep[]>([]);
   
+  // Update local state when external props change
+  useEffect(() => {
+    if (externalFlowDefinitions !== undefined) {
+      setFlows(externalFlowDefinitions);
+    }
+  }, [externalFlowDefinitions]);
+  
+  useEffect(() => {
+    if (externalFlowRuns !== undefined) {
+      setFlowRuns(externalFlowRuns);
+    }
+  }, [externalFlowRuns]);
+  
   const [activePath, setActivePath] = useState({
     projectId: null as string | null,
     flowId: null as string | null,

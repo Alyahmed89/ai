@@ -152,6 +152,32 @@ const FlowRun: React.FC<FlowRunProps> = ({
 
   return (
     <div className="space-y-3">
+      {/* Status, progress, and current step display */}
+      {(internalData?.status || internalData?.progress || internalData?.current_step) && (
+        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {internalData?.status && (
+              <div>
+                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</div>
+                <div className="text-sm font-medium text-gray-300">{internalData.status}</div>
+              </div>
+            )}
+            {internalData?.progress !== undefined && (
+              <div>
+                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Progress</div>
+                <div className="text-sm font-medium text-gray-300">{internalData.progress}%</div>
+              </div>
+            )}
+            {internalData?.current_step && (
+              <div>
+                <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Current Step</div>
+                <div className="text-sm font-medium text-gray-300">{internalData.current_step}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
       {events.map(event => {
         // Skip hidden STATUS_UPDATE events
         if (event.type === 'STATUS_UPDATE' && hiddenStatusEvents.has(event.key)) {

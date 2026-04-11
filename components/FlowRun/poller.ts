@@ -11,10 +11,15 @@ export class FlowRunPoller {
       this.isFetching = true;
       
       try {
-        const res = await fetch(`/api/proxy/status/${conversationId}`);
+        const res = await fetch(`/status/${conversationId}`);
         const json = await res.json();
+
+        const normalized =
+          json?.data ??
+          json?.conversation ??
+          json;
         
-        cb(json.data);
+        cb(normalized);
       } finally {
         this.isFetching = false;
       }

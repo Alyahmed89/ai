@@ -54,38 +54,26 @@ export default function ChatPage(props: any) {
 
   // Fetch flow definitions
   useEffect(() => {
-    const fetchFlowDefinitions = async () => {
-      try {
-        const response = await fetch('/api/proxy/api/flows');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setFlowDefinitions(data.flows || []);
-      } catch (error) {
-        console.error('Error fetching flow definitions:', error);
-      }
+    const loadFlows = async () => {
+      const res = await fetch('/api/flow-definitions');
+      const data = await res.json();
+
+      setFlowDefinitions(Array.isArray(data) ? data : []);
     };
 
-    fetchFlowDefinitions();
+    loadFlows();
   }, []);
 
   // Fetch flow runs
   useEffect(() => {
-    const fetchFlowRuns = async () => {
-      try {
-        const response = await fetch('/api/proxy/api/flow-runs');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setFlowRuns(data.flow_runs || []);
-      } catch (error) {
-        console.error('Error fetching flow runs:', error);
-      }
+    const loadRuns = async () => {
+      const res = await fetch('/api/flow-runs');
+      const data = await res.json();
+
+      setFlowRuns(Array.isArray(data) ? data : []);
     };
 
-    fetchFlowRuns();
+    loadRuns();
   }, []);
 
   // Fetch variables
@@ -123,29 +111,34 @@ export default function ChatPage(props: any) {
     setIsRunning(true);
     
     try {
-      const res = await fetch('/api/proxy/start', {
+      const endpoint = selectedFlowRunId ? '/resume' : '/start';
+
+      const body = selectedFlowRunId
+        ? {
+            conversation_id: conversationId,
+            user_input: content
+          }
+        : {
+            flow_id: selectedFlowId,
+            input_prompt: content
+          };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          flow_id: selectedFlowId,
-          input_prompt: content
-        })
+        body: JSON.stringify(body)
       });
-      
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      
+
       const data = await res.json();
-      setConversationId(data.conversation_id || data.id);
-      setSelectedFlowRunId(data.flow_run?.id || null);
-      // DO NOT set conversationData - FlowRun poller will handle it
+
+      setConversationId(data?.conversation_id || data?.data?.conversation_id || data?.id || null);
+      setSelectedFlowRunId(data?.flow_run?.id || null);
       
       // Refresh flow runs list to show the new run
-      const runsResponse = await fetch('/api/proxy/api/flow-runs');
+      const runsResponse = await fetch('/api/flow-runs');
       if (runsResponse.ok) {
         const runsData = await runsResponse.json();
-        setFlowRuns(runsData.flow_runs || []);
+        setFlowRuns(Array.isArray(runsData) ? runsData : []);
       }
     } catch (error) {
       console.error('Error sending message:', error);
