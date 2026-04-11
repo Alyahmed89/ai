@@ -29,6 +29,9 @@ export type ConversationData = {
     title?: string;
     instructions?: string;
     response?: string | null;
+    output?: string | null;
+    result?: string | null;
+    response_preview?: string | null;
     status?: string;
     api_calls?: Array<{
       endpoint: string;
@@ -38,6 +41,10 @@ export type ConversationData = {
       timestamp: number;
       duration?: number;
     }>;
+    execution?: {
+      response?: string | null;
+      response_preview?: string | null;
+    };
   }>;
   last_step_response?: string;
   _updatedAt?: number; // Internal timestamp for React re-renders
