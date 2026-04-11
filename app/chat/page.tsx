@@ -123,8 +123,8 @@ export default function ChatPage(props: any) {
     setIsRunning(true);
 
     try {
-      // Send message to API
-      const response = await fetch('/api/proxy/api/flow-runs', {
+      // Start flow with the prompt using the /start endpoint
+      const response = await fetch('/api/proxy/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -140,10 +140,17 @@ export default function ChatPage(props: any) {
       }
 
       const data = await response.json();
-      const flowRunId = data.flow_run?.id;
+      const flowRunId = data.flow_run?.id || data.id;
       
       if (flowRunId) {
         setSelectedFlowRunId(flowRunId);
+        
+        // Refresh flow runs list to show the new run
+        const runsResponse = await fetch('/api/proxy/api/flow-runs');
+        if (runsResponse.ok) {
+          const runsData = await runsResponse.json();
+          setFlowRuns(runsData.flow_runs || []);
+        }
         
         // Add assistant message
         const assistantMessage: ChatMessage = {

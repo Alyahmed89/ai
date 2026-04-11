@@ -559,7 +559,55 @@ export default function HierarchicalNav({
         </div>
       )}
 
-      {/* Flows Section (shown when project is selected) */}
+      {/* Flows Section at Root Level (shown when no project is selected) */}
+      {!selectedProjectId && !selectedFlowId && (
+        <div className="p-4 border-b border-gray-800 flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center">
+              <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-300">Flows</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              {onCreateFlow && (
+                <button
+                  onClick={onCreateFlow}
+                  className="text-xs text-gray-400 hover:text-gray-300 flex items-center"
+                  title="Create New Flow"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              )}
+              {loading.flows && (
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500"></div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
+            {flows.map(flow => (
+              <div key={flow.id} className="group flex items-center">
+                <button
+                  onClick={() => handleFlowSelect(flow.id)}
+                  className={`w-full text-left px-3 py-2 rounded text-sm flex items-center justify-between ${
+                    selectedFlowId === flow.id 
+                      ? 'bg-gray-900/30 text-gray-300' 
+                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center min-w-0 flex-1">
+                    <span className="truncate">{flow.name}</span>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Project-Specific Flows Section (shown when project is selected) */}
       {selectedProjectId && !selectedFlowId && (
         <div className="p-4 border-b border-gray-800 flex-1">
           <div className="flex items-center justify-between mb-2">
