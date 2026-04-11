@@ -111,7 +111,7 @@ export default function ChatPage(props: any) {
     setIsRunning(true);
     
     try {
-      const endpoint = selectedFlowRunId ? '/resume' : '/start';
+      const endpoint = selectedFlowRunId ? '/api/proxy/resume' : '/api/proxy/start';
 
       const body = selectedFlowRunId
         ? {
