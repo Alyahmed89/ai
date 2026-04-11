@@ -1444,7 +1444,7 @@ export default function ChatPage(props: any) {
           console.log('DEBUG - Flow steps details:', {
             hasFlowSteps: !!conversation.flow_steps,
             flowStepsCount: conversation.flow_steps?.length || 0,
-            flowSteps: conversation.flow_steps?.map(step => ({
+            flowSteps: conversation.flow_steps?.map((step: any) => ({
               title: step.title,
               has_response: !!(step.response && step.response.trim()),
               response_length: step.response?.length || 0
@@ -1523,7 +1523,7 @@ export default function ChatPage(props: any) {
               flow_completed: conversation.flow_completed,
               flow_steps_count: conversation.flow_steps?.length || 0,
               steps_with_responses: conversation.flow_steps?.filter(step => step.response && step.response.trim() !== '').length || 0,
-              step_responses: conversation.flow_steps?.map(step => ({
+              step_responses: conversation.flow_steps?.map((step: any) => ({
                 title: step.title,
                 has_response: !!(step.response && step.response.trim()),
                 response_length: step.response?.length || 0
