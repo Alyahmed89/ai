@@ -65,9 +65,9 @@ export type ConversationData = {
 export interface FlowRunProps {
   data: ConversationData | null;
   chatMessages?: ChatMessage[];
-  conversationId?: string;
-  flowRunId?: string;
+  conversationId?: string | null;
+  flowRunId?: string | null;
   onSendMessage?: (prompt: string) => void;
   isRunning?: boolean;
-  selectedFlowId?: string;
+  selectedFlowId?: string | null;
 }

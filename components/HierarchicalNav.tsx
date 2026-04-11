@@ -27,6 +27,11 @@ interface HierarchicalNavProps {
   onCreateFlow?: () => void;
   onCreateStep?: () => void;
   onEditFlow?: (flowId: string) => void;
+  flowRuns?: FlowRun[];
+  flowDefinitions?: FlowDefinition[];
+  selectedFlowRunId?: string | null;
+  onFlowRunSelect?: (flowRunId: string) => Promise<void> | void;
+  onFlowSelect?: (flowId: string) => void;
 }
 
 export default function HierarchicalNav({
@@ -37,18 +42,23 @@ export default function HierarchicalNav({
   onCreateProject,
   onCreateFlow,
   onCreateStep,
-  onEditFlow
+  onEditFlow,
+  flowRuns: externalFlowRuns,
+  flowDefinitions: externalFlowDefinitions,
+  selectedFlowRunId: externalSelectedFlowRunId,
+  onFlowRunSelect: externalOnFlowRunSelect,
+  onFlowSelect: externalOnFlowSelect
 }: HierarchicalNavProps) {
   console.log('HierarchicalNav props:', { onEditFlow, onSelectFlow, onCreateFlow });
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [flows, setFlows] = useState<FlowDefinition[]>([]);
-  const [flowRuns, setFlowRuns] = useState<FlowRun[]>([]);
+  const [flows, setFlows] = useState<FlowDefinition[]>(externalFlowDefinitions || []);
+  const [flowRuns, setFlowRuns] = useState<FlowRun[]>(externalFlowRuns || []);
   const [flowSteps, setFlowSteps] = useState<FlowStep[]>([]);
   
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
-  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(null);
+  const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(externalSelectedFlowRunId || null);
   
   const [loading, setLoading] = useState({
     projects: false,
@@ -60,6 +70,10 @@ export default function HierarchicalNav({
   const pathname = usePathname();
 
   const fetchFlows = useCallback(async () => {
+    // Only fetch if external data isn't provided
+    if (externalFlowDefinitions !== undefined) {
+      return;
+    }
     setLoading(prev => ({ ...prev, flows: true }));
     try {
       const response = await fetch('/api/proxy/api/flow-definitions');
@@ -72,7 +86,7 @@ export default function HierarchicalNav({
     } finally {
       setLoading(prev => ({ ...prev, flows: false }));
     }
-  }, [setFlows, setLoading]);
+  }, [setFlows, setLoading, externalFlowDefinitions]);
 
   // Handle flow run selection from URL (when page refreshes)
   const handleFlowRunFromUrl = useCallback(async (flowRunId: string) => {
@@ -210,6 +224,10 @@ export default function HierarchicalNav({
 
 
   const fetchFlowRuns = async () => {
+    // Only fetch if external data isn't provided
+    if (externalFlowRuns !== undefined) {
+      return;
+    }
     setLoading(prev => ({ ...prev, flowRuns: true }));
     try {
       const response = await fetch('/api/proxy/api/flow-runs');
@@ -275,7 +293,13 @@ export default function HierarchicalNav({
     setSelectedFlowId(flowId);
     setSelectedFlowRunId(null);
     setActiveSection('steps'); // Reset to steps when selecting a new flow
-    onSelectFlow?.(flowId);
+    
+    // Use external handler if provided
+    if (flowId && externalOnFlowSelect) {
+      externalOnFlowSelect(flowId);
+    } else {
+      onSelectFlow?.(flowId);
+    }
     
     // Navigate to chat view with flow
     if (flowId) {
@@ -286,9 +310,15 @@ export default function HierarchicalNav({
 
 
 
-  const handleFlowRunSelect = (flowRunId: string | null) => {
+  const handleFlowRunSelect = async (flowRunId: string | null) => {
     setSelectedFlowRunId(flowRunId);
-    onSelectFlowRun?.(flowRunId);
+    
+    // Use external handler if provided
+    if (flowRunId && externalOnFlowRunSelect) {
+      await externalOnFlowRunSelect(flowRunId);
+    } else {
+      onSelectFlowRun?.(flowRunId);
+    }
     
     // Navigate to chat view with flow run
     if (flowRunId) {

@@ -318,7 +318,7 @@ export default function ChatPage(props: any) {
       {showCreateFlowModal && (
         <SimpleFlowCreator
           onClose={() => setShowCreateFlowModal(false)}
-          onSuccess={() => {
+          onFlowCreated={() => {
             setShowCreateFlowModal(false);
             // Refresh flow definitions
             fetch('/api/proxy/api/flows').then(res => res.json()).then(data => {
@@ -335,7 +335,7 @@ export default function ChatPage(props: any) {
             setShowEditFlowModal(false);
             setEditingFlowId(null);
           }}
-          onSuccess={() => {
+          onFlowUpdated={() => {
             setShowEditFlowModal(false);
             setEditingFlowId(null);
             // Refresh flow definitions
@@ -349,7 +349,7 @@ export default function ChatPage(props: any) {
       {showCreateProjectModal && (
         <CreateProjectModal
           onClose={() => setShowCreateProjectModal(false)}
-          onSuccess={() => {
+          onProjectCreated={() => {
             setShowCreateProjectModal(false);
             // Refresh flow definitions
             fetch('/api/proxy/api/flows').then(res => res.json()).then(data => {
