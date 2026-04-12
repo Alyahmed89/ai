@@ -53,6 +53,7 @@ export default function ChatPage(props: any) {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [flowVariables, setFlowVariables] = useState<Record<string, string[]>>({});
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [resumeStep, setResumeStep] = useState<string | null>(null);
 
   // Fetch flow definitions
   useEffect(() => {
@@ -61,10 +62,16 @@ export default function ChatPage(props: any) {
       const data = await res.json();
 
       setFlowDefinitions(Array.isArray(data) ? data : []);
+      
+      // Find resume_step for selected flow
+      if (selectedFlowId && Array.isArray(data)) {
+        const selectedFlow = data.find((flow: any) => flow.id === selectedFlowId);
+        setResumeStep(selectedFlow?.resume_step || null);
+      }
     };
 
     loadFlows();
-  }, []);
+  }, [selectedFlowId]);
 
   // Fetch flow variables when flow is selected
   useEffect(() => {
@@ -72,6 +79,7 @@ export default function ChatPage(props: any) {
       if (!selectedFlowId) {
         setFlowVariables({});
         setVariableValues({});
+        setResumeStep(null);
         return;
       }
 
@@ -98,15 +106,16 @@ export default function ChatPage(props: any) {
           
           setFlowVariables(formattedVariables);
           
-          // Initialize empty values for all variables
-          const allVars: string[] = [];
-          Object.values(formattedVariables).forEach((stepVars: string[]) => {
-            if (Array.isArray(stepVars)) {
-              allVars.push(...stepVars);
-            }
-          });
+          // Initialize empty values only for resume step variables (or first step if no resume step)
+          let targetStepId = resumeStep;
+          if (!targetStepId && Object.keys(formattedVariables).length > 0) {
+            // If no resume_step, use first step
+            targetStepId = Object.keys(formattedVariables)[0];
+          }
+          
+          const stepVars = targetStepId ? formattedVariables[targetStepId] || [] : [];
           const initialValues: Record<string, string> = {};
-          allVars.forEach((varName: string) => {
+          stepVars.forEach((varName: string) => {
             initialValues[varName] = '';
           });
           setVariableValues(initialValues);
@@ -122,7 +131,7 @@ export default function ChatPage(props: any) {
     };
 
     fetchFlowVariables();
-  }, [selectedFlowId]);
+  }, [selectedFlowId, resumeStep]);
 
   // Fetch flow runs
   useEffect(() => {
@@ -173,24 +182,16 @@ export default function ChatPage(props: any) {
     try {
       const endpoint = selectedFlowRunId ? '/api/proxy/resume' : '/api/proxy/start';
 
-      // Filter out empty variable values
-      const filteredVariables: Record<string, string> = {};
-      Object.entries(variableValues).forEach(([key, value]) => {
-        if (value && value.trim() !== '') {
-          filteredVariables[key] = value.trim();
-        }
-      });
-
       const body = selectedFlowRunId
         ? {
             conversation_id: conversationId,
             user_input: content,
-            ...(Object.keys(filteredVariables).length > 0 && { variables: filteredVariables })
+            ...(Object.keys(variableValues).length > 0 && { variables: variableValues })
           }
         : {
             flow_id: selectedFlowId,
             input_prompt: content,
-            ...(Object.keys(filteredVariables).length > 0 && { variables: filteredVariables })
+            ...(Object.keys(variableValues).length > 0 && { variables: variableValues })
           };
 
       const res = await fetch(endpoint, {
@@ -203,17 +204,6 @@ export default function ChatPage(props: any) {
 
       setConversationId(data?.conversation_id || data?.data?.conversation_id || data?.id || null);
       setSelectedFlowRunId(data?.flow_run?.id || null);
-      
-      // Clear variable values after successful send
-      setVariableValues(prev => {
-        console.log('Clearing variable values, previous keys:', Object.keys(prev), 'prev:', prev);
-        const cleared: Record<string, string> = {};
-        Object.keys(prev).forEach(key => {
-          cleared[key] = '';
-        });
-        console.log('Cleared variable values:', cleared);
-        return cleared;
-      });
       
       // Refresh flow runs list to show the new run
       const runsResponse = await fetch('/api/proxy/api/flow-runs');
@@ -354,22 +344,21 @@ export default function ChatPage(props: any) {
             }} className="space-y-3">
               {/* Variable inputs */}
               {selectedFlowId && (() => {
-                // Get all unique variable names across all steps
-                const allVars: string[] = [];
-                Object.values(flowVariables).forEach((stepVars: string[]) => {
-                  if (Array.isArray(stepVars)) {
-                    allVars.push(...stepVars);
-                  }
-                });
-                const uniqueVars = Array.from(new Set(allVars));
+                // Get variables only for resume step (or first step if no resume step)
+                let targetStepId = resumeStep;
+                if (!targetStepId && Object.keys(flowVariables).length > 0) {
+                  targetStepId = Object.keys(flowVariables)[0];
+                }
                 
-                if (uniqueVars.length === 0) return null;
+                const stepVars = targetStepId ? flowVariables[targetStepId] || [] : [];
+                
+                if (stepVars.length === 0) return null;
                 
                 return (
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-gray-300">Flow Variables</div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {uniqueVars.map((varName) => (
+                      {stepVars.map((varName) => (
                         <div key={varName} className="flex flex-col">
                           <label className="text-xs text-gray-400 mb-1">{varName}</label>
                           <input
