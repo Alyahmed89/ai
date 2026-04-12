@@ -415,7 +415,7 @@ async function executeQuery(db: D1Database, queryParams: string, context?: {
   step_id?: string;
   step_run_id?: string;
   table?: string;
-}): Promise<string> {
+}, variableName?: string): Promise<string> {
   try {
     console.log(`[VariableResolver:executeQuery] Parsing query params: ${queryParams}`);
     // Parse query params: table=api_calls/column=response/json_path=data.stdout/keys=stdout,stderr
@@ -447,15 +447,28 @@ async function executeQuery(db: D1Database, queryParams: string, context?: {
     let sql = `SELECT ${column} FROM ${table}`;
     const bindings: any[] = [];
     
+    // Start building WHERE conditions
+    const whereConditions: string[] = [];
+    
     if (id) {
       // Simple ID filter
-      sql += ` WHERE id = ?`;
+      whereConditions.push(`id = ?`);
       bindings.push(id);
     } else if (where) {
       // Custom WHERE clause (user must ensure it's safe)
-      sql += ` WHERE ${where}`;
+      whereConditions.push(`(${where})`);
       // Note: For security, we should validate/parse the WHERE clause
       // For now, we'll trust it since this is an internal tool
+    }
+    
+    // For variables table, automatically filter by key if variableName is provided
+    if (table === 'variables' && variableName && !where?.includes('key =')) {
+      whereConditions.push(`key = ?`);
+      bindings.push(variableName);
+    }
+    
+    if (whereConditions.length > 0) {
+      sql += ` WHERE ${whereConditions.join(' AND ')}`;
     }
     
     sql += ` ORDER BY created_at DESC LIMIT 1`;
@@ -680,7 +693,7 @@ export async function resolveTextVariables(
     
     if (queryParams) {
       // Execute query to get value
-      value = await executeQuery(db, queryParams, context);
+      value = await executeQuery(db, queryParams, context, variableName);
       
       // ALWAYS save variable (create or update) when query is used
       await saveVariableValue(db, variableName, value || '', context);
