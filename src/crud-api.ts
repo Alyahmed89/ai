@@ -2837,26 +2837,31 @@ crudApi.get('/flows/:flow_id/variables', async (c) => {
       return c.json(apiResponse(false, undefined, 'Flow not found', 404));
     }
 
-    // Get all steps for this flow
-    const stepsResult = await db.prepare('SELECT id, step_key, title, instructions, expected_response FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
+    // Get all steps for this flow - just get all columns and extract text from any field
+    const stepsResult = await db.prepare('SELECT * FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
     const steps = stepsResult.results as any[];
     
     // Import the variable extractor
     const { extractVariablesFromTexts, extractVariablesWithTypes } = await import('./utils/variableTagExtractor');
     
-    // Extract text from all relevant fields
+    // Extract text from ALL text fields in each step
     const allTexts: string[] = [];
     const stepVariables: Record<string, any> = {};
     
     for (const step of steps) {
       const stepTexts: string[] = [];
-      if (step.instructions) stepTexts.push(step.instructions);
-      if (step.expected_response) stepTexts.push(step.expected_response);
+      
+      // Extract text from ALL string fields in the step
+      for (const [key, value] of Object.entries(step)) {
+        if (typeof value === 'string' && value.trim()) {
+          stepTexts.push(value);
+        }
+      }
       
       const stepVars = extractVariablesWithTypes(stepTexts.join(' '));
-      stepVariables[step.step_key] = {
-        step_id: step.step_key,
-        step_title: step.title,
+      stepVariables[step.step_key || step.id] = {
+        step_id: step.step_key || step.id,
+        step_title: step.title || `Step ${step.order_index || step.step_number}`,
         variables: stepVars
       };
       
@@ -2876,10 +2881,8 @@ crudApi.get('/flows/:flow_id/variables', async (c) => {
       variables_with_types: variablesWithTypes,
       step_variables: stepVariables,
       steps: steps.map(s => ({
-        step_id: s.step_key,
-        title: s.title,
-        has_instructions: !!s.instructions,
-        has_expected_response: !!s.expected_response
+        step_id: s.step_key || s.id,
+        title: s.title || `Step ${s.order_index || s.step_number}`
       }))
     }));
     
