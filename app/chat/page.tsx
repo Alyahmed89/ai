@@ -51,6 +51,8 @@ export default function ChatPage(props: any) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [flowVariables, setFlowVariables] = useState<Record<string, string[]>>({});
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   // Fetch flow definitions
   useEffect(() => {
@@ -63,6 +65,46 @@ export default function ChatPage(props: any) {
 
     loadFlows();
   }, []);
+
+  // Fetch flow variables when flow is selected
+  useEffect(() => {
+    const fetchFlowVariables = async () => {
+      if (!selectedFlowId) {
+        setFlowVariables({});
+        setVariableValues({});
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/proxy/api/flows/${selectedFlowId}/variables`);
+        if (res.ok) {
+          const data = await res.json();
+          setFlowVariables(data);
+          // Initialize empty values for all variables
+          const allVars: string[] = [];
+          Object.values(data).forEach((stepVars: any) => {
+            if (Array.isArray(stepVars)) {
+              allVars.push(...stepVars);
+            }
+          });
+          const initialValues: Record<string, string> = {};
+          allVars.forEach((varName: string) => {
+            initialValues[varName] = '';
+          });
+          setVariableValues(initialValues);
+        } else {
+          setFlowVariables({});
+          setVariableValues({});
+        }
+      } catch (error) {
+        console.error('Error fetching flow variables:', error);
+        setFlowVariables({});
+        setVariableValues({});
+      }
+    };
+
+    fetchFlowVariables();
+  }, [selectedFlowId]);
 
   // Fetch flow runs
   useEffect(() => {
@@ -113,14 +155,24 @@ export default function ChatPage(props: any) {
     try {
       const endpoint = selectedFlowRunId ? '/api/proxy/resume' : '/api/proxy/start';
 
+      // Filter out empty variable values
+      const filteredVariables: Record<string, string> = {};
+      Object.entries(variableValues).forEach(([key, value]) => {
+        if (value && value.trim() !== '') {
+          filteredVariables[key] = value.trim();
+        }
+      });
+
       const body = selectedFlowRunId
         ? {
             conversation_id: conversationId,
-            user_input: content
+            user_input: content,
+            ...(Object.keys(filteredVariables).length > 0 && { variables: filteredVariables })
           }
         : {
             flow_id: selectedFlowId,
-            input_prompt: content
+            input_prompt: content,
+            ...(Object.keys(filteredVariables).length > 0 && { variables: filteredVariables })
           };
 
       const res = await fetch(endpoint, {
@@ -133,6 +185,15 @@ export default function ChatPage(props: any) {
 
       setConversationId(data?.conversation_id || data?.data?.conversation_id || data?.id || null);
       setSelectedFlowRunId(data?.flow_run?.id || null);
+      
+      // Clear variable values after successful send
+      setVariableValues(prev => {
+        const cleared: Record<string, string> = {};
+        Object.keys(prev).forEach(key => {
+          cleared[key] = '';
+        });
+        return cleared;
+      });
       
       // Refresh flow runs list to show the new run
       const runsResponse = await fetch('/api/proxy/api/flow-runs');
@@ -271,13 +332,70 @@ export default function ChatPage(props: any) {
               handleSendMessage(inputPrompt); 
               return false;
             }} className="space-y-3">
+              {/* Variable inputs */}
+              {selectedFlowId && (() => {
+                // Get all unique variable names across all steps
+                const allVars: string[] = [];
+                Object.values(flowVariables).forEach((stepVars: any) => {
+                  if (Array.isArray(stepVars)) {
+                    allVars.push(...stepVars);
+                  }
+                });
+                const uniqueVars = Array.from(new Set(allVars));
+                
+                if (uniqueVars.length === 0) return null;
+                
+                return (
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-gray-300">Flow Variables</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {uniqueVars.map((varName) => (
+                        <div key={varName} className="flex flex-col">
+                          <label className="text-xs text-gray-400 mb-1">{varName}</label>
+                          <input
+                            type="text"
+                            value={variableValues[varName] || ''}
+                            onChange={(e) => setVariableValues(prev => ({
+                              ...prev,
+                              [varName]: e.target.value
+                            }))}
+                            placeholder={`Enter value for ${varName}`}
+                            className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              
               <div className="relative">
                 <IntelligentTextarea
                   value={inputPrompt}
                   onChange={setInputPrompt}
                   placeholder={selectedFlowId ? "Type / for commands or # for variables..." : "Select a flow first to send messages"}
                   className="w-full bg-gray-800 text-gray-200 rounded-lg px-4 py-3 resize-none min-h-[60px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
-                  variables={variables}
+                  variables={(() => {
+                    // Combine global variables with flow variables
+                    const allVars: string[] = [];
+                    Object.values(flowVariables).forEach((stepVars: any) => {
+                      if (Array.isArray(stepVars)) {
+                        allVars.push(...stepVars);
+                      }
+                    });
+                    const uniqueFlowVars = Array.from(new Set(allVars));
+                    
+                    // Convert flow variables to CommandItem format
+                    const flowVarItems = uniqueFlowVars.map(varName => ({
+                      id: `flow-var-${varName}`,
+                      label: varName,
+                      description: 'Flow variable',
+                      value: `{{${varName}}}`,
+                      type: 'variable' as const
+                    }));
+                    
+                    return [...variables, ...flowVarItems];
+                  })()}
                   commands={[]}
                 />
                 <button
