@@ -206,10 +206,12 @@ export default function ChatPage(props: any) {
       
       // Clear variable values after successful send
       setVariableValues(prev => {
+        console.log('Clearing variable values, previous keys:', Object.keys(prev), 'prev:', prev);
         const cleared: Record<string, string> = {};
         Object.keys(prev).forEach(key => {
           cleared[key] = '';
         });
+        console.log('Cleared variable values:', cleared);
         return cleared;
       });
       
