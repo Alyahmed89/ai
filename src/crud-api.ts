@@ -2656,7 +2656,13 @@ crudApi.get('/flow-definitions/:id', async (c) => {
       return c.json({ error: 'Flow definition not found' }, 404);
     }
 
-    return c.json(result);
+    // Add resume_step_id field (alias for resume_step)
+    const response = {
+      ...result,
+      resume_step_id: result.resume_step
+    };
+
+    return c.json(response);
   } catch (error) {
     console.error('Error fetching flow definition:', error);
     return c.json({ error: 'Internal server error' }, 500);
@@ -3731,39 +3737,44 @@ crudApi.get('/variables', async (c) => {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
-    let sql = 'SELECT * FROM variables WHERE 1=1';
+    let sql = `
+      SELECT v.*, fs.step_key 
+      FROM variables v
+      LEFT JOIN flow_steps fs ON v.step_id = fs.id AND v.flow_id = fs.flow_id
+      WHERE 1=1
+    `;
     const bindings: any[] = [];
 
     if (flow_id) {
-      sql += ' AND flow_id = ?';
+      sql += ' AND v.flow_id = ?';
       bindings.push(flow_id);
     }
     if (flow_run_id) {
-      sql += ' AND flow_run_id = ?';
+      sql += ' AND v.flow_run_id = ?';
       bindings.push(flow_run_id);
     }
     if (step_id) {
-      sql += ' AND step_id = ?';
+      sql += ' AND v.step_id = ?';
       bindings.push(step_id);
     }
     if (step_run_id) {
-      sql += ' AND step_run_id = ?';
+      sql += ' AND v.step_run_id = ?';
       bindings.push(step_run_id);
     }
     if (key) {
-      sql += ' AND key = ?';
+      sql += ' AND v.key = ?';
       bindings.push(key);
     }
     if (source) {
-      sql += ' AND source = ?';
+      sql += ' AND v.source = ?';
       bindings.push(source);
     }
     if (variable_type) {
-      sql += ' AND variable_type = ?';
+      sql += ' AND v.variable_type = ?';
       bindings.push(variable_type);
     }
 
-    sql += ' ORDER BY created_at DESC';
+    sql += ' ORDER BY v.created_at DESC';
 
     const result = await db.prepare(sql).bind(...bindings).all();
     
@@ -3820,51 +3831,56 @@ crudApi.get('/variables/query', async (c) => {
       return c.json({ error: 'Database not configured' }, 500);
     }
 
-    let sql = 'SELECT * FROM variables WHERE 1=1';
+    let sql = `
+      SELECT v.*, fs.step_key 
+      FROM variables v
+      LEFT JOIN flow_steps fs ON v.step_id = fs.id AND v.flow_id = fs.flow_id
+      WHERE 1=1
+    `;
     const bindings: any[] = [];
 
     if (flow_id) {
-      sql += ' AND flow_id = ?';
+      sql += ' AND v.flow_id = ?';
       bindings.push(flow_id);
     }
     if (flow_run_id) {
-      sql += ' AND flow_run_id = ?';
+      sql += ' AND v.flow_run_id = ?';
       bindings.push(flow_run_id);
     }
     if (step_id) {
-      sql += ' AND step_id = ?';
+      sql += ' AND v.step_id = ?';
       bindings.push(step_id);
     }
     if (step_run_id) {
-      sql += ' AND step_run_id = ?';
+      sql += ' AND v.step_run_id = ?';
       bindings.push(step_run_id);
     }
     if (key) {
-      sql += ' AND key = ?';
+      sql += ' AND v.key = ?';
       bindings.push(key);
     }
     if (source) {
-      sql += ' AND source = ?';
+      sql += ' AND v.source = ?';
       bindings.push(source);
     }
     if (variable_type) {
-      sql += ' AND variable_type = ?';
+      sql += ' AND v.variable_type = ?';
       bindings.push(variable_type);
     }
     if (key_pattern) {
-      sql += ' AND key LIKE ?';
+      sql += ' AND v.key LIKE ?';
       bindings.push(`%${key_pattern}%`);
     }
     if (created_after) {
-      sql += ' AND created_at >= ?';
+      sql += ' AND v.created_at >= ?';
       bindings.push(parseInt(created_after));
     }
     if (created_before) {
-      sql += ' AND created_at <= ?';
+      sql += ' AND v.created_at <= ?';
       bindings.push(parseInt(created_before));
     }
 
-    sql += ' ORDER BY created_at DESC';
+    sql += ' ORDER BY v.created_at DESC';
     sql += ' LIMIT ? OFFSET ?';
     bindings.push(parseInt(limit), parseInt(offset));
 
