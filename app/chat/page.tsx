@@ -78,11 +78,25 @@ export default function ChatPage(props: any) {
       try {
         const res = await fetch(`/api/proxy/api/flows/${selectedFlowId}/variables`);
         if (res.ok) {
-          const data = await res.json();
-          setFlowVariables(data);
+          const response = await res.json();
+          // Extract step_variables from response
+          const stepVariables = response?.data?.step_variables || {};
+          
+          // Convert to expected format: { step_id: [var1, var2, ...] }
+          const formattedVariables: Record<string, string[]> = {};
+          Object.entries(stepVariables).forEach(([stepId, stepData]: [string, any]) => {
+            if (stepData?.variables && Array.isArray(stepData.variables)) {
+              formattedVariables[stepId] = stepData.variables;
+            } else {
+              formattedVariables[stepId] = [];
+            }
+          });
+          
+          setFlowVariables(formattedVariables);
+          
           // Initialize empty values for all variables
           const allVars: string[] = [];
-          Object.values(data).forEach((stepVars: any) => {
+          Object.values(formattedVariables).forEach((stepVars: string[]) => {
             if (Array.isArray(stepVars)) {
               allVars.push(...stepVars);
             }
@@ -336,7 +350,7 @@ export default function ChatPage(props: any) {
               {selectedFlowId && (() => {
                 // Get all unique variable names across all steps
                 const allVars: string[] = [];
-                Object.values(flowVariables).forEach((stepVars: any) => {
+                Object.values(flowVariables).forEach((stepVars: string[]) => {
                   if (Array.isArray(stepVars)) {
                     allVars.push(...stepVars);
                   }
@@ -378,7 +392,7 @@ export default function ChatPage(props: any) {
                   variables={(() => {
                     // Combine global variables with flow variables
                     const allVars: string[] = [];
-                    Object.values(flowVariables).forEach((stepVars: any) => {
+                    Object.values(flowVariables).forEach((stepVars: string[]) => {
                       if (Array.isArray(stepVars)) {
                         allVars.push(...stepVars);
                       }
