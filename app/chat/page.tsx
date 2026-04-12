@@ -167,15 +167,6 @@ export default function ChatPage(props: any) {
   const handleSendMessage = async (content: string) => {
     if (!selectedFlowId) return;
     
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      type: 'user',
-      content: content,
-      timestamp: new Date()
-    };
-    
-    // Add user message to chat
-    setChatMessages(prev => [...prev, userMessage]);
     setInputPrompt('');
     setIsRunning(true);
     
@@ -409,7 +400,7 @@ export default function ChatPage(props: any) {
                 />
                 <button
                   type="submit"
-                  disabled={!inputPrompt.trim() || !selectedFlowId || isRunning}
+                  disabled={!selectedFlowId || isRunning}
                   className="absolute right-2 bottom-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors"
                 >
                   {isRunning ? 'Sending...' : 'Send'}
