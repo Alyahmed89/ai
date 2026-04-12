@@ -2838,7 +2838,7 @@ crudApi.get('/flows/:flow_id/variables', async (c) => {
     }
 
     // Get all steps for this flow
-    const stepsResult = await db.prepare('SELECT id, step_id, title, description, instructions, expected_response FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
+    const stepsResult = await db.prepare('SELECT id, step_key, title, description, instructions, expected_response FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
     const steps = stepsResult.results as any[];
     
     // Import the variable extractor
@@ -2855,8 +2855,8 @@ crudApi.get('/flows/:flow_id/variables', async (c) => {
       if (step.expected_response) stepTexts.push(step.expected_response);
       
       const stepVars = extractVariablesWithTypes(stepTexts.join(' '));
-      stepVariables[step.step_id] = {
-        step_id: step.step_id,
+      stepVariables[step.step_key] = {
+        step_id: step.step_key,
         step_title: step.title,
         variables: stepVars
       };
@@ -2877,7 +2877,7 @@ crudApi.get('/flows/:flow_id/variables', async (c) => {
       variables_with_types: variablesWithTypes,
       step_variables: stepVariables,
       steps: steps.map(s => ({
-        step_id: s.step_id,
+        step_id: s.step_key,
         title: s.title,
         has_description: !!s.description,
         has_instructions: !!s.instructions,
