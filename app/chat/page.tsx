@@ -86,7 +86,11 @@ export default function ChatPage(props: any) {
           const formattedVariables: Record<string, string[]> = {};
           Object.entries(stepVariables).forEach(([stepId, stepData]: [string, any]) => {
             if (stepData?.variables && Array.isArray(stepData.variables)) {
-              formattedVariables[stepId] = stepData.variables;
+              // Extract variable names from objects
+              const varNames = stepData.variables
+                .map((v: any) => v?.name || v)
+                .filter((v: any) => typeof v === 'string');
+              formattedVariables[stepId] = varNames;
             } else {
               formattedVariables[stepId] = [];
             }
