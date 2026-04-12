@@ -409,7 +409,13 @@ function findValueInJson(jsonValue: any, key: string): any {
   return undefined;
 }
 
-async function executeQuery(db: D1Database, queryParams: string): Promise<string> {
+async function executeQuery(db: D1Database, queryParams: string, context?: {
+  flow_id?: string;
+  flow_run_id?: string;
+  step_id?: string;
+  step_run_id?: string;
+  table?: string;
+}): Promise<string> {
   try {
     console.log(`[VariableResolver:executeQuery] Parsing query params: ${queryParams}`);
     // Parse query params: table=api_calls/column=response/json_path=data.stdout/keys=stdout,stderr
@@ -422,7 +428,13 @@ async function executeQuery(db: D1Database, queryParams: string): Promise<string
     const jsonPath = params.get('json_path');
     const keysParam = params.get('keys'); // New: comma-separated keys
     const id = params.get('id'); // New: filter by ID
-    const where = params.get('where'); // New: custom WHERE clause
+    let where = params.get('where'); // New: custom WHERE clause
+    
+    // Replace 'current' placeholder with actual flow_run_id from context
+    if (where && context?.flow_run_id) {
+      where = where.replace(/flow_run_id\s*=\s*current/i, `flow_run_id = '${context.flow_run_id}'`);
+      console.log(`[VariableResolver:executeQuery] Updated where clause: ${where}`);
+    }
     
     console.log(`[VariableResolver:executeQuery] Parsed: table=${table}, column=${column}, jsonPath=${jsonPath}, keys=${keysParam}, id=${id}, where=${where}`);
     
@@ -668,7 +680,7 @@ export async function resolveTextVariables(
     
     if (queryParams) {
       // Execute query to get value
-      value = await executeQuery(db, queryParams);
+      value = await executeQuery(db, queryParams, context);
       
       // ALWAYS save variable (create or update) when query is used
       await saveVariableValue(db, variableName, value || '', context);
