@@ -2821,6 +2821,76 @@ crudApi.delete('/flow-definitions/:id', async (c) => {
   }
 });
 
+// Get all variables used in a flow (extracted from step descriptions)
+crudApi.get('/flows/:flow_id/variables', async (c) => {
+  try {
+    const db = c.env.FLOW_RUNS_DB;
+    if (!db) {
+      return c.json(apiResponse(false, undefined, 'Database not configured', 500));
+    }
+
+    const flowId = c.req.param('flow_id');
+    
+    // First verify the flow exists
+    const flowResult = await db.prepare('SELECT id, name FROM flow_definitions WHERE id = ?').bind(flowId).first();
+    if (!flowResult) {
+      return c.json(apiResponse(false, undefined, 'Flow not found', 404));
+    }
+
+    // Get all steps for this flow
+    const stepsResult = await db.prepare('SELECT id, step_id, title, description, instructions, expected_response FROM flow_steps WHERE flow_id = ? ORDER BY order_index').bind(flowId).all();
+    const steps = stepsResult.results as any[];
+    
+    // Import the variable extractor
+    const { extractVariablesFromTexts, extractVariablesWithTypes } = await import('./utils/variableTagExtractor');
+    
+    // Extract text from all relevant fields
+    const allTexts: string[] = [];
+    const stepVariables: Record<string, any> = {};
+    
+    for (const step of steps) {
+      const stepTexts: string[] = [];
+      if (step.description) stepTexts.push(step.description);
+      if (step.instructions) stepTexts.push(step.instructions);
+      if (step.expected_response) stepTexts.push(step.expected_response);
+      
+      const stepVars = extractVariablesWithTypes(stepTexts.join(' '));
+      stepVariables[step.step_id] = {
+        step_id: step.step_id,
+        step_title: step.title,
+        variables: stepVars
+      };
+      
+      allTexts.push(...stepTexts);
+    }
+    
+    // Extract all unique variables from the entire flow
+    const allVariables = extractVariablesFromTexts(allTexts);
+    const variablesWithTypes = extractVariablesWithTypes(allTexts.join(' '));
+    
+    return c.json(apiResponse(true, {
+      flow_id: flowId,
+      flow_name: flowResult.name,
+      total_steps: steps.length,
+      total_variables: allVariables.length,
+      all_variables: allVariables,
+      variables_with_types: variablesWithTypes,
+      step_variables: stepVariables,
+      steps: steps.map(s => ({
+        step_id: s.step_id,
+        title: s.title,
+        has_description: !!s.description,
+        has_instructions: !!s.instructions,
+        has_expected_response: !!s.expected_response
+      }))
+    }));
+    
+  } catch (error) {
+    console.error('Error extracting flow variables:', error);
+    return c.json(apiResponse(false, undefined, handleDbError(error).error, 500));
+  }
+});
+
 // Execute a step with optional user prompt (for chat mode)
 crudApi.post('/execute-step', async (c) => {
   try {

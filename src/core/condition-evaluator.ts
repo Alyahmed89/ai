@@ -84,14 +84,14 @@ export class ConditionEvaluator {
       return entry?.value
     }
 
-    // inputs.*
-    if (parts[0] === 'inputs') {
-      const input = context.inputs[parts[1]];
+    // variables.*
+    if (parts[0] === 'variables') {
+      const variable = context.variables[parts[1]];
       // Handle both raw values and ContextValue objects
-      if (input && typeof input === 'object' && 'value' in input) {
-        return input.value;
+      if (variable && typeof variable === 'object' && 'value' in variable) {
+        return variable.value;
       }
-      return input;
+      return variable;
     }
 
     // state.*

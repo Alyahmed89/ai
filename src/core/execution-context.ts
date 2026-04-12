@@ -43,7 +43,7 @@ export type ExecutionContext = {
 
   command_results: CommandResult[]
 
-  inputs: Record<string, any>
+  variables: Record<string, any>
   outputs: Record<string, any>
 
   step_count: number
@@ -73,7 +73,7 @@ export function createExecutionContext(flow_id: string, step_id: string, flow_ru
 
     command_results: [],
 
-    inputs: {},
+    variables: {},
     outputs: {},
 
     step_count: 0,

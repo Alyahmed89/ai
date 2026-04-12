@@ -1178,7 +1178,7 @@ export class ConversationOrchestratorDO_2026A {
       
       const body = await request.json() as { 
         flow_id: string; 
-        inputs?: Record<string, any>; 
+        variables?: Record<string, any>; 
         callback_url?: string; 
         deepseek_api_key?: string;
         start_from_step_id?: string;
@@ -1186,9 +1186,9 @@ export class ConversationOrchestratorDO_2026A {
         flow_run_id?: string;
       };
       flow_id = body.flow_id;
-      const { inputs = {}, callback_url, deepseek_api_key, start_from_step_id, user_input, flow_run_id } = body;
+      const { variables = {}, callback_url, deepseek_api_key, start_from_step_id, user_input, flow_run_id } = body;
       
-      console.log(`[DO:${this.state.id}] DEBUG: Request body - flow_id: ${flow_id}, inputs: ${JSON.stringify(inputs)}, callback_url: ${callback_url || 'none'}`);
+      console.log(`[DO:${this.state.id}] DEBUG: Request body - flow_id: ${flow_id}, variables: ${JSON.stringify(variables)}, callback_url: ${callback_url || 'none'}`);
       console.log(`[DO:${this.state.id}] DEBUG: deepseek_api_key in body: ${deepseek_api_key ? deepseek_api_key.substring(0, 8) + '...' : 'MISSING'}`);
       
       // Use passed API key if available, otherwise use env variable
@@ -1376,19 +1376,19 @@ export class ConversationOrchestratorDO_2026A {
             flow_id: flow_id,
             execution_id: `flow-${Date.now()}`,
             step_id: firstStep.step_id,
-            inputs_count: Object.keys(inputs).length,
-            inputs_keys: Object.keys(inputs)
+            variables_count: Object.keys(variables).length,
+            variables_keys: Object.keys(variables)
           });
           
-          // Resolve step instructions with task data and inputs
+          // Resolve step instructions with task data and variables
           try {
             // Load variables from database for this flow
             const dbVariables = await getVariablesForFlow(this.env.FLOW_RUNS_DB, flow_id);
             console.log(`[DO:${this.state.id}] Loaded variables from database:`, Object.keys(dbVariables));
             
-            // Merge database variables with inputs (database variables take precedence)
-            const allInputs = { ...inputs, ...dbVariables };
-            console.log(`[DO:${this.state.id}] All inputs for step resolution:`, Object.keys(allInputs));
+            // Merge provided variables with database variables (database variables take precedence)
+            const allVariables = { ...variables, ...dbVariables };
+            console.log(`[DO:${this.state.id}] All variables for step resolution:`, Object.keys(allVariables));
             
             // Generate step_run_id for unified execution (including input endpoints)
             const { generateStepRunId } = await import('../services/database');
@@ -1404,7 +1404,7 @@ export class ConversationOrchestratorDO_2026A {
                 step_id: firstStep.step_id,
                 step_run_id: stepRunId,
                 previous_step_responses: {}, // First step has no previous responses
-                inputs: allInputs // Pass inputs for [input:name] replacement
+                variables: allVariables // Pass variables for ƐĐᜃvariableƐĐᜃ replacement
               }
             );
             
@@ -1434,7 +1434,7 @@ export class ConversationOrchestratorDO_2026A {
             if (resolvedStep?.instructions) {
               if (initialPrompt.includes('[input:')) {
                 console.log(`[DO:${this.state.id}] DEBUG: Resolved instructions still contains [input: placeholder after injection`);
-                console.log(`[DO:${this.state.id}] DEBUG: Inputs passed:`, Object.keys(inputs));
+                console.log(`[DO:${this.state.id}] DEBUG: Variables passed:`, Object.keys(variables));
               } else {
                 console.log(`[DO:${this.state.id}] DEBUG: [input:message] placeholder was successfully replaced`);
               }
@@ -1524,7 +1524,7 @@ export class ConversationOrchestratorDO_2026A {
         agent: flowDefinition.agent, // Set agent from flow definition (validated above)
         flow_execution_mode: true, // Enable flow execution mode for step-by-step execution
         step_status_sent: false, // Track if SENDING STEP status has been sent for current step
-        // Initialize execution context with provided inputs
+        // Initialize execution context with provided variables
         execution_context: createExecutionContext(flow_id, startStep?.step_id || 'step-1'),
         effective_deepseek_api_key: effectiveDeepSeekApiKey, // Store the API key from request
         system_message: flowDefinition.system_message, // Load system message from flow definition
@@ -1535,20 +1535,33 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] DEBUG: Flow steps count: ${this.conversation.flow_steps?.length || 0}`);
       console.log(`[DO:${this.state.id}] DEBUG: Flow ID: ${this.conversation.flow_id}`);
       
-      // Store provided inputs in execution context
-      if (Object.keys(inputs).length > 0) {
-        for (const [key, value] of Object.entries(inputs)) {
-          this.conversation.execution_context!.inputs[key] = {
+      // Store provided variables in execution context
+      if (Object.keys(variables).length > 0) {
+        for (const [key, value] of Object.entries(variables)) {
+          this.conversation.execution_context!.variables[key] = {
             value,
             metadata: {
               source: 'start_endpoint',
               timestamp: Date.now(),
               step_id: 'initial',
-              input_name: key
+              variable_name: key
             }
           };
+          
+          // Save variable to database
+          if (this.env.FLOW_RUNS_DB) {
+            await this.saveVariable({
+              flow_id: flow_id,
+              flow_run_id: this.conversation.id,
+              step_id: 'initial',
+              key: key,
+              value: value,
+              source: 'start_endpoint',
+              variable_type: 'user_input'
+            });
+          }
         }
-        console.log(`[DO:${this.state.id}] Stored ${Object.keys(inputs).length} inputs from /start endpoint`);
+        console.log(`[DO:${this.state.id}] Stored ${Object.keys(variables).length} variables from /start endpoint`);
       }
 
       // Store callback_url if provided
@@ -4442,12 +4455,14 @@ export class ConversationOrchestratorDO_2026A {
    */
   private async handleResume(request: Request): Promise<Response> {
     try {
-      const body = await request.json() as { input: any, step_id?: string, flow_run_id?: string };
-      const { input, step_id: requestedStepId, flow_run_id } = body;
+      const body = await request.json() as { input?: any, variables?: Record<string, any>, step_id?: string, flow_run_id?: string };
+      const { input, variables = {}, step_id: requestedStepId, flow_run_id } = body;
       
       console.log(`[DO:${this.state.id}] handleResume called with:`, { 
         requestedStepId, 
         flow_run_id, 
+        hasInput: !!input,
+        variablesCount: Object.keys(variables).length,
         hasFlowRunId: !!this.flowRunId,
         hasEnvDB: !!this.env.FLOW_RUNS_DB 
       });
@@ -4617,25 +4632,19 @@ export class ConversationOrchestratorDO_2026A {
         });
       }
       
-      if (input === undefined) {
-        return new Response(JSON.stringify({
-          error: 'Missing input field in request body'
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
       const { name: inputName, step_id: stepId, params } = this.conversation.waiting_for_input;
       
-      console.log(`[DO:${this.state.id}] Resuming execution with input for ${inputName}:`, input);
+      console.log(`[DO:${this.state.id}] Resuming execution for ${inputName} with input:`, input, 'variables:', variables);
 
       // Handle different types of input requests
       if (inputName === 'user_variables') {
-        // Validate input contains all required variables
-        if (!input || typeof input !== 'object') {
+        // Use variables parameter if provided, otherwise use input (for backward compatibility)
+        const variableValues = Object.keys(variables).length > 0 ? variables : (input || {});
+        
+        // Validate variableValues contains all required variables
+        if (!variableValues || typeof variableValues !== 'object') {
           return new Response(JSON.stringify({
-            error: 'Input must be an object with variable values for user_variables',
+            error: 'Variables must be an object with variable values for user_variables',
             required_variables: params?.required_variables || []
           }), {
             status: 400,
@@ -4644,7 +4653,7 @@ export class ConversationOrchestratorDO_2026A {
         }
 
         const requiredVariables = params?.required_variables || [];
-        const missingVariables = requiredVariables.filter((varName: string) => input[varName] === undefined);
+        const missingVariables = requiredVariables.filter((varName: string) => variableValues[varName] === undefined);
         
         if (missingVariables.length > 0) {
           return new Response(JSON.stringify({
@@ -4659,13 +4668,13 @@ export class ConversationOrchestratorDO_2026A {
 
         // Save each variable to database
         for (const varName of requiredVariables) {
-          if (input[varName] !== undefined) {
+          if (variableValues[varName] !== undefined) {
             await this.saveVariable({
               flow_id: this.conversation.flow_id,
               flow_run_id: this.conversation.id,
               step_id: stepId,
               key: varName,
-              value: input[varName],
+              value: variableValues[varName],
               source: 'user',
               variable_type: 'user_input'
             });
@@ -4674,17 +4683,33 @@ export class ConversationOrchestratorDO_2026A {
 
         console.log(`[DO:${this.state.id}] Saved ${requiredVariables.length} user variables to database`);
       } else {
+        // For non-user_variables input, use input parameter
+        const valueToStore = input;
+        
         // Store input in execution context with metadata
         if (this.conversation.execution_context) {
-          this.conversation.execution_context.inputs[inputName] = {
-            value: input,
+          this.conversation.execution_context.variables[inputName] = {
+            value: valueToStore,
             metadata: {
               source: 'user',
               timestamp: Date.now(),
               step_id: stepId,
-              input_name: inputName
+              variable_name: inputName
             }
           };
+          
+          // Save variable to database
+          if (this.env.FLOW_RUNS_DB) {
+            await this.saveVariable({
+              flow_id: this.conversation.flow_id,
+              flow_run_id: this.conversation.id,
+              step_id: stepId,
+              key: inputName,
+              value: valueToStore,
+              source: 'user',
+              variable_type: 'user_input'
+            });
+          }
           
           // Clear awaiting_input
           this.conversation.execution_context.awaiting_input = undefined;
@@ -4694,7 +4719,7 @@ export class ConversationOrchestratorDO_2026A {
         if (this.conversation.flow_steps && this.conversation.current_step) {
           const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === stepId);
           if (stepIndex !== -1) {
-            this.conversation.flow_steps[stepIndex].response = `Received input for ${inputName}: ${JSON.stringify(input)}`;
+            this.conversation.flow_steps[stepIndex].response = `Received input for ${inputName}: ${JSON.stringify(valueToStore)}`;
             this.conversation.flow_steps[stepIndex].status = 'completed';
             console.log(`[DO:${this.state.id}] Updated step ${stepId} with input result`);
           }
@@ -4779,17 +4804,17 @@ export class ConversationOrchestratorDO_2026A {
         }
       }
       
-      // Check for flow chain in inputs (passed from parent flow)
+      // Check for flow chain in variables (passed from parent flow)
       let flowChain: string[] = [];
-      if (this.conversation.execution_context?.inputs) {
+      if (this.conversation.execution_context?.variables) {
         try {
-          const inputs = this.conversation.execution_context.inputs;
-          if (inputs._flow_chain && Array.isArray(inputs._flow_chain)) {
-            flowChain = inputs._flow_chain;
-            console.log(`[DO:${this.state.id}] Found flow chain in inputs: ${JSON.stringify(flowChain)}`);
+          const variables = this.conversation.execution_context.variables;
+          if (variables._flow_chain && Array.isArray(variables._flow_chain)) {
+            flowChain = variables._flow_chain;
+            console.log(`[DO:${this.state.id}] Found flow chain in variables: ${JSON.stringify(flowChain)}`);
           }
         } catch (error: any) {
-          console.error(`[DO:${this.state.id}] Error parsing flow chain from inputs: ${error.message}`);
+          console.error(`[DO:${this.state.id}] Error parsing flow chain from variables: ${error.message}`);
         }
       }
       
@@ -5706,14 +5731,14 @@ ${messageContent}`;
       // Get previous step responses for variable substitution
       const previousStepResponses = await this.getPreviousStepResponses();
       
-      // Extract values from input objects (inputs are stored as {value, metadata})
-      const rawInputs: Record<string, any> = {};
-      if (this.conversation.execution_context?.inputs) {
-        for (const [key, inputObj] of Object.entries(this.conversation.execution_context.inputs)) {
-          if (inputObj && typeof inputObj === 'object' && 'value' in inputObj) {
-            rawInputs[key] = inputObj.value;
+      // Extract values from variable objects (variables are stored as {value, metadata})
+      const rawVariables: Record<string, any> = {};
+      if (this.conversation.execution_context?.variables) {
+        for (const [key, variableObj] of Object.entries(this.conversation.execution_context.variables)) {
+          if (variableObj && typeof variableObj === 'object' && 'value' in variableObj) {
+            rawVariables[key] = variableObj.value;
           } else {
-            rawInputs[key] = inputObj;
+            rawVariables[key] = variableObj;
           }
         }
       }
@@ -5723,11 +5748,11 @@ ${messageContent}`;
         const dbVariables = await getVariablesForFlow(this.env.FLOW_RUNS_DB, this.conversation.flow_id);
         console.log(`[DO:${this.state.id}] Loaded variables from database for step ${step.step_id}:`, Object.keys(dbVariables));
         
-        // Merge database variables with inputs (database variables take precedence)
-        Object.assign(rawInputs, dbVariables);
+        // Merge database variables with variables (database variables take precedence)
+        Object.assign(rawVariables, dbVariables);
       }
       
-      console.log(`[DO:${this.state.id}] All inputs for step ${step.step_id}:`, Object.keys(rawInputs));
+      console.log(`[DO:${this.state.id}] All variables for step ${step.step_id}:`, Object.keys(rawVariables));
       console.log(`[DO:${this.state.id}] Step ${step.step_id} use_endpoints value:`, step.use_endpoints);
       console.log(`[DO:${this.state.id}] Step ${step.step_id} has use_endpoints:`, !!step.use_endpoints);
       
@@ -5746,7 +5771,7 @@ ${messageContent}`;
           step_id: step.step_id,
           step_run_id: stepRunId,
           previous_step_responses: previousStepResponses,
-          inputs: rawInputs
+          variables: rawVariables
         }
       );
       
@@ -6677,9 +6702,9 @@ ${messageContent}`;
       return false;
     }
 
-    // Check if input is already provided (e.g., from /start endpoint)
-    if (context.inputs && context.inputs[inputName] !== undefined) {
-      console.log(`[DO:${this.state.id}] Input ${inputName} already provided, skipping pause`);
+    // Check if variable is already provided (e.g., from /start endpoint)
+    if (context.variables && context.variables[inputName] !== undefined) {
+      console.log(`[DO:${this.state.id}] Variable ${inputName} already provided, skipping pause`);
       
       // Clear awaiting_input if it was set by AI action
       if (context.awaiting_input) {
@@ -6896,17 +6921,17 @@ ${messageContent}`;
         // Parse the payload to add metadata
         const payloadObj = JSON.parse(inputPayload);
         payloadObj._flow_chain = nextFlowIds; // Add chain metadata
-        requestBody.inputs = payloadObj;
+        requestBody.variables = payloadObj;
       } catch (error) {
         // If payload is not JSON, create a new payload with chain metadata
-        requestBody.inputs = {
+        requestBody.variables = {
           _input: inputPayload,
           _flow_chain: nextFlowIds
         };
       }
     } else if (nextFlowIds.length > 0) {
       // Even without input payload, we need to pass the chain
-      requestBody.inputs = {
+      requestBody.variables = {
         _flow_chain: nextFlowIds
       };
     }
@@ -7018,7 +7043,7 @@ ${messageContent}`;
     // Prepare the request body for the new flow using /start-flow endpoint
     const requestBody = {
       flow_id: flowId,
-      inputs: inputPayload !== undefined && inputPayload !== null ? { input_payload: inputPayload } : {},
+      variables: inputPayload !== undefined && inputPayload !== null ? { input_payload: inputPayload } : {},
       callback_url: undefined
     };
     

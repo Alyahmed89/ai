@@ -88,9 +88,9 @@ export async function resolveStepInstructions(
         instructions = injectTaskData(instructions, taskData, step.task_id);
       }
       
-      // Inject input values if available
-      if (context.inputs && Object.keys(context.inputs).length > 0) {
-        instructions = injectInputValues(instructions, context.inputs);
+      // Inject variable values if available
+      if (context.variables && Object.keys(context.variables).length > 0) {
+        instructions = injectInputValues(instructions, context.variables);
       }
       
       // Inject API responses into instructions
@@ -99,9 +99,9 @@ export async function resolveStepInstructions(
       // Combine all available variables for {variable} substitution
       const allVariables: Record<string, any> = {};
       
-      // Add context.inputs
-      if (context.inputs) {
-        Object.assign(allVariables, context.inputs);
+      // Add context.variables
+      if (context.variables) {
+        Object.assign(allVariables, context.variables);
       }
       
       // Add previous step responses
@@ -181,16 +181,16 @@ export async function resolveStepInstructions(
         initialVariables.task_data = taskData;
       }
       
-      // Add context.inputs to initial variables for {variable} substitution
-      if (context.inputs && Object.keys(context.inputs).length > 0) {
-        Object.assign(initialVariables, context.inputs);
+      // Add context.variables to initial variables for {variable} substitution
+      if (context.variables && Object.keys(context.variables).length > 0) {
+        Object.assign(initialVariables, context.variables);
       }
       
       console.log(`[StepResolver:legacy] Initial variables for resolver: ${Object.keys(initialVariables).join(', ')}`);
       
-      // DEBUG: Log previous_step_responses and inputs
+      // DEBUG: Log previous_step_responses and variables
       console.log(`[StepResolver:legacy] DEBUG - previous_step_responses:`, JSON.stringify(context.previous_step_responses, null, 2));
-      console.log(`[StepResolver:legacy] DEBUG - context.inputs:`, JSON.stringify(context.inputs, null, 2));
+      console.log(`[StepResolver:legacy] DEBUG - context.variables:`, JSON.stringify(context.variables, null, 2));
       console.log(`[StepResolver:legacy] DEBUG - task_data:`, JSON.stringify(taskData, null, 2));
       
       // We need to modify SecureVariableResolver to accept initial variables
@@ -201,9 +201,9 @@ export async function resolveStepInstructions(
         instructionsWithTaskData = injectTaskData(instructionsWithTaskData, taskData, step.task_id);
       }
       
-      // Inject input values if available (legacy [input:name] syntax)
-      if (context.inputs && Object.keys(context.inputs).length > 0) {
-        instructionsWithTaskData = injectInputValues(instructionsWithTaskData, context.inputs);
+      // Inject variable values if available (legacy [input:name] syntax)
+      if (context.variables && Object.keys(context.variables).length > 0) {
+        instructionsWithTaskData = injectInputValues(instructionsWithTaskData, context.variables);
       }
       
       const resolved = await resolver.resolveStepVariables(
@@ -227,8 +227,8 @@ export async function resolveStepInstructions(
           task_data: taskData,
           // Pass previous step responses for variable substitution
           previous_step_responses: context.previous_step_responses,
-          // Pass context inputs for {variable} substitution
-          inputs: context.inputs,
+          // Pass context variables for {variable} substitution
+          variables: context.variables,
           // Pass database for endpoint registry lookups
           db: db
         }
@@ -281,17 +281,17 @@ export async function resolveStepInstructions(
     instructions = injectTaskData(instructions, taskData, step.task_id);
   }
   
-  // Inject input values if available
-  if (context.inputs && Object.keys(context.inputs).length > 0) {
-    instructions = injectInputValues(instructions, context.inputs);
+  // Inject variable values if available
+  if (context.variables && Object.keys(context.variables).length > 0) {
+    instructions = injectInputValues(instructions, context.variables);
   }
   
   // Combine all available variables for {variable} substitution
   const allVariables: Record<string, any> = {};
   
-  // Add context.inputs
-  if (context.inputs) {
-    Object.assign(allVariables, context.inputs);
+  // Add context.variables
+  if (context.variables) {
+    Object.assign(allVariables, context.variables);
   }
   
   // Add previous step responses

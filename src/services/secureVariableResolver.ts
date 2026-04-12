@@ -116,10 +116,10 @@ export class SecureVariableResolver {
         this.log('debug', `Added previous_step_responses to initial variables with ${Object.keys(context.previous_step_responses).length} steps`);
       }
 
-      // Add context inputs to initial variables for {variable} substitution
-      if (context.inputs && Object.keys(context.inputs).length > 0) {
-        Object.assign(initialVariables, context.inputs);
-        this.log('debug', `Added ${Object.keys(context.inputs).length} inputs from context to initial variables: ${Object.keys(context.inputs).join(', ')}`);
+      // Add context variables to initial variables for {variable} substitution
+      if (context.variables && Object.keys(context.variables).length > 0) {
+        Object.assign(initialVariables, context.variables);
+        this.log('debug', `Added ${Object.keys(context.variables).length} variables from context to initial variables: ${Object.keys(context.variables).join(', ')}`);
       }
       
       if (apiConfigs.length === 0) {

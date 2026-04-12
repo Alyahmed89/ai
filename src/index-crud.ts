@@ -248,7 +248,7 @@ app.get('/health', async (c) => {
 app.post('/start', async (c) => {
   try {
     const body = await c.req.json();
-    const { repository, branch, initial_user_prompt, max_iterations, flow_id, inputs, callback_url } = body;
+    const { repository, branch, initial_user_prompt, max_iterations, flow_id, variables, callback_url } = body;
     
     // FLOW-BASED EXECUTION
     if (flow_id) {
@@ -300,7 +300,7 @@ app.post('/start', async (c) => {
             },
             body: JSON.stringify({
               flow_id: targetFlowId,
-              inputs: inputs || {},
+              variables: variables || {},
               callback_url: callback_url,
               deepseek_api_key: c.env.DEEPSEEK_API_KEY // Pass in body too for redundancy
             })
@@ -788,7 +788,7 @@ app.post('/stop', async (c) => {
 app.post('/resume', async (c) => {
   try {
     const body = await c.req.json();
-    const { flow_run_id, conversation_id, input, source, step_id } = body;
+    const { flow_run_id, conversation_id, input, variables, source, step_id } = body;
     
     // Accept either flow_run_id or conversation_id (backward compatibility)
     let targetConversationId = conversation_id;
@@ -867,7 +867,7 @@ app.post('/resume', async (c) => {
           },
           body: JSON.stringify({
             flow_id: flowId,
-            inputs: {},
+            variables: variables || {},
             deepseek_api_key: c.env.DEEPSEEK_API_KEY,
             flow_run_id: flow_run_id,
             start_from_step_id: actualStepId,
@@ -910,7 +910,7 @@ app.post('/resume', async (c) => {
     const doResponse = await conversationDo.fetch('http://placeholder/resume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, source, step_id, flow_run_id })
+      body: JSON.stringify({ input, variables, source, step_id, flow_run_id })
     });
     
     // If Durable Object returns error (400/500), create new Durable Object with existing flow_run_id
@@ -973,7 +973,7 @@ app.post('/resume', async (c) => {
         },
         body: JSON.stringify({
           flow_id: flowId,
-          inputs: {},
+          variables: {},
           deepseek_api_key: c.env.DEEPSEEK_API_KEY,
           flow_run_id: flow_run_id,
           start_from_step_id: actualStepId,
