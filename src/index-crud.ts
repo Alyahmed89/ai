@@ -688,9 +688,29 @@ app.get('/status/:id', async (c) => {
         instructions: resolvedInstructions,
         // 🔥 REQUIRED FIELDS - with resolved variables
         response: resolvedResponse,
-        status: step.status || "pending"
+        status: step.status || "pending",
+        order_index: step.order_index || 0
       });
     }
+    
+    // Determine next step ID - ALWAYS return next step if one exists
+    let nextStepId = null;
+    
+    // Sort steps by order_index to ensure correct execution order
+    const sortedSteps = [...processedSteps].sort((a, b) => a.order_index - b.order_index);
+    
+    // Find the first pending or running step (in correct order)
+    const pendingOrRunningStep = sortedSteps.find(step => 
+      step.status === 'pending' || step.status === 'running'
+    );
+    
+    if (pendingOrRunningStep) {
+      nextStepId = pendingOrRunningStep.id;
+    } else if (data.conversation.waiting_for_input && data.conversation.waiting_for_input.step_id) {
+      // If no pending/running steps but waiting for input, use that step_id
+      nextStepId = data.conversation.waiting_for_input.step_id;
+    }
+    // If no next step found, nextStepId remains null
     
     // Return enriched conversation data with execution results and logs
     return new Response(JSON.stringify({
@@ -708,7 +728,9 @@ app.get('/status/:id', async (c) => {
           waiting_for_input: data.conversation.waiting_for_input,
           // Include flow metadata for frontend
           flow_id: data.conversation.flow_id,
-          flow_run_id: flowRunId
+          flow_run_id: flowRunId,
+          // NEXT STEP ID - explicitly added
+          next_step_id: nextStepId
         }
       }
     }), {
