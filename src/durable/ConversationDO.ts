@@ -1535,6 +1535,10 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] DEBUG: Flow steps count: ${this.conversation.flow_steps?.length || 0}`);
       console.log(`[DO:${this.state.id}] DEBUG: Flow ID: ${this.conversation.flow_id}`);
       
+      // Generate flow run ID early so we can save variables with correct flow_run_id
+      this.flowRunId = flow_run_id || generateFlowRunId();
+      console.log(`[DO:${this.state.id}] Generated flow run ID: ${this.flowRunId} ${flow_run_id ? '(provided)' : '(generated)'}`);
+      
       // Store provided variables in execution context
       if (Object.keys(variables).length > 0) {
         for (const [key, value] of Object.entries(variables)) {
@@ -1552,7 +1556,7 @@ export class ConversationOrchestratorDO_2026A {
           if (this.env.FLOW_RUNS_DB) {
             await this.saveVariable({
               flow_id: flow_id,
-              flow_run_id: this.conversation.id,
+              flow_run_id: this.flowRunId, // Use the generated flow_run_id
               step_id: 'initial',
               key: key,
               value: value,
@@ -1584,8 +1588,7 @@ export class ConversationOrchestratorDO_2026A {
       
       await this.state.storage.put('conversation', this.conversation);
       
-      // Use provided flow_run_id or generate new one
-      this.flowRunId = flow_run_id || generateFlowRunId();
+      // flow_run_id already generated earlier for variable saving
       console.log(`[DO:${this.state.id}] Using flow run ID: ${this.flowRunId} ${flow_run_id ? '(provided)' : '(generated)'}`);
       console.log(`[DO:${this.state.id}] Database available: ${!!this.env.FLOW_RUNS_DB}`);
       console.log(`[DO:${this.state.id}] Conversation flow_id: ${this.conversation?.flow_id}`);
