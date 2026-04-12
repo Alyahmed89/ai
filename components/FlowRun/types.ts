@@ -70,7 +70,8 @@ export interface FlowRunProps {
   chatMessages?: ChatMessage[];
   conversationId?: string | null;
   flowRunId?: string | null;
-  onSendMessage?: (prompt: string) => void;
+  onSendMessage?: (prompt: string, variables?: Record<string, string>) => void;
   isRunning?: boolean;
   selectedFlowId?: string | null;
+  variableValues?: Record<string, string>;
 }

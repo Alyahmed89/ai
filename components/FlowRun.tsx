@@ -23,7 +23,8 @@ const FlowRun: React.FC<FlowRunProps> = ({
   flowRunId,
   onSendMessage,
   isRunning = false,
-  selectedFlowId
+  selectedFlowId,
+  variableValues = {}
 }) => {
   // TEST SIGNAL: Set global flag when FlowRun renders
   React.useEffect(() => {

@@ -322,6 +322,7 @@ export default function ChatPage(props: any) {
               onSendMessage={handleSendMessage}
               isRunning={isRunning}
               selectedFlowId={selectedFlowId}
+              variableValues={variableValues}
             />
           </div>
 
