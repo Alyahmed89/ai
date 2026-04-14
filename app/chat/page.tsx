@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import HierarchicalNav from '@/components/HierarchicalNav';
 import SimpleFlowCreator from '@/components/SimpleFlowCreator';
 import EditFlowModal from '@/components/EditFlowModal';
@@ -25,6 +26,8 @@ interface FlowDefinition {
 
 // Use any for props to handle both Next.js PageProps and our custom props
 export default function ChatPage(props: any) {
+  const router = useRouter();
+  
   // Extract our custom props from props
   const initialProjectId = props.initialProjectId as string | undefined;
   const initialFlowId = props.initialFlowId as string | undefined;
@@ -48,17 +51,25 @@ export default function ChatPage(props: any) {
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(initialFlowRunId || null);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
-  // Load selectedFlowRunId from localStorage on mount
+  // Load selectedFlowRunId from localStorage on mount ONLY if we're on a flow-run page
   useEffect(() => {
     if (typeof window !== 'undefined' && selectedFlowId) {
-      const savedFlowRunId = localStorage.getItem(`flowRunId_${selectedFlowId}`);
-      console.log('Loading flowRunId from localStorage:', { selectedFlowId, savedFlowRunId });
-      if (savedFlowRunId && !selectedFlowRunId) {
-        console.log('Setting selectedFlowRunId from localStorage:', savedFlowRunId);
-        setSelectedFlowRunId(savedFlowRunId);
+      // Only load from localStorage if we're on a flow-run page (has initialFlowRunId)
+      // Flow page should start fresh, flow-run page should resume
+      if (initialFlowRunId) {
+        const savedFlowRunId = localStorage.getItem(`flowRunId_${selectedFlowId}`);
+        console.log('Loading flowRunId from localStorage (flow-run page):', { selectedFlowId, savedFlowRunId, initialFlowRunId });
+        if (savedFlowRunId && !selectedFlowRunId) {
+          console.log('Setting selectedFlowRunId from localStorage:', savedFlowRunId);
+          setSelectedFlowRunId(savedFlowRunId);
+        }
+      } else {
+        // Clear localStorage for this flow when on flow page (fresh start)
+        console.log('Clearing localStorage for flow page (fresh start):', selectedFlowId);
+        localStorage.removeItem(`flowRunId_${selectedFlowId}`);
       }
     }
-  }, [selectedFlowId]);
+  }, [selectedFlowId, initialFlowRunId]);
 
   // Save selectedFlowRunId to localStorage when it changes
   useEffect(() => {
@@ -257,6 +268,12 @@ export default function ChatPage(props: any) {
       }
       
       setSelectedFlowRunId(newFlowRunId);
+      
+      // If we started a new flowrun (not resuming), navigate to flow-run page
+      if (newFlowRunId && !selectedFlowRunId) {
+        console.log('Navigating to flow-run page:', newFlowRunId);
+        router.push(`/chat/flow-run/${newFlowRunId}`);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message. Please try again.');
