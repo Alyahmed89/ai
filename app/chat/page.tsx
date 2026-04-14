@@ -47,6 +47,29 @@ export default function ChatPage(props: any) {
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(initialFlowId || null);
   const [selectedFlowRunId, setSelectedFlowRunId] = useState<string | null>(initialFlowRunId || null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+
+  // Load selectedFlowRunId from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && selectedFlowId) {
+      const savedFlowRunId = localStorage.getItem(`flowRunId_${selectedFlowId}`);
+      console.log('Loading flowRunId from localStorage:', { selectedFlowId, savedFlowRunId });
+      if (savedFlowRunId && !selectedFlowRunId) {
+        console.log('Setting selectedFlowRunId from localStorage:', savedFlowRunId);
+        setSelectedFlowRunId(savedFlowRunId);
+      }
+    }
+  }, [selectedFlowId]);
+
+  // Save selectedFlowRunId to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && selectedFlowRunId && selectedFlowId) {
+      console.log('Saving flowRunId to localStorage:', { selectedFlowId, selectedFlowRunId });
+      localStorage.setItem(`flowRunId_${selectedFlowId}`, selectedFlowRunId);
+    } else if (typeof window !== 'undefined' && selectedFlowId && !selectedFlowRunId) {
+      console.log('Clearing flowRunId from localStorage for flow:', selectedFlowId);
+      localStorage.removeItem(`flowRunId_${selectedFlowId}`);
+    }
+  }, [selectedFlowRunId, selectedFlowId]);
   // DO NOT store conversationData - FlowRun poller will handle it
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +195,8 @@ export default function ChatPage(props: any) {
     
     try {
       const endpoint = selectedFlowRunId ? '/api/proxy/resume' : '/api/proxy/start';
+      console.log('Selected flow run ID:', selectedFlowRunId);
+      console.log('Using endpoint:', endpoint);
 
       const body = selectedFlowRunId
         ? {
@@ -192,16 +217,46 @@ export default function ChatPage(props: any) {
       });
 
       const data = await res.json();
+      console.log('API Response:', data);
+      console.log('Flow run ID from response:', data?.flow_run?.id);
+      console.log('Full flow_run object:', data?.flow_run);
+      console.log('Conversation ID from response:', data?.conversation_id || data?.data?.conversation_id || data?.id);
 
-      setConversationId(data?.conversation_id || data?.data?.conversation_id || data?.id || null);
-      setSelectedFlowRunId(data?.flow_run?.id || null);
+      const newConversationId = data?.conversation_id || data?.data?.conversation_id || data?.id || null;
+      let newFlowRunId = data?.flow_run?.id || null;
+      console.log('Setting conversationId:', newConversationId);
+      console.log('Setting selectedFlowRunId from response:', newFlowRunId);
       
-      // Refresh flow runs list to show the new run
-      const runsResponse = await fetch('/api/proxy/api/flow-runs');
-      if (runsResponse.ok) {
-        const runsData = await runsResponse.json();
-        setFlowRuns(Array.isArray(runsData) ? runsData : []);
+      setConversationId(newConversationId);
+      
+      // If no flow_run.id in response, try to find it from flow runs list
+      if (!newFlowRunId) {
+        console.log('No flow_run.id in response, fetching flow runs to find it...');
+        const runsResponse = await fetch('/api/proxy/api/flow-runs');
+        if (runsResponse.ok) {
+          const runsData = await runsResponse.json();
+          const flowRunsList = Array.isArray(runsData) ? runsData : [];
+          console.log('Flow runs list:', flowRunsList.length, 'items');
+          console.log('Looking for flow_id:', selectedFlowId);
+          setFlowRuns(flowRunsList);
+          
+          // Find most recent flowrun for this flow
+          const flowRunsForThisFlow = flowRunsList.filter((run: any) => run.flow_id === selectedFlowId);
+          console.log('Flow runs for this flow:', flowRunsForThisFlow.length);
+          
+          const flowRunForThisFlow = flowRunsForThisFlow
+            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+          
+          if (flowRunForThisFlow) {
+            newFlowRunId = flowRunForThisFlow.id;
+            console.log('Found flowrun ID from flow runs list:', newFlowRunId);
+          } else {
+            console.log('No flowrun found for this flow in the list');
+          }
+        }
       }
+      
+      setSelectedFlowRunId(newFlowRunId);
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message. Please try again.');
