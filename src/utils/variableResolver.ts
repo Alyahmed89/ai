@@ -428,15 +428,38 @@ async function executeQuery(db: D1Database, queryParams: string, context?: {
     const jsonPath = params.get('json_path');
     const keysParam = params.get('keys'); // New: comma-separated keys
     const id = params.get('id'); // New: filter by ID
+    const queryFlowId = params.get('flow_id'); // New: flow_id from query params
+    const queryFlowRunId = params.get('flow_run_id'); // New: flow_run_id from query params
     let where = params.get('where'); // New: custom WHERE clause
     
-    // Replace 'current' placeholder with actual flow_run_id from context
-    if (where && context?.flow_run_id) {
-      where = where.replace(/flow_run_id\s*=\s*current/i, `flow_run_id = '${context.flow_run_id}'`);
-      console.log(`[VariableResolver:executeQuery] Updated where clause: ${where}`);
+    // Replace 'current' placeholder with actual flow_run_id
+    if (where && where.includes('flow_run_id=current')) {
+      let flowRunId = context?.flow_run_id || queryFlowRunId;
+      
+      // If we still don't have flow_run_id but we have flow_id (from query or context), fetch latest flow_run_id
+      if (!flowRunId && (queryFlowId || context?.flow_id)) {
+        const targetFlowId = queryFlowId || context?.flow_id;
+        console.log(`[VariableResolver:executeQuery] Fetching latest flow_run_id for flow_id: ${targetFlowId}`);
+        
+        try {
+          const flowRunQuery = `SELECT id FROM flow_runs WHERE flow_id = ? ORDER BY created_at DESC LIMIT 1`;
+          const flowRunResult = await db.prepare(flowRunQuery).bind(targetFlowId).first();
+          flowRunId = flowRunResult?.id;
+          console.log(`[VariableResolver:executeQuery] Found flow_run_id: ${flowRunId}`);
+        } catch (error) {
+          console.error(`[VariableResolver:executeQuery] Error fetching flow_run_id:`, error);
+        }
+      }
+      
+      if (flowRunId) {
+        where = where.replace(/flow_run_id\s*=\s*current/i, `flow_run_id = '${flowRunId}'`);
+        console.log(`[VariableResolver:executeQuery] Updated where clause: ${where}`);
+      } else {
+        console.log(`[VariableResolver:executeQuery] Cannot resolve 'current' - no flow_run_id available`);
+      }
     }
     
-    console.log(`[VariableResolver:executeQuery] Parsed: table=${table}, column=${column}, jsonPath=${jsonPath}, keys=${keysParam}, id=${id}, where=${where}`);
+    console.log(`[VariableResolver:executeQuery] Parsed: table=${table}, column=${column}, jsonPath=${jsonPath}, keys=${keysParam}, id=${id}, flow_id=${queryFlowId}, flow_run_id=${queryFlowRunId}, where=${where}`);
     
     if (!table || !column) {
       console.log(`[VariableResolver:executeQuery] Missing table or column`);
@@ -459,6 +482,18 @@ async function executeQuery(db: D1Database, queryParams: string, context?: {
       whereConditions.push(`(${where})`);
       // Note: For security, we should validate/parse the WHERE clause
       // For now, we'll trust it since this is an internal tool
+    }
+    
+    // Add flow_id filter if provided in query params
+    if (queryFlowId && !where?.includes('flow_id')) {
+      whereConditions.push(`flow_id = ?`);
+      bindings.push(queryFlowId);
+    }
+    
+    // Add flow_run_id filter if provided in query params
+    if (queryFlowRunId && !where?.includes('flow_run_id')) {
+      whereConditions.push(`flow_run_id = ?`);
+      bindings.push(queryFlowRunId);
     }
     
     // For variables table, automatically filter by key if variableName is provided
