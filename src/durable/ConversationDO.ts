@@ -4476,6 +4476,38 @@ export class ConversationOrchestratorDO_2026A {
         console.log(`[DO:${this.state.id}] Set flowRunId from request: ${flow_run_id}`);
       }
       
+      // Save variables to database like /start does
+      if (Object.keys(variables).length > 0 && this.conversation) {
+        for (const [key, value] of Object.entries(variables)) {
+          // Update execution context
+          if (!this.conversation.execution_context) {
+            this.conversation.execution_context = { variables: {} };
+          }
+          this.conversation.execution_context.variables[key] = {
+            value,
+            metadata: {
+              source: 'resume_endpoint',
+              timestamp: Date.now(),
+              step_id: requestedStepId || 'resume',
+              variable_name: key
+            }
+          };
+          
+          // Save variable to database
+          if (this.env.FLOW_RUNS_DB && this.flowRunId) {
+            await this.saveVariable({
+              flow_id: this.conversation.flow_id || 'unknown',
+              flow_run_id: this.flowRunId,
+              step_id: requestedStepId || 'resume',
+              key,
+              value,
+              source: 'resume_endpoint'
+            });
+          }
+        }
+        console.log(`[DO:${this.state.id}] Updated ${Object.keys(variables).length} variables from resume request`);
+      }
+      
       // Check if we're repeating a specific step
       if (requestedStepId) {
         // Find the step to repeat
