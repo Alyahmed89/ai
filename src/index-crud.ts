@@ -935,18 +935,14 @@ app.post('/resume', async (c) => {
       body: JSON.stringify({ input, variables, source, step_id, flow_run_id })
     });
     
-    // If Durable Object returns error (400/500), create new Durable Object with existing flow_run_id
+    // If Durable Object returns error (400/500), try to reinitialize the SAME Durable Object
     if (!doResponse.ok) {
       const errorText = await doResponse.text();
-      console.log(`[HTTP:RESUME] Original Durable Object failed (${doResponse.status}): ${errorText}. Creating new Durable Object.`);
+      console.log(`[HTTP:RESUME] Original Durable Object failed (${doResponse.status}): ${errorText}. Trying to reinitialize SAME Durable Object.`);
       
-      // Create new Durable Object
-      const newId = c.env.CONVERSATIONS.newUniqueId();
-      const newConversationDo = c.env.CONVERSATIONS.get(newId);
-      
-      // We need flow_id to start a new conversation
+      // We need flow_id to reinitialize the conversation
       if (!flowId) {
-        return c.json(errorResponse(`Cannot create new conversation: flow_id not found for flow_run_id ${flow_run_id}`, 400));
+        return c.json(errorResponse(`Cannot reinitialize conversation: flow_id not found for flow_run_id ${flow_run_id}`, 400));
       }
       
       // Get last completed step_id if step_id is "(last)"
@@ -986,8 +982,8 @@ app.post('/resume', async (c) => {
         }
       }
       
-      // Start new conversation with existing flow_run_id
-      const startResponse = await newConversationDo.fetch('http://placeholder/start-flow', {
+      // Reinitialize the SAME Durable Object with start-flow
+      const reinitResponse = await conversationDo.fetch('http://placeholder/start-flow', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -1003,36 +999,25 @@ app.post('/resume', async (c) => {
         })
       });
       
-      if (!startResponse.ok) {
-        const startErrorText = await startResponse.text();
-        console.error(`[HTTP:RESUME] Failed to start new conversation: ${startResponse.status} - ${startErrorText}`);
-        return c.json(errorResponse(`Failed to create new conversation: ${startResponse.status}`, 500));
+      if (!reinitResponse.ok) {
+        const reinitErrorText = await reinitResponse.text();
+        console.error(`[HTTP:RESUME] Failed to reinitialize conversation: ${reinitResponse.status} - ${reinitErrorText}`);
+        return c.json(errorResponse(`Failed to reinitialize conversation: ${reinitResponse.status}`, 500));
       }
       
-      const startResult = await startResponse.json();
-      const newConversationId = newId.toString();
+      const reinitResult = await reinitResponse.json();
       
-      // Update flow_runs table with new conversation_id
-      if (c.env.FLOW_RUNS_DB) {
-        await c.env.FLOW_RUNS_DB.prepare(
-          'UPDATE flow_runs SET conversation_id = ? WHERE id = ?'
-        ).bind(newConversationId, flow_run_id).run();
-        console.log(`[HTTP:RESUME] Updated flow_runs table: flow_run_id ${flow_run_id} now linked to new conversation_id ${newConversationId}`);
-      }
-      
-      // Don't try to resume the new conversation - it's fresh and not in a resumable state
-      // Just return success that new conversation was created
-      return c.json(successResponse('Created new conversation attached to existing flow_run_id', {
+      // Return success with SAME conversation_id
+      return c.json(successResponse('Conversation reinitialized successfully', {
         flow_run_id: flow_run_id,
         flow_id: flowId,
-        new_conversation_id: newConversationId,
-        original_conversation_id: targetConversationId,
+        conversation_id: targetConversationId, // SAME conversation_id
         note: actualStepId ? 
-          `Original conversation was missing. New conversation created and will resume from step ${actualStepId} with provided input.` :
-          `Original conversation was missing. New conversation created and will start from beginning.`,
+          `Conversation reinitialized and will resume from step ${actualStepId} with provided input.` :
+          `Conversation reinitialized and will start from beginning.`,
         resumed_from_step: actualStepId,
         user_input_provided: !!input,
-        check_status_url: `${new URL(c.req.url).origin}/status/${newConversationId}`
+        check_status_url: `${new URL(c.req.url).origin}/status/${targetConversationId}` // SAME status URL
       }));
     }
     
