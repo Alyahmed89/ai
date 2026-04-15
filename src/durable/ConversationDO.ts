@@ -4105,14 +4105,7 @@ export class ConversationOrchestratorDO_2026A {
             await this.restartFlow();
             
             // Don't stop conversation if this is a resumed execution
-            if (this.conversation.is_resumed_execution) {
-              console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag and staying active`);
-              this.conversation.is_resumed_execution = false;
-              // Stay in SENDING_STEP state for potential further resumes
-              this.conversation.state = 'SENDING_STEP';
-              this.conversation.flow_completed = false;
-              await this.state.storage.put('conversation', this.conversation);
-            } else {
+            if (!this.conversation.is_resumed_execution) {
               await this.stopConversation('flow_completed');
             }
             return;
@@ -4136,14 +4129,7 @@ export class ConversationOrchestratorDO_2026A {
               await this.restartFlow();
               
               // Don't stop conversation if this is a resumed execution
-              if (this.conversation.is_resumed_execution) {
-                console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag and staying active`);
-                this.conversation.is_resumed_execution = false;
-                // Stay in SENDING_STEP state for potential further resumes
-                this.conversation.state = 'SENDING_STEP';
-                this.conversation.flow_completed = false;
-                await this.state.storage.put('conversation', this.conversation);
-              } else {
+              if (!this.conversation.is_resumed_execution) {
                 await this.stopConversation('flow_completed');
               }
               return;
@@ -4182,14 +4168,7 @@ export class ConversationOrchestratorDO_2026A {
           await this.restartFlow();
           
           // Don't stop conversation if this is a resumed execution
-          if (this.conversation.is_resumed_execution) {
-            console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag and staying active`);
-            this.conversation.is_resumed_execution = false;
-            // Stay in SENDING_STEP state for potential further resumes
-            this.conversation.state = 'SENDING_STEP';
-            this.conversation.flow_completed = false;
-            await this.state.storage.put('conversation', this.conversation);
-          } else {
+          if (!this.conversation.is_resumed_execution) {
             await this.stopConversation('flow_completed');
           }
           return;
@@ -6216,6 +6195,14 @@ ${messageContent}`;
         
         // Increment step_count AFTER successful completion
         this.conversation.execution_context.step_count += 1;
+      }
+      
+      // Clear resumed execution flag after step is saved to database
+      if (this.conversation.is_resumed_execution) {
+        console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag`);
+        this.conversation.is_resumed_execution = false;
+        this.conversation.flow_completed = false;
+        await this.state.storage.put('conversation', this.conversation);
       }
       
       try {
