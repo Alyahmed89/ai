@@ -4509,7 +4509,24 @@ export class ConversationOrchestratorDO_2026A {
       }
       
       // Check if we're repeating a specific step
-      if (requestedStepId) {
+      // If no step_id provided, check flow definition for resume_step
+      let stepIdToRepeat = requestedStepId;
+      if (!stepIdToRepeat && this.conversation?.flow_id && this.env.FLOW_RUNS_DB) {
+        try {
+          const flowDefResult = await this.env.FLOW_RUNS_DB.prepare(
+            'SELECT resume_step FROM flow_definitions WHERE id = ?'
+          ).bind(this.conversation.flow_id).first();
+          
+          if (flowDefResult && (flowDefResult as any).resume_step) {
+            stepIdToRepeat = (flowDefResult as any).resume_step;
+            console.log(`[DO:${this.state.id}] Using resume_step from flow definition: ${stepIdToRepeat}`);
+          }
+        } catch (error) {
+          console.error(`[DO:${this.state.id}] Error getting resume_step from flow definition: ${error}`);
+        }
+      }
+      
+      if (stepIdToRepeat) {
         // Find the step to repeat
         if (!this.conversation?.flow_steps) {
           return new Response(JSON.stringify({
@@ -4521,7 +4538,7 @@ export class ConversationOrchestratorDO_2026A {
         }
         
         let stepToRepeat;
-        if (requestedStepId === '(last)') {
+        if (stepIdToRepeat === '(last)') {
           // Query database for last completed step
           if (!this.env.FLOW_RUNS_DB || !this.flowRunId) {
             return new Response(JSON.stringify({
@@ -4564,12 +4581,12 @@ export class ConversationOrchestratorDO_2026A {
             });
           }
         } else {
-          stepToRepeat = this.conversation.flow_steps.find(s => s.step_id === requestedStepId);
+          stepToRepeat = this.conversation.flow_steps.find(s => s.step_id === stepIdToRepeat);
         }
         
         if (!stepToRepeat) {
           return new Response(JSON.stringify({
-            error: `Step ${requestedStepId} not found`,
+            error: `Step ${stepIdToRepeat} not found`,
             available_steps: this.conversation.flow_steps.map(s => ({ step_id: s.step_id, title: s.title }))
           }), {
             status: 404,
@@ -4609,15 +4626,43 @@ export class ConversationOrchestratorDO_2026A {
         // Import generateStepRunId
         const { generateStepRunId } = await import('../services/database');
         
+        // Get resume step instructions if available
+        let resumeStepInstructions = '';
+        if (this.conversation?.flow_id && this.env.FLOW_RUNS_DB && stepIdToRepeat) {
+          try {
+            // Check if this step is the resume_step from flow definition
+            const flowDefResult = await this.env.FLOW_RUNS_DB.prepare(
+              'SELECT resume_step FROM flow_definitions WHERE id = ?'
+            ).bind(this.conversation.flow_id).first();
+            
+            if (flowDefResult && (flowDefResult as any).resume_step === stepIdToRepeat) {
+              // Get the resume step's instructions from flow_steps table
+              const resumeStepResult = await this.env.FLOW_RUNS_DB.prepare(
+                'SELECT instructions FROM flow_steps WHERE id = ?'
+              ).bind(stepIdToRepeat).first();
+              
+              if (resumeStepResult && (resumeStepResult as any).instructions) {
+                resumeStepInstructions = (resumeStepResult as any).instructions;
+                console.log(`[DO:${this.state.id}] Found resume step instructions (${resumeStepInstructions.length} chars)`);
+              }
+            }
+          } catch (error) {
+            console.error(`[DO:${this.state.id}] Error getting resume step instructions: ${error}`);
+          }
+        }
+        
         // Create NEW step entry for the repeat
         const newStep = {
           ...stepToRepeat,
-          id: generateStepRunId(), // NEW ID
+          id: generateStepRunId(), // Step run ID
+          step_id: stepToRepeat.id, // Original step definition ID
           status: 'pending',
           response: undefined,
           attempt: nextAttempt,
           user_input: input && typeof input === 'string' && input.trim() ? input : undefined,
-          instructions: stepToRepeat.instructions + (input && typeof input === 'string' && input.trim() ? `\n\nUser input: ${input}` : '')
+          instructions: stepToRepeat.instructions + 
+            (resumeStepInstructions ? `\n\nResume Step Instructions: ${resumeStepInstructions}` : '') +
+            (input && typeof input === 'string' && input.trim() ? `\n\nUser input: ${input}` : '')
         };
         
         // Add new step to flow_steps
@@ -4629,6 +4674,10 @@ export class ConversationOrchestratorDO_2026A {
         this.conversation.state = 'SENDING_STEP';
         this.conversation.status = 'active';
         this.conversation.waiting_for_input = undefined;
+        
+        // Reset flow completion status to allow execution
+        this.conversation.flow_completed = false;
+        this.conversation.state = 'SENDING_STEP';
         
         // Clear last_step_response to prevent routing logic from interfering with step repetition
         this.conversation.last_step_response = undefined;
@@ -4649,8 +4698,8 @@ export class ConversationOrchestratorDO_2026A {
         
         return new Response(JSON.stringify({
           success: true,
-          message: `Repeating step ${requestedStepId}: ${stepToRepeat.title}`,
-          step_id: requestedStepId,
+          message: `Repeating step ${stepIdToRepeat}: ${stepToRepeat.title}`,
+          step_id: stepIdToRepeat,
           step_title: stepToRepeat.title,
           new_step_id: newStep.id
         }), {
