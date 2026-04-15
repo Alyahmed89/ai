@@ -5425,7 +5425,6 @@ ${messageContent}`;
     // Declare resolvedStep at function scope so it's available throughout
     let resolvedStep: any = null;
     let stepRunId: string | null = null;
-    let finalPrompt: string = '';
     
     if (!this.conversation) {
       console.log(`[DO:${this.state.id}] DEBUG: No conversation in handleSendingStepState`);
@@ -5994,11 +5993,9 @@ ${messageContent}`;
     } // End of else block (not using existing prompt)
     
     // Memory injection removed - use original prompt directly
-    finalPrompt = prompt;
-    
     // Set AI input in execution context for new condition system
     if (this.conversation.execution_context) {
-      this.conversation.execution_context.ai_input = finalPrompt;
+      this.conversation.execution_context.ai_input = prompt;
     }
     
 
@@ -6009,18 +6006,13 @@ ${messageContent}`;
     if (this.conversation.agent === 'deepseek') {
       console.log(`[DO:${this.state.id}] Agent is 'deepseek', calling DeepSeek API instead of OpenHands`);
       console.log(`[DO:${this.state.id}] Flow ID: ${this.conversation.flow_id}, Step: ${this.conversation.current_flow_step}`);
-      console.log(`[DO:${this.state.id}] Final prompt preview: ${finalPrompt.substring(0, 200)}...`);
+      console.log(`[DO:${this.state.id}] Prompt preview: ${prompt.substring(0, 200)}...`);
       
       // Build messages for DeepSeek WITHOUT system message
-      // Guard: Ensure no unresolved variables (check for ƐĐᜃ delimiter, not {})
-      if (finalPrompt.includes('ƐĐᜃ')) {
-        throw new Error(`UNRESOLVED VARIABLES in finalPrompt: ${finalPrompt.substring(0, 200)}`);
-      }
-      
-      console.log('FINAL_INSTRUCTIONS (first 500 chars):', finalPrompt.substring(0, 500));
+      console.log('INSTRUCTIONS (first 500 chars):', prompt.substring(0, 500));
       
       const messages = [
-        { role: 'user', content: finalPrompt }
+        { role: 'user', content: prompt }
       ];
       
       // Call DeepSeek API
@@ -6092,7 +6084,7 @@ ${messageContent}`;
         // Save failed step run to database with API calls
         await this.saveStepRunToDatabase(
           step,
-          finalPrompt,
+          prompt,
           `DeepSeek API error: ${deepseekResult.error}`,
           'failed',
           1,
@@ -6179,7 +6171,7 @@ ${messageContent}`;
       
       const stepRunId = await this.saveStepRunToDatabase(
         step,
-        finalPrompt, // Save finalPrompt (with memory instruction) not original prompt
+        prompt, // Save original prompt (memory injection removed)
         response,
         'completed',
         1,
@@ -6220,7 +6212,7 @@ ${messageContent}`;
       
       try {
         // Complete the step with DeepSeek response
-        await this.handleStepCompletion(step, response, finalPrompt);
+        await this.handleStepCompletion(step, response, prompt);
       } catch (stepError) {
         console.error(`[DO:${this.state.id}] Error in handleStepCompletion:`, stepError);
         // Continue anyway to clear state and move forward
@@ -6306,7 +6298,7 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Creating new OpenHands conversation`);
       const createResult = await createOpenHandsConversation(
         this.env.OPENHANDS_API_URL,
-        finalPrompt,
+        prompt,
         this.conversation.repository,
         this.conversation.branch
       );
@@ -6324,16 +6316,16 @@ ${messageContent}`;
       console.log(`[DO:${this.state.id}] Injecting message to existing OpenHands conversation: ${this.conversation.openhands_conversation_id}`);
       
       // CRITICAL LOG: What is actually being sent to OpenHands?
-      console.log(`[DO:${this.state.id}] SENT TO OPENHANDS (first 500 chars):`, finalPrompt.substring(0, 500));
-      if (finalPrompt.includes('{task_data')) {
-        console.log(`[DO:${this.state.id}] WARNING: Template variables still present in finalPrompt!`);
-        console.log(`[DO:${this.state.id}] Contains {task_data:`, finalPrompt.includes('{task_data'));
+      console.log(`[DO:${this.state.id}] SENT TO OPENHANDS (first 500 chars):`, prompt.substring(0, 500));
+      if (prompt.includes('{task_data')) {
+        console.log(`[DO:${this.state.id}] WARNING: Template variables still present in prompt!`);
+        console.log(`[DO:${this.state.id}] Contains {task_data:`, prompt.includes('{task_data'));
       }
       
       const injectResult = await injectMessageToOpenHands(
         this.env.OPENHANDS_API_URL,
         this.conversation.openhands_conversation_id,
-        finalPrompt
+        prompt
       );
       
       if (!injectResult.success) {
@@ -6640,7 +6632,7 @@ ${messageContent}`;
   /**
    * Enhanced flow transition with condition engine and loop prevention
    */
-  private async handleStepCompletion(step: StepData, response: string, finalPrompt?: string): Promise<void> {
+  private async handleStepCompletion(step: StepData, response: string, prompt?: string): Promise<void> {
     if (!this.conversation) return;
     
     console.log(`[DO:${this.state.id}] Handling step completion for step: ${step.step_id}`);
