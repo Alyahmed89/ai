@@ -5580,13 +5580,19 @@ ${messageContent}`;
           } else {
             console.log(`[DO:${this.state.id}] Step ${route.target_id} not found in current flow`);
             await this.restartFlow();
-            await this.stopConversation('step_not_found');
+            // Don't stop conversation if this is a resumed execution
+            if (!this.conversation.is_resumed_execution) {
+              await this.stopConversation('step_not_found');
+            }
             return;
           }
         } else {
           console.log(`[DO:${this.state.id}] No flow steps available`);
           await this.restartFlow();
-          await this.stopConversation('no_flow_steps');
+          // Don't stop conversation if this is a resumed execution
+          if (!this.conversation.is_resumed_execution) {
+            await this.stopConversation('no_flow_steps');
+          }
           return;
         }
       }
