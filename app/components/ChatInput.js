@@ -9,7 +9,7 @@ export default function ChatInput({
   showHint = true,
   initialVariables = []
 }) {
-  const [inputValue, setInputValue] = useState('')
+  const [rawText, setRawText] = useState('')
   const [variables, setVariables] = useState(initialVariables)
   const [currentVarIndex, setCurrentVarIndex] = useState(-1)
   const inputRef = useRef(null)
@@ -71,6 +71,23 @@ export default function ChatInput({
     }
   }, [flowId, flowRunId])
 
+  // Format display text: replace {{var=value}} with var:value
+  const getDisplayText = () => {
+    return rawText.replace(/\{\{([^}=]+)=([^}]*)\}\}/g, (match, varName, value) => {
+      return `${varName.trim()}:${value.trim()}`
+    })
+  }
+
+  // Handle input change
+  const handleInputChange = (e) => {
+    const displayText = e.target.value
+    
+    // Convert display text back to raw format
+    // Simple approach: if text contains var:value, keep as is for now
+    // The Tab handler will insert proper {{var=}} syntax
+    setRawText(displayText)
+  }
+
   const handleTab = (e) => {
     if (e.key === 'Tab') {
       e.preventDefault()
@@ -78,24 +95,34 @@ export default function ChatInput({
       if (variables.length === 0) return
       
       const varNames = variables.map(v => typeof v === 'string' ? v : v.name)
-      
-      // Find current cursor position
       const input = inputRef.current
       if (!input) return
       
       const cursorPos = input.selectionStart
-      const text = inputValue
+      const displayText = input.value
       
-      // Check if cursor is inside a variable placeholder
+      // Check if cursor is inside a variable (looking for var:value pattern)
+      // We need to check the raw text
+      const text = rawText
+      
+      // Check if cursor is inside a variable placeholder in raw text
       const regex = /\{\{([^}=]+)=([^}]*)\}\}/g
       let insideVar = -1
       let match
       let matchData = null
       while ((match = regex.exec(text)) !== null) {
-        if (cursorPos >= match.index && cursorPos <= match.index + match[0].length) {
+        // Convert raw position to display position
+        const displayStart = getDisplayText().indexOf(`${match[1].trim()}:${match[2].trim()}`)
+        if (displayStart >= 0 && cursorPos >= displayStart && cursorPos <= displayStart + match[1].length + 1 + match[2].length) {
           const varName = match[1].trim()
           insideVar = varNames.indexOf(varName)
-          matchData = { index: match.index, value: match[2].trim(), varName }
+          matchData = { 
+            index: match.index, 
+            value: match[2].trim(), 
+            varName, 
+            length: match[0].length,
+            displayStart
+          }
           break
         }
       }
@@ -108,27 +135,31 @@ export default function ChatInput({
         // Replace current variable with next one
         const newText = text.substring(0, matchData.index) + 
                        `{{${varNames[nextIndex]}=}}` + 
-                       text.substring(matchData.index + match[0].length)
-        setInputValue(newText)
+                       text.substring(matchData.index + matchData.length)
+        setRawText(newText)
         
-        // Position cursor after = sign
+        // Position cursor after colon
         setTimeout(() => {
           input.focus()
-          const newPos = matchData.index + varNames[nextIndex].length + 5 // {{}}= + variable name
-          input.setSelectionRange(newPos, newPos)
+          const newDisplayText = getDisplayText()
+          // Find position after colon
+          const colonPos = newDisplayText.indexOf(`${varNames[nextIndex]}:`) + varNames[nextIndex].length + 1
+          input.setSelectionRange(colonPos, colonPos)
         }, 10)
       } else {
         // Start with first variable
         setCurrentVarIndex(0)
         const varName = varNames[0]
         const newText = text + (text && !text.endsWith(' ') ? ' ' : '') + `{{${varName}=}}`
-        setInputValue(newText)
+        setRawText(newText)
         
-        // Position cursor after = sign
+        // Position cursor after colon
         setTimeout(() => {
           input.focus()
-          const newPos = newText.length - 2 // Position before }}
-          input.setSelectionRange(newPos, newPos)
+          const newDisplayText = getDisplayText()
+          // Find position after colon
+          const colonPos = newDisplayText.lastIndexOf(`${varName}:`) + varName.length + 1
+          input.setSelectionRange(colonPos, colonPos)
         }, 10)
       }
     }
@@ -152,15 +183,15 @@ export default function ChatInput({
   }
 
   const handleSend = async () => {
-    if (!inputValue.trim()) return
+    if (!rawText.trim()) return
     
-    const extractedVars = extractVariables(inputValue)
+    const extractedVars = extractVariables(rawText)
     
     try {
       let endpoint = '/api/proxy/start'
       let body = {
         flow_id: flowId,
-        input_prompt: inputValue
+        input_prompt: rawText
       }
 
       // Add variables if any
@@ -173,7 +204,7 @@ export default function ChatInput({
         endpoint = '/api/proxy/resume'
         body = {
           flow_run_id: flowRunId,
-          user_input: inputValue
+          user_input: rawText
         }
         
         // Add variables if any
@@ -199,7 +230,7 @@ export default function ChatInput({
         }
         
         // Clear input
-        setInputValue('')
+        setRawText('')
         setCurrentVarIndex(-1)
       } else {
         const errorText = await response.text()
@@ -228,8 +259,8 @@ export default function ChatInput({
       <div style={{ position: 'relative' }}>
         <textarea
           ref={inputRef}
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          value={getDisplayText()}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Type your message... (Press Tab for variables)"
           style={{
@@ -249,17 +280,17 @@ export default function ChatInput({
         
         <button
           onClick={handleSend}
-          disabled={!inputValue.trim()}
+          disabled={!rawText.trim()}
           style={{
             position: 'absolute',
             right: '10px',
             bottom: '10px',
-            backgroundColor: inputValue.trim() ? '#333' : '#222',
-            color: inputValue.trim() ? '#f0f0f0' : '#666',
+            backgroundColor: rawText.trim() ? '#333' : '#222',
+            color: rawText.trim() ? '#f0f0f0' : '#666',
             border: 'none',
             borderRadius: '4px',
             padding: '8px 16px',
-            cursor: inputValue.trim() ? 'pointer' : 'not-allowed',
+            cursor: rawText.trim() ? 'pointer' : 'not-allowed',
             fontSize: '14px',
             fontFamily: 'monospace'
           }}
@@ -276,7 +307,7 @@ export default function ChatInput({
           textAlign: 'center',
           fontFamily: 'monospace'
         }}>
-          Press Tab to insert variables • Type values after = sign • Empty variables are removed automatically
+          Press Tab to insert variables • Variable names shown before colon • Type values after colon • Empty variables are removed automatically
         </div>
       )}
     </div>
