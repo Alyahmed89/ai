@@ -6171,7 +6171,7 @@ ${messageContent}`;
         }
       }
       
-      await this.saveStepRunToDatabase(
+      const stepRunId = await this.saveStepRunToDatabase(
         step,
         finalPrompt, // Save finalPrompt (with memory instruction) not original prompt
         response,
@@ -6179,6 +6179,11 @@ ${messageContent}`;
         1,
         resolvedStep?.api_calls || [] // Pass API calls for database storage, safely handle undefined
       );
+      
+      if (!stepRunId && this.conversation.is_resumed_execution) {
+        console.error(`[DO:${this.state.id}] CRITICAL: Failed to save resumed step to database! flowRunId=${this.flowRunId}, step=${step.step_id}`);
+        // Don't clear flag if save failed - let retry mechanism handle it
+      }
       
       // Update execution context with AI output for new condition system
       if (this.conversation.execution_context) {
@@ -6198,11 +6203,13 @@ ${messageContent}`;
       }
       
       // Clear resumed execution flag after step is saved to database
-      if (this.conversation.is_resumed_execution) {
-        console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag`);
+      if (this.conversation.is_resumed_execution && stepRunId) {
+        console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag (stepRunId=${stepRunId})`);
         this.conversation.is_resumed_execution = false;
         this.conversation.flow_completed = false;
         await this.state.storage.put('conversation', this.conversation);
+      } else if (this.conversation.is_resumed_execution && !stepRunId) {
+        console.error(`[DO:${this.state.id}] WARNING: Not clearing is_resumed_execution flag because step save failed`);
       }
       
       try {
