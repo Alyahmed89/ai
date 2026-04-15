@@ -18,7 +18,7 @@ export async function saveFlowRun(db: D1Database, flowRun: FlowRunData): Promise
     const conversation_id = flowRun.conversation_id || null;
     
     await db.prepare(`
-      INSERT INTO flow_runs (
+      INSERT OR REPLACE INTO flow_runs (
         id, flow_id, conversation_id, step_id, input_prompt, input_payload, output_response,
         status, duration_ms, started_at, completed_at, created_at, next_flow_id, stop_reason
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
