@@ -83,9 +83,18 @@ export default function ChatInput({
     const displayText = e.target.value
     
     // Convert display text back to raw format
-    // Simple approach: if text contains var:value, keep as is for now
-    // The Tab handler will insert proper {{var=}} syntax
-    setRawText(displayText)
+    // Replace var:value patterns with {{var=value}} for known variables
+    const varNames = variables.map(v => typeof v === 'string' ? v : v.name)
+    let rawText = displayText
+    
+    varNames.forEach(varName => {
+      const regex = new RegExp(`${varName}:([^ ]*)`, 'g')
+      rawText = rawText.replace(regex, (match, value) => {
+        return `{{${varName}=${value}}}`
+      })
+    })
+    
+    setRawText(rawText)
   }
 
   const handleTab = (e) => {
@@ -105,25 +114,36 @@ export default function ChatInput({
       // We need to check the raw text
       const text = rawText
       
+      console.log('Tab pressed - cursorPos:', cursorPos, 'displayText:', displayText, 'rawText:', text)
+      console.log('Current display text from getDisplayText():', getDisplayText())
+      
       // Check if cursor is inside a variable placeholder in raw text
       const regex = /\{\{([^}=]+)=([^}]*)\}\}/g
       let insideVar = -1
       let match
       let matchData = null
       while ((match = regex.exec(text)) !== null) {
-        // Convert raw position to display position
-        const displayStart = getDisplayText().indexOf(`${match[1].trim()}:${match[2].trim()}`)
-        if (displayStart >= 0 && cursorPos >= displayStart && cursorPos <= displayStart + match[1].length + 1 + match[2].length) {
-          const varName = match[1].trim()
-          insideVar = varNames.indexOf(varName)
-          matchData = { 
-            index: match.index, 
-            value: match[2].trim(), 
-            varName, 
-            length: match[0].length,
-            displayStart
+        const varName = match[1].trim()
+        const value = match[2].trim()
+        const displayPattern = `${varName}:${value}`
+        const displayStart = getDisplayText().indexOf(displayPattern)
+        console.log('Found variable in raw text:', varName, 'value:', value, 'displayPattern:', displayPattern, 'displayStart:', displayStart)
+        
+        if (displayStart >= 0) {
+          const varEndPos = displayStart + varName.length + 1 + value.length
+          console.log('Checking if cursorPos', cursorPos, 'is between', displayStart, 'and', varEndPos)
+          if (cursorPos >= displayStart && cursorPos <= varEndPos) {
+            insideVar = varNames.indexOf(varName)
+            matchData = { 
+              index: match.index, 
+              value: value, 
+              varName, 
+              length: match[0].length,
+              displayStart
+            }
+            console.log('Cursor is inside variable:', varName, 'insideVar index:', insideVar)
+            break
           }
-          break
         }
       }
       
@@ -141,9 +161,14 @@ export default function ChatInput({
         // Position cursor after colon
         setTimeout(() => {
           input.focus()
-          const newDisplayText = getDisplayText()
+          // Calculate display text from newText directly
+          const newDisplayText = newText.replace(/\{\{([^}=]+)=([^}]*)\}\}/g, (match, vName, value) => {
+            return `${vName.trim()}:${value.trim()}`
+          })
+          console.log('Cycling cursor - newDisplayText:', newDisplayText, 'nextVar:', varNames[nextIndex])
           // Find position after colon
           const colonPos = newDisplayText.indexOf(`${varNames[nextIndex]}:`) + varNames[nextIndex].length + 1
+          console.log('colonPos:', colonPos)
           input.setSelectionRange(colonPos, colonPos)
         }, 10)
       } else {
@@ -156,10 +181,16 @@ export default function ChatInput({
         // Position cursor after colon
         setTimeout(() => {
           input.focus()
-          const newDisplayText = getDisplayText()
+          // Calculate display text from newText directly
+          const newDisplayText = newText.replace(/\{\{([^}=]+)=([^}]*)\}\}/g, (match, vName, value) => {
+            return `${vName.trim()}:${value.trim()}`
+          })
+          console.log('Setting cursor - newDisplayText:', newDisplayText, 'length:', newDisplayText.length)
           // Find position after colon
           const colonPos = newDisplayText.lastIndexOf(`${varName}:`) + varName.length + 1
+          console.log('varName:', varName, 'length:', varName.length, 'colonPos:', colonPos)
           input.setSelectionRange(colonPos, colonPos)
+          console.log('Selection set to:', colonPos, 'current selection:', input.selectionStart, input.selectionEnd)
         }, 10)
       }
     }
