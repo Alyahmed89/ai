@@ -812,8 +812,10 @@ export class ConversationOrchestratorDO_2026A {
         // Don't restart flow - just stop the conversation
         console.log(`[DO:${this.state.id}] Flow completed with ${stepsCompleted} steps, stopping (no restart)`);
         
-        // Stop current conversation
-        await this.stopConversation('flow_completed');
+        // Stop current conversation unless this is a resumed execution
+        if (!this.conversation.is_resumed_execution) {
+          await this.stopConversation('flow_completed');
+        }
         
         return new Response(JSON.stringify({
           success: true,
@@ -4101,7 +4103,18 @@ export class ConversationOrchestratorDO_2026A {
             console.log(`[DO:${this.state.id}] No steps in new flow ${newFlowId}, completing flow execution`);
             await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
             await this.restartFlow();
-            await this.stopConversation('flow_completed');
+            
+            // Don't stop conversation if this is a resumed execution
+            if (this.conversation.is_resumed_execution) {
+              console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag and staying active`);
+              this.conversation.is_resumed_execution = false;
+              // Stay in SENDING_STEP state for potential further resumes
+              this.conversation.state = 'SENDING_STEP';
+              this.conversation.flow_completed = false;
+              await this.state.storage.put('conversation', this.conversation);
+            } else {
+              await this.stopConversation('flow_completed');
+            }
             return;
           }
         }
@@ -4121,14 +4134,28 @@ export class ConversationOrchestratorDO_2026A {
               console.log(`[DO:${this.state.id}] Step ${route.target_id} not found in current flow, completing flow execution`);
               await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
               await this.restartFlow();
-              await this.stopConversation('flow_completed');
+              
+              // Don't stop conversation if this is a resumed execution
+              if (this.conversation.is_resumed_execution) {
+                console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag and staying active`);
+                this.conversation.is_resumed_execution = false;
+                // Stay in SENDING_STEP state for potential further resumes
+                this.conversation.state = 'SENDING_STEP';
+                this.conversation.flow_completed = false;
+                await this.state.storage.put('conversation', this.conversation);
+              } else {
+                await this.stopConversation('flow_completed');
+              }
               return;
             }
           } else {
             console.log(`[DO:${this.state.id}] No flow steps available, completing flow execution`);
             await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
             await this.restartFlow();
-            await this.stopConversation('flow_completed');
+            // Don't stop conversation if this is a resumed execution
+            if (!this.conversation.is_resumed_execution) {
+              await this.stopConversation('flow_completed');
+            }
             return;
           }
         }
@@ -4137,7 +4164,10 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] Route type is 'end', flow should complete`);
           await this.saveFlowRunToDatabase('flow_completed_by_route', 'completed');
           await this.restartFlow();
-          await this.stopConversation('flow_completed');
+          // Don't stop conversation if this is a resumed execution
+          if (!this.conversation.is_resumed_execution) {
+            await this.stopConversation('flow_completed');
+          }
           return;
         }
       }
@@ -4150,7 +4180,18 @@ export class ConversationOrchestratorDO_2026A {
           console.log(`[DO:${this.state.id}] No more steps in flow, completing flow execution`);
           await this.saveFlowRunToDatabase('flow_completed_no_more_steps', 'completed');
           await this.restartFlow();
-          await this.stopConversation('flow_completed');
+          
+          // Don't stop conversation if this is a resumed execution
+          if (this.conversation.is_resumed_execution) {
+            console.log(`[DO:${this.state.id}] Resumed execution completed, clearing flag and staying active`);
+            this.conversation.is_resumed_execution = false;
+            // Stay in SENDING_STEP state for potential further resumes
+            this.conversation.state = 'SENDING_STEP';
+            this.conversation.flow_completed = false;
+            await this.state.storage.put('conversation', this.conversation);
+          } else {
+            await this.stopConversation('flow_completed');
+          }
           return;
         }
       }
@@ -5553,7 +5594,10 @@ ${messageContent}`;
       if (route.type === 'end') {
         console.log(`[DO:${this.state.id}] Route type is 'end', flow should complete`);
         await this.restartFlow();
-        await this.stopConversation('flow_completed_by_route');
+        // Don't stop conversation if this is a resumed execution
+        if (!this.conversation.is_resumed_execution) {
+          await this.stopConversation('flow_completed_by_route');
+        }
         return;
       }
     }
@@ -5565,7 +5609,10 @@ ${messageContent}`;
       if (!step) {
         console.log(`[DO:${this.state.id}] No more steps in flow`);
         await this.restartFlow();
-        await this.stopConversation('flow_completed');
+        // Don't stop conversation if this is a resumed execution
+        if (!this.conversation.is_resumed_execution) {
+          await this.stopConversation('flow_completed');
+        }
         return;
       }
     }
@@ -6090,7 +6137,10 @@ ${messageContent}`;
         
         // When DeepSeek API fails, stop the conversation instead of continuing
         console.error(`[DO:${this.state.id}] DeepSeek API failed, stopping conversation: ${deepseekResult.error}`);
-        await this.stopConversation(`deepseek_api_failed: ${deepseekResult.error}`);
+        // Don't stop conversation if this is a resumed execution (allow retry)
+        if (!this.conversation.is_resumed_execution) {
+          await this.stopConversation(`deepseek_api_failed: ${deepseekResult.error}`);
+        }
         return;
       }
       
