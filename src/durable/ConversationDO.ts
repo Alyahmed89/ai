@@ -4679,6 +4679,9 @@ export class ConversationOrchestratorDO_2026A {
         this.conversation.flow_completed = false;
         this.conversation.state = 'SENDING_STEP';
         
+        // Mark this as a resumed execution to prevent immediate flow completion
+        this.conversation.is_resumed_execution = true;
+        
         // Clear last_step_response to prevent routing logic from interfering with step repetition
         this.conversation.last_step_response = undefined;
         this.conversation.last_response = undefined;
