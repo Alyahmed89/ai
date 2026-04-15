@@ -4574,21 +4574,24 @@ export class ConversationOrchestratorDO_2026A {
         const nextAttempt = maxAttempt + 1;
         console.log(`[DO:${this.state.id}] Repeating step ${stepToRepeat.step_id} with attempt ${nextAttempt} (iteration ${iteration})`);
         
-        // Reset the step to pending and set it as current step
-        stepToRepeat.status = 'pending';
-        stepToRepeat.response = undefined;
-        stepToRepeat.attempt = nextAttempt; // Store attempt on step object
+        // Import generateStepRunId
+        const { generateStepRunId } = await import('../services/database');
         
-        // If user provided input, store it separately to preserve original instructions
-        if (input && typeof input === 'string' && input.trim()) {
-          // Store user input separately to preserve original step instructions
-          stepToRepeat.user_input = input;
-          console.log(`[DO:${this.state.id}] Stored user input for step: ${input.substring(0, 100)}...`);
-        }
+        // Create NEW step entry for the repeat
+        const newStep = {
+          ...stepToRepeat,
+          id: generateStepRunId(), // NEW ID
+          status: 'pending',
+          response: undefined,
+          attempt: nextAttempt,
+          user_input: input && typeof input === 'string' && input.trim() ? input : undefined,
+          instructions: stepToRepeat.instructions + (input && typeof input === 'string' && input.trim() ? `\n\nUser input: ${input}` : '')
+        };
         
-        // Set current step to the repeated step
-        this.conversation.current_step = stepToRepeat;
-        this.conversation.current_step_index = iteration;
+        // Add new step to flow_steps
+        this.conversation.flow_steps.push(newStep);
+        this.conversation.current_step = newStep;
+        this.conversation.current_step_index = this.conversation.flow_steps.length - 1;
         
         // Clear waiting state if any
         this.conversation.state = 'SENDING_STEP';
@@ -4603,7 +4606,7 @@ export class ConversationOrchestratorDO_2026A {
         await this.state.storage.put('conversation', this.conversation);
         
         // Continue execution with the repeated step
-        console.log(`[DO:${this.state.id}] RESUME DEBUG: Calling handleSendingStepState for step ${stepToRepeat.step_id}`);
+        console.log(`[DO:${this.state.id}] RESUME DEBUG: Calling handleSendingStepState for step ${newStep.id}`);
         try {
           await this.handleSendingStepState();
           console.log(`[DO:${this.state.id}] RESUME DEBUG: handleSendingStepState completed successfully`);
@@ -4616,7 +4619,8 @@ export class ConversationOrchestratorDO_2026A {
           success: true,
           message: `Repeating step ${requestedStepId}: ${stepToRepeat.title}`,
           step_id: requestedStepId,
-          step_title: stepToRepeat.title
+          step_title: stepToRepeat.title,
+          new_step_id: newStep.id
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
