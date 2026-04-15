@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import ChatInput from '@/components/ChatInput'
+import ChatInput from '@/app/components/ChatInput'
 
 export default function FlowRunPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const flowRunId = params?.id as string
   const flowId = searchParams.get('flowId')
-  const [conversationData, setConversationData] = useState(null)
+  const [conversationData, setConversationData] = useState<any>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -182,7 +182,7 @@ export default function FlowRunPage() {
       }}>
         <ChatInput 
           flowRunId={flowRunId}
-          flowId={flowId}
+          flowId={flowId || undefined}
           onSend={(responseData: any) => {
             // On flow-run page, we don't need to navigate anywhere
             // The page will automatically update via polling

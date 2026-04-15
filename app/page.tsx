@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import ChatInput from '@/components/ChatInput'
+import ChatInput from '@/app/components/ChatInput'
 
 export default function Home() {
   const [flowId, setFlowId] = useState('')

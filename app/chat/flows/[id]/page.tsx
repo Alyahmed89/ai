@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import ChatInput from '@/components/ChatInput'
+import ChatInput from '@/app/components/ChatInput'
 
 export default function FlowPage() {
   const params = useParams()
