@@ -5439,7 +5439,10 @@ ${messageContent}`;
     // Check if we have flow steps
     if (!this.conversation.flow_steps || this.conversation.flow_steps.length === 0) {
       console.log(`[DO:${this.state.id}] No flow steps available`);
-      await this.stopConversation('no_flow_steps');
+      // Don't stop conversation if this is a resumed execution
+      if (!this.conversation.is_resumed_execution) {
+        await this.stopConversation('no_flow_steps');
+      }
       return;
     }
     
@@ -5540,7 +5543,10 @@ ${messageContent}`;
         } else {
           console.log(`[DO:${this.state.id}] No steps in new flow ${newFlowId}`);
           await this.restartFlow();
-          await this.stopConversation('no_flow_steps');
+          // Don't stop conversation if this is a resumed execution
+          if (!this.conversation.is_resumed_execution) {
+            await this.stopConversation('no_flow_steps');
+          }
           return;
         }
       }
