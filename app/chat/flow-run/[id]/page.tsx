@@ -20,7 +20,8 @@ export default function FlowRunPage() {
 
     const fetchFlowRunDetails = async () => {
       try {
-        const response = await fetch(`/api/proxy/api/flow-runs/${flowRunId}`)
+        console.log("FLOW RUN ID USED (initial):", flowRunId);
+        const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`)
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }
@@ -28,12 +29,20 @@ export default function FlowRunPage() {
         const data = await response.json()
         console.log('Flow run details:', data)
         
-        if (data.flow_run?.conversation_id) {
-          // Store conversation_id for polling
-          setConversationId(data.flow_run.conversation_id)
-          setError(null)
+        // Since we're fetching step-runs instead of flow-run details, we need to handle the response differently
+        // The step-runs endpoint returns an array of step runs, not a single flow-run object
+        if (Array.isArray(data) && data.length > 0) {
+          // Use the flow_run_id from the first step run
+          const firstStepRun = data[0];
+          if (firstStepRun.flow_run_id) {
+            // Store flow_run_id for polling (same as the one we already have)
+            setConversationId(firstStepRun.flow_run_id)
+            setError(null)
+          } else {
+            setError('No flow_run_id found in step runs')
+          }
         } else {
-          setError('No conversation_id found in flow run')
+          setError('No step runs found for this flow run')
         }
       } catch (err: any) {
         console.error('Error fetching flow run:', err)
@@ -52,7 +61,8 @@ export default function FlowRunPage() {
 
     const pollStatus = async () => {
       try {
-        const response = await fetch(`/api/proxy/status/${conversationId}`)
+        console.log("FLOW RUN ID USED (page):", flowRunId);
+        const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`)
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }

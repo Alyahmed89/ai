@@ -57,7 +57,9 @@ export class FlowRunPoller {
       });
 
       // Fetch conversation status
-      const response = await fetch(`/api/proxy/status/${conversationId}`);
+      const flowRunId = conversationId;
+      console.log("FLOW RUN ID USED:", flowRunId);
+      const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -113,13 +115,15 @@ export class FlowRunPoller {
       try {
         console.log(`Polling attempt ${attempt}/${maxAttempts} for flow run with conversation_id: ${conversationId}`);
         
-        const response = await fetch(`/api/proxy/api/flow-runs?conversation_id=${conversationId}`);
+        const flowRunId = conversationId;
+        console.log("FLOW RUN ID USED (flow-runs):", flowRunId);
+        const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         const data = await response.json();
-        const flowRuns = data.flow_runs || [];
+        const flowRuns = data || [];
         
         if (flowRuns.length > 0) {
           const flowRun = flowRuns[0];

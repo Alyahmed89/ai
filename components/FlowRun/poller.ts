@@ -11,7 +11,9 @@ export class FlowRunPoller {
       this.isFetching = true;
       
       try {
-        const res = await fetch(`/api/proxy/status/${conversationId}`);
+        const flowRunId = conversationId;
+        console.log("FLOW RUN ID USED (poller):", flowRunId);
+        const res = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`);
         const json = await res.json();
 
         const normalized =
