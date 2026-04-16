@@ -70,14 +70,28 @@ export default function FlowRunPage() {
         const data = await response.json()
         console.log('Status response:', data)
         
-        // Normalize the data structure
-        const normalized = 
-          data?.data?.conversation ??
-          data?.conversation ??
-          data?.data ??
-          data
-        
-        setConversationData(normalized)
+        // The step-runs endpoint returns an array of step runs
+        // We need to convert it to the expected conversation format
+        if (Array.isArray(data)) {
+          // Create a conversation-like object with flow_steps
+          const conversation = {
+            flow_steps: data.map(step => ({
+              instructions: step.prompt,
+              response: step.response,
+              // Add other fields if needed
+              ...step
+            }))
+          }
+          setConversationData(conversation)
+        } else {
+          // Fallback to original normalization logic
+          const normalized = 
+            data?.data?.conversation ??
+            data?.conversation ??
+            data?.data ??
+            data
+          setConversationData(normalized)
+        }
         setError(null)
       } catch (err: any) {
         console.error('Error polling status:', err)
@@ -103,11 +117,12 @@ export default function FlowRunPage() {
     // Extract from flow_steps array (main prompts and responses)
     if (conversationData.flow_steps && Array.isArray(conversationData.flow_steps)) {
       conversationData.flow_steps.forEach((step: any) => {
-        // Add prompt (instructions) as MO - ONLY if it's a user prompt
-        if (step.instructions && step.instructions.trim()) {
+        // Add prompt (instructions or prompt) as MO - ONLY if it's a user prompt
+        const promptText = step.instructions || step.prompt
+        if (promptText && promptText.trim()) {
           messages.push({ 
             type: 'prompt', 
-            content: step.instructions, 
+            content: promptText, 
             sender: 'MO'
           })
         }
