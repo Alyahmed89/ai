@@ -88,7 +88,8 @@ export default function ChatInput({
     let rawText = displayText
     
     varNames.forEach(varName => {
-      const regex = new RegExp(`${varName}:([^ ]*)`, 'g')
+      // Match var:value or var: value (with optional space after colon)
+      const regex = new RegExp(`${varName}:\\s*(.*?)(?=\\s|$)`, 'g')
       rawText = rawText.replace(regex, (match, value) => {
         return `{{${varName}=${value}}}`
       })
