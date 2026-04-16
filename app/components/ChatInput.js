@@ -78,22 +78,27 @@ export default function ChatInput({
     })
   }
 
-  // Handle input change
+  // Handle input change - just update rawText directly
   const handleInputChange = (e) => {
     const displayText = e.target.value
     
     // Convert display text back to raw format
-    // Replace var:value patterns with {{var=value}} for known variables
+    // Simple regex to convert var:value to {{var=value}}
+    // This is a best-effort conversion for manual typing
     const varNames = variables.map(v => typeof v === 'string' ? v : v.name)
     let rawText = displayText
     
-    varNames.forEach(varName => {
-      // Match var:value or var: value (with optional space after colon)
-      const regex = new RegExp(`${varName}:\\s*(.*?)(?=\\s|$)`, 'g')
-      rawText = rawText.replace(regex, (match, value) => {
+    if (varNames.length > 0) {
+      // Build pattern for all variables
+      const varPattern = varNames.map(v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+      // Match var: value - capture everything until end or next variable pattern
+      // Use [\s\S] to match across lines including spaces
+      const regex = new RegExp(`(${varPattern}):\\s*([\\s\\S]*?)(?=\\s+(${varPattern}):|$)`, 'g')
+      
+      rawText = displayText.replace(regex, (match, varName, value) => {
         return `{{${varName}=${value}}}`
       })
-    })
+    }
     
     setRawText(rawText)
   }
