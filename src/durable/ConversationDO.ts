@@ -475,6 +475,12 @@ export class ConversationOrchestratorDO_2026A {
       this.effectiveDeepSeekApiKey = this.conversation.effective_deepseek_api_key;
       console.log(`[DO:${this.state.id}] loadConversationState() - Loaded effectiveDeepSeekApiKey from storage: ${this.effectiveDeepSeekApiKey ? this.effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'NULL'}`);
     }
+    
+    // Load flowRunId from conversation if available
+    if (this.conversation?.flow_run_id) {
+      this.flowRunId = this.conversation.flow_run_id;
+      console.log(`[DO:${this.state.id}] loadConversationState() - Loaded flowRunId from conversation: ${this.flowRunId}`);
+    }
   }
 
   /**
@@ -1128,7 +1134,8 @@ export class ConversationOrchestratorDO_2026A {
         agent: 'openhands', // Default agent for non-flow initialization
         step_status_sent: false, // Track if SENDING STEP status has been sent for current step
         input_payload: input_payload || undefined, // Store input payload for flow-to-flow propagation
-        effective_deepseek_api_key: this.effectiveDeepSeekApiKey // Store the API key from request
+        effective_deepseek_api_key: this.effectiveDeepSeekApiKey, // Store the API key from request
+        flow_run_id: this.flowRunId // Store flow run ID for persistence
       };
       
       await this.state.storage.put('conversation', this.conversation);
@@ -1531,6 +1538,7 @@ export class ConversationOrchestratorDO_2026A {
         effective_deepseek_api_key: effectiveDeepSeekApiKey, // Store the API key from request
         system_message: flowDefinition.system_message, // Load system message from flow definition
         // memory_prompt removed
+        flow_run_id: this.flowRunId // Will be set after conversation creation
       };
       
       console.log(`[DO:${this.state.id}] DEBUG: Conversation object created with state: ${this.conversation.state}`);
@@ -1540,6 +1548,9 @@ export class ConversationOrchestratorDO_2026A {
       // Generate flow run ID early so we can save variables with correct flow_run_id
       this.flowRunId = flow_run_id || generateFlowRunId();
       console.log(`[DO:${this.state.id}] Generated flow run ID: ${this.flowRunId} ${flow_run_id ? '(provided)' : '(generated)'}`);
+      
+      // Update conversation with flow_run_id for persistence
+      this.conversation.flow_run_id = this.flowRunId;
       
       // Store provided variables in execution context
       if (Object.keys(variables).length > 0) {
@@ -4491,9 +4502,16 @@ export class ConversationOrchestratorDO_2026A {
       });
       
       // If flow_run_id provided in request, set it (for backward compatibility)
-      if (flow_run_id && !this.flowRunId) {
+      if (flow_run_id) {
         this.flowRunId = flow_run_id;
         console.log(`[DO:${this.state.id}] Set flowRunId from request: ${flow_run_id}`);
+        
+        // Update conversation with flow_run_id for persistence
+        if (this.conversation) {
+          this.conversation.flow_run_id = this.flowRunId;
+          await this.state.storage.put('conversation', this.conversation);
+          console.log(`[DO:${this.state.id}] Updated conversation with flow_run_id: ${this.flowRunId}`);
+        }
       }
       
       // Save variables to database like /start does
@@ -7722,8 +7740,15 @@ ${messageContent}`;
     const finalAttempt = step.attempt || attempt;
     console.log(`[DO:${this.state.id}] DEBUG saveStepRunToDatabase called: step=${step.step_id}, status=${status}, attempt=${finalAttempt} (step.attempt=${step.attempt}, param=${attempt}), flowRunId=${this.flowRunId}`);
     
-    if (!this.conversation || !this.flowRunId) {
-      console.log(`[DO:${this.state.id}] DEBUG: No conversation or flowRunId, skipping step run save`);
+    if (!this.conversation) {
+      console.log(`[DO:${this.state.id}] DEBUG: No conversation, skipping step run save`);
+      return null;
+    }
+    
+    // Use flowRunId from property or conversation as fallback
+    const effectiveFlowRunId = this.flowRunId || this.conversation.flow_run_id;
+    if (!effectiveFlowRunId) {
+      console.log(`[DO:${this.state.id}] DEBUG: No flowRunId (property=${this.flowRunId}, conversation=${this.conversation.flow_run_id}), skipping step run save`);
       return null;
     }
     
@@ -7748,7 +7773,7 @@ ${messageContent}`;
     // Prepare step run data
     const stepRunData = {
       id: stepRunId,
-      flow_run_id: this.flowRunId,
+      flow_run_id: effectiveFlowRunId,
       step_id: step.step_id,
       iteration,
       attempt: finalAttempt,
