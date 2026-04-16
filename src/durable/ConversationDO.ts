@@ -4539,7 +4539,8 @@ export class ConversationOrchestratorDO_2026A {
               step_id: requestedStepId || 'resume',
               key,
               value,
-              source: 'resume_endpoint'
+              source: 'resume_endpoint',
+              variable_type: 'user_input'
             });
           }
         }
