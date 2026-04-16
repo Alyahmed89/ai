@@ -4811,6 +4811,26 @@ export class ConversationOrchestratorDO_2026A {
         }
 
         console.log(`[DO:${this.state.id}] Saved ${requiredVariables.length} user variables to database`);
+        
+        // FIX: Update the paused step for user_variables case
+        if (this.conversation.flow_steps && this.conversation.current_step) {
+          const stepIndex = this.conversation.flow_steps.findIndex(s => s.step_id === stepId);
+          if (stepIndex !== -1) {
+            const variableSummary = requiredVariables.map(varName => `${varName}: ${JSON.stringify(variableValues[varName])}`).join(', ');
+            this.conversation.flow_steps[stepIndex].response = `Received user variables: ${variableSummary}`;
+            this.conversation.flow_steps[stepIndex].status = 'completed';
+            console.log(`[DO:${this.state.id}] Updated step ${stepId} with user variables result`);
+            
+            // Update the step run in database from 'paused' to 'completed'
+            const updatedStep = this.conversation.flow_steps[stepIndex];
+            await this.saveStepRunToDatabase(
+              updatedStep,
+              `Received user variables: ${requiredVariables.join(', ')}`,
+              `Received user variables: ${variableSummary}`,
+              'completed'
+            );
+          }
+        }
       } else {
         // For non-user_variables input, use input parameter
         const valueToStore = input;
@@ -4851,6 +4871,15 @@ export class ConversationOrchestratorDO_2026A {
             this.conversation.flow_steps[stepIndex].response = `Received input for ${inputName}: ${JSON.stringify(valueToStore)}`;
             this.conversation.flow_steps[stepIndex].status = 'completed';
             console.log(`[DO:${this.state.id}] Updated step ${stepId} with input result`);
+            
+            // FIX: Update the step run in database from 'paused' to 'completed'
+            const updatedStep = this.conversation.flow_steps[stepIndex];
+            await this.saveStepRunToDatabase(
+              updatedStep,
+              `Received input for ${inputName}`,
+              `Received input for ${inputName}: ${JSON.stringify(valueToStore)}`,
+              'completed'
+            );
           }
         }
       }
