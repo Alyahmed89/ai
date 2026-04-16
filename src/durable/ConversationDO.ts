@@ -4690,10 +4690,11 @@ export class ConversationOrchestratorDO_2026A {
         }
         
         // Create NEW step entry for the repeat
+        const newStepId = generateStepRunId();
         const newStep = {
           ...stepToRepeat,
-          id: generateStepRunId(), // Step run ID
-          step_id: stepToRepeat.id, // Original step definition ID
+          id: newStepId, // Step run ID
+          step_id: newStepId, // Use new step ID for database saves
           status: 'pending',
           response: undefined,
           attempt: nextAttempt,
@@ -4729,6 +4730,8 @@ export class ConversationOrchestratorDO_2026A {
         
         // Continue execution with the repeated step
         console.log(`[DO:${this.state.id}] RESUME DEBUG: Calling handleSendingStepState for step ${newStep.id}`);
+        console.log(`[DO:${this.state.id}] RESUME DEBUG: flowRunId=${this.flowRunId}, conversation.flow_run_id=${this.conversation?.flow_run_id}`);
+        console.log(`[DO:${this.state.id}] RESUME DEBUG: current_step_index=${this.conversation?.current_step_index}, flow_steps.length=${this.conversation?.flow_steps?.length}`);
         try {
           await this.handleSendingStepState();
           console.log(`[DO:${this.state.id}] RESUME DEBUG: handleSendingStepState completed successfully`);
