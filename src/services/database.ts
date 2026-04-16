@@ -179,6 +179,34 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
       stepRun.api_calls || null,
       stepRun.memory_json || null
     ).run();
+
+    console.log("DB RESULT", result);
+
+    if (!result.success || result.meta?.changes === 0) {
+      console.log("FORCING INSERT FALLBACK");
+
+      await db.prepare(`
+        INSERT INTO step_runs (
+          id, flow_run_id, step_id, iteration, attempt, prompt, response,
+          input_payload, output_payload, status, created_at, duration_ms, api_calls, memory_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        crypto.randomUUID(),
+        stepRun.flow_run_id,
+        stepRun.step_id,
+        stepRun.iteration + Date.now(), // force unique
+        stepRun.attempt,
+        stepRun.prompt,
+        stepRun.response,
+        stepRun.input_payload || null,
+        stepRun.output_payload || null,
+        stepRun.status,
+        stepRun.created_at,
+        stepRun.duration_ms,
+        stepRun.api_calls || null,
+        stepRun.memory_json || null
+      ).run();
+    }
     
     // DEBUG: Log DB result
     console.log(`[DATABASE] DEBUG saveStepRun result:`, {
