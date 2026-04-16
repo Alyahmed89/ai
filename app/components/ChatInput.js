@@ -74,7 +74,7 @@ export default function ChatInput({
   // Format display text: replace {{var=value}} with var:value
   const getDisplayText = () => {
     return rawText.replace(/\{\{([^}=]+)=([^}]*)\}\}/g, (match, varName, value) => {
-      return `${varName.trim()}:${value.trim()}`
+      return `${varName.trim()}:${value}`
     })
   }
 
@@ -130,7 +130,7 @@ export default function ChatInput({
       let matchData = null
       while ((match = regex.exec(text)) !== null) {
         const varName = match[1].trim()
-        const value = match[2].trim()
+        const value = match[2]
         const displayPattern = `${varName}:${value}`
         const displayStart = getDisplayText().indexOf(displayPattern)
         console.log('Found variable in raw text:', varName, 'value:', value, 'displayPattern:', displayPattern, 'displayStart:', displayStart)
@@ -169,7 +169,7 @@ export default function ChatInput({
           input.focus()
           // Calculate display text from newText directly
           const newDisplayText = newText.replace(/\{\{([^}=]+)=([^}]*)\}\}/g, (match, vName, value) => {
-            return `${vName.trim()}:${value.trim()}`
+            return `${vName.trim()}:${value}`
           })
           console.log('Cycling cursor - newDisplayText:', newDisplayText, 'nextVar:', varNames[nextIndex])
           // Find position after colon
@@ -189,7 +189,7 @@ export default function ChatInput({
           input.focus()
           // Calculate display text from newText directly
           const newDisplayText = newText.replace(/\{\{([^}=]+)=([^}]*)\}\}/g, (match, vName, value) => {
-            return `${vName.trim()}:${value.trim()}`
+            return `${vName.trim()}:${value}`
           })
           console.log('Setting cursor - newDisplayText:', newDisplayText, 'length:', newDisplayText.length)
           // Find position after colon
