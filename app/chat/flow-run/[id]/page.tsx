@@ -21,7 +21,7 @@ export default function FlowRunPage() {
     const fetchFlowRunDetails = async () => {
       try {
         console.log("FLOW RUN ID USED (initial):", flowRunId);
-        const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`)
+        const response = await fetch(`/api/proxy/api/step-runs?flow_run_id=${flowRunId}`)
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }
@@ -62,7 +62,7 @@ export default function FlowRunPage() {
     const pollStatus = async () => {
       try {
         console.log("FLOW RUN ID USED (page):", flowRunId);
-        const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`)
+        const response = await fetch(`/api/proxy/api/step-runs?flow_run_id=${flowRunId}`)
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }

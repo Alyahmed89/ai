@@ -69,7 +69,7 @@ export default function CreateEndpointModal({
   const fetchEndpointData = async (id: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/endpoints/${id}`);
+      const response = await fetch(`/api/proxy/api/endpoints/${id}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch endpoint: ${response.status}`);
       }
@@ -164,7 +164,7 @@ export default function CreateEndpointModal({
         Object.entries(payload).filter(([_, value]) => value !== undefined)
       );
 
-      let url = 'https://deepseek-agent.alghamdimo89.workers.dev/api/endpoints';
+      let url = '/api/proxy/api/endpoints';
       let method = 'POST';
       
       if (mode === 'edit' && endpointId) {

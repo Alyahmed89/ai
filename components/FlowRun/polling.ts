@@ -59,7 +59,7 @@ export class FlowRunPoller {
       // Fetch conversation status
       const flowRunId = conversationId;
       console.log("FLOW RUN ID USED:", flowRunId);
-      const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`);
+      const response = await fetch(`/api/proxy/api/step-runs?flow_run_id=${flowRunId}`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -117,7 +117,7 @@ export class FlowRunPoller {
         
         const flowRunId = conversationId;
         console.log("FLOW RUN ID USED (flow-runs):", flowRunId);
-        const response = await fetch(`https://deepseek-agent.alghamdimo89.workers.dev/api/step-runs?flow_run_id=${flowRunId}`);
+        const response = await fetch(`/api/proxy/api/step-runs?flow_run_id=${flowRunId}`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
