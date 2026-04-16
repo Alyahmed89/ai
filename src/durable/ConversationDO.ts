@@ -7821,6 +7821,17 @@ ${messageContent}`;
       duration_ms: 0, // TODO: Calculate actual duration
       api_calls: apiCalls ? JSON.stringify(apiCalls) : undefined
     };
+    
+    // DEBUG: Log payload before DB call
+    console.log(`[DO:${this.state.id}] DEBUG BEFORE SAVE`, {
+      flow_run_id: effectiveFlowRunId,
+      step_id: step.step_id,
+      iteration,
+      attempt: finalAttempt,
+      status,
+      response: response ? response.substring(0, 100) + (response.length > 100 ? '...' : ''),
+      created_at: stepRunData.created_at
+    });
 
     // Save to database
     const result = await saveStepRun(this.env.FLOW_RUNS_DB, stepRunData);

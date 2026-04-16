@@ -137,7 +137,18 @@ export async function saveIteration(db: D1Database, iteration: IterationData): P
  */
 export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise<{success: boolean; error?: string}> {
   try {
-    await db.prepare(`
+    // DEBUG: Log DB call details
+    console.log(`[DATABASE] DEBUG saveStepRun called:`, {
+      flow_run_id: stepRun.flow_run_id,
+      step_id: stepRun.step_id,
+      iteration: stepRun.iteration,
+      attempt: stepRun.attempt,
+      status: stepRun.status,
+      response_preview: stepRun.response ? stepRun.response.substring(0, 100) + (stepRun.response.length > 100 ? '...' : '') : null,
+      created_at: stepRun.created_at
+    });
+    
+    const result = await db.prepare(`
       INSERT INTO step_runs (
         id, flow_run_id, step_id, iteration, attempt, prompt, response,
         input_payload, output_payload, status, created_at, duration_ms, api_calls, memory_json
@@ -168,6 +179,13 @@ export async function saveStepRun(db: D1Database, stepRun: StepRunData): Promise
       stepRun.api_calls || null,
       stepRun.memory_json || null
     ).run();
+    
+    // DEBUG: Log DB result
+    console.log(`[DATABASE] DEBUG saveStepRun result:`, {
+      success: true,
+      rows_affected: result.meta?.rows_written || 0,
+      last_row_id: result.meta?.last_row_id || 0
+    });
 
     return { success: true };
   } catch (error: any) {
