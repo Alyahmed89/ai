@@ -7829,7 +7829,7 @@ ${messageContent}`;
       iteration,
       attempt: finalAttempt,
       status,
-      response: response ? response.substring(0, 100) + (response.length > 100 ? '...' : ''),
+      response: response ? response.substring(0, 100) + (response.length > 100 ? '...' : '') : null,
       created_at: stepRunData.created_at
     });
 
