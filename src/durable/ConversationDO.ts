@@ -926,6 +926,14 @@ export class ConversationOrchestratorDO_2026A {
     
     console.log(`[DO:${this.state.id}] PRE-CHECK: last_step_response exists?`, !!this.conversation.last_step_response);
     console.log(`[DO:${this.state.id}] PRE-CHECK: current_step exists?`, !!this.conversation.current_step);
+    console.log(`[DO:${this.state.id}] PRE-CHECK: conversation state:`, {
+      flow_id: this.conversation.flow_id,
+      current_step_id: this.conversation.current_step?.step_id,
+      current_step_index: this.conversation.current_step_index,
+      flow_steps_length: this.conversation.flow_steps?.length,
+      last_step_response_length: this.conversation.last_step_response?.length,
+      last_step_response_preview: this.conversation.last_step_response?.substring(0, 100)
+    });
     
     // Check if we have a response from the previous step for conditional branching
     if (this.conversation.last_step_response && this.conversation.current_step) {
