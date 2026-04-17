@@ -928,6 +928,7 @@ export class ConversationOrchestratorDO_2026A {
     if (this.conversation.last_step_response && this.conversation.current_step) {
       console.log(`[DO:${this.state.id}] Checking conditional branching for flow ${flowId}`);
       console.log(`[DO:${this.state.id}] Current step: ${this.conversation.current_step.step_id}, Response length: ${this.conversation.last_step_response.length}`);
+      console.log(`[DO:${this.state.id}] HIT CONVERSATIONDO CONDITIONS`);
       
       // NEW: Load conditions for routing decision
       const conditionsQuery = `

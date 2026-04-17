@@ -842,6 +842,7 @@ export async function getNextStepBasedOnConditions(
 ): Promise<StepData | null> {
   try {
     console.log(`[DATABASE] Getting next step based on conditions for flow ${flow_id}, step ${current_step_id}, response: ${response_text.substring(0, 100)}...`);
+    console.log("HIT DATABASE CONDITIONS");
     
     // First, check if current step has conditions
     // Note: Using actual schema - condition column contains the condition text
