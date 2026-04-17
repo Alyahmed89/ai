@@ -331,16 +331,29 @@ export class StrictFlowExecutor {
     // Import the condition evaluation function
     const { getNextStepBasedOnConditions } = await import('./database');
     
-    // Get the last response from execution logs
+    // Get the last response from step_runs table
     let lastResponse = '';
     
-    // Debug: show all logs structure
-    console.log("ALL LOGS:", JSON.stringify(this.executionState.logs, null, 2));
+    // First try: Get response from step_runs table
+    try {
+      const responseResult = await this.env.FLOW_RUNS_DB.prepare(`
+        SELECT response FROM step_runs
+        WHERE flow_run_id = ? AND step_id = ?
+        ORDER BY created_at DESC LIMIT 1
+      `).bind(flowId, step.step_id).first();
+      
+      lastResponse = responseResult?.response || '';
+      console.log("DB RESPONSE:", lastResponse);
+    } catch (error) {
+      console.log("DB RESPONSE ERROR:", error.message);
+    }
     
-    // Look for response in the most recent log entry
-    if (this.executionState.logs.length > 0) {
+    // Fallback: Check execution logs if DB query fails
+    if (!lastResponse && this.executionState.logs.length > 0) {
+      console.log("FALLBACK: Checking execution logs");
+      
+      // Look for response in the most recent log entry
       const recentLogs = this.executionState.logs.slice(-3); // Last 3 logs
-      console.log("RECENT LOGS:", JSON.stringify(recentLogs, null, 2));
       
       // Try to find response in various possible locations
       for (const log of recentLogs.reverse()) {
@@ -360,14 +373,14 @@ export class StrictFlowExecutor {
       }
     }
     
-    console.log("RESPONSE:", lastResponse);
+    console.log("FINAL RESPONSE:", lastResponse);
     
     this.log(`Condition evaluation parameters`, {
       flow_id: flowId,
       step_id: step.step_id,
       last_response_length: lastResponse?.length || 0,
       last_response_preview: lastResponse?.substring(0, 100) || 'none',
-      total_logs: this.executionState.logs.length
+      source: lastResponse ? 'database' : 'logs_or_empty'
     });
 
     const nextStep = await getNextStepBasedOnConditions(
