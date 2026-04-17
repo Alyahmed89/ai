@@ -948,6 +948,7 @@ export class ConversationOrchestratorDO_2026A {
         console.log(`[DO:${this.state.id}] Found ${legacyConditions.length} legacy conditions, using legacy conditional branching`);
         
         // Fall back to legacy conditional branching logic
+        console.log("FORCING CONDITIONS");
         const { getNextStepBasedOnConditions } = await import('../services/database');
         const nextStep = await getNextStepBasedOnConditions(
           this.env.FLOW_RUNS_DB,
