@@ -924,6 +924,9 @@ export class ConversationOrchestratorDO_2026A {
     
     const flowId = this.conversation.flow_id;
     
+    console.log(`[DO:${this.state.id}] PRE-CHECK: last_step_response exists?`, !!this.conversation.last_step_response);
+    console.log(`[DO:${this.state.id}] PRE-CHECK: current_step exists?`, !!this.conversation.current_step);
+    
     // Check if we have a response from the previous step for conditional branching
     if (this.conversation.last_step_response && this.conversation.current_step) {
       console.log(`[DO:${this.state.id}] Checking conditional branching for flow ${flowId}`);
@@ -942,8 +945,8 @@ export class ConversationOrchestratorDO_2026A {
       const conditionsResult = await this.env.FLOW_RUNS_DB.prepare(conditionsQuery).bind(this.conversation.current_step.step_id, this.conversation.current_step.step_id).all();
       const conditions = conditionsResult.results as any[];
       
-      // Skip conditions with source field (handled by routing before getNextStep)
-      const legacyConditions = conditions.filter(c => !c.source);
+      // Use all conditions regardless of source field
+      const legacyConditions = conditions;
       
       if (legacyConditions.length > 0) {
         console.log(`[DO:${this.state.id}] Found ${legacyConditions.length} legacy conditions, using legacy conditional branching`);
