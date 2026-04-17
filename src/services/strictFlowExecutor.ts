@@ -343,6 +343,8 @@ export class StrictFlowExecutor {
       }
     }
     
+    console.log("RESPONSE:", lastResponse);
+    
     this.log(`Condition evaluation parameters`, {
       flow_id: flowId,
       step_id: step.step_id,
