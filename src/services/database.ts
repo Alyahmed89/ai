@@ -892,9 +892,12 @@ export async function getNextStepBasedOnConditions(
         }
         
         // Evaluate condition based on type
+        console.log("RESPONSE:", response_text);
+        console.log("COND:", actualConditionValue);
+        console.log("CONDITIONS:", conditionsResult.results.length);
         switch (actualConditionType) {
           case 'response_contains':
-            conditionMet = response_text.toLowerCase().includes(actualConditionValue.toLowerCase());
+            conditionMet = response_text.trim().toLowerCase().includes(actualConditionValue.trim().toLowerCase());
             break;
           case 'response_matches':
             // Simple exact match (case-insensitive)
