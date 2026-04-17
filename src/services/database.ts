@@ -857,6 +857,7 @@ export async function getNextStepBasedOnConditions(
     `;
     
     const conditionsResult = await db.prepare(conditionsQuery).bind(current_step_id, current_step_id).all();
+    console.log("STEP:", current_step_id, "ROWS:", JSON.stringify(conditionsResult.results));
     
     if (conditionsResult.results && conditionsResult.results.length > 0) {
       console.log(`[DATABASE] Found ${conditionsResult.results.length} conditions for step ${current_step_id}`);
