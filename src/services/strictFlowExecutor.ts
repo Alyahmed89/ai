@@ -331,8 +331,34 @@ export class StrictFlowExecutor {
     // Import the condition evaluation function
     const { getNextStepBasedOnConditions } = await import('./database');
     
-    // Get the last response from step output_response field
-    let lastResponse = step.output_response || '';
+    // Get the last response from execution logs
+    let lastResponse = '';
+    
+    // Debug: show all logs structure
+    console.log("ALL LOGS:", JSON.stringify(this.executionState.logs, null, 2));
+    
+    // Look for response in the most recent log entry
+    if (this.executionState.logs.length > 0) {
+      const recentLogs = this.executionState.logs.slice(-3); // Last 3 logs
+      console.log("RECENT LOGS:", JSON.stringify(recentLogs, null, 2));
+      
+      // Try to find response in various possible locations
+      for (const log of recentLogs.reverse()) {
+        if (log.details?.result?.response) {
+          lastResponse = log.details.result.response;
+          break;
+        } else if (log.details?.data?.response) {
+          lastResponse = log.details.data.response;
+          break;
+        } else if (log.details?.output_response) {
+          lastResponse = log.details.output_response;
+          break;
+        } else if (log.details?.response) {
+          lastResponse = log.details.response;
+          break;
+        }
+      }
+    }
     
     console.log("RESPONSE:", lastResponse);
     
@@ -341,7 +367,7 @@ export class StrictFlowExecutor {
       step_id: step.step_id,
       last_response_length: lastResponse?.length || 0,
       last_response_preview: lastResponse?.substring(0, 100) || 'none',
-      has_output_response: !!step.output_response
+      total_logs: this.executionState.logs.length
     });
 
     const nextStep = await getNextStepBasedOnConditions(
