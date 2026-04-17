@@ -481,6 +481,103 @@ export class ConversationOrchestratorDO_2026A {
       this.flowRunId = this.conversation.flow_run_id;
       console.log(`[DO:${this.state.id}] loadConversationState() - Loaded flowRunId from conversation: ${this.flowRunId}`);
     }
+    
+    // HARD VALIDATION: Fix corrupted state on load
+    await this.validateAndFixConversationState();
+  }
+  
+  /**
+   * Validate and fix corrupted conversation state
+   * CRITICAL: Prevents execution with invalid current_step_index
+   */
+  private async validateAndFixConversationState(): Promise<void> {
+    if (!this.conversation) {
+      return;
+    }
+    
+    // Load flow steps to validate against
+    const flowSteps = await this.loadFlowSteps(this.conversation.flow_id);
+    const flowStepsLength = flowSteps?.length || 0;
+    
+    // Check if current_step_index is out of bounds
+    const currentIndex = this.conversation.current_step_index || 0;
+    const isIndexValid = flowStepsLength > 0 && currentIndex >= 0 && currentIndex < flowStepsLength;
+    
+    if (!isIndexValid && flowStepsLength > 0) {
+      console.warn(`[DO:${this.state.id}] STATE CORRUPTION DETECTED: current_step_index=${currentIndex} out of bounds (flow_steps.length=${flowStepsLength})`);
+      
+      // Use ID-based recovery as primary strategy
+      const recoveryIndex = await this.resolveStepIndexFromCurrentState(flowSteps);
+      
+      // Apply correction
+      const oldIndex = this.conversation.current_step_index;
+      this.conversation.current_step_index = recoveryIndex;
+      console.log(`[DO:${this.state.id}] STATE CORRECTION: Reset current_step_index from ${oldIndex} to ${recoveryIndex}`);
+      
+      // Clear potentially stale response
+      if (currentIndex >= flowStepsLength) {
+        this.conversation.last_step_response = null;
+        console.log(`[DO:${this.state.id}] STATE CORRECTION: Cleared last_step_response due to out-of-bounds index`);
+      }
+      
+      // Persist corrected state
+      await this.state.storage.put('conversation', this.conversation);
+      console.log(`[DO:${this.state.id}] STATE CORRECTION: Persisted corrected conversation state`);
+    }
+  }
+  
+  /**
+   * Resolve step index from current state using ID-based logic
+   * Primary recovery strategy when index is corrupted
+   */
+  private async resolveStepIndexFromCurrentState(flowSteps: ExecutionStepData[]): Promise<number> {
+    const flowStepsLength = flowSteps?.length || 0;
+    if (flowStepsLength === 0) return 0;
+    
+    // Strategy 1: Use current_step.step_id if available (ID-based resolution)
+    if (this.conversation?.current_step?.step_id && flowSteps) {
+      const stepIndex = flowSteps.findIndex(step => step.step_id === this.conversation!.current_step!.step_id);
+      if (stepIndex !== -1) {
+        console.log(`[DO:${this.state.id}] ID-based recovery: Found current_step by ID at index ${stepIndex}`);
+        return stepIndex;
+      }
+    }
+    
+    // Strategy 2: Find last completed step
+    if (flowSteps) {
+      const completedSteps = flowSteps.filter(step => step.status === 'completed');
+      if (completedSteps.length > 0) {
+        const lastCompletedStep = completedSteps[completedSteps.length - 1];
+        const lastIndex = flowSteps.findIndex(step => step.step_id === lastCompletedStep.step_id);
+        if (lastIndex !== -1) {
+          const recoveryIndex = Math.min(lastIndex + 1, flowStepsLength - 1);
+          console.log(`[DO:${this.state.id}] Recovery: Using step after last completed at index ${recoveryIndex}`);
+          return recoveryIndex;
+        }
+      }
+    }
+    
+    // Strategy 3: Check if we have a last_step_response (means we just completed a step)
+    if (this.conversation?.last_step_response) {
+      // If we have a response but no current step, we likely just completed a step
+      // Try to find the most recently completed step
+      if (flowSteps) {
+        const completedSteps = flowSteps.filter(step => step.status === 'completed');
+        if (completedSteps.length > 0) {
+          const lastCompletedStep = completedSteps[completedSteps.length - 1];
+          const lastIndex = flowSteps.findIndex(step => step.step_id === lastCompletedStep.step_id);
+          if (lastIndex !== -1) {
+            const recoveryIndex = Math.min(lastIndex + 1, flowStepsLength - 1);
+            console.log(`[DO:${this.state.id}] Recovery: Using step after response at index ${recoveryIndex}`);
+            return recoveryIndex;
+          }
+        }
+      }
+    }
+    
+    // Strategy 4: Default to start
+    console.log(`[DO:${this.state.id}] Recovery: Defaulting to start of flow (index 0)`);
+    return 0;
   }
 
   /**
@@ -644,7 +741,22 @@ export class ConversationOrchestratorDO_2026A {
     console.log(`[DO:${this.state.id}] Alarm triggered`);
     console.log(`[DO:${this.state.id}] alarm() - effectiveDeepSeekApiKey: ${this.effectiveDeepSeekApiKey ? this.effectiveDeepSeekApiKey.substring(0, 8) + '...' : 'NULL'}`);
     console.log(`[DO:${this.state.id}] alarm() - env.DEEPSEEK_API_KEY: ${this.env.DEEPSEEK_API_KEY ? this.env.DEEPSEEK_API_KEY.substring(0, 8) + '...' : 'NULL'}`);
+    
+    // ALARM RESUME PROTECTION: Treat alarm as external rehydration
     await this.loadConversationState();
+    
+    // CRITICAL: Validate state before any execution
+    if (this.conversation) {
+      console.log(`[DO:${this.state.id}] ALARM RESUME: Validating state before execution`);
+      console.log(`[DO:${this.state.id}] ALARM RESUME: current_step_index=${this.conversation.current_step_index}, flow_steps.length=${this.conversation.flow_steps?.length || 0}`);
+      
+      // Force state validation and correction
+      await this.validateAndFixConversationState();
+      
+      // Log corrected state
+      console.log(`[DO:${this.state.id}] ALARM RESUME: After validation - current_step_index=${this.conversation.current_step_index}, flow_steps.length=${this.conversation.flow_steps?.length || 0}`);
+    }
+    
     await this.handleAlarm();
   }
   
@@ -1009,15 +1121,62 @@ export class ConversationOrchestratorDO_2026A {
     // Get current step index from conversation state
     const currentStepIndex = this.conversation.current_step_index || 0;
     
-    if (currentStepIndex >= steps.length) {
-      console.log(`[DO:${this.state.id}] All ${steps.length} steps completed for flow ${flowId}`);
-      return null;
+    // CRITICAL: Validate index before use
+    if (currentStepIndex < 0 || currentStepIndex >= steps.length) {
+      console.error(`[DO:${this.state.id}] STATE CORRUPTION IN getNextStep(): current_step_index=${currentStepIndex} out of bounds (steps.length=${steps.length})`);
+      
+      // Trigger immediate state correction
+      await this.correctInvalidStepIndex(steps);
+      
+      // After correction, try again with valid index
+      const correctedIndex = this.conversation.current_step_index || 0;
+      if (correctedIndex >= 0 && correctedIndex < steps.length) {
+        const nextStep = steps[correctedIndex];
+        console.log(`[DO:${this.state.id}] After correction: Next step for flow ${flowId}: ${nextStep.title} (index ${correctedIndex + 1}/${steps.length})`);
+        return nextStep;
+      } else {
+        console.error(`[DO:${this.state.id}] Failed to correct invalid step index, returning null`);
+        return null;
+      }
     }
     
     const nextStep = steps[currentStepIndex];
     console.log(`[DO:${this.state.id}] Next step for flow ${flowId}: ${nextStep.title} (index ${currentStepIndex + 1}/${steps.length})`);
     
     return nextStep;
+  }
+  
+  /**
+   * Correct invalid step index and persist corrected state
+   */
+  private async correctInvalidStepIndex(steps: ExecutionStepData[]): Promise<void> {
+    if (!this.conversation) {
+      return;
+    }
+    
+    const currentIndex = this.conversation.current_step_index || 0;
+    const stepsLength = steps.length;
+    
+    console.warn(`[DO:${this.state.id}] Correcting invalid step index ${currentIndex} (steps.length=${stepsLength})`);
+    
+    // Use ID-based resolution strategy
+    const recoveryIndex = await this.resolveStepIndexFromCurrentState(steps);
+    
+    // Apply correction
+    const oldIndex = this.conversation.current_step_index;
+    this.conversation.current_step_index = recoveryIndex;
+    
+    // Clear stale response if index was out of bounds
+    if (currentIndex >= stepsLength) {
+      this.conversation.last_step_response = null;
+      console.log(`[DO:${this.state.id}] Correction: Cleared last_step_response due to out-of-bounds index`);
+    }
+    
+    console.log(`[DO:${this.state.id}] Correction: Reset current_step_index from ${oldIndex} to ${recoveryIndex}`);
+    
+    // Persist corrected state
+    await this.state.storage.put('conversation', this.conversation);
+    console.log(`[DO:${this.state.id}] Correction: Persisted corrected state`);
   }
 
   // Increment step index and save to conversation state
@@ -5669,6 +5828,37 @@ ${messageContent}`;
       has_next_flow_id: step?.next_flow_id !== undefined && step?.next_flow_id !== null,
       all_keys: step ? Object.keys(step) : 'step is null'
     });
+    
+    // CRITICAL: Safety guard before step execution
+    // Validate that step exists and current_step_index is valid
+    if (!step) {
+      console.error(`[DO:${this.state.id}] SAFETY GUARD FAILED: No step to execute`);
+      await this.correctInvalidStepIndex(this.conversation.flow_steps || []);
+      return;
+    }
+    
+    // Validate current_step_index against flow_steps
+    const currentIndex = this.conversation.current_step_index || 0;
+    const flowSteps = this.conversation.flow_steps || [];
+    
+    if (currentIndex < 0 || currentIndex >= flowSteps.length) {
+      console.error(`[DO:${this.state.id}] SAFETY GUARD FAILED: current_step_index=${currentIndex} out of bounds (flow_steps.length=${flowSteps.length})`);
+      await this.correctInvalidStepIndex(flowSteps);
+      return;
+    }
+    
+    // Validate that step at current_index matches the step we're about to execute
+    const stepAtIndex = flowSteps[currentIndex];
+    if (stepAtIndex?.step_id !== step.step_id) {
+      console.warn(`[DO:${this.state.id}] SAFETY GUARD: Step mismatch at index ${currentIndex}. Expected: ${stepAtIndex?.step_id}, Got: ${step.step_id}`);
+      // Try to find correct index
+      const correctIndex = flowSteps.findIndex(s => s.step_id === step.step_id);
+      if (correctIndex !== -1) {
+        console.log(`[DO:${this.state.id}] SAFETY GUARD: Correcting index from ${currentIndex} to ${correctIndex}`);
+        this.conversation.current_step_index = correctIndex;
+        await this.state.storage.put('conversation', this.conversation);
+      }
+    }
     
     // Cross-flow transition check - use next_flow_id instead of flow_id comparison
     // NOTE: We now execute the step first, then check for next_flow_id transition
