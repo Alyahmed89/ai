@@ -328,12 +328,65 @@ export class StrictFlowExecutor {
       description: step.description
     });
 
-    // For now, just mark as successful
-    // In a real implementation, this would evaluate conditions
-    return {
-      success: true,
-      result: { message: 'Condition step executed (placeholder)' }
-    };
+    // Import the condition evaluation function
+    const { getNextStepBasedOnConditions } = await import('./database');
+    
+    // Get the last response from the most recent command execution
+    // Look for response in the last log entry
+    let lastResponse = '';
+    if (this.executionState.logs.length > 0) {
+      const lastLog = this.executionState.logs[this.executionState.logs.length - 1];
+      if (lastLog.details?.result?.response) {
+        lastResponse = lastLog.details.result.response;
+      } else if (lastLog.details?.data?.response) {
+        lastResponse = lastLog.details.data.response;
+      }
+    }
+    
+    this.log(`Condition evaluation parameters`, {
+      flow_id: flowId,
+      step_id: step.step_id,
+      last_response_length: lastResponse?.length || 0,
+      last_response_preview: lastResponse?.substring(0, 100) || 'none'
+    });
+
+    const nextStep = await getNextStepBasedOnConditions(
+      this.env.FLOW_RUNS_DB,
+      flowId,
+      step.step_id,
+      lastResponse || ''
+    );
+
+    if (nextStep) {
+      this.log(`Condition matched next step`, {
+        next_step_id: nextStep.step_id,
+        next_step_title: nextStep.title,
+        next_step_order: nextStep.order_index
+      });
+      
+      // Return success with the selected next step
+      return {
+        success: true,
+        result: { 
+          message: 'Condition step executed successfully',
+          next_step: nextStep,
+          matched: true
+        }
+      };
+    } else {
+      this.log(`No condition matched, continuing sequentially`, {
+        step_id: step.step_id
+      });
+      
+      // Return success but no match (will continue to next sequential step)
+      return {
+        success: true,
+        result: { 
+          message: 'Condition step executed - no match, continuing sequentially',
+          matched: false
+        }
+      };
+    }
   }
 
   /**
