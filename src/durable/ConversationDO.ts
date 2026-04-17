@@ -933,11 +933,11 @@ export class ConversationOrchestratorDO_2026A {
       const conditionsQuery = `
         SELECT fsc.* 
         FROM flow_step_conditions fsc
-        WHERE fsc.flow_step_id = ?
+        WHERE fsc.flow_step_id = ? OR fsc.step_id = ?
         ORDER BY fsc.created_at
       `;
       
-      const conditionsResult = await this.env.FLOW_RUNS_DB.prepare(conditionsQuery).bind(this.conversation.current_step.step_id).all();
+      const conditionsResult = await this.env.FLOW_RUNS_DB.prepare(conditionsQuery).bind(this.conversation.current_step.step_id, this.conversation.current_step.step_id).all();
       const conditions = conditionsResult.results as any[];
       
       // Skip conditions with source field (handled by routing before getNextStep)
