@@ -331,17 +331,8 @@ export class StrictFlowExecutor {
     // Import the condition evaluation function
     const { getNextStepBasedOnConditions } = await import('./database');
     
-    // Get the last response from the most recent command execution
-    // Look for response in the last log entry
-    let lastResponse = '';
-    if (this.executionState.logs.length > 0) {
-      const lastLog = this.executionState.logs[this.executionState.logs.length - 1];
-      if (lastLog.details?.result?.response) {
-        lastResponse = lastLog.details.result.response;
-      } else if (lastLog.details?.data?.response) {
-        lastResponse = lastLog.details.data.response;
-      }
-    }
+    // Get the last response from step output_response field
+    let lastResponse = step.output_response || '';
     
     console.log("RESPONSE:", lastResponse);
     
@@ -349,7 +340,8 @@ export class StrictFlowExecutor {
       flow_id: flowId,
       step_id: step.step_id,
       last_response_length: lastResponse?.length || 0,
-      last_response_preview: lastResponse?.substring(0, 100) || 'none'
+      last_response_preview: lastResponse?.substring(0, 100) || 'none',
+      has_output_response: !!step.output_response
     });
 
     const nextStep = await getNextStepBasedOnConditions(
