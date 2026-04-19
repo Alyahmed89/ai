@@ -42,17 +42,26 @@ async function sendLogToSigNoz(logData) {
       }]
     };
 
-    const response = await fetch(OTEL_CONFIG.logsEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...OTEL_CONFIG.headers
-      },
-      body: JSON.stringify(logEntry)
-    });
+    try {
+      const response = await fetch(OTEL_CONFIG.logsEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...OTEL_CONFIG.headers
+        },
+        body: JSON.stringify(logEntry)
+      });
 
-    if (!response.ok) {
-      console.error(`Failed to send log to SigNoz: ${response.status} ${response.statusText}`);
+      const contentType = response.headers.get('content-type') || '';
+      
+      if (!response.ok) {
+        console.error(`Failed to send log to SigNoz: ${response.status} ${response.statusText}`);
+      } else if (contentType.includes('text/html')) {
+        // If we get HTML back, the endpoint is likely wrong (serving UI instead of OTLP)
+        console.warn(`SigNoz endpoint returned HTML instead of JSON. This suggests the endpoint ${OTEL_CONFIG.logsEndpoint} may be incorrect.`);
+      }
+    } catch (error) {
+      console.error(`Error sending log to SigNoz: ${error.message}`);
     }
   } catch (error) {
     console.error(`Error sending log to SigNoz: ${error.message}`);
