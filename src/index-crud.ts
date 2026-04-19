@@ -342,11 +342,10 @@ app.post('/start', async (c) => {
             headers: { 
               'Content-Type': 'application/json',
               'X-DeepSeek-API-Key': c.env.DEEPSEEK_API_KEY || '',
-              // Pass OTEL vars as headers
-              'X-OTEL-EXPORTER-OTLP-ENDPOINT': c.env.OTEL_EXPORTER_OTLP_ENDPOINT || '',
-              'X-OTEL-EXPORTER-OTLP-LOGS-ENDPOINT': c.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || '',
-              'X-OTEL-EXPORTER-OTLP-HEADERS': c.env.OTEL_EXPORTER_OTLP_HEADERS || '',
-              'X-OTEL-SERVICE-NAME': c.env.OTEL_SERVICE_NAME || ''
+              // Pass OTEL vars as headers (simplified names)
+              'x-otel-endpoint': c.env.OTEL_EXPORTER_OTLP_ENDPOINT || '',
+              'x-otel-logs': c.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || '',
+              'x-otel-headers': c.env.OTEL_EXPORTER_OTLP_HEADERS || ''
             },
             body: JSON.stringify({
               flow_id: targetFlowId,

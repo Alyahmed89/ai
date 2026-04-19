@@ -79,6 +79,14 @@ export class ConversationOrchestratorDO_2026A {
     this.state = state;
     this.env = env;
     
+    // DEBUG: Log env keys and OTEL vars
+    console.log("DO ENV KEYS:", Object.keys(this.env || {}));
+    console.log("DO OTEL:", {
+      endpoint: this.env?.OTEL_EXPORTER_OTLP_ENDPOINT,
+      logs: this.env?.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+      headers: this.env?.OTEL_EXPORTER_OTLP_HEADERS
+    });
+    
     // NO async work in constructor - load state lazily in fetch handlers
     this.conversation = null;
     this.flowStepsCache = null;
@@ -627,6 +635,21 @@ export class ConversationOrchestratorDO_2026A {
         // Dynamic import for telemetry module
         const telemetryModule = await import('../../telemetry.ts');
         this.conditionsLogger = telemetryModule.initTelemetry(this.env);
+        
+        // FORCE: Send test log to SigNoz
+        console.log(`[DO:${this.state.id}] FORCE: Sending test log to SigNoz...`);
+        try {
+          // Directly call sendLogToSigNoz with test data
+          await telemetryModule.sendLogToSigNoz({ 
+            feature: 'conditions', 
+            step: 'DO_INIT_TEST', 
+            timestamp: new Date().toISOString(),
+            data: { test: "DO_INIT", durable_object_id: this.state.id.toString() }
+          });
+          console.log(`[DO:${this.state.id}] FORCE: Test log sent to SigNoz`);
+        } catch (error) {
+          console.error(`[DO:${this.state.id}] FORCE: Failed to send test log: ${error.message}`);
+        }
       }
       this.conditionEvaluator = new ConditionEvaluator(this.conditionsLogger);
     }
@@ -1389,9 +1412,9 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] DEBUG: X-DeepSeek-API-Key header: ${deepseekApiKeyFromHeader ? deepseekApiKeyFromHeader.substring(0, 8) + '...' : 'MISSING'}`);
       
       // Extract OTEL environment variables from headers (passed from worker)
-      const otelEndpoint = request.headers.get('X-OTEL-EXPORTER-OTLP-ENDPOINT');
-      const otelLogsEndpoint = request.headers.get('X-OTEL-EXPORTER-OTLP-LOGS-ENDPOINT');
-      const otelHeaders = request.headers.get('X-OTEL-EXPORTER-OTLP-HEADERS');
+      const otelEndpoint = request.headers.get('x-otel-endpoint') || request.headers.get('X-OTEL-EXPORTER-OTLP-ENDPOINT');
+      const otelLogsEndpoint = request.headers.get('x-otel-logs') || request.headers.get('X-OTEL-EXPORTER-OTLP-LOGS-ENDPOINT');
+      const otelHeaders = request.headers.get('x-otel-headers') || request.headers.get('X-OTEL-EXPORTER-OTLP-HEADERS');
       const otelServiceName = request.headers.get('X-OTEL-SERVICE-NAME');
       
       console.log(`[DO:${this.state.id}] DEBUG: OTEL headers received: ${otelEndpoint ? 'ENDPOINT ' : ''}${otelLogsEndpoint ? 'LOGS_ENDPOINT ' : ''}${otelHeaders ? 'HEADERS ' : ''}${otelServiceName ? 'SERVICE_NAME' : ''}`);

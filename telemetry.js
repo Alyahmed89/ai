@@ -176,4 +176,4 @@ function parseHeaders(headersString) {
 }
 
 // Export initialization function and logger class
-module.exports = { initTelemetry, ConditionsLogger };
+module.exports = { initTelemetry, ConditionsLogger, sendLogToSigNoz };
