@@ -7,6 +7,9 @@ export enum ConditionEngine {
   STATIC = 'static'
 }
 
+// Import telemetry logger
+import { ConditionsLogger } from '../../telemetry.ts';
+
 export interface Condition {
   id: string;
   flow_id: string;

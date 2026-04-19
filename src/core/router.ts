@@ -13,29 +13,36 @@ export type RoutedCondition = {
 }
 
 export class Router {
+  private conditionsLogger: any = null;
 
-  constructor(private evaluator: any) {}
+  constructor(private evaluator: any, conditionsLogger?: any) {
+    this.conditionsLogger = conditionsLogger;
+  }
 
   resolve(
     conditions: RoutedCondition[],
     context: ExecutionContext
   ): Route | null {
     // Log before router evaluation
-    console.log(JSON.stringify({
+    const beforeLog = {
       feature: "conditions",
       step: "before_router_evaluation",
       data: {
         conditions_count: conditions.length,
         context_summary: this._summarizeContext(context)
       }
-    }));
+    };
+    console.log(JSON.stringify(beforeLog));
+    if (this.conditionsLogger) {
+      this.conditionsLogger.logConditionEvaluation(beforeLog);
+    }
 
     for (const item of conditions) {
       const match = this.evaluator.evaluate(item.condition, context)
 
       if (match) {
         // Log route match
-        console.log(JSON.stringify({
+        const matchLog = {
           feature: "conditions",
           step: "route_matched",
           data: {
@@ -45,20 +52,28 @@ export class Router {
             target_id: item.route.target_id,
             context_summary: this._summarizeContext(context)
           }
-        }));
+        };
+        console.log(JSON.stringify(matchLog));
+        if (this.conditionsLogger) {
+          this.conditionsLogger.logConditionEvaluation(matchLog);
+        }
         return item.route
       }
     }
 
     // Log no route matched
-    console.log(JSON.stringify({
+    const noMatchLog = {
       feature: "conditions",
       step: "no_route_matched",
       data: {
         conditions_count: conditions.length,
         context_summary: this._summarizeContext(context)
       }
-    }));
+    };
+    console.log(JSON.stringify(noMatchLog));
+    if (this.conditionsLogger) {
+      this.conditionsLogger.logConditionEvaluation(noMatchLog);
+    }
 
     return null
   }

@@ -615,7 +615,7 @@ export class ConversationOrchestratorDO_2026A {
   private async getRouter(): Promise<Router> {
     if (!this.router) {
       const evaluator = await this.getConditionEvaluator();
-      this.router = new Router(evaluator);
+      this.router = new Router(evaluator, this.conditionsLogger);
     }
     return this.router;
   }

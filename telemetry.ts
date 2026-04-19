@@ -53,12 +53,15 @@ async function sendLogToSigNoz(logData) {
       });
 
       const contentType = response.headers.get('content-type') || '';
+      const responseText = await response.text();
       
       if (!response.ok) {
-        console.error(`Failed to send log to SigNoz: ${response.status} ${response.statusText}`);
+        console.error(`Failed to send log to SigNoz: ${response.status} ${response.statusText} - ${responseText}`);
       } else if (contentType.includes('text/html')) {
         // If we get HTML back, the endpoint is likely wrong (serving UI instead of OTLP)
-        console.warn(`SigNoz endpoint returned HTML instead of JSON. This suggests the endpoint ${OTEL_CONFIG.logsEndpoint} may be incorrect.`);
+        console.warn(`SigNoz endpoint returned HTML instead of JSON. This suggests the endpoint ${OTEL_CONFIG.logsEndpoint} may be incorrect. Response: ${responseText.substring(0, 200)}`);
+      } else {
+        console.log(`Successfully sent log to SigNoz: ${responseText}`);
       }
     } catch (error) {
       console.error(`Error sending log to SigNoz: ${error.message}`);
@@ -116,6 +119,15 @@ class ConditionsLogger {
       condition_id: conditionId,
       context_summary: this._summarizeContext(context)
     }, error);
+  }
+
+  logConditionEvaluation(logData) {
+    // Extract step from logData or default to 'condition_evaluation'
+    const step = logData.step || 'condition_evaluation';
+    const data = logData.data || {};
+    const error = logData.error ? new Error(logData.error) : null;
+    
+    this.log(step, data, error);
   }
 
   _summarizeContext(context) {
