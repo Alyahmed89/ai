@@ -325,17 +325,36 @@ app.post('/start', async (c) => {
           // Use flow execution mode (start-flow endpoint) for proper step execution with task injection
           // PASS DEEPSEEK API KEY TO DURABLE OBJECT to ensure it has the correct key
           console.log(`[HTTP:START:FLOW] Passing DEEPSEEK_API_KEY to Durable Object...`);
+          
+          // Also pass OTEL environment variables for SigNoz telemetry
+          const otelEnvVars = {
+            OTEL_EXPORTER_OTLP_ENDPOINT: c.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+            OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: c.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+            OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: c.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+            OTEL_EXPORTER_OTLP_HEADERS: c.env.OTEL_EXPORTER_OTLP_HEADERS,
+            OTEL_SERVICE_NAME: c.env.OTEL_SERVICE_NAME
+          };
+          
+          console.log(`[HTTP:START:FLOW] Passing OTEL env vars to Durable Object: ${Object.keys(otelEnvVars).filter(k => otelEnvVars[k]).join(', ')}`);
+          
           const initResponse = await conversationDo.fetch('http://placeholder/start-flow', {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'X-DeepSeek-API-Key': c.env.DEEPSEEK_API_KEY || ''
+              'X-DeepSeek-API-Key': c.env.DEEPSEEK_API_KEY || '',
+              // Pass OTEL vars as headers
+              'X-OTEL-EXPORTER-OTLP-ENDPOINT': c.env.OTEL_EXPORTER_OTLP_ENDPOINT || '',
+              'X-OTEL-EXPORTER-OTLP-LOGS-ENDPOINT': c.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || '',
+              'X-OTEL-EXPORTER-OTLP-HEADERS': c.env.OTEL_EXPORTER_OTLP_HEADERS || '',
+              'X-OTEL-SERVICE-NAME': c.env.OTEL_SERVICE_NAME || ''
             },
             body: JSON.stringify({
               flow_id: targetFlowId,
               variables: variables || {},
               callback_url: callback_url,
-              deepseek_api_key: c.env.DEEPSEEK_API_KEY // Pass in body too for redundancy
+              deepseek_api_key: c.env.DEEPSEEK_API_KEY, // Pass in body too for redundancy
+              // Also pass OTEL vars in body
+              otel_env_vars: otelEnvVars
             })
           });
           

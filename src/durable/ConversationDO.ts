@@ -603,6 +603,27 @@ export class ConversationOrchestratorDO_2026A {
     if (!this.conditionEvaluator) {
       // Initialize telemetry logger if not already done
       if (!this.conditionsLogger) {
+        // Debug: Log what's in this.env
+        console.log(`[DO:${this.state.id}] getConditionEvaluator: Checking env for OTEL variables`);
+        console.log(`[DO:${this.state.id}] env keys: ${Object.keys(this.env).join(', ')}`);
+        const otelKeys = Object.keys(this.env).filter(k => k.includes('OTEL'));
+        console.log(`[DO:${this.state.id}] OTEL keys in env: ${otelKeys.join(', ')}`);
+        
+        if (otelKeys.length === 0) {
+          console.warn(`[DO:${this.state.id}] WARNING: No OTEL environment variables found in Durable Object env!`);
+          console.warn(`[DO:${this.state.id}] This suggests env vars from wrangler.toml are not passed to Durable Objects`);
+        } else {
+          // Log the actual values (masking sensitive data)
+          for (const key of otelKeys) {
+            const value = (this.env as any)[key];
+            if (key.includes('KEY') || key.includes('HEADERS')) {
+              console.log(`[DO:${this.state.id}] ${key}: ${value ? 'PRESENT (masked)' : 'MISSING'}`);
+            } else {
+              console.log(`[DO:${this.state.id}] ${key}: ${value || 'MISSING'}`);
+            }
+          }
+        }
+        
         // Dynamic import for telemetry module
         const telemetryModule = await import('../../telemetry.ts');
         this.conditionsLogger = telemetryModule.initTelemetry(this.env);
@@ -1367,6 +1388,14 @@ export class ConversationOrchestratorDO_2026A {
       const deepseekApiKeyFromHeader = request.headers.get('X-DeepSeek-API-Key');
       console.log(`[DO:${this.state.id}] DEBUG: X-DeepSeek-API-Key header: ${deepseekApiKeyFromHeader ? deepseekApiKeyFromHeader.substring(0, 8) + '...' : 'MISSING'}`);
       
+      // Extract OTEL environment variables from headers (passed from worker)
+      const otelEndpoint = request.headers.get('X-OTEL-EXPORTER-OTLP-ENDPOINT');
+      const otelLogsEndpoint = request.headers.get('X-OTEL-EXPORTER-OTLP-LOGS-ENDPOINT');
+      const otelHeaders = request.headers.get('X-OTEL-EXPORTER-OTLP-HEADERS');
+      const otelServiceName = request.headers.get('X-OTEL-SERVICE-NAME');
+      
+      console.log(`[DO:${this.state.id}] DEBUG: OTEL headers received: ${otelEndpoint ? 'ENDPOINT ' : ''}${otelLogsEndpoint ? 'LOGS_ENDPOINT ' : ''}${otelHeaders ? 'HEADERS ' : ''}${otelServiceName ? 'SERVICE_NAME' : ''}`);
+      
       const body = await request.json() as { 
         flow_id: string; 
         variables?: Record<string, any>; 
@@ -1375,9 +1404,16 @@ export class ConversationOrchestratorDO_2026A {
         start_from_step_id?: string;
         user_input?: string;
         flow_run_id?: string;
+        otel_env_vars?: {
+          OTEL_EXPORTER_OTLP_ENDPOINT?: string;
+          OTEL_EXPORTER_OTLP_TRACES_ENDPOINT?: string;
+          OTEL_EXPORTER_OTLP_LOGS_ENDPOINT?: string;
+          OTEL_EXPORTER_OTLP_HEADERS?: string;
+          OTEL_SERVICE_NAME?: string;
+        };
       };
       flow_id = body.flow_id;
-      const { variables = {}, callback_url, deepseek_api_key, start_from_step_id, user_input, flow_run_id } = body;
+      const { variables = {}, callback_url, deepseek_api_key, start_from_step_id, user_input, flow_run_id, otel_env_vars } = body;
       
       console.log(`[DO:${this.state.id}] DEBUG: Request body - flow_id: ${flow_id}, variables: ${JSON.stringify(variables)}, callback_url: ${callback_url || 'none'}`);
       console.log(`[DO:${this.state.id}] DEBUG: deepseek_api_key in body: ${deepseek_api_key ? deepseek_api_key.substring(0, 8) + '...' : 'MISSING'}`);
@@ -1388,6 +1424,25 @@ export class ConversationOrchestratorDO_2026A {
       
       // Store the effective API key for use in API calls
       this.effectiveDeepSeekApiKey = effectiveDeepSeekApiKey;
+      
+      // Store OTEL environment variables for telemetry
+      // Prefer values from headers, then from body, then from env
+      const effectiveOtelEnv = {
+        OTEL_EXPORTER_OTLP_ENDPOINT: otelEndpoint || (otel_env_vars?.OTEL_EXPORTER_OTLP_ENDPOINT) || (this.env as any).OTEL_EXPORTER_OTLP_ENDPOINT,
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: (otel_env_vars?.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) || (this.env as any).OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: otelLogsEndpoint || (otel_env_vars?.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT) || (this.env as any).OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+        OTEL_EXPORTER_OTLP_HEADERS: otelHeaders || (otel_env_vars?.OTEL_EXPORTER_OTLP_HEADERS) || (this.env as any).OTEL_EXPORTER_OTLP_HEADERS,
+        OTEL_SERVICE_NAME: otelServiceName || (otel_env_vars?.OTEL_SERVICE_NAME) || (this.env as any).OTEL_SERVICE_NAME
+      };
+      
+      console.log(`[DO:${this.state.id}] DEBUG: Effective OTEL env - ENDPOINT: ${effectiveOtelEnv.OTEL_EXPORTER_OTLP_ENDPOINT ? 'PRESENT' : 'MISSING'}, LOGS_ENDPOINT: ${effectiveOtelEnv.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ? 'PRESENT' : 'MISSING'}, HEADERS: ${effectiveOtelEnv.OTEL_EXPORTER_OTLP_HEADERS ? 'PRESENT (masked)' : 'MISSING'}, SERVICE_NAME: ${effectiveOtelEnv.OTEL_SERVICE_NAME || 'MISSING'}`);
+      
+      // Store OTEL env vars for later use in telemetry initialization
+      (this.env as any).OTEL_EXPORTER_OTLP_ENDPOINT = effectiveOtelEnv.OTEL_EXPORTER_OTLP_ENDPOINT;
+      (this.env as any).OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = effectiveOtelEnv.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+      (this.env as any).OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = effectiveOtelEnv.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT;
+      (this.env as any).OTEL_EXPORTER_OTLP_HEADERS = effectiveOtelEnv.OTEL_EXPORTER_OTLP_HEADERS;
+      (this.env as any).OTEL_SERVICE_NAME = effectiveOtelEnv.OTEL_SERVICE_NAME;
       
       if (!flow_id) {
         return new Response(JSON.stringify({ error: 'Need flow_id' }), {
