@@ -603,8 +603,9 @@ export class ConversationOrchestratorDO_2026A {
     if (!this.conditionEvaluator) {
       // Initialize telemetry logger if not already done
       if (!this.conditionsLogger) {
-        const { initTelemetry } = require('../telemetry.js');
-        this.conditionsLogger = initTelemetry(this.env);
+        // Dynamic import for telemetry module
+        const telemetryModule = await import('../../telemetry.ts');
+        this.conditionsLogger = telemetryModule.initTelemetry(this.env);
       }
       this.conditionEvaluator = new ConditionEvaluator(this.conditionsLogger);
     }

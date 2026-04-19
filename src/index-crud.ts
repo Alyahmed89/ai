@@ -11,7 +11,7 @@ import { VERSION, BUILD_TIME } from './version';
 import { resolveTextVariables } from './utils/variableResolver';
 
 // Import telemetry
-const { initTelemetry } = require('../telemetry.js');
+import { initTelemetry } from '../telemetry.ts';
 
 // Log OpenTelemetry configuration on startup
 console.log(JSON.stringify({
