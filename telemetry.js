@@ -2,11 +2,14 @@
 // Since Cloudflare Workers don't support OpenTelemetry Node SDK,
 // we'll send logs directly via HTTP to SigNoz OTLP endpoint
 
-const SIGNOZ_URL = 'https://signoz.anyapp.cfd';
-
-// Get environment variables - in Cloudflare Workers, env vars are passed via env object
-// This module will be imported and initialized with env
-let SIGNOZ_API_KEY = '';
+// OpenTelemetry environment variables
+let OTEL_CONFIG = {
+  endpoint: 'https://signoz.anyapp.cfd',
+  tracesEndpoint: 'https://signoz.anyapp.cfd/v1/traces',
+  logsEndpoint: 'https://signoz.anyapp.cfd/v1/logs',
+  headers: {},
+  serviceName: 'deepseek-agent'
+};
 
 /**
  * Send log to SigNoz via OTLP HTTP
@@ -18,7 +21,7 @@ async function sendLogToSigNoz(logData) {
         resource: {
           attributes: [{
             key: 'service.name',
-            value: { stringValue: 'deepseek-agent' }
+            value: { stringValue: OTEL_CONFIG.serviceName }
           }, {
             key: 'service.version',
             value: { stringValue: '1.0.0' }
@@ -39,11 +42,11 @@ async function sendLogToSigNoz(logData) {
       }]
     };
 
-    const response = await fetch(`${SIGNOZ_URL}/v1/logs`, {
+    const response = await fetch(OTEL_CONFIG.logsEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(SIGNOZ_API_KEY ? { 'api-key': SIGNOZ_API_KEY } : {})
+        ...OTEL_CONFIG.headers
       },
       body: JSON.stringify(logEntry)
     });
@@ -122,9 +125,35 @@ class ConditionsLogger {
 
 // Initialize with environment variables
 function initTelemetry(env = {}) {
-  SIGNOZ_API_KEY = env.SIGNOZ_API_KEY || '';
-  console.log(`SigNoz telemetry initialized ${SIGNOZ_API_KEY ? 'with API key' : 'without API key'}`);
+  // Parse standard OpenTelemetry environment variables
+  OTEL_CONFIG = {
+    endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://signoz.anyapp.cfd',
+    tracesEndpoint: env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || `${env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://signoz.anyapp.cfd'}/v1/traces`,
+    logsEndpoint: env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || `${env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://signoz.anyapp.cfd'}/v1/logs`,
+    headers: parseHeaders(env.OTEL_EXPORTER_OTLP_HEADERS || ''),
+    serviceName: env.OTEL_SERVICE_NAME || 'deepseek-agent'
+  };
+  
+  console.log(`SigNoz telemetry initialized for service: ${OTEL_CONFIG.serviceName}`);
+  console.log(`Logs endpoint: ${OTEL_CONFIG.logsEndpoint}`);
+  console.log(`Headers configured: ${Object.keys(OTEL_CONFIG.headers).length > 0 ? 'Yes' : 'No'}`);
+  
   return new ConditionsLogger();
+}
+
+// Parse headers string like "api-key=your-key,header2=value2"
+function parseHeaders(headersString) {
+  const headers = {};
+  if (!headersString) return headers;
+  
+  const pairs = headersString.split(',');
+  for (const pair of pairs) {
+    const [key, value] = pair.split('=');
+    if (key && value) {
+      headers[key.trim()] = value.trim();
+    }
+  }
+  return headers;
 }
 
 // Export initialization function and logger class

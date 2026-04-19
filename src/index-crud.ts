@@ -10,6 +10,18 @@ import { successResponse, errorResponse, notFoundResponse } from './response';
 import { VERSION, BUILD_TIME } from './version';
 import { resolveTextVariables } from './utils/variableResolver';
 
+// Log OpenTelemetry configuration on startup
+console.log(JSON.stringify({
+  feature: "telemetry",
+  step: "initialization",
+  data: {
+    service_name: "deepseek-agent",
+    signoz_configured: true,
+    logs_endpoint: "https://signoz.anyapp.cfd/v1/logs",
+    structured_logging_enabled: true
+  }
+}));
+
 // Dummy FlowControllerDO to satisfy existing binding
 export class FlowControllerDO {
   constructor(state: any, env: any) {
