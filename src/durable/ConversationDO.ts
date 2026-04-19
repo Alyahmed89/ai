@@ -72,6 +72,9 @@ export class ConversationOrchestratorDO_2026A {
   private eventListeners: ((event: ExecutionEvent) => void)[] = [];
   private eventSequence: number = 0; // Sequence counter for event ordering
 
+  // Telemetry logger for conditions
+  private conditionsLogger: any = null;
+
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
     this.env = env;
@@ -598,7 +601,12 @@ export class ConversationOrchestratorDO_2026A {
 
   private async getConditionEvaluator(): Promise<ConditionEvaluator> {
     if (!this.conditionEvaluator) {
-      this.conditionEvaluator = new ConditionEvaluator();
+      // Initialize telemetry logger if not already done
+      if (!this.conditionsLogger) {
+        const { initTelemetry } = require('../telemetry.js');
+        this.conditionsLogger = initTelemetry(this.env);
+      }
+      this.conditionEvaluator = new ConditionEvaluator(this.conditionsLogger);
     }
     return this.conditionEvaluator;
   }

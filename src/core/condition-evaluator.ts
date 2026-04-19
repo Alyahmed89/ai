@@ -16,11 +16,16 @@ export type Condition = {
 }
 
 export class ConditionEvaluator {
+  private conditionsLogger: any = null;
+
+  constructor(conditionsLogger?: any) {
+    this.conditionsLogger = conditionsLogger;
+  }
 
   evaluate(condition: Condition, context: ExecutionContext): boolean {
     try {
       // Log before evaluation
-      console.log(JSON.stringify({
+      const logData = {
         feature: "conditions",
         step: "before_condition_evaluation",
         data: {
@@ -29,7 +34,14 @@ export class ConditionEvaluator {
           condition_value: condition.value,
           context_summary: this._summarizeContext(context)
         }
-      }));
+      };
+      
+      console.log(JSON.stringify(logData));
+      
+      // Send to SigNoz if logger is available
+      if (this.conditionsLogger) {
+        this.conditionsLogger.logConditionEvaluation(logData);
+      }
 
       const actual = this.resolveSource(condition.source, context)
       
@@ -62,7 +74,7 @@ export class ConditionEvaluator {
           try {
             result = new RegExp(condition.value).test(String(actual))
           } catch (regexError: any) {
-            console.log(JSON.stringify({
+            const regexErrorLogData = {
               feature: "conditions",
               step: "condition_error",
               data: {
@@ -73,7 +85,15 @@ export class ConditionEvaluator {
                 error: regexError.message,
                 context_summary: this._summarizeContext(context)
               }
-            }));
+            };
+            
+            console.log(JSON.stringify(regexErrorLogData));
+            
+            // Send to SigNoz if logger is available
+            if (this.conditionsLogger) {
+              this.conditionsLogger.logConditionEvaluation(regexErrorLogData);
+            }
+            
             result = false
           }
           break
@@ -87,7 +107,7 @@ export class ConditionEvaluator {
       }
 
       // Log after evaluation
-      console.log(JSON.stringify({
+      const resultLogData = {
         feature: "conditions",
         step: "after_condition_evaluation",
         data: {
@@ -98,12 +118,19 @@ export class ConditionEvaluator {
           result: result,
           context_summary: this._summarizeContext(context)
         }
-      }));
+      };
+      
+      console.log(JSON.stringify(resultLogData));
+      
+      // Send to SigNoz if logger is available
+      if (this.conditionsLogger) {
+        this.conditionsLogger.logConditionEvaluation(resultLogData);
+      }
 
       return result
     } catch (error: any) {
       // Log error
-      console.log(JSON.stringify({
+      const errorLogData = {
         feature: "conditions",
         step: "condition_error",
         data: {
@@ -113,7 +140,15 @@ export class ConditionEvaluator {
           error: error.message,
           context_summary: this._summarizeContext(context)
         }
-      }));
+      };
+      
+      console.log(JSON.stringify(errorLogData));
+      
+      // Send to SigNoz if logger is available
+      if (this.conditionsLogger) {
+        this.conditionsLogger.logConditionEvaluation(errorLogData);
+      }
+      
       return false
     }
   }
