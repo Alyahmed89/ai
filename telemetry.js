@@ -3,7 +3,10 @@
 // we'll send logs directly via HTTP to SigNoz OTLP endpoint
 
 const SIGNOZ_URL = 'https://signoz.anyapp.cfd';
-const SIGNOZ_API_KEY = process.env.SIGNOZ_API_KEY || '';
+
+// Get environment variables - in Cloudflare Workers, env vars are passed via env object
+// This module will be imported and initialized with env
+let SIGNOZ_API_KEY = '';
 
 /**
  * Send log to SigNoz via OTLP HTTP
@@ -117,5 +120,12 @@ class ConditionsLogger {
   }
 }
 
-// Export logger instance
-module.exports = new ConditionsLogger();
+// Initialize with environment variables
+function initTelemetry(env = {}) {
+  SIGNOZ_API_KEY = env.SIGNOZ_API_KEY || '';
+  console.log(`SigNoz telemetry initialized ${SIGNOZ_API_KEY ? 'with API key' : 'without API key'}`);
+  return new ConditionsLogger();
+}
+
+// Export initialization function and logger class
+module.exports = { initTelemetry, ConditionsLogger };

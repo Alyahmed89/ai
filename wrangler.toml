@@ -10,6 +10,7 @@ command = "node scripts/generate-version.js"
 DEEPSEEK_API_KEY = "sk-77623ca07af544e78bb701fd3ad2cd91"
 OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 ADMIN_KEY = "test-admin-key-123"  # Change this in production
+SIGNOZ_API_KEY = ""  # Add your SigNoz API key here for logging
 
 # Use actual exported class name (original ConversationOrchestratorDO_2026A to restore flow execution)
 [[durable_objects.bindings]]
