@@ -5,8 +5,8 @@
 // OpenTelemetry environment variables
 let OTEL_CONFIG = {
   endpoint: 'https://signoz.anyapp.cfd',
-  tracesEndpoint: 'https://signoz.anyapp.cfd/v1/traces',
-  logsEndpoint: 'https://signoz.anyapp.cfd/v1/logs',
+  tracesEndpoint: 'https://signoz.anyapp.cfd/api/v1/traces',
+  logsEndpoint: 'https://signoz.anyapp.cfd/api/v1/logs',
   headers: {},
   serviceName: 'deepseek-agent'
 };
