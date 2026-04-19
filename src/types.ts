@@ -9,6 +9,12 @@ export interface CloudflareBindings {
   FLOW_RUNS_DB?: D1Database; // Optional - may not be configured
   PROJECT_FACTS_DB?: D1Database; // Optional - for authoritative project facts
   RATE_LIMIT_KV?: KVNamespace; // Optional - for rate limiting
+  // SigNoz OpenTelemetry configuration
+  OTEL_EXPORTER_OTLP_ENDPOINT?: string;
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT?: string;
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT?: string;
+  OTEL_EXPORTER_OTLP_HEADERS?: string;
+  OTEL_SERVICE_NAME?: string;
 }
 
 // Conversation state machine
