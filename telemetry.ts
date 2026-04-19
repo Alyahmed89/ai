@@ -16,6 +16,8 @@ let OTEL_CONFIG = {
  */
 async function sendLogToSigNoz(logData) {
   try {
+    console.log(`[SigNoz] Preparing to send log: ${JSON.stringify(logData).substring(0, 200)}...`);
+    
     const logEntry = {
       resourceLogs: [{
         resource: {
@@ -42,6 +44,9 @@ async function sendLogToSigNoz(logData) {
       }]
     };
 
+    console.log(`[SigNoz] Sending to endpoint: ${OTEL_CONFIG.logsEndpoint}`);
+    console.log(`[SigNoz] Headers: ${JSON.stringify(OTEL_CONFIG.headers)}`);
+    
     try {
       const response = await fetch(OTEL_CONFIG.logsEndpoint, {
         method: 'POST',
@@ -56,18 +61,18 @@ async function sendLogToSigNoz(logData) {
       const responseText = await response.text();
       
       if (!response.ok) {
-        console.error(`Failed to send log to SigNoz: ${response.status} ${response.statusText} - ${responseText}`);
+        console.error(`[SigNoz] Failed to send log: ${response.status} ${response.statusText} - ${responseText}`);
       } else if (contentType.includes('text/html')) {
         // If we get HTML back, the endpoint is likely wrong (serving UI instead of OTLP)
-        console.warn(`SigNoz endpoint returned HTML instead of JSON. This suggests the endpoint ${OTEL_CONFIG.logsEndpoint} may be incorrect. Response: ${responseText.substring(0, 200)}`);
+        console.warn(`[SigNoz] Endpoint returned HTML instead of JSON. This suggests the endpoint ${OTEL_CONFIG.logsEndpoint} may be incorrect. Response: ${responseText.substring(0, 200)}`);
       } else {
-        console.log(`Successfully sent log to SigNoz: ${responseText}`);
+        console.log(`[SigNoz] Successfully sent log: ${responseText}`);
       }
     } catch (error) {
-      console.error(`Error sending log to SigNoz: ${error.message}`);
+      console.error(`[SigNoz] Error sending log: ${error.message}`);
     }
   } catch (error) {
-    console.error(`Error sending log to SigNoz: ${error.message}`);
+    console.error(`[SigNoz] Error in sendLogToSigNoz: ${error.message}`);
   }
 }
 
@@ -146,6 +151,8 @@ class ConditionsLogger {
 
 // Initialize with environment variables
 function initTelemetry(env = {}) {
+  console.log(`[SigNoz] Initializing telemetry with env keys: ${Object.keys(env).filter(k => k.includes('OTEL')).join(', ')}`);
+  
   // Parse standard OpenTelemetry environment variables
   OTEL_CONFIG = {
     endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://otel.anyapp.cfd',
@@ -155,9 +162,12 @@ function initTelemetry(env = {}) {
     serviceName: env.OTEL_SERVICE_NAME || 'deepseek-agent'
   };
   
-  console.log(`SigNoz telemetry initialized for service: ${OTEL_CONFIG.serviceName}`);
-  console.log(`Logs endpoint: ${OTEL_CONFIG.logsEndpoint}`);
-  console.log(`Headers configured: ${Object.keys(OTEL_CONFIG.headers).length > 0 ? 'Yes' : 'No'}`);
+  console.log(`[SigNoz] Telemetry initialized for service: ${OTEL_CONFIG.serviceName}`);
+  console.log(`[SigNoz] Logs endpoint: ${OTEL_CONFIG.logsEndpoint}`);
+  console.log(`[SigNoz] Headers configured: ${Object.keys(OTEL_CONFIG.headers).length > 0 ? 'Yes' : 'No'}`);
+  if (Object.keys(OTEL_CONFIG.headers).length > 0) {
+    console.log(`[SigNoz] Header keys: ${Object.keys(OTEL_CONFIG.headers).join(', ')}`);
+  }
   
   return new ConditionsLogger();
 }
