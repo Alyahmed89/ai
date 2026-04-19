@@ -20,7 +20,7 @@ console.log(JSON.stringify({
   data: {
     service_name: "deepseek-agent",
     signoz_configured: true,
-    logs_endpoint: "https://signoz.anyapp.cfd/v1/logs",
+    logs_endpoint: "https://otel.anyapp.cfd/v1/logs",
     structured_logging_enabled: true
   }
 }));

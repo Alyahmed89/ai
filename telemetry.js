@@ -4,9 +4,9 @@
 
 // OpenTelemetry environment variables
 let OTEL_CONFIG = {
-  endpoint: 'https://signoz.anyapp.cfd',
-  tracesEndpoint: 'https://signoz.anyapp.cfd/v1/traces',
-  logsEndpoint: 'https://signoz.anyapp.cfd/v1/logs',
+  endpoint: 'https://otel.anyapp.cfd',
+  tracesEndpoint: 'https://otel.anyapp.cfd/v1/traces',
+  logsEndpoint: 'https://otel.anyapp.cfd/v1/logs',
   headers: {},
   serviceName: 'deepseek-agent'
 };
@@ -136,9 +136,9 @@ class ConditionsLogger {
 function initTelemetry(env = {}) {
   // Parse standard OpenTelemetry environment variables
   OTEL_CONFIG = {
-    endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://signoz.anyapp.cfd',
-    tracesEndpoint: env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || `${env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://signoz.anyapp.cfd'}/v1/traces`,
-    logsEndpoint: env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || `${env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://signoz.anyapp.cfd'}/v1/logs`,
+    endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://otel.anyapp.cfd',
+    tracesEndpoint: env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || `${env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://otel.anyapp.cfd'}/v1/traces`,
+    logsEndpoint: env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || `${env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://otel.anyapp.cfd'}/v1/logs`,
     headers: parseHeaders(env.OTEL_EXPORTER_OTLP_HEADERS || ''),
     serviceName: env.OTEL_SERVICE_NAME || 'deepseek-agent'
   };
