@@ -1,4 +1,13 @@
 // Hono HTTP API with CRUD endpoints
+// SigNoz telemetry for conditions debugging
+try {
+  // Import telemetry for structured logging
+  require('../telemetry');
+  console.log('SigNoz telemetry loaded for conditions debugging');
+} catch (error) {
+  console.log('SigNoz telemetry not available, using console logging only');
+}
+
 import { Hono } from 'hono';
 import { CloudflareBindings } from './types';
 import { ConversationOrchestratorDO_2026A } from './durable/ConversationDO';

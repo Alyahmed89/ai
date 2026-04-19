@@ -1,0 +1,121 @@
+// SigNoz logging utility for Cloudflare Workers
+// Since Cloudflare Workers don't support OpenTelemetry Node SDK,
+// we'll send logs directly via HTTP to SigNoz OTLP endpoint
+
+const SIGNOZ_URL = 'https://signoz.anyapp.cfd';
+const SIGNOZ_API_KEY = process.env.SIGNOZ_API_KEY || '';
+
+/**
+ * Send log to SigNoz via OTLP HTTP
+ */
+async function sendLogToSigNoz(logData) {
+  try {
+    const logEntry = {
+      resourceLogs: [{
+        resource: {
+          attributes: [{
+            key: 'service.name',
+            value: { stringValue: 'deepseek-agent' }
+          }, {
+            key: 'service.version',
+            value: { stringValue: '1.0.0' }
+          }]
+        },
+        scopeLogs: [{
+          scope: {},
+          logRecords: [{
+            timeUnixNano: Math.floor(Date.now() * 1e6),
+            severityText: logData.level || 'INFO',
+            body: { stringValue: JSON.stringify(logData) },
+            attributes: Object.entries(logData).map(([key, value]) => ({
+              key,
+              value: { stringValue: String(value) }
+            }))
+          }]
+        }]
+      }]
+    };
+
+    const response = await fetch(`${SIGNOZ_URL}/v1/logs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(SIGNOZ_API_KEY ? { 'api-key': SIGNOZ_API_KEY } : {})
+      },
+      body: JSON.stringify(logEntry)
+    });
+
+    if (!response.ok) {
+      console.error(`Failed to send log to SigNoz: ${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error(`Error sending log to SigNoz: ${error.message}`);
+  }
+}
+
+/**
+ * Structured logger for conditions feature
+ */
+class ConditionsLogger {
+  constructor() {
+    this.feature = 'conditions';
+  }
+
+  log(step, data = {}, error = null) {
+    const logEntry = {
+      feature: this.feature,
+      step,
+      timestamp: new Date().toISOString(),
+      data,
+      ...(error && { error: error.message || String(error) })
+    };
+
+    // Log to console (will be captured by Cloudflare Workers logs)
+    console.log(JSON.stringify(logEntry));
+
+    // Try to send to SigNoz (async, fire and forget)
+    if (typeof fetch !== 'undefined') {
+      sendLogToSigNoz(logEntry).catch(err => {
+        console.error(`Failed to send log to SigNoz: ${err.message}`);
+      });
+    }
+  }
+
+  beforeEvaluation(conditionId, context) {
+    this.log('before_condition_evaluation', {
+      condition_id: conditionId,
+      context_summary: this._summarizeContext(context)
+    });
+  }
+
+  afterEvaluation(conditionId, result, context) {
+    this.log('after_condition_evaluation', {
+      condition_id: conditionId,
+      result,
+      context_summary: this._summarizeContext(context)
+    });
+  }
+
+  error(conditionId, error, context) {
+    this.log('condition_error', {
+      condition_id: conditionId,
+      context_summary: this._summarizeContext(context)
+    }, error);
+  }
+
+  _summarizeContext(context) {
+    if (!context) return {};
+    
+    return {
+      flow_id: context.flow_id,
+      step_id: context.step_id,
+      has_ai_output: !!context.ai_output,
+      has_command_results: context.command_results?.length || 0,
+      variables_count: Object.keys(context.variables || {}).length,
+      data_entries_count: context.data?.size || 0
+    };
+  }
+}
+
+// Export logger instance
+module.exports = new ConditionsLogger();
