@@ -59,6 +59,16 @@ async function sendLogToSigNoz(logData) {
       } else if (contentType.includes('text/html')) {
         // If we get HTML back, the endpoint is likely wrong (serving UI instead of OTLP)
         console.warn(`SigNoz endpoint returned HTML instead of JSON. This suggests the endpoint ${OTEL_CONFIG.logsEndpoint} may be incorrect.`);
+      } else {
+        // Log success for debugging
+        console.log(`[SigNoz] Successfully sent log to ${OTEL_CONFIG.logsEndpoint}, response: ${response.status}`);
+        // Log response body if it's JSON
+        try {
+          const responseBody = await response.text();
+          console.log(`[SigNoz] Response body: ${responseBody.substring(0, 200)}`);
+        } catch (e) {
+          console.log(`[SigNoz] Could not read response body: ${e.message}`);
+        }
       }
     } catch (error) {
       console.error(`Error sending log to SigNoz: ${error.message}`);
