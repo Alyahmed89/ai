@@ -53,6 +53,8 @@ async function sendLogToSigNoz(logData) {
       console.log(`[SigNoz] api-key length: ${key.length}, first 10 chars: ${key.substring(0, 10)}..., last 10 chars: ...${key.substring(key.length - 10)}`);
     }
     
+    console.log(`[SigNoz] OTLP payload being sent (first 500 chars): ${JSON.stringify(logEntry).substring(0, 500)}...`);
+    
     try {
       const response = await fetch(OTEL_CONFIG.logsEndpoint, {
         method: 'POST',
