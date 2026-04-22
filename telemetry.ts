@@ -18,27 +18,14 @@ async function sendLogToSigNoz(logData) {
   try {
     console.log(`[SigNoz] Preparing to send log: ${JSON.stringify(logData).substring(0, 200)}...`);
     
+    // Use exact OTLP format that works with curl tests
     const logEntry = {
       resourceLogs: [{
-        resource: {
-          attributes: [{
-            key: 'service.name',
-            value: { stringValue: OTEL_CONFIG.serviceName }
-          }, {
-            key: 'service.version',
-            value: { stringValue: '1.0.0' }
-          }]
-        },
         scopeLogs: [{
-          scope: {},
           logRecords: [{
             timeUnixNano: Math.floor(Date.now() * 1e6),
-            severityText: logData.level || 'INFO',
-            body: { stringValue: JSON.stringify(logData) },
-            attributes: Object.entries(logData).map(([key, value]) => ({
-              key,
-              value: { stringValue: String(value) }
-            }))
+            severityText: 'INFO',
+            body: { stringValue: JSON.stringify(logData) }
           }]
         }]
       }]
