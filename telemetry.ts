@@ -16,51 +16,26 @@ let OTEL_CONFIG = {
  */
 async function sendLogToSigNoz(logData) {
   try {
-    // EXACT OTLP payload that matches curl format
-    const logEntry = {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  timeUnixNano: String(Date.now() * 1000000),
-                  severityText: "INFO",
-                  body: { stringValue: "TEST_LOG" }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    };
-
-    console.log("OTLP URL:", OTEL_CONFIG.logsEndpoint);
-    console.log("OTLP BODY:", JSON.stringify(logEntry));
+    console.log("HARDCODED REQUEST SENT");
     
-    try {
-      const response = await fetch(OTEL_CONFIG.logsEndpoint, {
-        method: 'POST',
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": "k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
-        },
-        body: JSON.stringify(logEntry)
-      });
+    const response = await fetch("https://otel.anyapp.cfd/v1/logs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": "k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
+      },
+      body: '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":"1710000000000000000","severityText":"INFO","body":{"stringValue":"HARDCODED_TEST"}}]}]}]}'
+    });
 
-      const contentType = response.headers.get('content-type') || '';
-      const responseText = await response.text();
-      
-      if (!response.ok) {
-        console.error(`[SigNoz] Failed to send log: ${response.status} ${response.statusText} - ${responseText}`);
-      } else if (contentType.includes('text/html')) {
-        // If we get HTML back, the endpoint is likely wrong (serving UI instead of OTLP)
-        console.warn(`[SigNoz] Endpoint returned HTML instead of JSON. This suggests the endpoint ${OTEL_CONFIG.logsEndpoint} may be incorrect. Response: ${responseText.substring(0, 200)}`);
-      } else {
-        console.log(`[SigNoz] Successfully sent log: ${responseText}`);
-      }
-    } catch (error) {
-      console.error(`[SigNoz] Error sending log: ${error.message}`);
+    const contentType = response.headers.get('content-type') || '';
+    const responseText = await response.text();
+    
+    if (!response.ok) {
+      console.error(`[SigNoz] Failed to send log: ${response.status} ${response.statusText} - ${responseText}`);
+    } else if (contentType.includes('text/html')) {
+      console.warn(`[SigNoz] Endpoint returned HTML instead of JSON. Response: ${responseText.substring(0, 200)}`);
+    } else {
+      console.log(`[SigNoz] Successfully sent log: ${responseText}`);
     }
   } catch (error) {
     console.error(`[SigNoz] Error in sendLogToSigNoz: ${error.message}`);
