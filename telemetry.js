@@ -27,21 +27,9 @@ async function sendLogToSigNoz(logData) {
       body: '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":"1710000000000000000","severityText":"INFO","body":{"stringValue":"HARDCODED_TEST"}}]}]}]}'
     });
 
-    const contentType = response.headers.get('content-type') || '';
-    
-    if (!response.ok) {
-      console.error(`Failed to send log to SigNoz: ${response.status} ${response.statusText}`);
-    } else if (contentType.includes('text/html')) {
-      console.warn(`SigNoz endpoint returned HTML instead of JSON.`);
-    } else {
-      console.log(`[SigNoz] Successfully sent log, response: ${response.status}`);
-      try {
-        const responseBody = await response.text();
-        console.log(`[SigNoz] Response body: ${responseBody.substring(0, 200)}`);
-      } catch (e) {
-        console.log(`[SigNoz] Could not read response body: ${e.message}`);
-      }
-    }
+    console.log("RESPONSE STATUS:", response.status);
+    const responseText = await response.text();
+    console.log("RESPONSE TEXT:", responseText);
   } catch (error) {
     console.error(`Error in sendLogToSigNoz: ${error.message}`);
   }
