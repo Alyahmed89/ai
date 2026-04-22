@@ -19,15 +19,18 @@ async function sendLogToSigNoz(logData) {
     console.log("HARDCODED REQUEST SENT");
     console.log("REQUEST URL:", "https://otel.anyapp.cfd/v1/logs");
     
+    const raw = '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":"1710000000000000000","severityText":"INFO","body":{"stringValue":"RAW_STRING_TEST"}}]}]}]}';
+    
     const response = await fetch("https://otel.anyapp.cfd/v1/logs", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
       },
-      body: '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":"1710000000000000000","severityText":"INFO","body":{"stringValue":"HARDCODED_TEST"}}]}]}]}'
+      body: raw
     });
 
+    console.log("RAW BODY SENT:", raw);
     console.log("RESPONSE URL:", response.url);
     console.log("RESPONSE STATUS:", response.status);
     const responseText = await response.text();
