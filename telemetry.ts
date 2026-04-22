@@ -46,6 +46,12 @@ async function sendLogToSigNoz(logData) {
 
     console.log(`[SigNoz] Sending to endpoint: ${OTEL_CONFIG.logsEndpoint}`);
     console.log(`[SigNoz] Headers: ${JSON.stringify(OTEL_CONFIG.headers)}`);
+    console.log(`[SigNoz] Header keys: ${Object.keys(OTEL_CONFIG.headers).join(', ')}`);
+    console.log(`[SigNoz] Has api-key header: ${'api-key' in OTEL_CONFIG.headers ? 'YES' : 'NO'}`);
+    if ('api-key' in OTEL_CONFIG.headers) {
+      const key = OTEL_CONFIG.headers['api-key'];
+      console.log(`[SigNoz] api-key length: ${key.length}, first 10 chars: ${key.substring(0, 10)}..., last 10 chars: ...${key.substring(key.length - 10)}`);
+    }
     
     try {
       const response = await fetch(OTEL_CONFIG.logsEndpoint, {
@@ -179,9 +185,12 @@ function parseHeaders(headersString) {
   
   const pairs = headersString.split(',');
   for (const pair of pairs) {
-    const [key, value] = pair.split('=');
-    if (key && value) {
-      headers[key.trim()] = value.trim();
+    // Split only on first '=' to handle values containing '='
+    if (pair.includes('=')) {
+      const [key, value] = pair.split('=', 1);
+      if (key && value) {
+        headers[key.trim()] = value.trim();
+      }
     }
   }
   return headers;
