@@ -10,23 +10,23 @@ import { successResponse, errorResponse, notFoundResponse } from './response';
 import { VERSION, BUILD_TIME } from './version';
 import { resolveTextVariables } from './utils/variableResolver';
 
-// Import telemetry - TEMPORARILY DISABLED
-// import { initTelemetry } from '../telemetry.ts';
+// Import telemetry
+import { initTelemetry } from '../telemetry.ts';
 
-// Log OpenTelemetry configuration on startup - TEMPORARILY DISABLED
-// console.log(JSON.stringify({
-//   feature: "telemetry",
-//   step: "initialization",
-//   data: {
-//     service_name: "deepseek-agent",
-//     signoz_configured: true,
-//     logs_endpoint: "https://otel.anyapp.cfd/v1/logs",
-//     structured_logging_enabled: true
-//   }
-// }));
+// Log OpenTelemetry configuration on startup
+console.log(JSON.stringify({
+  feature: "telemetry",
+  step: "initialization",
+  data: {
+    service_name: "deepseek-agent",
+    signoz_configured: true,
+    logs_endpoint: "https://otel.anyapp.cfd/v1/logs",
+    structured_logging_enabled: true
+  }
+}));
 
-// TEMP test log on startup - TEMPORARILY DISABLED
-// console.log("SIGNOZ_TEST_LOG");
+// TEMP test log on startup
+console.log("SIGNOZ_TEST_LOG");
 
 // Dummy FlowControllerDO to satisfy existing binding
 export class FlowControllerDO {
@@ -45,18 +45,18 @@ export class FlowControllerDO {
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
-// Initialize SigNoz telemetry - TEMPORARILY DISABLED
-// let conditionsLogger;
-// app.use('*', async (c, next) => {
-//   // Initialize telemetry on first request
-//   if (!conditionsLogger) {
-//     conditionsLogger = initTelemetry(c.env);
-//   }
-//   // Store logger in context for use in routes
-//   c.set('conditionsLogger', conditionsLogger);
-//   
-//   await next();
-// });
+// Initialize SigNoz telemetry
+let conditionsLogger;
+app.use('*', async (c, next) => {
+  // Initialize telemetry on first request
+  if (!conditionsLogger) {
+    conditionsLogger = initTelemetry(c.env);
+  }
+  // Store logger in context for use in routes
+  c.set('conditionsLogger', conditionsLogger);
+  
+  await next();
+});
 
 // Add top-level request logging
 app.use('*', async (c, next) => {

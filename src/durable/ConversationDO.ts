@@ -632,32 +632,24 @@ export class ConversationOrchestratorDO_2026A {
           }
         }
         
-        // Dynamic import for telemetry module - TEMPORARILY DISABLED
-        // const telemetryModule = await import('../../telemetry.ts');
-        // this.conditionsLogger = telemetryModule.initTelemetry(this.env);
-        // 
-        // // FORCE: Send test log to SigNoz - TEMPORARILY DISABLED
-        // console.log(`[DO:${this.state.id}] FORCE: Sending test log to SigNoz...`);
-        // try {
-        //   // Directly call sendLogToSigNoz with test data
-        //   await telemetryModule.sendLogToSigNoz({ 
-        //     feature: 'conditions', 
-        //     step: 'DO_INIT_TEST', 
-        //     timestamp: new Date().toISOString(),
-        //     data: { test: "DO_INIT", durable_object_id: this.state.id.toString() }
-        //   });
-        //   console.log(`[DO:${this.state.id}] FORCE: Test log sent to SigNoz`);
-        // } catch (error) {
-        //   console.error(`[DO:${this.state.id}] FORCE: Failed to send test log: ${error.message}`);
-        // }
+        // Dynamic import for telemetry module
+        const telemetryModule = await import('../../telemetry.ts');
+        this.conditionsLogger = telemetryModule.initTelemetry(this.env);
         
-        // Create a fallback logger that only logs to console
-        this.conditionsLogger = {
-          log: (step, data, error) => console.log(`[FALLBACK LOGGER] ${step}: ${JSON.stringify(data)} ${error ? `Error: ${error.message}` : ''}`),
-          beforeEvaluation: (conditionId, context) => console.log(`[FALLBACK] Before eval: ${conditionId}`),
-          afterEvaluation: (conditionId, result, context) => console.log(`[FALLBACK] After eval: ${conditionId} = ${result}`),
-          error: (conditionId, error, context) => console.error(`[FALLBACK] Condition error: ${conditionId} - ${error.message}`)
-        };
+        // FORCE: Send test log to SigNoz
+        console.log(`[DO:${this.state.id}] FORCE: Sending test log to SigNoz...`);
+        try {
+          // Directly call sendLogToSigNoz with test data
+          await telemetryModule.sendLogToSigNoz({ 
+            feature: 'conditions', 
+            step: 'DO_INIT_TEST', 
+            timestamp: new Date().toISOString(),
+            data: { test: "DO_INIT", durable_object_id: this.state.id.toString() }
+          });
+          console.log(`[DO:${this.state.id}] FORCE: Test log sent to SigNoz`);
+        } catch (error) {
+          console.error(`[DO:${this.state.id}] FORCE: Failed to send test log: ${error.message}`);
+        }
       }
       this.conditionEvaluator = new ConditionEvaluator(this.conditionsLogger);
     }

@@ -7,8 +7,8 @@ export enum ConditionEngine {
   STATIC = 'static'
 }
 
-// Import telemetry logger - TEMPORARILY DISABLED
-// import { ConditionsLogger } from '../../telemetry.ts';
+// Import telemetry logger
+import { ConditionsLogger } from '../../telemetry.ts';
 
 export interface Condition {
   id: string;
