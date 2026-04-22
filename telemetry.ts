@@ -17,6 +17,7 @@ let OTEL_CONFIG = {
 async function sendLogToSigNoz(logData) {
   try {
     console.log("HARDCODED REQUEST SENT");
+    console.log("REQUEST URL:", "https://otel.anyapp.cfd/v1/logs");
     
     const response = await fetch("https://otel.anyapp.cfd/v1/logs", {
       method: "POST",
@@ -27,6 +28,7 @@ async function sendLogToSigNoz(logData) {
       body: '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":"1710000000000000000","severityText":"INFO","body":{"stringValue":"HARDCODED_TEST"}}]}]}]}'
     });
 
+    console.log("RESPONSE URL:", response.url);
     console.log("RESPONSE STATUS:", response.status);
     const responseText = await response.text();
     console.log("RESPONSE TEXT:", responseText);
