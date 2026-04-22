@@ -12,7 +12,7 @@ OPENHANDS_API_URL = "https://openhands.anyapp.cfd/api"
 ADMIN_KEY = "test-admin-key-123"  # Change this in production
 # SigNoz OpenTelemetry configuration
 OTEL_EXPORTER_OTLP_ENDPOINT = "https://otel.anyapp.cfd"
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "https://otel.anyapp.cfd/v1/traces"
+# OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "https://otel.anyapp.cfd/v1/traces"  # TEMPORARILY REMOVED
 OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = "https://otel.anyapp.cfd/v1/logs"
 OTEL_EXPORTER_OTLP_HEADERS = "api-key=k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
 OTEL_SERVICE_NAME = "deepseek-agent"
