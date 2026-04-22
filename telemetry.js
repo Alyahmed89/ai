@@ -16,36 +16,34 @@ let OTEL_CONFIG = {
  */
 async function sendLogToSigNoz(logData) {
   try {
-    // Use exact OTLP format that works with curl tests
+    // EXACT OTLP payload that matches curl format
     const logEntry = {
-      resourceLogs: [{
-        scopeLogs: [{
-          logRecords: [{
-            timeUnixNano: Math.floor(Date.now() * 1e6),
-            severityText: 'INFO',
-            body: { stringValue: JSON.stringify(logData) }
-          }]
-        }]
-      }]
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: String(Date.now() * 1000000),
+                  severityText: "INFO",
+                  body: { stringValue: "TEST_LOG" }
+                }
+              ]
+            }
+          ]
+        }
+      ]
     };
 
-    console.log(`[SigNoz] Sending to endpoint: ${OTEL_CONFIG.logsEndpoint}`);
-    console.log(`[SigNoz] Headers: ${JSON.stringify(OTEL_CONFIG.headers)}`);
-    console.log(`[SigNoz] Header keys: ${Object.keys(OTEL_CONFIG.headers).join(', ')}`);
-    console.log(`[SigNoz] Has api-key header: ${'api-key' in OTEL_CONFIG.headers ? 'YES' : 'NO'}`);
-    if ('api-key' in OTEL_CONFIG.headers) {
-      const key = OTEL_CONFIG.headers['api-key'];
-      console.log(`[SigNoz] api-key length: ${key.length}, first 10 chars: ${key.substring(0, 10)}..., last 10 chars: ...${key.substring(key.length - 10)}`);
-    }
-    
-    console.log(`[SigNoz] OTLP payload being sent (first 500 chars): ${JSON.stringify(logEntry).substring(0, 500)}...`);
+    console.log("OTLP URL:", OTEL_CONFIG.logsEndpoint);
+    console.log("OTLP BODY:", JSON.stringify(logEntry));
     
     try {
       const response = await fetch(OTEL_CONFIG.logsEndpoint, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...OTEL_CONFIG.headers
+          "Content-Type": "application/json",
+          "api-key": "k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
         },
         body: JSON.stringify(logEntry)
       });
