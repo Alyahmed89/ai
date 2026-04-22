@@ -22,7 +22,7 @@ async function sendLogToSigNoz(logData) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": "k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
+        "Authorization": "Bearer k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
       },
       body: '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":"1710000000000000000","severityText":"INFO","body":{"stringValue":"HARDCODED_TEST"}}]}]}]}'
     });
