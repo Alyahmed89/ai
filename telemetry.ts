@@ -65,6 +65,16 @@ async function sendLogToSigNoz(logData) {
     const finalPayload = JSON.stringify(otlpPayload);
     console.log("[FINAL_OTLP_PAYLOAD]", finalPayload);
 
+    // Verify payload integrity before fetch
+    const FINAL_OTLP_PAYLOAD = finalPayload;
+    console.log("[COMPARE_OTLP]", JSON.stringify({
+      finalPayloadLogged: FINAL_OTLP_PAYLOAD,
+      actualFetchBody: finalPayload,
+      match: FINAL_OTLP_PAYLOAD === finalPayload,
+      finalPayloadType: typeof FINAL_OTLP_PAYLOAD,
+      actualFetchBodyType: typeof finalPayload
+    }));
+
     const response = await fetch(OTEL_CONFIG.logsEndpoint, {
       method: "POST",
       headers: fetchHeaders,
@@ -72,12 +82,16 @@ async function sendLogToSigNoz(logData) {
     });
 
     console.log(`[SigNoz] Log sent, status: ${response.status}`);
+    console.log(`[SigNoz] Response status text: ${response.statusText}`);
+    console.log(`[SigNoz] Response headers:`, JSON.stringify([...response.headers.entries()]));
     const responseText = await response.text();
+    console.log(`[SigNoz] Response body length: ${responseText.length}`);
     if (responseText) {
       console.log(`[SigNoz] Response: ${responseText}`);
     }
   } catch (error) {
     console.error(`[SigNoz] Error in sendLogToSigNoz: ${error.message}`);
+    console.error(`[SigNoz] Error stack: ${error.stack}`);
   }
 }
 
