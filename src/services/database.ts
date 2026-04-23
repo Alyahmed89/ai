@@ -894,9 +894,18 @@ export async function getNextStepBasedOnConditions(
         }
         
         // Evaluate condition based on type
-        console.log("RESPONSE:", response_text);
-        console.log("COND:", actualConditionValue);
-        console.log("CONDITIONS:", conditionsResult.results.length);
+        console.log("CONDITION_INPUT", {
+          response: response_text,
+          response_preview: response_text?.substring(0, 200),
+          conditions: conditionsResult.results.map(c => ({
+            type: c.condition_type || 'legacy',
+            value: c.condition_value || c.condition,
+            operator: c.condition_operator || 'contains',
+            next_step_id: c.next_step_id,
+            else_step_id: c.else_step_id,
+            next_flow_id: c.next_flow_id
+          }))
+        });
         switch (actualConditionType) {
           case 'response_contains':
             conditionMet = response_text.trim().toLowerCase().includes(actualConditionValue.trim().toLowerCase());
