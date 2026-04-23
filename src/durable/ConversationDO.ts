@@ -641,6 +641,7 @@ export class ConversationOrchestratorDO_2026A {
         
         // FORCE: Send test log to SigNoz
         console.log(`[DO:${this.state.id}] FORCE: Sending test log to SigNoz...`);
+        console.log("[TRACE] getConditionEvaluator: about to call sendLogToSigNoz directly");
         try {
           // Directly call sendLogToSigNoz with test data
           await telemetryModule.sendLogToSigNoz({ 
@@ -650,8 +651,10 @@ export class ConversationOrchestratorDO_2026A {
             data: { test: "DO_INIT", durable_object_id: this.state.id.toString() }
           });
           console.log(`[DO:${this.state.id}] FORCE: Test log sent to SigNoz`);
+          console.log("[TRACE] getConditionEvaluator: sendLogToSigNoz completed");
         } catch (error) {
           console.error(`[DO:${this.state.id}] FORCE: Failed to send test log: ${error.message}`);
+          console.error("[TRACE] getConditionEvaluator: sendLogToSigNoz threw:", error.message);
         }
       }
       this.conditionEvaluator = new ConditionEvaluator(this.conditionsLogger);
@@ -1157,6 +1160,7 @@ export class ConversationOrchestratorDO_2026A {
         
         // Log condition evaluation to SigNoz
         if (this.conditionsLogger) {
+          console.log("[TRACE] CALLING conditionsLogger.log legacy_condition_evaluation");
           const normalizedConditions = legacyConditions.map(c => {
             const operator = c.condition_operator;
             if (!operator) {
@@ -1178,6 +1182,9 @@ export class ConversationOrchestratorDO_2026A {
             conditions: normalizedConditions,
             response_preview: this.conversation.last_step_response?.substring(0, 200)
           });
+          console.log("[TRACE] AFTER conditionsLogger.log legacy_condition_evaluation");
+        } else {
+          console.log("[TRACE] conditionsLogger is NULL, cannot log legacy_condition_evaluation");
         }
         
         // Fall back to legacy conditional branching logic

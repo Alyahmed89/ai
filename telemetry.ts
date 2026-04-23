@@ -43,6 +43,7 @@ function objectToAttributes(obj, prefix = '') {
  */
 async function sendLogToSigNoz(logData) {
   try {
+    console.log("[TRACE] sendLogToSigNoz CALLED");
     console.log("[SigNoz] Sending log to telemetry endpoint");
     console.log(`[SigNoz] Config: endpoint=${OTEL_CONFIG.logsEndpoint}, service=${OTEL_CONFIG.serviceName}`);
     console.log(`[SigNoz] Headers configured:`, OTEL_CONFIG.headers);
@@ -126,12 +127,21 @@ async function sendLogToSigNoz(logData) {
       actualFetchBodyType: typeof finalPayload
     }));
 
+    console.log("[TRACE] BEFORE_FETCH_OTLP");
+    console.log("[TRACE] fetch args:", JSON.stringify({
+      url: OTEL_CONFIG.logsEndpoint,
+      method: "POST",
+      hasHeaders: !!fetchHeaders,
+      bodyLength: finalPayload.length
+    }));
+
     const response = await fetch(OTEL_CONFIG.logsEndpoint, {
       method: "POST",
       headers: fetchHeaders,
       body: finalPayload
     });
 
+    console.log("[TRACE] FETCH RESPONSE STATUS", response?.status);
     console.log(`[SigNoz] Log sent, status: ${response.status}`);
     console.log(`[SigNoz] Response status text: ${response.statusText}`);
     console.log(`[SigNoz] Response headers:`, JSON.stringify([...response.headers.entries()]));
@@ -143,6 +153,7 @@ async function sendLogToSigNoz(logData) {
   } catch (error) {
     console.error(`[SigNoz] Error in sendLogToSigNoz: ${error.message}`);
     console.error(`[SigNoz] Error stack: ${error.stack}`);
+    console.error("[TRACE] FETCH CAUGHT ERROR:", error.message);
   }
 }
 
