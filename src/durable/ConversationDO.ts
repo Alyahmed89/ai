@@ -1124,6 +1124,35 @@ export class ConversationOrchestratorDO_2026A {
       if (legacyConditions.length > 0) {
         console.log(`[DO:${this.state.id}] Found ${legacyConditions.length} legacy conditions, using legacy conditional branching`);
         
+        // Initialize telemetry for legacy conditions path
+        if (!this.conditionsLogger) {
+          try {
+            console.log(`[DO:${this.state.id}] Initializing telemetry for legacy conditions`);
+            const telemetryModule = await import('../../telemetry.ts');
+            this.conditionsLogger = telemetryModule.initTelemetry(this.env);
+          } catch (err) {
+            console.error(`[DO:${this.state.id}] Failed to init telemetry: ${err.message}`);
+          }
+        }
+        
+        // Log condition evaluation to SigNoz
+        if (this.conditionsLogger) {
+          this.conditionsLogger.log('legacy_condition_evaluation', {
+            flow_id: flowId,
+            step_id: this.conversation.current_step.step_id,
+            conditions_count: legacyConditions.length,
+            conditions: legacyConditions.map(c => ({
+              type: c.condition_type || c.condition,
+              value: c.condition_value,
+              operator: c.condition_operator,
+              next_step_id: c.next_step_id,
+              next_flow_id: c.next_flow_id,
+              else_step_id: c.else_step_id
+            })),
+            response_preview: this.conversation.last_step_response?.substring(0, 200)
+          });
+        }
+        
         // Fall back to legacy conditional branching logic
         console.log("FORCING CONDITIONS");
         const { getNextStepBasedOnConditions } = await import('../services/database');
@@ -1136,6 +1165,17 @@ export class ConversationOrchestratorDO_2026A {
       
         if (nextStep) {
           console.log(`[DO:${this.state.id}] Legacy conditional branching selected step: ${nextStep.title} (order_index: ${nextStep.order_index})`);
+          
+          // Log the result to SigNoz
+          if (this.conditionsLogger) {
+            this.conditionsLogger.log('legacy_condition_result', {
+              flow_id: flowId,
+              step_id: this.conversation.current_step.step_id,
+              selected_step_id: nextStep.step_id,
+              selected_step_title: nextStep.title,
+              order_index: nextStep.order_index
+            });
+          }
           
           // Check for termination condition
           if (nextStep.order_index === -1) {

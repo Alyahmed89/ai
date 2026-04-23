@@ -94,11 +94,9 @@ class ConditionsLogger {
     console.log(JSON.stringify(logEntry));
 
     // Try to send to SigNoz (async, fire and forget)
-    if (typeof fetch !== 'undefined') {
-      sendLogToSigNoz(logEntry).catch(err => {
-        console.error(`Failed to send log to SigNoz: ${err.message}`);
-      });
-    }
+    sendLogToSigNoz(logEntry).catch(err => {
+      console.error(`[SigNoz] Failed to send log: ${err.message}`);
+    });
   }
 
   beforeEvaluation(conditionId, context) {
