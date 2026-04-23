@@ -16,25 +16,51 @@ let OTEL_CONFIG = {
  */
 async function sendLogToSigNoz(logData) {
   try {
-    console.log("HARDCODED REQUEST SENT");
-    console.log("REQUEST URL:", "https://otel.anyapp.cfd/v1/logs");
+    console.log("[SigNoz] Sending log to telemetry endpoint");
     
-    const raw = '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":"1710000000000000000","severityText":"INFO","body":{"stringValue":"RAW_STRING_TEST"}}]}]}]}';
-    
-    const response = await fetch("https://otel.anyapp.cfd/v1/logs", {
+    // Convert logData to OTLP format
+    const timeUnixNano = (Date.now() * 1000000).toString(); // Convert to nanoseconds
+    const logRecord = {
+      timeUnixNano,
+      severityNumber: 9, // INFO level
+      severityText: "INFO",
+      body: { stringValue: JSON.stringify(logData) },
+      attributes: [
+        { key: "feature", value: { stringValue: logData.feature || "unknown" } },
+        { key: "step", value: { stringValue: logData.step || "unknown" } },
+        { key: "condition_id", value: { stringValue: logData.data?.condition_id || "none" } }
+      ]
+    };
+
+    const otlpPayload = {
+      resourceLogs: [{
+        resource: {
+          attributes: [{
+            key: "service.name",
+            value: { stringValue: OTEL_CONFIG.serviceName }
+          }]
+        },
+        scopeLogs: [{
+          scope: {},
+          logRecords: [logRecord]
+        }]
+      }]
+    };
+
+    const response = await fetch(OTEL_CONFIG.logsEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer k9DpiOXK6zPvRX48mhatUty9ipul+nrNf5mbu689kYM="
+        ...OTEL_CONFIG.headers
       },
-      body: raw
+      body: JSON.stringify(otlpPayload)
     });
 
-    console.log("RAW BODY SENT:", raw);
-    console.log("RESPONSE URL:", response.url);
-    console.log("RESPONSE STATUS:", response.status);
+    console.log(`[SigNoz] Log sent, status: ${response.status}`);
     const responseText = await response.text();
-    console.log("RESPONSE TEXT:", responseText);
+    if (responseText) {
+      console.log(`[SigNoz] Response: ${responseText}`);
+    }
   } catch (error) {
     console.error(`[SigNoz] Error in sendLogToSigNoz: ${error.message}`);
   }
