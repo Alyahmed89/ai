@@ -19,6 +19,7 @@ async function sendLogToSigNoz(logData) {
     console.log("[SigNoz] Sending log to telemetry endpoint");
     console.log(`[SigNoz] Config: endpoint=${OTEL_CONFIG.logsEndpoint}, service=${OTEL_CONFIG.serviceName}`);
     console.log(`[SigNoz] Headers configured:`, OTEL_CONFIG.headers);
+    console.log(`[SigNoz] logData type: ${typeof logData}, isArray: ${Array.isArray(logData)}, keys: ${logData ? Object.keys(logData).join(',') : 'N/A'}`);
 
     // Convert logData to OTLP format
     const timeUnixNano = (Date.now() * 1000000).toString(); // Convert to nanoseconds
@@ -60,11 +61,14 @@ async function sendLogToSigNoz(logData) {
     
     console.log(`[SigNoz] Fetch headers:`, fetchHeaders);
     console.log(`[SigNoz] Sending to: ${OTEL_CONFIG.logsEndpoint}`);
+    
+    const finalPayload = JSON.stringify(otlpPayload);
+    console.log("[FINAL_OTLP_PAYLOAD]", finalPayload);
 
     const response = await fetch(OTEL_CONFIG.logsEndpoint, {
       method: "POST",
       headers: fetchHeaders,
-      body: JSON.stringify(otlpPayload)
+      body: finalPayload
     });
 
     console.log(`[SigNoz] Log sent, status: ${response.status}`);
