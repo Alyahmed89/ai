@@ -12,7 +12,34 @@ let OTEL_CONFIG = {
 };
 
 /**
+ * Flatten a nested object into OTLP attributes array.
+ * Primitive values become stringValue attributes.
+ * Nested objects/arrays become JSON-stringified stringValue attributes.
+ */
+function objectToAttributes(obj, prefix = '') {
+  const attrs = [];
+  if (!obj || typeof obj !== 'object') return attrs;
+  
+  for (const [key, value] of Object.entries(obj)) {
+    const attrKey = prefix ? `${prefix}.${key}` : key;
+    if (value === null || value === undefined) {
+      attrs.push({ key: attrKey, value: { stringValue: '' } });
+    } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      attrs.push({ key: attrKey, value: { stringValue: String(value) } });
+    } else if (typeof value === 'object') {
+      // Nested objects/arrays: JSON-stringify into a single attribute
+      attrs.push({ key: attrKey, value: { stringValue: JSON.stringify(value) } });
+    }
+  }
+  return attrs;
+}
+
+/**
  * Send log to SigNoz via OTLP HTTP
+ *
+ * OTLP best practices:
+ * - body.stringValue = simple human-readable event name (NOT JSON)
+ * - All structured data goes into attributes array
  */
 async function sendLogToSigNoz(logData) {
   try {
@@ -24,19 +51,43 @@ async function sendLogToSigNoz(logData) {
     // Convert logData to OTLP format
     const timeUnixNano = (Date.now() * 1000000).toString(); // Convert to nanoseconds
     
-    // Ensure body.stringValue is always a string (OTLP spec requirement)
-    const bodyValue = typeof logData === 'string' ? logData : JSON.stringify(logData);
+    // body.stringValue MUST be a simple human-readable string (NOT JSON)
+    // Use the step name as the event name, or a fallback
+    const eventName = (logData && logData.step) 
+      ? `conditions.${logData.step}` 
+      : (typeof logData === 'string' ? logData : 'conditions_event');
+    
+    // Build attributes from logData
+    const attributes = [];
+    
+    // Always include feature and step as top-level attributes
+    if (logData && typeof logData === 'object') {
+      attributes.push({ key: "feature", value: { stringValue: String(logData.feature || 'unknown') } });
+      attributes.push({ key: "step", value: { stringValue: String(logData.step || 'unknown') } });
+      
+      // Flatten all keys from logData.data into attributes
+      if (logData.data && typeof logData.data === 'object') {
+        const dataAttrs = objectToAttributes(logData.data, 'data');
+        attributes.push(...dataAttrs);
+      }
+      
+      // Include error if present
+      if (logData.error) {
+        attributes.push({ key: "error", value: { stringValue: String(logData.error) } });
+      }
+      
+      // Include timestamp
+      if (logData.timestamp) {
+        attributes.push({ key: "timestamp", value: { stringValue: String(logData.timestamp) } });
+      }
+    }
     
     const logRecord = {
       timeUnixNano,
       severityNumber: 9, // INFO level
       severityText: "INFO",
-      body: { stringValue: bodyValue },
-      attributes: [
-        { key: "feature", value: { stringValue: logData.feature || "unknown" } },
-        { key: "step", value: { stringValue: logData.step || "unknown" } },
-        { key: "condition_id", value: { stringValue: logData.data?.condition_id || "none" } }
-      ]
+      body: { stringValue: eventName },
+      attributes
     };
 
     const otlpPayload = {
