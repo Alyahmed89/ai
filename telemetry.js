@@ -162,11 +162,16 @@ function parseHeaders(headersString) {
   
   const pairs = headersString.split(',');
   for (const pair of pairs) {
-    // Split only on first '=' to handle values containing '='
-    if (pair.includes('=')) {
-      const [key, value] = pair.split('=', 1);
+    const trimmedPair = pair.trim();
+    if (!trimmedPair) continue;
+    
+    // Find first '=' and split there to handle values containing '='
+    const eqIndex = trimmedPair.indexOf('=');
+    if (eqIndex !== -1) {
+      const key = trimmedPair.substring(0, eqIndex).trim();
+      const value = trimmedPair.substring(eqIndex + 1).trim();
       if (key && value) {
-        headers[key.trim()] = value.trim();
+        headers[key] = value;
       }
     }
   }
