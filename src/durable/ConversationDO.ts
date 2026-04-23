@@ -1131,6 +1131,34 @@ export class ConversationOrchestratorDO_2026A {
       // Use all conditions regardless of source field
       const legacyConditions = conditions;
       
+      // GUARANTEED TELEMETRY: Initialize and log regardless of whether conditions exist.
+      // This ensures SigNoz receives telemetry on EVERY step transition, independent of
+      // condition system correctness, DB schema compatibility, or query results.
+      if (!this.conditionsLogger) {
+        try {
+          console.log(`[DO:${this.state.id}] Initializing telemetry for conditions path`);
+          const telemetryModule = await import('../../telemetry.ts');
+          this.conditionsLogger = telemetryModule.initTelemetry(this.env);
+        } catch (err) {
+          console.error(`[DO:${this.state.id}] Failed to init telemetry: ${err.message}`);
+        }
+      }
+      
+      // Always log condition evaluation attempt to SigNoz (even if 0 conditions found)
+      if (this.conditionsLogger) {
+        console.log("[TRACE] CALLING conditionsLogger.log condition_evaluation_attempt");
+        this.conditionsLogger.log('condition_evaluation_attempt', {
+          flow_id: flowId,
+          step_id: this.conversation.current_step.step_id,
+          conditions_count: legacyConditions.length,
+          conditions_found: legacyConditions.length > 0,
+          response_preview: this.conversation.last_step_response?.substring(0, 200)
+        });
+        console.log("[TRACE] AFTER conditionsLogger.log condition_evaluation_attempt");
+      } else {
+        console.log("[TRACE] conditionsLogger is NULL, cannot log condition_evaluation_attempt");
+      }
+      
       if (legacyConditions.length > 0) {
         console.log(`[DO:${this.state.id}] Found ${legacyConditions.length} legacy conditions, using legacy conditional branching`);
         this.debugExecutionPath.push(`getNextStep:${legacyConditions.length}_conditions_found`);
@@ -1147,18 +1175,7 @@ export class ConversationOrchestratorDO_2026A {
           }))
         });
         
-        // Initialize telemetry for legacy conditions path
-        if (!this.conditionsLogger) {
-          try {
-            console.log(`[DO:${this.state.id}] Initializing telemetry for legacy conditions`);
-            const telemetryModule = await import('../../telemetry.ts');
-            this.conditionsLogger = telemetryModule.initTelemetry(this.env);
-          } catch (err) {
-            console.error(`[DO:${this.state.id}] Failed to init telemetry: ${err.message}`);
-          }
-        }
-        
-        // Log condition evaluation to SigNoz
+        // Log detailed condition evaluation to SigNoz
         if (this.conditionsLogger) {
           console.log("[TRACE] CALLING conditionsLogger.log legacy_condition_evaluation");
           const normalizedConditions = legacyConditions.map(c => {
