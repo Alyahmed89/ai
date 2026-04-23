@@ -1137,18 +1137,25 @@ export class ConversationOrchestratorDO_2026A {
         
         // Log condition evaluation to SigNoz
         if (this.conditionsLogger) {
+          const normalizedConditions = legacyConditions.map(c => {
+            const operator = c.condition_operator;
+            if (!operator) {
+              throw new Error(`Invalid condition: missing operator for condition type "${c.condition_type || c.condition}"`);
+            }
+            return {
+              type: c.condition_type || c.condition,
+              value: c.condition_value || '',
+              operator,
+              next_step_id: c.next_step_id,
+              next_flow_id: c.next_flow_id,
+              else_step_id: c.else_step_id
+            };
+          });
           this.conditionsLogger.log('legacy_condition_evaluation', {
             flow_id: flowId,
             step_id: this.conversation.current_step.step_id,
             conditions_count: legacyConditions.length,
-            conditions: legacyConditions.map(c => ({
-              type: c.condition_type || c.condition,
-              value: c.condition_value,
-              operator: c.condition_operator,
-              next_step_id: c.next_step_id,
-              next_flow_id: c.next_flow_id,
-              else_step_id: c.else_step_id
-            })),
+            conditions: normalizedConditions,
             response_preview: this.conversation.last_step_response?.substring(0, 200)
           });
         }
