@@ -75,6 +75,9 @@ export class ConversationOrchestratorDO_2026A {
   // Telemetry logger for conditions
   private conditionsLogger: any = null;
 
+  // Debug execution path tracing
+  private debugExecutionPath: string[] = [];
+
   constructor(state: DurableObjectState, env: CloudflareBindings) {
     this.state = state;
     this.env = env;
@@ -1107,6 +1110,10 @@ export class ConversationOrchestratorDO_2026A {
       console.log(`[DO:${this.state.id}] HIT CONVERSATIONDO CONDITIONS`);
       console.log("CURRENT STEP:", this.conversation.current_step);
       
+      // Debug tracing
+      this.debugExecutionPath.push('getNextStep:conditions_check');
+      console.log("HIT_CONDITIONS");
+      
       // NEW: Load conditions for routing decision
       const conditionsQuery = `
         SELECT fsc.* 
@@ -1123,6 +1130,19 @@ export class ConversationOrchestratorDO_2026A {
       
       if (legacyConditions.length > 0) {
         console.log(`[DO:${this.state.id}] Found ${legacyConditions.length} legacy conditions, using legacy conditional branching`);
+        this.debugExecutionPath.push(`getNextStep:${legacyConditions.length}_conditions_found`);
+        console.log("INPUT_TO_CONDITIONS", {
+          response: this.conversation.last_step_response,
+          response_preview: this.conversation.last_step_response?.substring(0, 200),
+          conditions: legacyConditions.map(c => ({
+            type: c.condition_type || c.condition,
+            value: c.condition_value || c.condition,
+            operator: c.condition_operator || 'unknown',
+            next_step_id: c.next_step_id,
+            else_step_id: c.else_step_id,
+            next_flow_id: c.next_flow_id
+          }))
+        });
         
         // Initialize telemetry for legacy conditions path
         if (!this.conditionsLogger) {
@@ -2773,9 +2793,16 @@ export class ConversationOrchestratorDO_2026A {
   }
   
   private handleGetState(): Response {
+    const debug = {
+      execution_path: this.debugExecutionPath,
+      conditions_logger_initialized: !!this.conditionsLogger,
+      condition_evaluator_initialized: !!this.conditionEvaluator,
+      router_initialized: !!this.router
+    };
     return new Response(JSON.stringify({
       success: true,
-      conversation: this.conversation || { state: 'not_initialized' }
+      conversation: this.conversation || { state: 'not_initialized' },
+      debug
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -7296,6 +7323,10 @@ ${messageContent}`;
       return { execute: true }; // No conditions, execute
     }
     
+    // Debug tracing
+    this.debugExecutionPath.push('shouldExecuteStep:conditions_check');
+    console.log("HIT_CONDITIONS");
+    
     // Load conditions for this step
     // Note: Using flow_step_conditions table which exists, not flow_conditions
     const conditions = await this.env.FLOW_RUNS_DB.prepare(`
@@ -7318,6 +7349,19 @@ ${messageContent}`;
     `).bind(this.conversation.flow_id, step.step_id).all();
     
     const executionData = await this.loadExecutionData();
+    
+    console.log("INPUT_TO_CONDITIONS", {
+      response: this.conversation.last_step_response,
+      response_preview: this.conversation.last_step_response?.substring(0, 200),
+      conditions: (conditions.results as any[]).map(c => ({
+        type: c.condition_type,
+        value: c.condition_value,
+        operator: c.condition_operator,
+        next_step_id: c.next_step_id,
+        else_step_id: c.else_step_id,
+        next_flow_id: c.next_flow_id
+      }))
+    });
     
     for (const conditionRow of conditions.results as any[]) {
       // Convert to Condition interface (adding missing fields)
