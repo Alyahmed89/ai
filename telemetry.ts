@@ -22,11 +22,15 @@ async function sendLogToSigNoz(logData) {
 
     // Convert logData to OTLP format
     const timeUnixNano = (Date.now() * 1000000).toString(); // Convert to nanoseconds
+    
+    // Ensure body.stringValue is always a string (OTLP spec requirement)
+    const bodyValue = typeof logData === 'string' ? logData : JSON.stringify(logData);
+    
     const logRecord = {
       timeUnixNano,
       severityNumber: 9, // INFO level
       severityText: "INFO",
-      body: { stringValue: JSON.stringify(logData) },
+      body: { stringValue: bodyValue },
       attributes: [
         { key: "feature", value: { stringValue: logData.feature || "unknown" } },
         { key: "step", value: { stringValue: logData.step || "unknown" } },
