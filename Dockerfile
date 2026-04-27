@@ -4,6 +4,9 @@ WORKDIR /app
 
 COPY package*.json ./
 
+RUN git config --global http.version HTTP/1.1
+RUN git config --global http.postBuffer 524288000
+
 RUN npm install
 
 COPY . .
