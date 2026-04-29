@@ -11,6 +11,8 @@ import { ApiEndpointsController } from './flow-runs/api-endpoints.controller';
 import { ApiConditionsController } from './flow-runs/api-conditions.controller';
 import { ApiStepRunsController } from './flow-runs/api-step-runs.controller';
 import { ActionsController } from './execution/actions.controller';
+import { FlowsService } from './flows/flows.service';
+import { FlowRunsService } from './flow-runs/flow-runs.service';
 
 @Module({
   imports: [
@@ -31,6 +33,6 @@ import { ActionsController } from './execution/actions.controller';
     ApiStepRunsController,
     ActionsController,
   ],
-  providers: [],
+  providers: [FlowsService, FlowRunsService],
 })
 export class AppModule {}

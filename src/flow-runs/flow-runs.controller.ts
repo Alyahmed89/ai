@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Param, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { runFlow } from '../execution/engine';
+import { FlowRunsService } from './flow-runs.service';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -10,10 +10,11 @@ const supabase = createClient(
 
 @Controller('flow-runs')
 export class FlowRunsController {
+  constructor(private flowRunsService: FlowRunsService) {}
+
   @Post(':id/resume')
   async resume(@Param('id') id: string) {
-    await runFlow(id);
-    return { status: 'resumed' };
+    return this.flowRunsService.resume(id);
   }
 
   @Get(':id/trace')

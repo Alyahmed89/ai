@@ -1,23 +1,23 @@
 import { Controller, Post, Body } from '@nestjs/common';
-import { FlowsController } from '../flows/flows.controller';
-import { FlowRunsController } from '../flow-runs/flow-runs.controller';
+import { FlowsService } from '../flows/flows.service';
+import { FlowRunsService } from '../flow-runs/flow-runs.service';
 
 @Controller()
 export class ActionsController {
   constructor(
-    private flowsController: FlowsController,
-    private flowRunsController: FlowRunsController
+    private flowsService: FlowsService,
+    private flowRunsService: FlowRunsService
   ) {}
 
   @Post('start')
   async start(@Body() body: { flowId: string }) {
-    const res: any = await this.flowsController.start(body.flowId);
-    return { flowRunId: res.flowRunId || res.id };
+    const res = await this.flowsService.start(body.flowId);
+    return { flowRunId: res.flowRunId };
   }
 
   @Post('resume')
   async resume(@Body() body: { flowRunId: string; user_input?: any }) {
-    const res: any = await this.flowRunsController.resume(body.flowRunId);
-    return { flowRunId: res.flowRunId || body.flowRunId };
+    await this.flowRunsService.resume(body.flowRunId, body.user_input);
+    return { flowRunId: body.flowRunId };
   }
 }

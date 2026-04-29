@@ -1,12 +1,12 @@
 import { Controller, Post, Param } from '@nestjs/common';
-import { runFlow } from '../execution/engine';
+import { FlowsService } from './flows.service';
 
 @Controller('flows')
 export class FlowsController {
+  constructor(private flowsService: FlowsService) {}
+
   @Post(':id/start')
   async start(@Param('id') id: string) {
-    const flowRunId = Math.random().toString(36).substring(2, 15);
-    await runFlow(flowRunId);
-    return { flowRunId };
+    return this.flowsService.start(id);
   }
 }
