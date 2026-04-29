@@ -14,50 +14,17 @@ export default function ChatInput({
   const [currentVarIndex, setCurrentVarIndex] = useState(-1)
   const inputRef = useRef(null)
 
-  // Load variables based on whether we're on flow page or flow-run page
+  // Load variables
   useEffect(() => {
     const loadVariables = async () => {
       try {
-        // Always try to get variables from flowId if available (both flow page and flow-run page)
         if (flowId) {
-          const response = await fetch(`/api/proxy/api/flows/${flowId}/variables`)
+          const response = await fetch(`/api/flows/${flowId}/variables`)
           if (response.ok) {
             const data = await response.json()
-            // Extract variables from response - they could be in data.all_variables or data.data.all_variables
             const variables = data?.data?.all_variables || data?.all_variables || []
             setVariables(variables)
             return
-          }
-        }
-        
-        // If no flowId or flow variables endpoint failed, try resume endpoint for flow-run page
-        if (flowRunId && !flowId) {
-          // On flow-run page without flowId: try resume endpoint
-          const response = await fetch('/api/proxy/resume', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              flow_run_id: flowRunId
-            })
-          })
-          
-          if (response.ok) {
-            const data = await response.json()
-            console.log('Resume data for variables:', data)
-            // Extract variables from resume response
-            // The structure might vary - check for variables in different locations
-            const variables = 
-              data?.variables || 
-              data?.data?.variables || 
-              data?.data?.all_variables || 
-              data?.all_variables || 
-              []
-            setVariables(variables)
-          } else {
-            console.error('Failed to load resume variables:', response.status)
-            setVariables([])
           }
         }
       } catch (error) {
@@ -65,11 +32,8 @@ export default function ChatInput({
         setVariables([])
       }
     }
-
-    if (flowId || flowRunId) {
-      loadVariables()
-    }
-  }, [flowId, flowRunId])
+    if (flowId) loadVariables()
+  }, [flowId])
 
   // Format display text: replace {{var=value}} with var:value
   const getDisplayText = () => {
@@ -225,28 +189,22 @@ export default function ChatInput({
     const extractedVars = extractVariables(rawText)
     
     try {
-      // Submit variables first
       for (const [key, value] of Object.entries(extractedVars)) {
-        await fetch('/api/proxy/api/variables', {
+        await fetch('/api/variables', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             key,
             value: { value },
-            flow_run_id: null,
-            step_run_id: null,
             scope: 'flow'
           })
         })
       }
 
-      let endpoint = '/api/proxy/start'
-      let body = { flowId }
-
-      if (flowRunId) {
-        endpoint = `/api/proxy/flow-runs/${flowRunId}/resume`
-        body = { user_input: rawText }
-      }
+      const endpoint = flowRunId ? '/resume' : '/start'
+      const body = flowRunId
+        ? { flowRunId, user_input: rawText }
+        : { flowId }
 
       const response = await fetch(endpoint, {
         method: 'POST',

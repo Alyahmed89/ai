@@ -3560,14 +3560,13 @@ function FlowDesigner({ flowId }: { flowId?: string }) {
                   console.log('Starting flow:', currentFlowId);
                   
                   // Start the flow (same as chat UI)
-                  const flowResponse = await fetch('/api/proxy/start', {
+                  const flowResponse = await fetch('/start', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                      flow_id: currentFlowId,
-                      input_prompt: ''
+                      flowId: currentFlowId
                     }),
                   });
                   

@@ -92,20 +92,12 @@ export default function ChatPage(props: any) {
   // Fetch flow definitions
   useEffect(() => {
     const loadFlows = async () => {
-      const res = await fetch('/api/proxy/api/flow-definitions');
+      const res = await fetch('/api/flows');
       const data = await res.json();
-
       setFlowDefinitions(Array.isArray(data) ? data : []);
-      
-      // Find resume_step for selected flow
-      if (selectedFlowId && Array.isArray(data)) {
-        const selectedFlow = data.find((flow: any) => flow.id === selectedFlowId);
-        setResumeStep(selectedFlow?.resume_step || null);
-      }
     };
-
     loadFlows();
-  }, [selectedFlowId]);
+  }, []);
 
   // Fetch flow variables when flow is selected
   useEffect(() => {
@@ -118,17 +110,13 @@ export default function ChatPage(props: any) {
       }
 
       try {
-        const res = await fetch(`/api/proxy/api/flows/${selectedFlowId}/variables`);
+        const res = await fetch(`/api/flows/${selectedFlowId}/variables`);
         if (res.ok) {
           const response = await res.json();
-          // Extract step_variables from response
           const stepVariables = response?.data?.step_variables || {};
-          
-          // Convert to expected format: { step_id: [var1, var2, ...] }
           const formattedVariables: Record<string, string[]> = {};
           Object.entries(stepVariables).forEach(([stepId, stepData]: [string, any]) => {
             if (stepData?.variables && Array.isArray(stepData.variables)) {
-              // Extract variable names from objects
               const varNames = stepData.variables
                 .map((v: any) => v?.name || v)
                 .filter((v: any) => typeof v === 'string');
@@ -137,16 +125,11 @@ export default function ChatPage(props: any) {
               formattedVariables[stepId] = [];
             }
           });
-          
           setFlowVariables(formattedVariables);
-          
-          // Initialize empty values only for resume step variables (or first step if no resume step)
           let targetStepId = resumeStep;
           if (!targetStepId && Object.keys(formattedVariables).length > 0) {
-            // If no resume_step, use first step
             targetStepId = Object.keys(formattedVariables)[0];
           }
-          
           const stepVars = targetStepId ? formattedVariables[targetStepId] || [] : [];
           const initialValues: Record<string, string> = {};
           stepVars.forEach((varName: string) => {
@@ -170,12 +153,10 @@ export default function ChatPage(props: any) {
   // Fetch flow runs
   useEffect(() => {
     const loadRuns = async () => {
-      const res = await fetch('/api/proxy/api/flow-runs');
+      const res = await fetch('/api/flow-runs');
       const data = await res.json();
-
       setFlowRuns(Array.isArray(data) ? data : []);
     };
-
     loadRuns();
   }, []);
 
@@ -183,12 +164,11 @@ export default function ChatPage(props: any) {
   useEffect(() => {
     const fetchVariables = async () => {
       try {
-        const response = await fetch('/api/proxy/api/variables');
+        const response = await fetch('/api/variables');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         const data = await response.json();
-        // Backend returns array of { key, value, ... }
         setVariables(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching variables:', error);
@@ -209,26 +189,21 @@ export default function ChatPage(props: any) {
       // Submit variable values first
       for (const [key, value] of Object.entries(variableValues)) {
         if (value) {
-          await fetch('/api/proxy/api/variables', {
+          await fetch('/api/variables', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               key,
               value: { value },
-              flow_run_id: null,
-              step_run_id: null,
               scope: 'flow'
             })
           });
         }
       }
 
-      const endpoint = selectedFlowRunId ? `/api/proxy/flow-runs/${selectedFlowRunId}/resume` : '/api/proxy/start';
-      console.log('Selected flow run ID:', selectedFlowRunId);
-      console.log('Using endpoint:', endpoint);
-
+      const endpoint = selectedFlowRunId ? '/resume' : '/start';
       const body = selectedFlowRunId
-        ? { user_input: content }
+        ? { flowRunId: selectedFlowRunId, user_input: content }
         : { flowId: selectedFlowId };
 
       const res = await fetch(endpoint, {
@@ -238,16 +213,9 @@ export default function ChatPage(props: any) {
       });
 
       const data = await res.json();
-      console.log('API Response:', data);
-
       const newFlowRunId = data?.flowRunId || null;
-      console.log('Setting selectedFlowRunId from response:', newFlowRunId);
-      
       setSelectedFlowRunId(newFlowRunId);
-      
-      // If we started a new flowrun (not resuming), navigate to flow-run page
       if (newFlowRunId && !selectedFlowRunId) {
-        console.log('Navigating to flow-run page:', newFlowRunId);
         router.push(`/chat/flow-run/${newFlowRunId}`);
       }
     } catch (error) {
@@ -273,17 +241,14 @@ export default function ChatPage(props: any) {
     setChatMessages([]);
 
     try {
-      // Fetch flow run details to get conversation_id
-      const flowRunResponse = await fetch(`/api/proxy/api/flow-runs/${flowRunId}`);
+      const flowRunResponse = await fetch(`/api/flow-runs/${flowRunId}`);
       if (!flowRunResponse.ok) {
         console.error('Failed to fetch flow run details');
         return;
       }
-
       const flowRunData = await flowRunResponse.json();
       const flowRun = flowRunData.flow_run;
       const conversationId = flowRun.conversation_id;
-      
       if (conversationId) {
         setConversationId(conversationId);
       }
@@ -471,9 +436,8 @@ export default function ChatPage(props: any) {
           onClose={() => setShowCreateFlowModal(false)}
           onFlowCreated={() => {
             setShowCreateFlowModal(false);
-            // Refresh flow definitions
-            fetch('/api/proxy/api/flows').then(res => res.json()).then(data => {
-              setFlowDefinitions(data.flows || []);
+            fetch('/api/flows').then(res => res.json()).then(data => {
+              setFlowDefinitions(Array.isArray(data) ? data : []);
             });
           }}
         />
@@ -489,9 +453,8 @@ export default function ChatPage(props: any) {
           onFlowUpdated={() => {
             setShowEditFlowModal(false);
             setEditingFlowId(null);
-            // Refresh flow definitions
-            fetch('/api/proxy/api/flows').then(res => res.json()).then(data => {
-              setFlowDefinitions(data.flows || []);
+            fetch('/api/flows').then(res => res.json()).then(data => {
+              setFlowDefinitions(Array.isArray(data) ? data : []);
             });
           }}
         />
@@ -502,9 +465,8 @@ export default function ChatPage(props: any) {
           onClose={() => setShowCreateProjectModal(false)}
           onProjectCreated={() => {
             setShowCreateProjectModal(false);
-            // Refresh flow definitions
-            fetch('/api/proxy/api/flows').then(res => res.json()).then(data => {
-              setFlowDefinitions(data.flows || []);
+            fetch('/api/flows').then(res => res.json()).then(data => {
+              setFlowDefinitions(Array.isArray(data) ? data : []);
             });
           }}
         />
