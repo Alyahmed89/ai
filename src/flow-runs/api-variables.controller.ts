@@ -1,22 +1,18 @@
 import { Controller, Get, Post, Body } from '@nestjs/common';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '../supabase';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!,
-);
 
 @Controller('api/variables')
 export class ApiVariablesController {
   @Get()
   async list() {
-    const { data } = await supabase.from('variables').select('*').order('created_at', { ascending: false });
+    const { data } = await getSupabase().from('variables').select('*').order('created_at', { ascending: false });
     return data || [];
   }
 
   @Post()
   async create(@Body() body: { name: string; value?: any; scope?: string; flow_run_id?: string; step_run_id?: string }) {
-    const { data } = await supabase.from('variables').insert({
+    const { data } = await getSupabase().from('variables').insert({
       id: crypto.randomUUID(),
       key: body.name,
       value: body.value || null,

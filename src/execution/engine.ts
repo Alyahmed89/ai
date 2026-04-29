@@ -1,10 +1,5 @@
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!,
-);
+import { getSupabase } from '../supabase';
 
 const AiResponseSchema = z.object({
   response: z.string(),
@@ -90,7 +85,7 @@ async function runStep(stepId: string, flowRunId: string): Promise<string | null
 }
 
 async function appendTrace(stepRunId: string, patch: { variables?: any; api_calls?: any[]; queries?: any[]; rules_fired?: string[] }): Promise<void> {
-  const { data: stepRun } = await supabase.from('step_runs').select('trace').eq('id', stepRunId).single();
+  const { data: stepRun } = await getSupabase().from('step_runs').select('trace').eq('id', stepRunId).single();
   const existing = stepRun?.trace || {};
   existing.variables = existing.variables || {};
   existing.api_calls = existing.api_calls || [];
@@ -103,11 +98,11 @@ async function appendTrace(stepRunId: string, patch: { variables?: any; api_call
     queries: [...existing.queries, ...(patch.queries || [])],
     rules_fired: [...existing.rules_fired, ...(patch.rules_fired || [])],
   };
-  await supabase.from('step_runs').update({ trace: merged, updated_at: new Date().toISOString() }).eq('id', stepRunId);
+  await getSupabase().from('step_runs').update({ trace: merged, updated_at: new Date().toISOString() }).eq('id', stepRunId);
 }
 
 async function insertRef(r: { flow_run_id: string; step_run_id: string; rule_id?: string; key: string; value: string; source: string }): Promise<void> {
-  await supabase.from('refs').insert({
+  await getSupabase().from('refs').insert({
     id: crypto.randomUUID(),
     flow_run_id: r.flow_run_id,
     step_run_id: r.step_run_id,
@@ -138,7 +133,7 @@ function validateResponse(response: any): boolean {
 }
 
 async function getFirstStep(flowRunId: string): Promise<string | null> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('steps')
     .select('id')
     .order('order_index', { ascending: true })
@@ -148,7 +143,7 @@ async function getFirstStep(flowRunId: string): Promise<string | null> {
 }
 
 async function getStep(stepId: string): Promise<any> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('steps')
     .select('*')
     .eq('id', stepId)
@@ -157,7 +152,7 @@ async function getStep(stepId: string): Promise<any> {
 }
 
 async function createStepRun(flowRunId: string, stepId: string): Promise<string> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('step_runs')
     .insert({
       flow_run_id: flowRunId,
@@ -172,7 +167,7 @@ async function createStepRun(flowRunId: string, stepId: string): Promise<string>
 }
 
 async function updateStepRun(stepRunId: string, data: any): Promise<void> {
-  await supabase
+  await getSupabase()
     .from('step_runs')
     .update({
       ...data,
@@ -182,7 +177,7 @@ async function updateStepRun(stepRunId: string, data: any): Promise<void> {
 }
 
 async function createFlowRun(flowId: string): Promise<string> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('flow_runs')
     .insert({
       flow_id: flowId,
@@ -196,7 +191,7 @@ async function createFlowRun(flowId: string): Promise<string> {
 }
 
 async function updateFlowRun(flowRunId: string, data: any): Promise<void> {
-  await supabase
+  await getSupabase()
     .from('flow_runs')
     .update({
       ...data,
@@ -206,7 +201,7 @@ async function updateFlowRun(flowRunId: string, data: any): Promise<void> {
 }
 
 async function getVariables(flowRunId: string): Promise<any[]> {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('variables')
     .select('key, value')
     .eq('flow_run_id', flowRunId);
@@ -214,7 +209,7 @@ async function getVariables(flowRunId: string): Promise<any[]> {
 }
 
 async function setVariable(flowRunId: string, key: string, value: any): Promise<void> {
-  await supabase.from('variables').insert({
+  await getSupabase().from('variables').insert({
     flow_run_id: flowRunId,
     key,
     value,
@@ -224,7 +219,7 @@ async function setVariable(flowRunId: string, key: string, value: any): Promise<
 }
 
 async function evaluateConditions(stepId: string, response: any) {
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('step_conditions')
     .select('*')
     .eq('step_id', stepId);
@@ -246,7 +241,7 @@ async function saveApiCall(data: {
   endpoint: string;
   params: any;
 }): Promise<void> {
-  await supabase.from('api_calls').insert({
+  await getSupabase().from('api_calls').insert({
     flow_run_id: data.flowRunId,
     step_run_id: data.stepRunId,
     endpoint_name: data.endpoint,

@@ -1,16 +1,12 @@
 import { Controller, Post, Body } from '@nestjs/common';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '../supabase';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!,
-);
 
 @Controller('api/conditions')
 export class ApiConditionsController {
   @Post()
   async create(@Body() body: { step_id: string; type: string; value?: string; next_step_id?: string; next_flow_id?: string }) {
-    const { data } = await supabase.from('step_conditions').insert({
+    const { data } = await getSupabase().from('step_conditions').insert({
       id: crypto.randomUUID(),
       step_id: body.step_id,
       type: body.type,

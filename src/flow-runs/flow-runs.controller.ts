@@ -1,12 +1,8 @@
 import { Controller, Get, Post, Param, Res } from '@nestjs/common';
 import { Response } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '../supabase';
 import { FlowRunsService } from './flow-runs.service';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!,
-);
 
 @Controller('flow-runs')
 export class FlowRunsController {
@@ -19,19 +15,19 @@ export class FlowRunsController {
 
   @Get(':id/trace')
   async trace(@Param('id') id: string, @Res() res: Response) {
-    const flowRun = await supabase
+    const flowRun = await getSupabase()
       .from('flow_runs')
       .select('*')
       .eq('id', id)
       .single();
 
-    const stepRuns = await supabase
+    const stepRuns = await getSupabase()
       .from('step_runs')
       .select('*')
       .eq('flow_run_id', id)
       .order('created_at', { ascending: true });
 
-    const apiCalls = await supabase
+    const apiCalls = await getSupabase()
       .from('api_calls')
       .select('*')
       .eq('flow_run_id', id)

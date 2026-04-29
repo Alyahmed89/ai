@@ -1,16 +1,12 @@
 import { Controller, Get, Post, Put, Param, Query, Body } from '@nestjs/common';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '../supabase';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!,
-);
 
 @Controller('api/flow-steps')
 export class ApiFlowStepsController {
   @Get()
   async list(@Query('flow_id') flowId: string) {
-    const { data } = await supabase
+    const { data } = await getSupabase()
       .from('steps')
       .select('*')
       .eq('flow_id', flowId)
@@ -20,7 +16,7 @@ export class ApiFlowStepsController {
 
   @Post()
   async create(@Body() body: { flow_id: string; title: string; system_message?: string; instructions: string; expected_response: any; order_index?: number }) {
-    const { data } = await supabase.from('steps').insert({
+    const { data } = await getSupabase().from('steps').insert({
       id: crypto.randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
@@ -42,7 +38,7 @@ export class ApiFlowStepsController {
     if (body.instructions !== undefined) updates.instructions = body.instructions;
     if (body.expected_response !== undefined) updates.expected_response = body.expected_response;
     if (body.order_index !== undefined) updates.order_index = body.order_index;
-    const { data } = await supabase.from('steps').update(updates).eq('id', id).select().single();
+    const { data } = await getSupabase().from('steps').update(updates).eq('id', id).select().single();
     return data;
   }
 }

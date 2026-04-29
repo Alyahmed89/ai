@@ -1,10 +1,6 @@
 import { Controller, Put, Param, Body } from '@nestjs/common';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '../supabase';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!,
-);
 
 @Controller('api/flows')
 export class ApiFlowsStepsOrderController {
@@ -16,7 +12,7 @@ export class ApiFlowsStepsOrderController {
       updated_at: new Date().toISOString(),
     }));
     for (const u of updates) {
-      await supabase.from('steps').update({ order_index: u.order_index, updated_at: u.updated_at }).eq('id', u.id);
+      await getSupabase().from('steps').update({ order_index: u.order_index, updated_at: u.updated_at }).eq('id', u.id);
     }
     return { success: true };
   }
