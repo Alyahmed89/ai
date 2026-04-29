@@ -5,12 +5,12 @@ import { getSupabase } from '../supabase';
 @Controller('api/flow-steps')
 export class ApiFlowStepsController {
   @Get()
-  async list(@Query('flow_id') flowId: string) {
-    const { data } = await getSupabase()
-      .from('steps')
-      .select('*')
-      .eq('flow_id', flowId)
-      .order('order_index', { ascending: true });
+  async list(@Query('flow_id') flowId?: string) {
+    let query = getSupabase().from('steps').select('*');
+    if (flowId) {
+      query = query.eq('flow_id', flowId);
+    }
+    const { data } = await query.order('order_index', { ascending: true });
     return data || [];
   }
 
