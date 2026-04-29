@@ -10,6 +10,7 @@ import { ApiVariablesController } from './flow-runs/api-variables.controller';
 import { ApiEndpointsController } from './flow-runs/api-endpoints.controller';
 import { ApiConditionsController } from './flow-runs/api-conditions.controller';
 import { ApiStepRunsController } from './flow-runs/api-step-runs.controller';
+import { ActionsController } from './execution/actions.controller';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ApiStepRunsController } from './flow-runs/api-step-runs.controller';
     ApiEndpointsController,
     ApiConditionsController,
     ApiStepRunsController,
+    ActionsController,
   ],
   providers: [],
 })
