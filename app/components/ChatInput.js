@@ -225,48 +225,38 @@ export default function ChatInput({
     const extractedVars = extractVariables(rawText)
     
     try {
-      let endpoint = '/api/proxy/start'
-      let body = {
-        flow_id: flowId,
-        input_prompt: rawText
+      // Submit variables first
+      for (const [key, value] of Object.entries(extractedVars)) {
+        await fetch('/api/proxy/api/variables', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key,
+            value: { value },
+            flow_run_id: null,
+            step_run_id: null,
+            scope: 'flow'
+          })
+        })
       }
 
-      // Add variables if any
-      if (Object.keys(extractedVars).length > 0) {
-        body.variables = extractedVars
-      }
+      let endpoint = '/api/proxy/start'
+      let body = { flowId }
 
       if (flowRunId) {
-        // On flow-run page: use resume endpoint
-        endpoint = '/api/proxy/resume'
-        body = {
-          flow_run_id: flowRunId,
-          user_input: rawText
-        }
-        
-        // Add variables if any
-        if (Object.keys(extractedVars).length > 0) {
-          body.variables = extractedVars
-        }
+        endpoint = `/api/proxy/flow-runs/${flowRunId}/resume`
+        body = { user_input: rawText }
       }
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
       
       if (response.ok) {
         const data = await response.json()
-        
-        // Call parent callback if provided
-        if (onSend) {
-          onSend(data)
-        }
-        
-        // Clear input
+        if (onSend) onSend(data)
         setRawText('')
         setCurrentVarIndex(-1)
       } else {

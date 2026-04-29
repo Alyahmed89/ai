@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 
 export const runtime = 'edge';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'https://deepseek-agent.alghamdimo89.workers.dev';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://ai.anyapp.cfd';
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {

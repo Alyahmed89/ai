@@ -188,7 +188,8 @@ export default function ChatPage(props: any) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         const data = await response.json();
-        setVariables(data.variables || []);
+        // Backend returns array of { key, value, ... }
+        setVariables(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error fetching variables:', error);
       }
@@ -205,21 +206,30 @@ export default function ChatPage(props: any) {
     setIsRunning(true);
     
     try {
-      const endpoint = selectedFlowRunId ? '/api/proxy/resume' : '/api/proxy/start';
+      // Submit variable values first
+      for (const [key, value] of Object.entries(variableValues)) {
+        if (value) {
+          await fetch('/api/proxy/api/variables', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              key,
+              value: { value },
+              flow_run_id: null,
+              step_run_id: null,
+              scope: 'flow'
+            })
+          });
+        }
+      }
+
+      const endpoint = selectedFlowRunId ? `/api/proxy/flow-runs/${selectedFlowRunId}/resume` : '/api/proxy/start';
       console.log('Selected flow run ID:', selectedFlowRunId);
       console.log('Using endpoint:', endpoint);
 
       const body = selectedFlowRunId
-        ? {
-            conversation_id: conversationId,
-            user_input: content,
-            ...(Object.keys(variableValues).length > 0 && { variables: variableValues })
-          }
-        : {
-            flow_id: selectedFlowId,
-            input_prompt: content,
-            ...(Object.keys(variableValues).length > 0 && { variables: variableValues })
-          };
+        ? { user_input: content }
+        : { flowId: selectedFlowId };
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -229,43 +239,9 @@ export default function ChatPage(props: any) {
 
       const data = await res.json();
       console.log('API Response:', data);
-      console.log('Flow run ID from response:', data?.flow_run?.id);
-      console.log('Full flow_run object:', data?.flow_run);
-      console.log('Conversation ID from response:', data?.conversation_id || data?.data?.conversation_id || data?.id);
 
-      const newConversationId = data?.conversation_id || data?.data?.conversation_id || data?.id || null;
-      let newFlowRunId = data?.flow_run?.id || null;
-      console.log('Setting conversationId:', newConversationId);
+      const newFlowRunId = data?.flowRunId || null;
       console.log('Setting selectedFlowRunId from response:', newFlowRunId);
-      
-      setConversationId(newConversationId);
-      
-      // If no flow_run.id in response, try to find it from flow runs list
-      if (!newFlowRunId) {
-        console.log('No flow_run.id in response, fetching flow runs to find it...');
-        const runsResponse = await fetch('/api/proxy/api/flow-runs');
-        if (runsResponse.ok) {
-          const runsData = await runsResponse.json();
-          const flowRunsList = Array.isArray(runsData) ? runsData : [];
-          console.log('Flow runs list:', flowRunsList.length, 'items');
-          console.log('Looking for flow_id:', selectedFlowId);
-          setFlowRuns(flowRunsList);
-          
-          // Find most recent flowrun for this flow
-          const flowRunsForThisFlow = flowRunsList.filter((run: any) => run.flow_id === selectedFlowId);
-          console.log('Flow runs for this flow:', flowRunsForThisFlow.length);
-          
-          const flowRunForThisFlow = flowRunsForThisFlow
-            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-          
-          if (flowRunForThisFlow) {
-            newFlowRunId = flowRunForThisFlow.id;
-            console.log('Found flowrun ID from flow runs list:', newFlowRunId);
-          } else {
-            console.log('No flowrun found for this flow in the list');
-          }
-        }
-      }
       
       setSelectedFlowRunId(newFlowRunId);
       
