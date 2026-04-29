@@ -38,8 +38,15 @@ async function runStep(stepId: string, flowRunId: string): Promise<string | null
   const vars = await getVariables(flowRunId);
 
   let rendered = step?.instructions || '';
+  const newVars: Record<string, any> = {};
+  const newApiCalls: any[] = [];
+  const newQueries: any[] = [];
+  const newRules: string[] = [];
+
   for (const v of vars) {
     rendered = rendered.replace(new RegExp(`{{${v.key}}}`, 'g'), String(v.value));
+    newVars[v.key] = v.value;
+    await insertRef({ flow_run_id: flowRunId, step_run_id: stepRunId, key: v.key, value: JSON.stringify(v.value), source: 'variable' });
   }
 
   await updateStepRun(stepRunId, {
@@ -71,12 +78,45 @@ async function runStep(stepId: string, flowRunId: string): Promise<string | null
       params: a.params,
     });
     await setVariable(flowRunId, a.endpoint, a.params);
+    newApiCalls.push({ endpoint: a.endpoint, params: a.params });
+    await insertRef({ flow_run_id: flowRunId, step_run_id: stepRunId, key: a.endpoint, value: JSON.stringify(a.params), source: 'api' });
     console.log('API CALL', a.endpoint, a.params);
   }
 
   const nextStepId = await evaluateConditions(stepId, aiResult);
+  await appendTrace(stepRunId, { variables: newVars, api_calls: newApiCalls, queries: newQueries, rules_fired: newRules });
   await updateStepRun(stepRunId, { status: 'completed' });
   return nextStepId;
+}
+
+async function appendTrace(stepRunId: string, patch: { variables?: any; api_calls?: any[]; queries?: any[]; rules_fired?: string[] }): Promise<void> {
+  const { data: stepRun } = await supabase.from('step_runs').select('trace').eq('id', stepRunId).single();
+  const existing = stepRun?.trace || {};
+  existing.variables = existing.variables || {};
+  existing.api_calls = existing.api_calls || [];
+  existing.queries = existing.queries || [];
+  existing.rules_fired = existing.rules_fired || [];
+  const merged = {
+    ...existing,
+    variables: { ...existing.variables, ...(patch.variables || {}) },
+    api_calls: [...existing.api_calls, ...(patch.api_calls || [])],
+    queries: [...existing.queries, ...(patch.queries || [])],
+    rules_fired: [...existing.rules_fired, ...(patch.rules_fired || [])],
+  };
+  await supabase.from('step_runs').update({ trace: merged, updated_at: new Date().toISOString() }).eq('id', stepRunId);
+}
+
+async function insertRef(r: { flow_run_id: string; step_run_id: string; rule_id?: string; key: string; value: string; source: string }): Promise<void> {
+  await supabase.from('refs').insert({
+    id: crypto.randomUUID(),
+    flow_run_id: r.flow_run_id,
+    step_run_id: r.step_run_id,
+    rule_id: r.rule_id || null,
+    key: r.key,
+    value: r.value,
+    source: r.source,
+    created_at: new Date().toISOString(),
+  });
 }
 
 async function callAI(input: string): Promise<any> {
