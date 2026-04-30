@@ -109,7 +109,10 @@ async function runStep(step: any, flowRunId: string): Promise<string | null> {
     return next;
   }
 
-  throw new Error(`Step ${step.ref} has no next and no condition matched`);
+  // Terminal step — end flow gracefully
+  console.log(`[engine] step=${step.ref} is terminal, completing flow`);
+  await updateFlowRun(flowRunId, { status: 'completed' });
+  return null;
 }
 
 async function getFlowRun(flowRunId: string): Promise<any> {
