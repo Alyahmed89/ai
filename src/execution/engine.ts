@@ -40,7 +40,7 @@ export async function runFlow(flowRunId: string): Promise<void> {
   } catch (err) {
     console.error(`[engine] runFlow error flowRunId=${flowRunId}:`, err);
     try {
-      await updateFlowRun(flowRunId, { status: 'failed', error: err.message });
+      await updateFlowRun(flowRunId, { status: 'failed', error: err instanceof Error ? err.message : String(err) });
     } catch (updateErr) {
       console.error(`[engine] failed to update flow run status:`, updateErr);
     }
