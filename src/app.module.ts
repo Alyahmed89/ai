@@ -10,6 +10,7 @@ import { ApiVariablesController } from './flow-runs/api-variables.controller';
 import { ApiEndpointsController } from './flow-runs/api-endpoints.controller';
 import { ApiConditionsController } from './flow-runs/api-conditions.controller';
 import { ApiStepRunsController } from './flow-runs/api-step-runs.controller';
+import { ContextController } from './flow-runs/context.controller';
 import { ActionsController } from './execution/actions.controller';
 import { FlowsService } from './flows/flows.service';
 import { FlowRunsService } from './flow-runs/flow-runs.service';
@@ -31,6 +32,7 @@ import { FlowRunsService } from './flow-runs/flow-runs.service';
     ApiEndpointsController,
     ApiConditionsController,
     ApiStepRunsController,
+    ContextController,
     ActionsController,
   ],
   providers: [FlowsService, FlowRunsService],
