@@ -15,11 +15,12 @@ export class ApiFlowStepsController {
   }
 
   @Post()
-  async create(@Body() body: { flow_id: string; title: string; system_message?: string; instructions: string; expected_response: any; order_index?: number }) {
+  async create(@Body() body: { flow_id: string; title: string; ref?: string; system_message?: string; instructions: string; expected_response: any; order_index?: number }) {
     const { data } = await getSupabase().from('steps').insert({
       id: crypto.randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
+      ref: body.ref || null,
       system_message: body.system_message || null,
       instructions: body.instructions,
       expected_response: body.expected_response,
@@ -31,9 +32,10 @@ export class ApiFlowStepsController {
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: { title?: string; system_message?: string; instructions?: string; expected_response?: any; order_index?: number }) {
+  async update(@Param('id') id: string, @Body() body: { title?: string; ref?: string; system_message?: string; instructions?: string; expected_response?: any; order_index?: number }) {
     const updates: any = { updated_at: new Date().toISOString() };
     if (body.title !== undefined) updates.title = body.title;
+    if (body.ref !== undefined) updates.ref = body.ref;
     if (body.system_message !== undefined) updates.system_message = body.system_message;
     if (body.instructions !== undefined) updates.instructions = body.instructions;
     if (body.expected_response !== undefined) updates.expected_response = body.expected_response;

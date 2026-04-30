@@ -1,8 +1,5 @@
+import { randomUUID } from 'crypto';
 import { getSupabase } from '../supabase';
-
-const AiResponseSchema = {
-  response: (v: unknown): v is string => typeof v === 'string',
-};
 
 export async function runFlow(flowRunId: string): Promise<void> {
   await updateFlowRun(flowRunId, { status: 'running' });
@@ -37,71 +34,64 @@ export async function runFlow(flowRunId: string): Promise<void> {
 
 async function runStep(step: any, flowRunId: string): Promise<string | null> {
   const stepRunId = await createStepRun(flowRunId, step.id);
-  const vars = await getVariables(flowRunId);
 
-  let rendered = step.instructions || '';
-  for (const v of vars) {
-    rendered = rendered.replace(new RegExp(`{{${v.key}}}`, 'g'), String(v.value));
+  const expected = step.expected_response;
+  if (!expected || typeof expected !== 'object') {
+    throw new Error(`Step ${step.ref} has invalid expected_response`);
+  }
+
+  const next = expected.next ?? null;
+  const actions = Array.isArray(expected.actions) ? expected.actions : [];
+
+  // Execute actions
+  for (const action of actions) {
+    if (action.type !== 'api') continue;
+
+    let url = action.endpoint;
+    let headers: Record<string, string> = { 'Content-Type': 'application/json', ...(action.headers || {}) };
+
+    const { data: endpoint } = await getSupabase()
+      .from('endpoint_registry')
+      .select('*')
+      .eq('name', action.endpoint)
+      .maybeSingle();
+
+    if (endpoint) {
+      url = endpoint.url;
+      headers = { ...(endpoint.headers || {}), ...headers };
+    }
+
+    const res = await fetch(url, {
+      method: (action.method || 'GET').toUpperCase(),
+      headers,
+      body: action.payload ? JSON.stringify(action.payload) : undefined,
+    });
+
+    if (!res.ok) {
+      throw new Error(`API call failed: ${url} ${res.status}`);
+    }
   }
 
   await updateStepRun(stepRunId, {
-    rendered_instructions: rendered,
-    resolved_variables: vars,
+    ai_response: expected,
+    ai_response_valid: true,
+    status: 'completed',
   });
 
-  const aiResult = await callAI(rendered);
-
-  if (!aiResult || typeof aiResult.response !== 'string') {
-    throw new Error(`Invalid AI response format for step ${step.ref}`);
-  }
-
-  await updateStepRun(stepRunId, { ai_response: aiResult, ai_response_valid: true });
-
-  // Evaluate conditions from step_conditions table
-  const conditionNextRef = await evaluateConditions(step.id, aiResult);
+  // Conditions override
+  const conditionNextRef = await evaluateConditions(step.id, expected);
   if (conditionNextRef) {
-    console.log(`step=${step.ref} response=${aiResult.response} next=${conditionNextRef}`);
-    await updateStepRun(stepRunId, { status: 'completed' });
+    console.log(`step=${step.ref} next=${conditionNextRef} (condition)`);
     return conditionNextRef;
   }
 
-  if (aiResult.response === 'end') {
-    console.log(`step=${step.ref} response=end`);
-    await updateStepRun(stepRunId, { status: 'completed' });
-    return null;
+  // Direct transition
+  if (next) {
+    console.log(`step=${step.ref} next=${next}`);
+    return next;
   }
 
-  if (aiResult.response.startsWith('next:')) {
-    const ref = aiResult.response.slice(5);
-    if (!ref) throw new Error(`Empty ref in next: for step ${step.ref}`);
-    console.log(`step=${step.ref} response=${aiResult.response} next=${ref}`);
-    await updateStepRun(stepRunId, { status: 'completed' });
-    return ref;
-  }
-
-  throw new Error(`Invalid response "${aiResult.response}" from step ${step.ref}`);
-}
-
-/**
- * Strict deterministic parser.
- * Input: rendered instructions string.
- * Output: { response: "next:<ref>" } | { response: "end" }
- */
-async function callAI(instructions: string): Promise<{ response: string }> {
-  const lower = instructions.toLowerCase().trim();
-
-  // Match "next:<ref>" pattern
-  const nextMatch = lower.match(/next:\s*(\S+)/);
-  if (nextMatch) {
-    return { response: `next:${nextMatch[1]}` };
-  }
-
-  // Match "end"
-  if (lower === 'end' || lower.endsWith(' end')) {
-    return { response: 'end' };
-  }
-
-  return { response: 'end' };
+  throw new Error(`Step ${step.ref} has no next and no condition matched`);
 }
 
 async function getFlowRun(flowRunId: string): Promise<any> {
@@ -137,6 +127,16 @@ async function getStepByFlowAndRef(flowId: string, ref: string): Promise<any> {
   return data;
 }
 
+async function getStepById(stepId: string): Promise<any> {
+  const { data, error } = await getSupabase()
+    .from('steps')
+    .select('*')
+    .eq('id', stepId)
+    .single();
+  if (error) throw new Error(`Step not found by id ${stepId}: ${error.message}`);
+  return data;
+}
+
 async function createStepRun(flowRunId: string, stepId: string): Promise<string> {
   const { data, error } = await getSupabase()
     .from('step_runs')
@@ -162,18 +162,18 @@ async function updateStepRun(stepRunId: string, data: any): Promise<void> {
 }
 
 export async function createFlowRun(flowId: string): Promise<string> {
-  const { data, error } = await getSupabase()
+  const id = randomUUID();
+  const { error } = await getSupabase()
     .from('flow_runs')
     .insert({
+      id,
       flow_id: flowId,
       status: 'pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+    });
   if (error) throw new Error(`Failed to create flow run: ${error.message}`);
-  return data.id;
+  return id;
 }
 
 async function updateFlowRun(flowRunId: string, data: any): Promise<void> {
@@ -184,27 +184,29 @@ async function updateFlowRun(flowRunId: string, data: any): Promise<void> {
   if (error) throw new Error(`Failed to update flow run: ${error.message}`);
 }
 
-async function getVariables(flowRunId: string): Promise<any[]> {
-  const { data, error } = await getSupabase()
-    .from('variables')
-    .select('key, value')
-    .eq('flow_run_id', flowRunId);
-  if (error) throw new Error(`Failed to get variables: ${error.message}`);
-  return data || [];
-}
-
-async function evaluateConditions(stepId: string, response: any): Promise<string | null> {
+async function evaluateConditions(stepId: string, expected: any): Promise<string | null> {
   const { data, error } = await getSupabase()
     .from('step_conditions')
     .select('*')
     .eq('step_id', stepId);
-  if (error) throw new Error(`Failed to get conditions: ${error.message}`);
 
+  if (error) throw new Error(`Failed to get conditions: ${error.message}`);
   if (!data || data.length === 0) return null;
 
   for (const c of data) {
-    if (c.type === 'contains' && response.response?.includes(c.value)) {
-      return c.next_step_ref || null;
+    if (!(c.key in expected)) continue;
+
+    if (expected[c.key] === c.value) {
+      if (!c.next_step_id) {
+        throw new Error(`Condition matched but no next_step_id for step ${stepId}`);
+      }
+
+      const step = await getStepById(c.next_step_id);
+      if (!step?.ref) {
+        throw new Error(`Step ${c.next_step_id} has no ref`);
+      }
+
+      return step.ref;
     }
   }
 
