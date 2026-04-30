@@ -2,38 +2,56 @@ import { randomUUID } from 'crypto';
 import { getSupabase } from '../supabase';
 
 export async function runFlow(flowRunId: string): Promise<void> {
-  await updateFlowRun(flowRunId, { status: 'running' });
+  console.log(`[engine] runFlow start flowRunId=${flowRunId}`);
+  try {
+    await updateFlowRun(flowRunId, { status: 'running' });
 
-  const flowRun = await getFlowRun(flowRunId);
-  if (!flowRun?.flow_id) throw new Error(`Flow run ${flowRunId} has no flow_id`);
+    const flowRun = await getFlowRun(flowRunId);
+    if (!flowRun?.flow_id) throw new Error(`Flow run ${flowRunId} has no flow_id`);
+    console.log(`[engine] flow_id=${flowRun.flow_id}`);
 
-  const firstStep = await getFirstStep(flowRun.flow_id);
-  if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
+    const firstStep = await getFirstStep(flowRun.flow_id);
+    if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
+    console.log(`[engine] firstStep id=${firstStep.id} ref=${firstStep.ref}`);
 
-  const visited = new Set<string>();
-  const maxSteps = 50;
-  let stepCount = 0;
-  let currentStep = firstStep;
+    const visited = new Set<string>();
+    const maxSteps = 50;
+    let stepCount = 0;
+    let currentStep = firstStep;
 
-  while (currentStep) {
-    if (stepCount >= maxSteps) throw new Error('Max steps exceeded');
-    if (visited.has(currentStep.id)) throw new Error('Cycle detected');
-    visited.add(currentStep.id);
-    stepCount++;
+    while (currentStep) {
+      if (stepCount >= maxSteps) throw new Error('Max steps exceeded');
+      if (visited.has(currentStep.id)) throw new Error('Cycle detected');
+      visited.add(currentStep.id);
+      stepCount++;
 
-    const nextRef = await runStep(currentStep, flowRunId);
-    if (!nextRef) break;
+      console.log(`[engine] executing step stepCount=${stepCount} stepId=${currentStep.id} ref=${currentStep.ref}`);
+      const nextRef = await runStep(currentStep, flowRunId);
+      console.log(`[engine] step done ref=${currentStep.ref} nextRef=${nextRef}`);
+      if (!nextRef) break;
 
-    const nextStep = await getStepByFlowAndRef(flowRun.flow_id, nextRef);
-    if (!nextStep) throw new Error(`Step ref "${nextRef}" not found in flow ${flowRun.flow_id}`);
-    currentStep = nextStep;
+      const nextStep = await getStepByFlowAndRef(flowRun.flow_id, nextRef);
+      if (!nextStep) throw new Error(`Step ref "${nextRef}" not found in flow ${flowRun.flow_id}`);
+      currentStep = nextStep;
+    }
+
+    await updateFlowRun(flowRunId, { status: 'completed' });
+    console.log(`[engine] runFlow completed flowRunId=${flowRunId}`);
+  } catch (err) {
+    console.error(`[engine] runFlow error flowRunId=${flowRunId}:`, err);
+    try {
+      await updateFlowRun(flowRunId, { status: 'failed', error: err.message });
+    } catch (updateErr) {
+      console.error(`[engine] failed to update flow run status:`, updateErr);
+    }
+    throw err;
   }
-
-  await updateFlowRun(flowRunId, { status: 'completed' });
 }
 
 async function runStep(step: any, flowRunId: string): Promise<string | null> {
+  console.log(`[engine] runStep start stepRef=${step.ref} flowRunId=${flowRunId}`);
   const stepRunId = await createStepRun(flowRunId, step.id);
+  console.log(`[engine] runStep stepRunId=${stepRunId}`);
 
   const expected = step.expected_response;
   if (!expected || typeof expected !== 'object') {
@@ -81,13 +99,13 @@ async function runStep(step: any, flowRunId: string): Promise<string | null> {
   // Conditions override
   const conditionNextRef = await evaluateConditions(step.id, expected);
   if (conditionNextRef) {
-    console.log(`step=${step.ref} next=${conditionNextRef} (condition)`);
+    console.log(`[engine] step=${step.ref} next=${conditionNextRef} (condition)`);
     return conditionNextRef;
   }
 
   // Direct transition
   if (next) {
-    console.log(`step=${step.ref} next=${next}`);
+    console.log(`[engine] step=${step.ref} next=${next}`);
     return next;
   }
 
@@ -111,7 +129,7 @@ async function getFirstStep(flowId: string): Promise<any> {
     .eq('flow_id', flowId)
     .order('order_index', { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
   if (error) throw new Error(`Failed to get first step: ${error.message}`);
   return data;
 }
