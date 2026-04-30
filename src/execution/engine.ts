@@ -26,7 +26,7 @@ export async function runFlow(flowRunId: string): Promise<void> {
       stepCount++;
 
       console.log(`[engine] executing step stepCount=${stepCount} stepId=${currentStep.id} ref=${currentStep.ref}`);
-      const nextRef = await runStep(currentStep, flowRunId);
+      const nextRef = await runStep(currentStep, flowRunId, flowRun);
       console.log(`[engine] step done ref=${currentStep.ref} nextRef=${nextRef}`);
       if (!nextRef) break;
 
@@ -48,12 +48,16 @@ export async function runFlow(flowRunId: string): Promise<void> {
   }
 }
 
-async function runStep(step: any, flowRunId: string): Promise<string | null> {
+async function runStep(step: any, flowRunId: string, flowRun: any): Promise<string | null> {
   console.log(`[engine] runStep start stepRef=${step.ref} flowRunId=${flowRunId}`);
   const stepRunId = await createStepRun(flowRunId, step.id);
   console.log(`[engine] runStep stepRunId=${stepRunId}`);
 
-  const expected = step.expected_response;
+  // Build variable context
+  const context = await buildContext(flowRunId, stepRunId, flowRun);
+
+  // Resolve variables in expected_response
+  const expected = resolveVariables(step.expected_response, context);
   if (!expected || typeof expected !== 'object') {
     throw new Error(`Step ${step.ref} has invalid expected_response`);
   }
@@ -65,8 +69,11 @@ async function runStep(step: any, flowRunId: string): Promise<string | null> {
   for (const action of actions) {
     if (action.type !== 'api') continue;
 
-    let url = action.endpoint;
-    let headers: Record<string, string> = { 'Content-Type': 'application/json', ...(action.headers || {}) };
+    let url = normalizeValue(resolveVariables(action.endpoint, context));
+    let headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...normalizeValue(resolveVariables(action.headers || {}, context)),
+    };
 
     const { data: endpoint } = await getSupabase()
       .from('endpoint_registry')
@@ -79,10 +86,12 @@ async function runStep(step: any, flowRunId: string): Promise<string | null> {
       headers = { ...(endpoint.headers || {}), ...headers };
     }
 
+    const payload = action.payload ? normalizeValue(resolveVariables(action.payload, context)) : undefined;
+
     const res = await fetch(url, {
       method: (action.method || 'GET').toUpperCase(),
       headers,
-      body: action.payload ? JSON.stringify(action.payload) : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
     });
 
     if (!res.ok) {
@@ -90,13 +99,15 @@ async function runStep(step: any, flowRunId: string): Promise<string | null> {
     }
   }
 
+  // Store resolved + normalized values
   await updateStepRun(stepRunId, {
-    ai_response: expected,
+    ai_response: normalizeValue(expected),
     ai_response_valid: true,
+    resolved_variables: context,
     status: 'completed',
   });
 
-  // Conditions override
+  // Conditions override (resolve variables in expected before evaluation)
   const conditionNextRef = await evaluateConditions(step.id, expected);
   if (conditionNextRef) {
     console.log(`[engine] step=${step.ref} next=${conditionNextRef} (condition)`);
@@ -118,7 +129,7 @@ async function runStep(step: any, flowRunId: string): Promise<string | null> {
 async function getFlowRun(flowRunId: string): Promise<any> {
   const { data, error } = await getSupabase()
     .from('flow_runs')
-    .select('flow_id')
+    .select('*')
     .eq('id', flowRunId)
     .single();
   if (error) throw new Error(`Failed to get flow run: ${error.message}`);
@@ -234,4 +245,88 @@ async function evaluateConditions(stepId: string, expected: any): Promise<string
   }
 
   return null;
+}
+
+// ── Variable Resolution ──────────────────────────────────────────────
+
+async function buildContext(flowRunId: string, stepRunId: string, flowRun: any): Promise<Record<string, any>> {
+  const context: Record<string, any> = {};
+
+  // flow_run level
+  if (flowRun?.input_variables) {
+    Object.assign(context, flowRun.input_variables);
+  }
+
+  // variables table — scope priority: step_run > flow_run > global
+  const { data: vars } = await getSupabase()
+    .from('variables')
+    .select('*')
+    .or(`flow_run_id.eq.${flowRunId},scope.eq.global`);
+
+  if (vars) {
+    // step_run scoped first
+    for (const v of vars) {
+      if (v.step_run_id === stepRunId) {
+        context[v.key] = v.value;
+      }
+    }
+    // then flow_run scoped (won't overwrite step_run)
+    for (const v of vars) {
+      if (v.scope === 'flow_run' && v.flow_run_id === flowRunId && !(v.key in context)) {
+        context[v.key] = v.value;
+      }
+    }
+    // then global (won't overwrite anything already set)
+    for (const v of vars) {
+      if (v.scope === 'global' && !(v.key in context)) {
+        context[v.key] = v.value;
+      }
+    }
+  }
+
+  return context;
+}
+
+function resolveVariables(input: any, context: Record<string, any>): any {
+  if (typeof input === 'string') {
+    return input.replace(/\[\[var:([^\]]+)\]\]/g, (_match, key) => {
+      const trimmed = key.trim();
+      return trimmed in context ? String(context[trimmed]) : _match;
+    });
+  }
+
+  if (Array.isArray(input)) {
+    return input.map(item => resolveVariables(item, context));
+  }
+
+  if (input && typeof input === 'object') {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(input)) {
+      result[k] = resolveVariables(v, context);
+    }
+    return result;
+  }
+
+  return input;
+}
+
+function normalizeValue(value: any): any {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeValue).filter(v => v !== undefined);
+  }
+
+  if (value && typeof value === 'object') {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === undefined) continue;
+      result[k] = normalizeValue(v);
+    }
+    return result;
+  }
+
+  return value;
 }
