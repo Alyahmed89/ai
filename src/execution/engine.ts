@@ -156,9 +156,11 @@ async function getStepById(stepId: string): Promise<any> {
 }
 
 async function createStepRun(flowRunId: string, stepId: string): Promise<string> {
+  const id = randomUUID();
   const { data, error } = await getSupabase()
     .from('step_runs')
     .insert({
+      id,
       flow_run_id: flowRunId,
       step_id: stepId,
       status: 'running',
