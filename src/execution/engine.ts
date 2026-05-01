@@ -1,5 +1,21 @@
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
 import { getSupabase } from '../supabase';
+
+const ExpectedResponseSchema = z.object({
+  next: z.string().nullable().optional(),
+  actions: z.array(z.object({
+    type: z.literal('api'),
+    endpoint: z.string(),
+    method: z.string().optional(),
+    payload: z.any().optional(),
+    headers: z.record(z.string()).optional(),
+  })).optional(),
+  pro_check: z.object({
+    rules: z.array(z.string()).optional(),
+    plans: z.array(z.string()).optional(),
+  }).optional(),
+}).strict();
 
 export async function runFlow(flowRunId: string): Promise<void> {
   console.log(`[engine] runFlow start flowRunId=${flowRunId}`);
@@ -56,16 +72,73 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   // Build variable context
   const context = await buildContext(flowRunId, stepRunId, flowRun);
 
-  // Resolve variables in expected_response
+  // Step 1 — Resolve variables in expected_response
   const expected = resolveVariables(step.expected_response, context);
-  if (!expected || typeof expected !== 'object') {
-    throw new Error(`Step ${step.ref} has invalid expected_response`);
+  console.log(`[engine] resolved expected_response:`, JSON.stringify(expected, null, 2));
+
+  // Step 2 — Zod validation (STRICT)
+  const zodResult = ExpectedResponseSchema.safeParse(expected);
+  console.log(`[engine] zod validation:`, JSON.stringify(zodResult, null, 2));
+
+  if (!zodResult.success) {
+    const zodError = zodResult.error.flatten();
+    console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
+    await updateStepRun(stepRunId, {
+      status: 'failed',
+      error: `Zod validation failed: ${JSON.stringify(zodError)}`,
+      trace: { zod_result: zodError, step: 'zod_validation' },
+    });
+    throw new Error(`Step ${step.ref} Zod validation failed`);
   }
 
-  const next = expected.next ?? null;
-  const actions = Array.isArray(expected.actions) ? expected.actions : [];
+  const validated = zodResult.data;
+  const next = validated.next ?? null;
+  const actions = Array.isArray(validated.actions) ? validated.actions : [];
 
-  // Execute actions
+  // Step 3 — Extract rules and plans from step/flow context
+  const rules: string[] = [];
+  const plans: string[] = [];
+  if (validated.pro_check?.rules) rules.push(...validated.pro_check.rules);
+  if (validated.pro_check?.plans) plans.push(...validated.pro_check.plans);
+  // Also load from step metadata if present
+  if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+  if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+
+  // Step 4 — CALL PROLOG pro_check
+  const prologUrl = process.env.PROLOG_URL || 'http://localhost:4000';
+  console.log(`[engine] calling prolog at ${prologUrl}/api/v1/pro_check`);
+  console.log(`[engine] pro_check payload:`, JSON.stringify({ response: validated, rules, plans }, null, 2));
+
+  let proCheckResult: { status: string; plans?: Array<{ id: string; status: string }> } = { status: 'pass' };
+  try {
+    const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response: validated, rules, plans }),
+    });
+    if (prologRes.ok) {
+      proCheckResult = await prologRes.json();
+    } else {
+      console.warn(`[engine] prolog returned ${prologRes.status}, treating as pass`);
+    }
+  } catch (err) {
+    console.warn(`[engine] prolog call failed:`, err);
+    // If Prolog is unreachable, continue (fail-open for now)
+  }
+  console.log(`[engine] pro_check result:`, JSON.stringify(proCheckResult, null, 2));
+
+  // Step 5 — Handle Prolog response
+  if (proCheckResult.status === 'stop') {
+    console.error(`[engine] prolog STOP for step=${step.ref}`);
+    await updateStepRun(stepRunId, {
+      status: 'failed',
+      error: 'Prolog returned stop',
+      trace: { zod_result: 'valid', pro_check_result: proCheckResult, plan_statuses: proCheckResult.plans, step: 'prolog_stop' },
+    });
+    throw new Error(`Prolog stopped execution at step ${step.ref}`);
+  }
+
+  // Step 6 — Execute actions (ONLY after Prolog pass)
   for (const action of actions) {
     if (action.type !== 'api') continue;
 
@@ -88,6 +161,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
 
     const payload = action.payload ? normalizeValue(resolveVariables(action.payload, context)) : undefined;
 
+    console.log(`[engine] executing action: ${action.method || 'GET'} ${url}`);
     const res = await fetch(url, {
       method: (action.method || 'GET').toUpperCase(),
       headers,
@@ -97,24 +171,59 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     if (!res.ok) {
       throw new Error(`API call failed: ${url} ${res.status}`);
     }
+    console.log(`[engine] action completed: ${url} ${res.status}`);
   }
 
-  // Store resolved + normalized values
+  // Step 7 — Persist everything
+  const planStatuses = proCheckResult.plans || [];
+  const trace = {
+    zod_result: 'valid',
+    pro_check_result: proCheckResult,
+    plan_statuses: planStatuses,
+  };
+
   await updateStepRun(stepRunId, {
-    ai_response: normalizeValue(expected),
+    ai_response: normalizeValue(validated),
     ai_response_valid: true,
     resolved_variables: context,
+    trace,
     status: 'completed',
   });
 
-  // Conditions override (resolve variables in expected before evaluation)
-  const conditionNextRef = await evaluateConditions(step.id, expected);
+  // Write refs entries for rules and plans
+  for (const ruleId of rules) {
+    await getSupabase().from('refs').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      rule_id: ruleId,
+      key: 'rule',
+      value: ruleId,
+      source: 'pro_check',
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+  }
+  for (const plan of planStatuses) {
+    await getSupabase().from('refs').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      rule_id: plan.id,
+      key: 'plan',
+      value: plan.status,
+      source: 'pro_check',
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+  }
+
+  // Step 8 — Conditions override
+  const conditionNextRef = await evaluateConditions(step.id, validated);
   if (conditionNextRef) {
     console.log(`[engine] step=${step.ref} next=${conditionNextRef} (condition)`);
     return conditionNextRef;
   }
 
-  // Direct transition
+  // Step 9 — Direct transition
   if (next) {
     console.log(`[engine] step=${step.ref} next=${next}`);
     return next;
