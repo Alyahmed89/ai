@@ -31,10 +31,14 @@ export class ApiFlowStepsController {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).select();
+
+    console.log('INSERT DATA:', data);
+    console.log('INSERT ERROR FULL:', JSON.stringify(error, null, 2));
+
     if (error) {
-      console.error('STEP INSERT ERROR:', error);
-      throw new Error(error.message);
+      throw new Error(JSON.stringify(error));
     }
+
     return data;
   }
 
