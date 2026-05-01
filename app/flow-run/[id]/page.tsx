@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 
 interface StepRun {
   id: string
@@ -18,10 +18,14 @@ interface StepRun {
   error: string | null
 }
 
+const DEFAULT_VARIABLES = ['goal', 'memory', 'memory_prompt']
+
 export default function FlowRunPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const id = params?.id as string
+  const flowId = searchParams?.get('flowId') || ''
 
   const [steps, setSteps] = useState<StepRun[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,6 +33,10 @@ export default function FlowRunPage() {
   const [editValue, setEditValue] = useState('')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [showVars, setShowVars] = useState(false)
+  const [selectedVarIdx, setSelectedVarIdx] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [variables, setVariables] = useState<string[]>(DEFAULT_VARIABLES)
 
   const fetchData = useCallback(async () => {
     if (!id) return
@@ -50,15 +58,91 @@ export default function FlowRunPage() {
     return () => clearInterval(interval)
   }, [fetchData])
 
+  // Extract available_variables from step run context
+  useEffect(() => {
+    for (const step of steps) {
+      const ctx = (step as any).context
+      if (ctx?.available_variables) {
+        setVariables(ctx.available_variables)
+        return
+      }
+    }
+  }, [steps])
+
+  const insertVariable = (name: string) => {
+    const prefix = input ? ' ' : ''
+    setInput((prev) => prev + prefix + name)
+    setShowVars(false)
+    inputRef.current?.focus()
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (showVars) {
+        insertVariable(variables[selectedVarIdx])
+        return
+      }
+      handleSend()
+      return
+    }
+
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (showVars) {
+        insertVariable(variables[selectedVarIdx])
+      } else {
+        setSelectedVarIdx(0)
+        setShowVars(true)
+      }
+      return
+    }
+
+    if (showVars) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedVarIdx((prev) => (prev + 1) % variables.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedVarIdx((prev) => (prev - 1 + variables.length) % variables.length)
+        return
+      }
+      if (e.key === 'Escape') {
+        setShowVars(false)
+        return
+      }
+    }
+
+    setShowVars(false)
+  }
+
   const handleSend = async () => {
-    if (!input.trim() || sending) return
+    if (sending) return
     setSending(true)
     try {
-      await fetch('/api/proxy/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flowRunId: id, user_input: input }),
-      })
+      const body = {
+        input_variables: {
+          goal: input || '',
+        },
+      }
+
+      if (steps.length === 0 && flowId) {
+        // No flow run yet — start the flow
+        await fetch(`/api/proxy/flows/${flowId}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      } else {
+        // Flow run exists — resume
+        await fetch(`/api/proxy/flow-runs/${id}/resume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      }
       setInput('')
       setTimeout(fetchData, 500)
     } catch (e) {
@@ -85,11 +169,6 @@ export default function FlowRunPage() {
     } catch (e) {
       console.error('Failed to save', e)
     }
-  }
-
-  const formatTime = (ts: number | null) => {
-    if (!ts) return ''
-    return new Date(ts).toLocaleString()
   }
 
   if (loading) {
@@ -160,22 +239,40 @@ export default function FlowRunPage() {
           </div>
         )}
 
-        <div className="mt-12 flex gap-3">
+        <div className="mt-12 flex gap-3 relative">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-            placeholder="send input..."
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(() => setShowVars(false), 150)}
+            placeholder="send input... (tab for variables)"
             className="flex-1 bg-transparent text-white border-none outline-none text-sm placeholder-neutral-600"
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || sending}
+            disabled={sending}
             className="text-sm text-neutral-600 hover:text-white disabled:opacity-30 transition-colors"
           >
             {sending ? '...' : 'send'}
           </button>
+
+          {showVars && variables.length > 0 && (
+            <div className="absolute bottom-full left-0 mb-1 bg-neutral-900 border border-neutral-800 text-xs">
+              {variables.map((v, i) => (
+                <div
+                  key={v}
+                  onMouseDown={(e) => { e.preventDefault(); insertVariable(v) }}
+                  className={`px-3 py-1.5 cursor-pointer ${
+                    i === selectedVarIdx ? 'text-white bg-neutral-800' : 'text-neutral-400'
+                  }`}
+                >
+                  {v}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
