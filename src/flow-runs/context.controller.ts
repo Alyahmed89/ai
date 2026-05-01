@@ -53,6 +53,7 @@ export class ContextController {
         step: stepVars,
         step_run: stepRunVars,
       },
+      available_variables: ['goal', 'memory', 'memory_prompt'],
     };
   }
 
