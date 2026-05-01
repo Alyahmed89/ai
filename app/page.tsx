@@ -1,80 +1,106 @@
 'use client'
 
-import { useState } from 'react'
-import ChatInput from '@/app/components/ChatInput'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+
+interface Flow {
+  id: string
+  name: string
+  description: string | null
+}
 
 export default function Home() {
-  const [flowId, setFlowId] = useState('')
+  const router = useRouter()
+  const [flows, setFlows] = useState<Flow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [prompt, setPrompt] = useState('')
+  const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
+
+  useEffect(() => {
+    const fetchFlows = async () => {
+      try {
+        const res = await fetch('/api/proxy/api/flows')
+        const data = await res.json()
+        setFlows(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.error('Failed to fetch flows', e)
+      }
+      setLoading(false)
+    }
+    fetchFlows()
+  }, [])
+
+  const startFlow = async (flowId: string) => {
+    if (!prompt.trim() || starting) return
+    setSelectedFlow(flowId)
+    setStarting(true)
+    try {
+      const res = await fetch('/api/proxy/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flowId, input_prompt: prompt }),
+      })
+      const data = await res.json()
+      if (data.flowRunId) {
+        router.push(`/flow-run/${data.flowRunId}`)
+      }
+    } catch (e) {
+      console.error('Failed to start flow', e)
+    }
+    setStarting(false)
+    setSelectedFlow(null)
+  }
 
   return (
-    <div style={{ 
-      minHeight: '100vh',
-      backgroundColor: '#000',
-      color: '#f0f0f0',
-      padding: '20px',
-      fontFamily: 'monospace',
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <h1 style={{ fontSize: '24px', marginBottom: '10px' }}>AI Flow Interface</h1>
-          <p style={{ color: '#888', fontSize: '14px' }}>Enter a flow ID or use the input below</p>
-          
-          <div style={{ marginTop: '20px' }}>
-            <input
-              type="text"
-              placeholder="Enter flow ID (e.g., flow-def-...)"
-              value={flowId}
-              onChange={(e) => setFlowId(e.target.value)}
-              style={{
-                backgroundColor: '#1a1a1a',
-                color: '#f0f0f0',
-                border: '1px solid #333',
-                padding: '10px 15px',
-                borderRadius: '4px',
-                width: '300px',
-                fontSize: '14px',
-                fontFamily: 'monospace'
-              }}
-            />
-            <button
-              onClick={() => {
-                if (flowId.trim()) {
-                  window.location.href = `/chat/flows/${flowId.trim()}`
-                }
-              }}
-              style={{
-                backgroundColor: '#333',
-                color: '#f0f0f0',
-                border: '1px solid #444',
-                padding: '10px 15px',
-                borderRadius: '4px',
-                marginLeft: '10px',
-                fontSize: '14px',
-                fontFamily: 'monospace',
-                cursor: 'pointer'
-              }}
-            >
-              Go to Flow
-            </button>
+    <div className="min-h-screen bg-black text-white font-mono">
+      <div className="max-w-2xl mx-auto px-6 py-12">
+        <h1 className="text-lg mb-8">flows</h1>
+
+        {loading ? (
+          <p className="text-neutral-600">loading...</p>
+        ) : flows.length === 0 ? (
+          <p className="text-neutral-600">no flows found</p>
+        ) : (
+          <div className="space-y-1">
+            {flows.map((flow) => (
+              <div key={flow.id} className="px-3 py-2">
+                <div className="flex items-center gap-4">
+                  <span className="text-neutral-400 text-sm truncate flex-1">
+                    {flow.name}
+                  </span>
+                  <button
+                    onClick={() => startFlow(flow.id)}
+                    disabled={starting && selectedFlow === flow.id}
+                    className="text-xs text-neutral-600 hover:text-white disabled:opacity-30 transition-colors"
+                  >
+                    {starting && selectedFlow === flow.id ? '...' : 'start'}
+                  </button>
+                </div>
+                {flow.description && (
+                  <p className="text-neutral-600 text-xs mt-1">{flow.description}</p>
+                )}
+              </div>
+            ))}
           </div>
+        )}
+
+        <div className="mt-12 flex gap-3">
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                const firstFlow = flows[0]
+                if (firstFlow) startFlow(firstFlow.id)
+              }
+            }}
+            placeholder="enter prompt and click start on a flow..."
+            className="flex-1 bg-transparent text-white border-none outline-none text-sm placeholder-neutral-600"
+          />
         </div>
-      </div>
-      
-      {/* Chat input at the bottom */}
-      <div style={{ 
-        marginTop: 'auto',
-        paddingTop: '20px',
-        borderTop: '1px solid #333'
-      }}>
-        <ChatInput 
-          onSend={() => {
-            // Homepage doesn't need to do anything on send
-            console.log('Message sent from homepage')
-          }}
-          showHint={true}
-        />
       </div>
     </div>
   )
