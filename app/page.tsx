@@ -56,11 +56,6 @@ export default function Home() {
       const res = await fetch(`/api/proxy/flows/${flowId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input_variables: {
-            goal: '',
-          },
-        }),
       })
       const data = await res.json()
       if (data.flowRunId) {
