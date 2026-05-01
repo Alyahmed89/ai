@@ -23,7 +23,7 @@ export class ApiFlowStepsController {
       id: crypto.randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
-      ref: body.ref || null,
+      ref: body.ref || crypto.randomUUID(),
       system_message: body.system_message || null,
       instructions: body.instructions,
       expected_response: body.expected_response,
