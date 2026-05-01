@@ -130,17 +130,17 @@ export default function FlowRunPage() {
 
       if (steps.length === 0 && flowId) {
         // No flow run yet — start the flow
-        await fetch(`/api/proxy/flows/${flowId}/start`, {
+        await fetch('/api/proxy/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ flowId, ...body }),
         })
       } else {
         // Flow run exists — resume
-        await fetch(`/api/proxy/flow-runs/${id}/resume`, {
+        await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ flowRunId: id, ...body }),
         })
       }
       setInput('')

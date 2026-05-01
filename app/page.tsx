@@ -53,9 +53,10 @@ export default function Home() {
     setSelectedFlow(flowId)
     setStarting(true)
     try {
-      const res = await fetch(`/api/proxy/flows/${flowId}/start`, {
+      const res = await fetch('/api/proxy/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flowId }),
       })
       const data = await res.json()
       if (data.flowRunId) {
