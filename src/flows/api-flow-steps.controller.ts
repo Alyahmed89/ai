@@ -16,7 +16,10 @@ export class ApiFlowStepsController {
 
   @Post()
   async create(@Body() body: { flow_id: string; title: string; ref?: string; system_message?: string; instructions: string; expected_response: any; order_index?: number }) {
-    const { data } = await getSupabase().from('steps').insert({
+    if (!body.flow_id) {
+      throw new Error('flow_id is required');
+    }
+    const { data, error } = await getSupabase().from('steps').insert({
       id: crypto.randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
@@ -27,7 +30,11 @@ export class ApiFlowStepsController {
       order_index: body.order_index ?? 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).select().single();
+    }).select();
+    if (error) {
+      console.error('STEP INSERT ERROR:', error);
+      throw new Error(error.message);
+    }
     return data;
   }
 
