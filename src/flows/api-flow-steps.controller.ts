@@ -36,7 +36,7 @@ export class ApiFlowStepsController {
     console.log('INSERT ERROR FULL:', JSON.stringify(error, null, 2));
 
     if (error) {
-      throw new Error(JSON.stringify(error));
+      return { insert_error: error, message: error.message, details: error.details, hint: error.hint, code: error.code };
     }
 
     return data;
