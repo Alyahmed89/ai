@@ -5,11 +5,15 @@ let supabase: SupabaseClient;
 export function getSupabase(): SupabaseClient {
   if (!supabase) {
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_KEY;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) {
       throw new Error('Missing Supabase env');
     }
-    supabase = createClient(url, key);
+    supabase = createClient(url, key, {
+      auth: {
+        persistSession: false,
+      },
+    });
   }
   return supabase;
 }
