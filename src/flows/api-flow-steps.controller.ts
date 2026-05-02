@@ -8,13 +8,17 @@ async function supabaseFetch(path: string, options: { method?: string; body?: an
   if (options.params) {
     Object.entries(options.params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+  };
+  if (options.method === 'POST' || options.method === 'PATCH') {
+    headers['Prefer'] = 'return=representation';
+  }
   const res = await fetch(url.toString(), {
     method: options.method || 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-    },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   if (!res.ok) {
