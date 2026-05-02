@@ -1,16 +1,39 @@
 import { Controller, Get, Post, Put, Param, Query, Body } from '@nestjs/common';
-import { getSupabase } from '../supabase';
 
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+async function supabaseFetch(path: string, options: { method?: string; body?: any; params?: Record<string, string> } = {}) {
+  const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`);
+  if (options.params) {
+    Object.entries(options.params).forEach(([k, v]) => url.searchParams.set(k, v));
+  }
+  const res = await fetch(url.toString(), {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase ${res.status}: ${text}`);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
 
 @Controller('api/flow-steps')
 export class ApiFlowStepsController {
   @Get()
   async list(@Query('flow_id') flowId?: string) {
-    let query = getSupabase().from('steps').select('*');
+    const params: Record<string, string> = { order: 'order_index.asc' };
     if (flowId) {
-      query = query.eq('flow_id', flowId);
+      params['flow_id'] = `eq.${flowId}`;
     }
-    const { data } = await query.order('order_index', { ascending: true });
+    const data = await supabaseFetch('steps', { params });
     return data || [];
   }
 
@@ -19,7 +42,7 @@ export class ApiFlowStepsController {
     if (!body.flow_id) {
       throw new Error('flow_id is required');
     }
-    const { data, error } = await getSupabase().from('steps').insert({
+    const record = {
       id: crypto.randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
@@ -30,15 +53,9 @@ export class ApiFlowStepsController {
       order_index: body.order_index ?? 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).select();
-
+    };
+    const data = await supabaseFetch('steps', { method: 'POST', body: record, params: { select: '*' } });
     console.log('INSERT DATA:', data);
-    console.log('INSERT ERROR FULL:', JSON.stringify(error, null, 2));
-
-    if (error) {
-      return { insert_error: error, message: error.message, details: error.details, hint: error.hint, code: error.code };
-    }
-
     return data;
   }
 
@@ -51,7 +68,7 @@ export class ApiFlowStepsController {
     if (body.instructions !== undefined) updates.instructions = body.instructions;
     if (body.expected_response !== undefined) updates.expected_response = body.expected_response;
     if (body.order_index !== undefined) updates.order_index = body.order_index;
-    const { data } = await getSupabase().from('steps').update(updates).eq('id', id).select().single();
-    return data;
+    const data = await supabaseFetch(`steps?id=eq.${id}`, { method: 'PATCH', body: updates, params: { select: '*' } });
+    return Array.isArray(data) ? data[0] : data;
   }
 }
