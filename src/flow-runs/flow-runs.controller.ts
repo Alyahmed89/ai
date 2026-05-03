@@ -8,6 +8,15 @@ import { FlowRunsService } from './flow-runs.service';
 export class FlowRunsController {
   constructor(private flowRunsService: FlowRunsService) {}
 
+  @Get()
+  async list() {
+    const { data } = await getSupabase()
+      .from('flow_runs')
+      .select('*')
+      .order('created_at', { ascending: false });
+    return data || [];
+  }
+
   @Post(':id/resume')
   async resume(@Param('id') id: string) {
     return this.flowRunsService.resume(id);
