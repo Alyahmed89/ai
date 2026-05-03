@@ -77,9 +77,28 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   const renderedInstructions = step.instructions ? resolveVariables(step.instructions, context) : null;
   console.log(`[engine] rendered_instructions:`, renderedInstructions);
 
-  // Step 2 — Call LLM
+  // Step 2 — Build LLM prompt with endpoint samples
   const schemaJson = JSON.stringify(step.expected_response, null, 2);
-  const userPrompt = `${renderedInstructions || ''}\n\nReturn ONLY valid JSON matching this schema:\n${schemaJson}`;
+
+  // Collect endpoint samples referenced in expected_response actions
+  let endpointSamples = '';
+  if (step.expected_response?.actions) {
+    const endpointNames = step.expected_response.actions
+      .filter((a: any) => a.type === 'api' && a.endpoint)
+      .map((a: any) => a.endpoint);
+    if (endpointNames.length > 0) {
+      const { data: endpoints } = await getSupabase()
+        .from('endpoint_registry')
+        .select('name, url, method, headers, sample_request, sample_response')
+        .in('name', endpointNames);
+      if (endpoints) {
+        endpointSamples = '\n\nAvailable endpoint samples:\n' + JSON.stringify(endpoints, null, 2);
+        endpointSamples += '\n\nFor each action, use the endpoint sample_request as a guide for the payload shape. Fill in the actual values for the keys you decide. The engine will merge your payload with the endpoint defaults.';
+      }
+    }
+  }
+
+  const userPrompt = `${renderedInstructions || ''}${endpointSamples}\n\nReturn ONLY valid JSON matching this schema:\n${schemaJson}`;
 
   let aiResponse: any;
   try {
@@ -180,13 +199,26 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       headers = { ...(endpoint.headers || {}), ...headers };
     }
 
-    const payload = action.payload ? normalizeValue(resolveVariables(action.payload, context)) : undefined;
+    let mergedPayload: any = undefined;
+
+    // Start from endpoint default (if exists)
+    if (endpoint?.sample_request) {
+      mergedPayload = { ...endpoint.sample_request };
+    }
+
+    // Apply AI payload (override defaults)
+    if (action.payload) {
+      const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
+      mergedPayload = mergedPayload
+        ? deepMerge(mergedPayload, resolvedPayload)
+        : resolvedPayload;
+    }
 
     console.log(`[engine] executing action: ${action.method || 'GET'} ${url}`);
     const res = await fetch(url, {
       method: (action.method || 'GET').toUpperCase(),
       headers,
-      body: payload ? JSON.stringify(payload) : undefined,
+      body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
     });
 
     let responseBody: string | null = null;
@@ -206,7 +238,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       http_method: httpMethod,
       request_url: url,
       request_headers: headers,
-      request_body: payload,
+      request_body: mergedPayload,
       response_status: res.status,
       response_body: responseBody,
       success: res.ok,
@@ -506,4 +538,18 @@ function normalizeValue(value: any): any {
   }
 
   return value;
+}
+
+function deepMerge(base: any, override: any): any {
+  if (typeof base !== 'object' || base === null) return override;
+  if (typeof override !== 'object' || override === null) return override;
+  if (Array.isArray(base) || Array.isArray(override)) return override;
+
+  const result: Record<string, any> = { ...base };
+
+  for (const key of Object.keys(override)) {
+    result[key] = deepMerge(base[key], override[key]);
+  }
+
+  return result;
 }
