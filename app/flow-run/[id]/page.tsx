@@ -12,7 +12,7 @@ interface StepRun {
   status: string
   input: string | null
   output: string | null
-  ai_response: string | null
+  ai_response: string | Record<string, unknown> | null
   resolved_variables: Record<string, string> | null
   order_index: number
   started_at: number | null
@@ -209,7 +209,7 @@ export default function FlowRunPage() {
 
                   {step.ai_response && (
                     <JsonBlock
-                      value={step.ai_response}
+                      value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
                       stepId={step.id}
                       field="ai_response"
                       editingKey={editingKey}
