@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Param, Query, Body } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Query, Body } from '@nestjs/common';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -74,5 +74,13 @@ export class ApiFlowStepsController {
     if (body.order_index !== undefined) updates.order_index = body.order_index;
     const data = await supabaseFetch(`steps?id=eq.${id}`, { method: 'PATCH', body: updates, params: { select: '*' } });
     return Array.isArray(data) ? data[0] : data;
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    await supabaseFetch(`step_conditions?step_id=eq.${id}`, { method: 'DELETE' });
+    await supabaseFetch(`step_runs?step_id=eq.${id}`, { method: 'DELETE' });
+    await supabaseFetch(`steps?id=eq.${id}`, { method: 'DELETE' });
+    return { success: true };
   }
 }

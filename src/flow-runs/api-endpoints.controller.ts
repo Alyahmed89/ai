@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body } from '@nestjs/common';
 import { getSupabase } from '../supabase';
 
 
@@ -22,5 +22,11 @@ export class ApiEndpointsController {
       updated_at: new Date().toISOString(),
     }).select().single();
     return data;
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    await getSupabase().from('endpoint_registry').delete().eq('id', id);
+    return { success: true };
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Res } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { getSupabase } from '../supabase';
 import { FlowRunsService } from './flow-runs.service';
@@ -47,5 +47,15 @@ export class FlowRunsController {
       stepRuns: stepRuns.data,
       apiCalls: apiCalls.data,
     });
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    await getSupabase().from('refs').delete().eq('flow_run_id', id);
+    await getSupabase().from('api_calls').delete().eq('flow_run_id', id);
+    await getSupabase().from('step_runs').delete().eq('flow_run_id', id);
+    await getSupabase().from('variables').delete().eq('flow_run_id', id);
+    await getSupabase().from('flow_runs').delete().eq('id', id);
+    return { success: true };
   }
 }

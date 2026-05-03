@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body } from '@nestjs/common';
 import { getSupabase } from '../supabase';
 
 
@@ -20,5 +20,31 @@ export class ApiFlowsController {
       updated_at: new Date().toISOString(),
     }).select().single();
     return data;
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    // Delete child records first
+    const { data: flowRuns } = await getSupabase().from('flow_runs').select('id').eq('flow_id', id);
+    if (flowRuns) {
+      const runIds = flowRuns.map(r => r.id);
+      if (runIds.length > 0) {
+        await getSupabase().from('refs').delete().in('flow_run_id', runIds);
+        await getSupabase().from('api_calls').delete().in('flow_run_id', runIds);
+        await getSupabase().from('step_runs').delete().in('flow_run_id', runIds);
+        await getSupabase().from('variables').delete().in('flow_run_id', runIds);
+        await getSupabase().from('flow_runs').delete().in('id', runIds);
+      }
+    }
+    const { data: steps } = await getSupabase().from('steps').select('id').eq('flow_id', id);
+    if (steps) {
+      const stepIds = steps.map(s => s.id);
+      if (stepIds.length > 0) {
+        await getSupabase().from('step_conditions').delete().in('step_id', stepIds);
+        await getSupabase().from('steps').delete().in('id', stepIds);
+      }
+    }
+    await getSupabase().from('flows').delete().eq('id', id);
+    return { success: true };
   }
 }

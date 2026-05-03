@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Delete, Param, Body } from '@nestjs/common';
 import { getSupabase } from '../supabase';
 
 
@@ -16,5 +16,11 @@ export class ApiConditionsController {
       created_at: new Date().toISOString(),
     }).select().single();
     return data;
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    await getSupabase().from('step_conditions').delete().eq('id', id);
+    return { success: true };
   }
 }
