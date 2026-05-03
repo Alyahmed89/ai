@@ -20,6 +20,19 @@ interface StepRun {
   error: string | null
 }
 
+interface FlowStep {
+  id: string
+  flow_id: string
+  title: string
+  instructions: string | null
+  ref: string | null
+  order_index: number
+}
+
+interface StepRunWithDef extends StepRun {
+  definition?: FlowStep
+}
+
 const DEFAULT_VARIABLES = ['goal', 'memory', 'memory_prompt']
 
 export default function FlowRunPage() {
@@ -29,7 +42,7 @@ export default function FlowRunPage() {
   const id = params?.id as string
   const flowId = searchParams?.get('flowId') || ''
 
-  const [steps, setSteps] = useState<StepRun[]>([])
+  const [steps, setSteps] = useState<StepRunWithDef[]>([])
   const [loading, setLoading] = useState(true)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -43,10 +56,25 @@ export default function FlowRunPage() {
   const fetchData = useCallback(async () => {
     if (!id) return
     try {
-      const stepsRes = await fetch(`/api/proxy/api/step-runs?flow_run_id=${id}`)
+      const [stepsRes, defsRes] = await Promise.all([
+        fetch(`/api/proxy/api/step-runs?flow_run_id=${id}`),
+        fetch('/api/proxy/api/flow-steps'),
+      ])
+
+      let defs: FlowStep[] = []
+      if (defsRes.ok) {
+        const defsData = await defsRes.json()
+        defs = Array.isArray(defsData) ? defsData : []
+      }
+
       if (stepsRes.ok) {
         const stepsData = await stepsRes.json()
-        const parsed = Array.isArray(stepsData) ? stepsData : []
+        const parsed: StepRunWithDef[] = (Array.isArray(stepsData) ? stepsData : []).map(
+          (s: StepRun) => ({
+            ...s,
+            definition: defs.find((d) => d.id === s.step_id),
+          })
+        )
         if (parsed.length > 0) {
           setSteps(parsed)
         }
@@ -199,45 +227,61 @@ export default function FlowRunPage() {
         {steps.length === 0 ? (
           <p className="text-neutral-600">no steps yet</p>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {steps
               .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
               .map((step) => (
-                <div key={step.id}>
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-xs text-neutral-600">{step.order_index}</span>
-                    <span className="text-xs text-neutral-400">{step.step_id}</span>
-                    <span className="text-xs text-neutral-600">{step.status}</span>
+                <div key={step.id} className="border border-neutral-800 rounded p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-xs text-neutral-500">#{step.order_index}</span>
+                    {step.definition?.ref && (
+                      <span className="text-xs text-amber-400/70">{step.definition.ref}</span>
+                    )}
+                    {step.definition?.title && (
+                      <span className="text-sm text-white font-semibold">{step.definition.title}</span>
+                    )}
+                    <span className="text-xs text-neutral-600">{step.step_id}</span>
+                    <span className="text-xs text-neutral-500 ml-auto">{step.status}</span>
                   </div>
 
+                  {step.definition?.instructions && (
+                    <p className="text-xs text-neutral-400 mb-3 italic">{step.definition.instructions}</p>
+                  )}
+
                   {step.ai_response && (
-                    <JsonBlock
-                      value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
-                      stepId={step.id}
-                      field="ai_response"
-                      editingKey={editingKey}
-                      editValue={editValue}
-                      onStartEdit={startEdit}
-                      onSave={saveEdit}
-                      onChange={setEditValue}
-                    />
+                    <div className="mb-2">
+                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">ai response</span>
+                      <JsonBlock
+                        value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
+                        stepId={step.id}
+                        field="ai_response"
+                        editingKey={editingKey}
+                        editValue={editValue}
+                        onStartEdit={startEdit}
+                        onSave={saveEdit}
+                        onChange={setEditValue}
+                      />
+                    </div>
                   )}
 
                   {step.resolved_variables && Object.keys(step.resolved_variables).length > 0 && (
-                    <JsonBlock
-                      value={JSON.stringify(step.resolved_variables)}
-                      stepId={step.id}
-                      field="resolved_variables"
-                      editingKey={editingKey}
-                      editValue={editValue}
-                      onStartEdit={startEdit}
-                      onSave={saveEdit}
-                      onChange={setEditValue}
-                    />
+                    <div>
+                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">resolved variables</span>
+                      <JsonBlock
+                        value={JSON.stringify(step.resolved_variables)}
+                        stepId={step.id}
+                        field="resolved_variables"
+                        editingKey={editingKey}
+                        editValue={editValue}
+                        onStartEdit={startEdit}
+                        onSave={saveEdit}
+                        onChange={setEditValue}
+                      />
+                    </div>
                   )}
 
                   {step.error && (
-                    <p className="text-xs text-neutral-600 mt-1">{step.error}</p>
+                    <p className="text-xs text-red-500 mt-2">{step.error}</p>
                   )}
                 </div>
               ))}
