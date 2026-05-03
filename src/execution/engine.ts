@@ -161,6 +161,8 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   for (const action of actions) {
     if (action.type !== 'api') continue;
 
+    // Resolve variables just before each action so subsequent actions
+    // can use variables set by previous actions in the same step
     let url = normalizeValue(resolveVariables(action.endpoint, context));
     let headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -211,6 +213,27 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       error: res.ok ? null : `HTTP ${res.status}`,
       created_at: new Date().toISOString(),
     }).maybeSingle();
+
+    // Auto-store response as variable for subsequent steps
+    if (res.ok && responseBody) {
+      try {
+        const parsed = JSON.parse(responseBody);
+        const varName = `api_response_${action.endpoint}`;
+        await getSupabase().from('variables').insert({
+          id: randomUUID(),
+          flow_run_id: flowRunId,
+          step_run_id: stepRunId,
+          key: varName,
+          value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
+          scope: 'step_run',
+          created_at: new Date().toISOString(),
+        }).maybeSingle();
+        // Also add to running context so subsequent actions in same step can use it
+        context[varName] = parsed;
+      } catch {
+        // response is not JSON, skip auto-store
+      }
+    }
 
     if (!res.ok) {
       throw new Error(`API call failed: ${url} ${res.status}`);
