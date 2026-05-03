@@ -30,7 +30,7 @@ export default function Home() {
       try {
         const [flowsRes, flowRunsRes] = await Promise.all([
           fetch('/api/proxy/api/flows'),
-          fetch('/api/proxy/api/flow-runs'),
+          fetch('/api/proxy/flow-runs'),
         ])
         if (flowsRes.ok) {
           const data = await flowsRes.json()
