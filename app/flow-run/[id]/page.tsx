@@ -46,7 +46,10 @@ export default function FlowRunPage() {
       const stepsRes = await fetch(`/api/proxy/api/step-runs?flow_run_id=${id}`)
       if (stepsRes.ok) {
         const stepsData = await stepsRes.json()
-        setSteps(Array.isArray(stepsData) ? stepsData : [])
+        const parsed = Array.isArray(stepsData) ? stepsData : []
+        if (parsed.length > 0) {
+          setSteps(parsed)
+        }
       }
     } catch (e) {
       console.error('Failed to fetch step runs', e)
