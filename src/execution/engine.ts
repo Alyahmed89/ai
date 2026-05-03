@@ -170,6 +170,27 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       body: payload ? JSON.stringify(payload) : undefined,
     });
 
+    let responseBody: string | null = null;
+    try {
+      responseBody = await res.text();
+    } catch {
+      // ignore read errors
+    }
+
+    // Persist to api_calls table
+    await getSupabase().from('api_calls').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      method: (action.method || 'GET').toUpperCase(),
+      endpoint: url,
+      request_headers: headers,
+      request_body: payload,
+      response_status: res.status,
+      response_body: responseBody,
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+
     if (!res.ok) {
       throw new Error(`API call failed: ${url} ${res.status}`);
     }
