@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getSupabase } from '../supabase';
+import { callLlm } from './llm';
 
 const ExpectedResponseSchema = z.object({
   next: z.string().nullable().optional(),
@@ -72,14 +73,30 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   // Build variable context
   const context = await buildContext(flowRunId, stepRunId, flowRun);
 
-  // Step 1 — Resolve variables in instructions and expected_response
+  // Step 1 — Resolve variables in instructions
   const renderedInstructions = step.instructions ? resolveVariables(step.instructions, context) : null;
-  const expected = resolveVariables(step.expected_response, context);
   console.log(`[engine] rendered_instructions:`, renderedInstructions);
-  console.log(`[engine] resolved expected_response:`, JSON.stringify(expected, null, 2));
 
-  // Step 2 — Zod validation (STRICT)
-  const zodResult = ExpectedResponseSchema.safeParse(expected);
+  // Step 2 — Call LLM
+  const schemaJson = JSON.stringify(step.expected_response, null, 2);
+  const userPrompt = `${renderedInstructions || ''}\n\nReturn ONLY valid JSON matching this schema:\n${schemaJson}`;
+
+  let aiResponse: any;
+  try {
+    aiResponse = await callLlm(step.system_message || null, userPrompt);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[engine] LLM call failed:`, msg);
+    await updateStepRun(stepRunId, {
+      status: 'failed',
+      error: msg,
+      trace: { llm_error: msg, step: 'llm' },
+    });
+    throw new Error(`Step ${step.ref} LLM failed: ${msg}`);
+  }
+
+  // Step 3 — Zod validate ai_response against expected_response schema
+  const zodResult = ExpectedResponseSchema.safeParse(aiResponse);
   console.log(`[engine] zod validation:`, JSON.stringify(zodResult, null, 2));
 
   if (!zodResult.success) {
@@ -87,17 +104,17 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
     await updateStepRun(stepRunId, {
       status: 'failed',
-      error: `Zod validation failed: ${JSON.stringify(zodError)}`,
-      trace: { zod_result: zodError, step: 'zod_validation' },
+      error: `AI response failed schema: ${JSON.stringify(zodError)}`,
+      trace: { ai_response: aiResponse, zod_result: zodError, step: 'zod_validation' },
     });
-    throw new Error(`Step ${step.ref} Zod validation failed`);
+    throw new Error(`Step ${step.ref} AI response failed schema validation`);
   }
 
   const validated = zodResult.data;
   const next = validated.next ?? null;
   const actions = Array.isArray(validated.actions) ? validated.actions : [];
 
-  // Step 3 — Extract rules and plans from step/flow context
+  // Step 4 — Extract rules and plans from step/flow context
   const rules: string[] = [];
   const plans: string[] = [];
   if (validated.pro_check?.rules) rules.push(...validated.pro_check.rules);
@@ -106,7 +123,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
   if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
 
-  // Step 4 — CALL PROLOG pro_check
+  // Step 5 — CALL PROLOG pro_check
   const prologUrl = process.env.PROLOG_URL || 'http://localhost:4000';
   console.log(`[engine] calling prolog at ${prologUrl}/api/v1/pro_check`);
   console.log(`[engine] pro_check payload:`, JSON.stringify({ response: validated, rules, plans }, null, 2));
@@ -129,7 +146,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   }
   console.log(`[engine] pro_check result:`, JSON.stringify(proCheckResult, null, 2));
 
-  // Step 5 — Handle Prolog response
+  // Step 6 — Handle Prolog response
   if (proCheckResult.status === 'stop') {
     console.error(`[engine] prolog STOP for step=${step.ref}`);
     await updateStepRun(stepRunId, {
@@ -140,7 +157,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     throw new Error(`Prolog stopped execution at step ${step.ref}`);
   }
 
-  // Step 6 — Execute actions (ONLY after Prolog pass)
+  // Step 7 — Execute actions (ONLY after Prolog pass)
   for (const action of actions) {
     if (action.type !== 'api') continue;
 
@@ -201,7 +218,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     console.log(`[engine] action completed: ${url} ${res.status}`);
   }
 
-  // Step 7 — Persist everything
+  // Step 8 — Persist everything
   const planStatuses = proCheckResult.plans || [];
   const trace = {
     zod_result: 'valid',
@@ -244,14 +261,14 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     }).maybeSingle();
   }
 
-  // Step 8 — Conditions override
+  // Step 9 — Conditions override
   const conditionNextRef = await evaluateConditions(step.id, validated);
   if (conditionNextRef) {
     console.log(`[engine] step=${step.ref} next=${conditionNextRef} (condition)`);
     return conditionNextRef;
   }
 
-  // Step 9 — Direct transition
+  // Step 10 — Direct transition
   if (next) {
     console.log(`[engine] step=${step.ref} next=${next}`);
     return next;
