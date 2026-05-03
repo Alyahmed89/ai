@@ -72,8 +72,10 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   // Build variable context
   const context = await buildContext(flowRunId, stepRunId, flowRun);
 
-  // Step 1 — Resolve variables in expected_response
+  // Step 1 — Resolve variables in instructions and expected_response
+  const renderedInstructions = step.instructions ? resolveVariables(step.instructions, context) : null;
   const expected = resolveVariables(step.expected_response, context);
+  console.log(`[engine] rendered_instructions:`, renderedInstructions);
   console.log(`[engine] resolved expected_response:`, JSON.stringify(expected, null, 2));
 
   // Step 2 — Zod validation (STRICT)
@@ -185,6 +187,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   await updateStepRun(stepRunId, {
     ai_response: normalizeValue(validated),
     ai_response_valid: true,
+    rendered_instructions: renderedInstructions,
     resolved_variables: context,
     trace,
     status: 'completed',

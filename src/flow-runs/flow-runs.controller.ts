@@ -42,9 +42,45 @@ export class FlowRunsController {
       .eq('flow_run_id', id)
       .order('created_at', { ascending: true });
 
+    // Enrich step runs with step definitions and conditions
+    let enrichedStepRuns = stepRuns.data || [];
+    if (enrichedStepRuns.length > 0) {
+      const stepIds = [...new Set(enrichedStepRuns.map((sr: any) => sr.step_id))];
+      const { data: steps } = await getSupabase()
+        .from('steps')
+        .select('*')
+        .in('id', stepIds);
+      const { data: conditions } = await getSupabase()
+        .from('step_conditions')
+        .select('*')
+        .in('step_id', stepIds);
+
+      const stepMap: Record<string, any> = {};
+      if (steps) {
+        for (const s of steps) {
+          const { id, title, ref, instructions, expected_response, order_index, system_message } = s;
+          stepMap[s.id] = { id, title, ref, instructions, expected_response, order_index, system_message };
+        }
+      }
+
+      const condMap: Record<string, any[]> = {};
+      if (conditions) {
+        for (const c of conditions) {
+          if (!condMap[c.step_id]) condMap[c.step_id] = [];
+          condMap[c.step_id].push(c);
+        }
+      }
+
+      enrichedStepRuns = enrichedStepRuns.map((sr: any) => ({
+        ...sr,
+        step: stepMap[sr.step_id] || null,
+        conditions: condMap[sr.step_id] || [],
+      }));
+    }
+
     return res.json({
       flowRun: flowRun.data,
-      stepRuns: stepRuns.data,
+      stepRuns: enrichedStepRuns,
       apiCalls: apiCalls.data,
     });
   }
