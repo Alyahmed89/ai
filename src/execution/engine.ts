@@ -178,16 +178,20 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     }
 
     // Persist to api_calls table
+    const httpMethod = (action.method || 'GET').toUpperCase();
     await getSupabase().from('api_calls').insert({
       id: randomUUID(),
       flow_run_id: flowRunId,
       step_run_id: stepRunId,
-      method: (action.method || 'GET').toUpperCase(),
-      endpoint: url,
+      endpoint_name: url,
+      http_method: httpMethod,
+      request_url: url,
       request_headers: headers,
       request_body: payload,
       response_status: res.status,
       response_body: responseBody,
+      success: res.ok,
+      error: res.ok ? null : `HTTP ${res.status}`,
       created_at: new Date().toISOString(),
     }).maybeSingle();
 
