@@ -12,6 +12,7 @@ import { ApiConditionsController } from './flow-runs/api-conditions.controller';
 import { ApiStepRunsController } from './flow-runs/api-step-runs.controller';
 import { ContextController } from './flow-runs/context.controller';
 import { ApiClearController } from './flow-runs/api-clear.controller';
+import { ApiQueryController } from './flow-runs/api-query.controller';
 import { ActionsController } from './execution/actions.controller';
 import { PlansController } from './plans/plans.controller';
 import { FlowsService } from './flows/flows.service';
@@ -37,6 +38,7 @@ import { PlansService } from './plans/plans.service';
     ApiStepRunsController,
     ContextController,
     ApiClearController,
+    ApiQueryController,
     ActionsController,
     PlansController,
   ],
