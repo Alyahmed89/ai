@@ -269,7 +269,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       .maybeSingle();
 
     if (endpoint) {
-      url = endpoint.url;
+      url = normalizeValue(resolveVariables(endpoint.url, context));
       headers = { ...(endpoint.headers || {}), ...headers };
     }
 
