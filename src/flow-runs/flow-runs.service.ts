@@ -3,8 +3,8 @@ import { runFlow } from '../execution/engine';
 
 @Injectable()
 export class FlowRunsService {
-  async resume(id: string, userInput?: any) {
-    await runFlow(id);
+  async resume(id: string, userInput?: Record<string, any>) {
+    await runFlow(id, userInput);
     return { status: 'resumed' };
   }
 }

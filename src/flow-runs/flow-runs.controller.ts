@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Res } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { getSupabase } from '../supabase';
 import { FlowRunsService } from './flow-runs.service';
@@ -18,8 +18,8 @@ export class FlowRunsController {
   }
 
   @Post(':id/resume')
-  async resume(@Param('id') id: string) {
-    return this.flowRunsService.resume(id);
+  async resume(@Param('id') id: string, @Body() body: { user_input?: Record<string, any> }) {
+    return this.flowRunsService.resume(id, body.user_input);
   }
 
   @Get(':id/trace')

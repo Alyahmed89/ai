@@ -3,38 +3,104 @@ import { z } from 'zod';
 import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
-const ExpectedResponseSchema = z.object({
-  next: z.string().nullable().optional(),
-  actions: z.array(z.object({
-    type: z.literal('api'),
-    endpoint: z.string(),
-    method: z.string().optional(),
-    payload: z.any().optional(),
-    headers: z.record(z.string()).optional(),
-  })).optional(),
-  pro_check: z.object({
-    rules: z.array(z.string()).optional(),
-    plans: z.array(z.string()).optional(),
-  }).optional(),
-}).strict();
+function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
+  // Build the step-specific schema from expected_response (e.g. { plan_id: string })
+  let shape: Record<string, z.ZodTypeAny> = {};
+  if (stepExpectedResponse && typeof stepExpectedResponse === 'object') {
+    if (stepExpectedResponse.type === 'object' && stepExpectedResponse.properties) {
+      for (const [key, prop] of Object.entries<any>(stepExpectedResponse.properties)) {
+        switch (prop.type) {
+          case 'string': shape[key] = z.string(); break;
+          case 'number': shape[key] = z.number(); break;
+          case 'boolean': shape[key] = z.boolean(); break;
+          case 'integer': shape[key] = z.number().int(); break;
+          case 'array': shape[key] = z.array(z.any()); break;
+          case 'object': shape[key] = z.record(z.any()); break;
+          default: shape[key] = z.any(); break;
+        }
+      }
+      if (stepExpectedResponse.required) {
+        const requiredSet = new Set(stepExpectedResponse.required);
+        const optionalShape: Record<string, z.ZodTypeAny> = {};
+        for (const key of Object.keys(shape)) {
+          optionalShape[key] = requiredSet.has(key) ? shape[key] : shape[key].optional();
+        }
+        shape = optionalShape;
+      }
+    }
+  }
 
-export async function runFlow(flowRunId: string): Promise<void> {
+  // Merge with engine-internal fields
+  return z.object({
+    ...shape,
+    next: z.string().nullable().optional(),
+    actions: z.array(z.object({
+      type: z.literal('api'),
+      endpoint: z.string(),
+      method: z.string().optional(),
+      payload: z.any().optional(),
+      headers: z.record(z.string()).optional(),
+    })).optional(),
+    pro_check: z.object({
+      rules: z.array(z.string()).optional(),
+      plans: z.array(z.string()).optional(),
+    }).optional(),
+  }).strict();
+}
+
+export async function runFlow(flowRunId: string, userInput?: Record<string, any>): Promise<void> {
   console.log(`[engine] runFlow start flowRunId=${flowRunId}`);
   try {
-    await updateFlowRun(flowRunId, { status: 'running' });
-
     const flowRun = await getFlowRun(flowRunId);
     if (!flowRun?.flow_id) throw new Error(`Flow run ${flowRunId} has no flow_id`);
-    console.log(`[engine] flow_id=${flowRun.flow_id}`);
 
-    const firstStep = await getFirstStep(flowRun.flow_id);
-    if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
-    console.log(`[engine] firstStep id=${firstStep.id} ref=${firstStep.ref}`);
+    // If resuming from paused state, apply user_input and find resume step
+    let currentStep: any;
+    if (flowRun.status === 'paused' && flowRun.paused_at_step_id) {
+      console.log(`[engine] resuming from paused step ${flowRun.paused_at_step_id}`);
+
+      // Apply user_input variables before resuming
+      if (userInput && typeof userInput === 'object') {
+        for (const [key, value] of Object.entries(userInput)) {
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: null,
+            key,
+            value: typeof value === 'string' ? value : JSON.stringify(value),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+        }
+      }
+
+      // Find the step after paused_at_step_id by order_index
+      const pausedStep = await getStepById(flowRun.paused_at_step_id);
+      if (!pausedStep) throw new Error(`Paused step ${flowRun.paused_at_step_id} not found`);
+
+      const nextStep = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
+      if (!nextStep) {
+        // No next step — this was the last step, so just complete
+        await updateFlowRun(flowRunId, { status: 'completed', paused_at_step_id: null });
+        console.log(`[engine] no step after paused step, completing flow`);
+        return;
+      }
+      currentStep = nextStep;
+
+      await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
+    } else {
+      // Fresh start
+      await updateFlowRun(flowRunId, { status: 'running' });
+
+      const firstStep = await getFirstStep(flowRun.flow_id);
+      if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
+      console.log(`[engine] firstStep id=${firstStep.id} ref=${firstStep.ref}`);
+      currentStep = firstStep;
+    }
 
     const visited = new Set<string>();
     const maxSteps = 50;
     let stepCount = 0;
-    let currentStep = firstStep;
 
     while (currentStep) {
       if (stepCount >= maxSteps) throw new Error('Max steps exceeded');
@@ -45,6 +111,13 @@ export async function runFlow(flowRunId: string): Promise<void> {
       console.log(`[engine] executing step stepCount=${stepCount} stepId=${currentStep.id} ref=${currentStep.ref}`);
       const nextRef = await runStep(currentStep, flowRunId, flowRun);
       console.log(`[engine] step done ref=${currentStep.ref} nextRef=${nextRef}`);
+
+      if (nextRef === '__PAUSED__') {
+        // Step paused itself (condition matched with no next edge)
+        console.log(`[engine] flow paused at step ${currentStep.id}`);
+        return;
+      }
+
       if (!nextRef) break;
 
       const nextStep = await getStepByFlowAndRef(flowRun.flow_id, nextRef);
@@ -115,7 +188,8 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   }
 
   // Step 3 — Zod validate ai_response against expected_response schema
-  const zodResult = ExpectedResponseSchema.safeParse(aiResponse);
+  const schema = buildExpectedResponseSchema(step.expected_response);
+  const zodResult = schema.safeParse(aiResponse);
   console.log(`[engine] zod validation:`, JSON.stringify(zodResult, null, 2));
 
   if (!zodResult.success) {
@@ -317,10 +391,19 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   }
 
   // Step 9 — Conditions override
-  const conditionNextRef = await evaluateConditions(step.id, validated);
-  if (conditionNextRef) {
-    console.log(`[engine] step=${step.ref} next=${conditionNextRef} (condition)`);
-    return conditionNextRef;
+  const conditionResult = await evaluateConditions(step.id, validated);
+  if (conditionResult === '__PAUSED__') {
+    // Condition matched but had no next_step_id or next_flow_id — pause for Mo
+    console.log(`[engine] step=${step.ref} condition matched, pausing for Mo`);
+    await updateFlowRun(flowRunId, {
+      status: 'paused',
+      paused_at_step_id: step.id,
+    });
+    return '__PAUSED__';
+  }
+  if (conditionResult) {
+    console.log(`[engine] step=${step.ref} next=${conditionResult} (condition)`);
+    return conditionResult;
   }
 
   // Step 10 — Direct transition
@@ -329,10 +412,13 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     return next;
   }
 
-  // Terminal step — end flow gracefully
-  console.log(`[engine] step=${step.ref} is terminal, completing flow`);
-  await updateFlowRun(flowRunId, { status: 'completed' });
-  return null;
+  // Terminal step — no outgoing edge, pause for Mo
+  console.log(`[engine] step=${step.ref} is terminal, pausing for Mo`);
+  await updateFlowRun(flowRunId, {
+    status: 'paused',
+    paused_at_step_id: step.id,
+  });
+  return '__PAUSED__';
 }
 
 async function getFlowRun(flowRunId: string): Promise<any> {
@@ -375,6 +461,19 @@ async function getStepById(stepId: string): Promise<any> {
     .eq('id', stepId)
     .single();
   if (error) throw new Error(`Step not found by id ${stepId}: ${error.message}`);
+  return data;
+}
+
+async function getNextStepByOrder(flowId: string, currentOrderIndex: number): Promise<any> {
+  const { data, error } = await getSupabase()
+    .from('steps')
+    .select('*')
+    .eq('flow_id', flowId)
+    .gt('order_index', currentOrderIndex)
+    .order('order_index', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`Failed to get next step: ${error.message}`);
   return data;
 }
 
@@ -437,19 +536,36 @@ async function evaluateConditions(stepId: string, expected: any): Promise<string
   if (!data || data.length === 0) return null;
 
   for (const c of data) {
-    if (!(c.key in expected)) continue;
+    // c.type is the field name in the AI response to check (e.g. "var_plan_id")
+    if (!(c.type in expected)) continue;
 
-    if (expected[c.key] === c.value) {
-      if (!c.next_step_id) {
-        throw new Error(`Condition matched but no next_step_id for step ${stepId}`);
+    if (expected[c.type] === c.value) {
+      // next_flow_id takes priority — jump to another flow
+      if (c.next_flow_id) {
+        const firstStep = await getFirstStep(c.next_flow_id);
+        if (!firstStep) throw new Error(`No steps found in target flow ${c.next_flow_id}`);
+        return firstStep.ref;
       }
 
-      const step = await getStepById(c.next_step_id);
-      if (!step?.ref) {
-        throw new Error(`Step ${c.next_step_id} has no ref`);
+      // next_step_id — continue in the same flow
+      if (c.next_step_id) {
+        const step = await getStepById(c.next_step_id);
+        if (!step?.ref) {
+          throw new Error(`Step ${c.next_step_id} has no ref`);
+        }
+        return step.ref;
       }
 
-      return step.ref;
+      // No next_step_id or next_flow_id — pause for Mo intervention.
+      // If resume_step_id is set, store it so resume knows where to go.
+      if (c.resume_step_id) {
+        // The caller (runStep) will handle the pause; we signal by returning '__PAUSED__'
+        // and the resume_step_id is stored on the condition for the resume logic to use.
+        return '__PAUSED__';
+      }
+
+      // No next edge at all — pause
+      return '__PAUSED__';
     }
   }
 
