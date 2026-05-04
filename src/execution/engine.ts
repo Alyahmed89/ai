@@ -19,6 +19,7 @@ async function handleApiFailure(
     plans: [context.plan_id || 'unknown'],
   };
   let proCheckResult: any = { status: 'pass' };
+  let prologReachable = true;
   try {
     const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
       method: 'POST',
@@ -26,15 +27,27 @@ async function handleApiFailure(
       body: JSON.stringify(proCheckPayload),
     });
     if (prologRes.ok) proCheckResult = await prologRes.json();
+    else prologReachable = false;
   } catch (err) {
     console.warn('[engine] pro_check on API failure failed:', err);
+    prologReachable = false;
   }
-  if (proCheckResult.status === 'stop') {
+
+  // Pause if prolog says stop, OR if prolog is unreachable (fail-safe)
+  if (proCheckResult.status === 'stop' || !prologReachable) {
     const { getSupabase } = await import('../supabase');
+    const pauseReason = !prologReachable
+      ? `API ${statusCode}: prolog unreachable, paused for Mo`
+      : `API ${statusCode}: paused by pro_check`;
     await getSupabase().from('step_runs').update({
       status: 'paused',
-      error: `API ${statusCode}: paused by pro_check`,
-      trace: { api_error: errorDetails, pro_check: proCheckResult, step: 'paused_by_procheck' },
+      error: pauseReason,
+      trace: {
+        api_error: errorDetails,
+        pro_check: proCheckResult,
+        prolog_reachable: prologReachable,
+        step: 'paused_by_procheck',
+      },
     }).eq('id', stepRunId);
     await getSupabase().from('flow_runs').update({
       status: 'paused',
