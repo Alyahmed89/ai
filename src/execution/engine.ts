@@ -322,13 +322,56 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
 
   // Step 6 — Handle Prolog response
   if (proCheckResult.status === 'stop') {
-    console.error(`[engine] prolog STOP for step=${step.ref}`);
-    await updateStepRun(stepRunId, {
-      status: 'failed',
-      error: 'Prolog returned stop',
-      trace: { zod_result: 'valid', pro_check_result: proCheckResult, plan_statuses: proCheckResult.plans, step: 'prolog_stop' },
+    // Instead of just pausing, start the correction flow with context
+    const correctionFlowId = 'b5f67e0f-014d-410f-bacf-eded371cbd98'; // fixed ID
+    const { getSupabase } = await import('../supabase');
+    
+    // Create a new flow run for the correction flow
+    const correctionFlowRunId = randomUUID();
+    const ts = new Date().toISOString();
+    await getSupabase().from('flow_runs').insert({
+        id: correctionFlowRunId,
+        flow_id: correctionFlowId,
+        status: 'pending',
+        created_at: ts,
+        updated_at: ts,
     });
-    throw new Error(`Prolog stopped execution at step ${step.ref}`);
+    
+    // Set variables for the correction flow (scoped to this flow run)
+    const variables = [
+        { id: randomUUID(), key: 'var_failed_step_run_id', value: stepRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+        { id: randomUUID(), key: 'var_pro_check_result', value: JSON.stringify(proCheckResult), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+        { id: randomUUID(), key: 'var_original_flow_run_id', value: flowRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+        { id: randomUUID(), key: 'var_error_details', value: JSON.stringify({ pro_check: proCheckResult, step_ref: step.ref }), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+    ];
+    await getSupabase().from('variables').insert(variables);
+    
+    // Start the correction flow (by queuing execution – we can call startFlow directly or rely on the engine to pick it up)
+    // For simplicity, we'll call the internal startFlow function (assuming it's in scope). If not, we'll set status to 'pending'.
+    // But we cannot easily call startFlow here. Alternative: set correction flow run status to 'pending' and let a separate worker run it.
+    // However, to keep it synchronous, we'll invoke the correction flow's first step manually.
+    // The safest: call /start endpoint via fetch (async)
+    fetch(`${process.env.BACKEND_URL}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flowId: correctionFlowId, flowRunId: correctionFlowRunId, variables: variables.map(v => ({ name: v.key, value: v.value })) })
+    }).catch(err => console.error('Failed to start correction flow:', err));
+    
+    // Pause the original flow run
+    await getSupabase().from('flow_runs').update({
+        status: 'paused',
+        paused_at_step_id: stepRunId,
+    }).eq('id', flowRunId);
+    
+    // Mark the step run as paused (or failed with a note that correction flow started)
+    await getSupabase().from('step_runs').update({
+        status: 'paused',
+        error: 'pro_check stop: correction flow started',
+        trace: { pro_check: proCheckResult, step: 'paused_by_procheck_correction' }
+    }).eq('id', stepRunId);
+    
+    // Return early to stop execution of this flow run
+    return { status: 'paused', stepRunId };
   }
 
   // Step 7 — Execute actions (ONLY after Prolog pass)
