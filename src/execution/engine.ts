@@ -10,7 +10,7 @@ async function handleApiFailure(
   context: Record<string, any>,
   stepRunId: string,
   flowRunId: string,
-): Promise<{ action: 'pause' | 'fail'; suggestions?: any[] }> {
+): Promise<void> {
   const errorDetails = { statusCode, body: responseBody, url };
   const prologUrl = process.env.PROLOG_URL || 'http://localhost:4000';
   const proCheckPayload = {
@@ -36,9 +36,13 @@ async function handleApiFailure(
       error: `API ${statusCode}: paused by pro_check`,
       trace: { api_error: errorDetails, pro_check: proCheckResult, step: 'paused_by_procheck' },
     }).eq('id', stepRunId);
-    return { action: 'pause', suggestions: proCheckResult.plans };
+    // Also update the flow run status to paused (optional)
+    await getSupabase().from('flow_runs').update({
+      status: 'paused',
+      paused_at_step_id: stepRunId,
+    }).eq('id', flowRunId);
   }
-  return { action: 'fail' };
+  // If status is 'pass', do nothing – the outer function will throw a normal error (or we just return)
 }
 
 function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
@@ -166,9 +170,15 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
     await updateFlowRun(flowRunId, { status: 'completed' });
     console.log(`[engine] runFlow completed flowRunId=${flowRunId}`);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg === '__PAUSE__') {
+      // API failure paused the step and flow run — already handled by handleApiFailure
+      console.log(`[engine] flow paused due to API failure flowRunId=${flowRunId}`);
+      return;
+    }
     console.error(`[engine] runFlow error flowRunId=${flowRunId}:`, err);
     try {
-      await updateFlowRun(flowRunId, { status: 'failed', error: err instanceof Error ? err.message : String(err) });
+      await updateFlowRun(flowRunId, { status: 'failed', error: msg });
     } catch (updateErr) {
       console.error(`[engine] failed to update flow run status:`, updateErr);
     }
@@ -399,11 +409,11 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     }
 
     if (!res.ok) {
-      const failureResult = await handleApiFailure(responseBody, res.status, url, context, stepRunId, flowRunId);
-      if (failureResult.action === 'pause') {
-        return { status: 'paused', stepRunId };
-      }
-      throw new Error(`API call failed: ${url} ${res.status}`);
+      // Ensure responseBody is a string (it may be null)
+      const bodyStr = responseBody || '';
+      await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId);
+      // After handling, throw a special pause error that outer runFlow catches
+      throw new Error('__PAUSE__');
     }
     console.log(`[engine] action completed: ${url} ${res.status}`);
   }
