@@ -321,6 +321,17 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       // ignore read errors
     }
 
+    // Capture full response on error
+    if (!res.ok && responseBody !== null) {
+      await getSupabase().from('step_runs').update({
+        result: {
+          error: true,
+          statusCode: res.status,
+          body: responseBody,
+        },
+      }).eq('id', stepRunId);
+    }
+
     // Persist to api_calls table
     const httpMethod = (action.method || 'GET').toUpperCase();
     await getSupabase().from('api_calls').insert({
