@@ -207,6 +207,25 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   const next = validated.next ?? null;
   const actions = Array.isArray(validated.actions) ? validated.actions : [];
 
+  // Auto-store top-level scalar fields from AI response as flow_run variables
+  // so subsequent steps can reference them via [[var:key]]
+  for (const [key, value] of Object.entries(validated)) {
+    if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key,
+        value: String(value),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      // Also add to running context immediately
+      context[key] = value;
+    }
+  }
+
   // Step 4 — Extract rules and plans from step/flow context
   const rules: string[] = [];
   const plans: string[] = [];
