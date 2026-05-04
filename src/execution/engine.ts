@@ -321,13 +321,13 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       // ignore read errors
     }
 
-    // Capture full response on error
+    // Capture full response on error into trace (JSONB)
     if (!res.ok && responseBody !== null) {
       await getSupabase().from('step_runs').update({
-        result: {
-          error: true,
-          statusCode: res.status,
-          body: responseBody,
+        trace: {
+          api_error: true,
+          status_code: res.status,
+          response_body: responseBody,
         },
       }).eq('id', stepRunId);
     }
