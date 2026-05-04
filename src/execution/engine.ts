@@ -3,6 +3,44 @@ import { z } from 'zod';
 import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
+async function handleApiFailure(
+  responseBody: string,
+  statusCode: number,
+  url: string,
+  context: Record<string, any>,
+  stepRunId: string,
+  flowRunId: string,
+): Promise<{ action: 'pause' | 'fail'; suggestions?: any[] }> {
+  const errorDetails = { statusCode, body: responseBody, url };
+  const prologUrl = process.env.PROLOG_URL || 'http://localhost:4000';
+  const proCheckPayload = {
+    response: { error: errorDetails },
+    rules: ['rule_plan_id_must_be_uuid', 'rule_endpoint_variable_resolution'],
+    plans: [context.plan_id || 'unknown'],
+  };
+  let proCheckResult: any = { status: 'pass' };
+  try {
+    const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(proCheckPayload),
+    });
+    if (prologRes.ok) proCheckResult = await prologRes.json();
+  } catch (err) {
+    console.warn('[engine] pro_check on API failure failed:', err);
+  }
+  if (proCheckResult.status === 'stop') {
+    const { getSupabase } = await import('../supabase');
+    await getSupabase().from('step_runs').update({
+      status: 'paused',
+      error: `API ${statusCode}: paused by pro_check`,
+      trace: { api_error: errorDetails, pro_check: proCheckResult, step: 'paused_by_procheck' },
+    }).eq('id', stepRunId);
+    return { action: 'pause', suggestions: proCheckResult.plans };
+  }
+  return { action: 'fail' };
+}
+
 function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
   // Build the step-specific schema from expected_response (e.g. { plan_id: string })
   let shape: Record<string, z.ZodTypeAny> = {};
@@ -321,18 +359,6 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       // ignore read errors
     }
 
-    // Capture full response on error into trace (JSONB) and error field
-    if (!res.ok && responseBody !== null) {
-      await getSupabase().from('step_runs').update({
-        error: `API ${res.status}: ${responseBody.slice(0, 200)}`,
-        trace: {
-          api_error: true,
-          status_code: res.status,
-          response_body: responseBody,
-        },
-      }).eq('id', stepRunId);
-    }
-
     // Persist to api_calls table
     const httpMethod = (action.method || 'GET').toUpperCase();
     await getSupabase().from('api_calls').insert({
@@ -373,6 +399,10 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     }
 
     if (!res.ok) {
+      const failureResult = await handleApiFailure(responseBody, res.status, url, context, stepRunId, flowRunId);
+      if (failureResult.action === 'pause') {
+        return { status: 'paused', stepRunId };
+      }
       throw new Error(`API call failed: ${url} ${res.status}`);
     }
     console.log(`[engine] action completed: ${url} ${res.status}`);
