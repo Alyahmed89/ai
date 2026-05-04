@@ -12,9 +12,9 @@ async function handleApiFailure(
   flowRunId: string,
 ): Promise<boolean> {
   const errorDetails = { statusCode, body: responseBody, url };
-  const prologUrl = process.env.PROLOG_URL || 'http://localhost:4000';
+  const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
   const proCheckPayload = {
-    response: { error: errorDetails },
+    response: errorDetails,
     rules: ['rule_plan_id_must_be_uuid', 'rule_endpoint_variable_resolution'],
     plans: [context.plan_id || 'unknown'],
   };
@@ -298,7 +298,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
 
   // Step 5 — CALL PROLOG pro_check
-  const prologUrl = process.env.PROLOG_URL || 'http://localhost:4000';
+  const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
   console.log(`[engine] calling prolog at ${prologUrl}/api/v1/pro_check`);
   console.log(`[engine] pro_check payload:`, JSON.stringify({ response: validated, rules, plans }, null, 2));
 
