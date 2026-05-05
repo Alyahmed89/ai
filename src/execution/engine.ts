@@ -57,13 +57,17 @@ async function startCorrectionFlowFromProCheck(
   }
   await getSupabase().from('variables').insert(varRows);
 
-  // Start the correction flow internally so variables are preserved
+  // Start the correction flow via POST /start
   (async () => {
     try {
-      const { runFlow } = await import('./engine');
-      await runFlow(correctionFlowRunId, {});
+      const backendUrl = process.env.BACKEND_URL || 'https://ai.anyapp.cfd';
+      await fetch(`${backendUrl}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flowId: correctionFlow.flow_id, flowRunId: correctionFlowRunId }),
+      });
     } catch (err) {
-      console.error('[engine] Failed to start correction flow internally:', err);
+      console.error('[engine] Failed to start correction flow:', err);
     }
   })();
 
@@ -188,16 +192,17 @@ async function handleApiFailure(
   flowRunId: string,
   step: any,
 ): Promise<boolean> {
-  const errorDetails = { statusCode, body: responseBody, url };
+  const errorMsg = `API ${statusCode}: ${(responseBody || '').slice(0, 500)}`;
+  const apiError = { api_error: { statusCode, body: responseBody, url } };
 
   // Store API error details in the step run so the UI displays them
-  const errorMsg = `API ${statusCode}: ${(responseBody || '').slice(0, 500)}`;
   await getSupabase().from('step_runs').update({
     error: errorMsg,
-    result: { api_error: { statusCode, body: responseBody, url } },
+    result: apiError,
   }).eq('id', stepRunId);
 
-  return callProCheckOnOutput(errorDetails, stepRunId, flowRunId, step, context);
+  // Let pro_check decide if the step should pause or fail
+  return callProCheckOnOutput(apiError, stepRunId, flowRunId, step, context);
 }
 
 function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
@@ -242,7 +247,8 @@ function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any
       rules: z.array(z.string()).optional(),
       plans: z.array(z.string()).optional(),
     }).optional(),
-  }).strict();
+    system_result: z.any().optional(),
+  }).passthrough();
 }
 
 export async function runFlow(flowRunId: string, userInput?: Record<string, any>): Promise<void> {
@@ -537,6 +543,12 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
         // Signal pause to outer runFlow without throwing
         return { status: 'paused', stepRunId };
       }
+      // pro_check passed despite API error — mark step failed and stop
+      await updateStepRun(stepRunId, {
+        status: 'failed',
+        error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
+        result: { api_error: { statusCode: res.status, body: bodyStr, url } },
+      });
       throw new Error(`API call failed: ${url} ${res.status}`);
     }
     console.log(`[engine] action completed: ${url} ${res.status}`);
