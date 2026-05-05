@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
+const STEP_TIMEOUT_MS = 60000;
+
 /**
  * Call pro_check on the given output, store request/response in step run result,
  * and if "stop", pause the step and flow run (do NOT fail, do NOT auto-start correction).
@@ -306,301 +308,343 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
 
   const userPrompt = `${renderedInstructions || ''}${endpointSamples}\n\nReturn ONLY valid JSON matching this schema:\n${schemaJson}`;
 
-  let aiResponse: any;
-  try {
-    aiResponse = await callLlm(step.system_message || null, userPrompt);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[engine] LLM call failed:`, msg);
-    await updateStepRun(stepRunId, {
-      status: 'failed',
-      error: msg,
-      trace: { llm_error: msg, step: 'llm' },
-    });
-    throw new Error(`Step ${step.ref} LLM failed: ${msg}`);
-  }
+  // Wrap AI call + action execution + post-processing in a timeout race
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Step execution timed out after 60s')), STEP_TIMEOUT_MS);
+  });
 
-  // Step 3 — Zod validate ai_response against expected_response schema
-  const schema = buildExpectedResponseSchema(step.expected_response);
-  const zodResult = schema.safeParse(aiResponse);
-  console.log(`[engine] zod validation:`, JSON.stringify(zodResult, null, 2));
+  const executionPromise = (async (): Promise<string | { status: 'paused'; stepRunId: string } | null> => {
+    let aiResponse: any;
+    try {
+      aiResponse = await callLlm(step.system_message || null, userPrompt);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[engine] LLM call failed:`, msg);
+      await updateStepRun(stepRunId, {
+        status: 'failed',
+        error: msg,
+        trace: { llm_error: msg, step: 'llm' },
+      });
+      throw new Error(`Step ${step.ref} LLM failed: ${msg}`);
+    }
 
-  if (!zodResult.success) {
-    const zodError = zodResult.error.flatten();
-    console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
-    // Call pro_check on the validation error — Prolog may decide a correction flow is needed
-    const zodOutput = { zod_error: zodError, ai_response: aiResponse };
-    const { data: stepRunForZod } = await getSupabase()
+    // Step 3 — Zod validate ai_response against expected_response schema
+    const schema = buildExpectedResponseSchema(step.expected_response);
+    const zodResult = schema.safeParse(aiResponse);
+    console.log(`[engine] zod validation:`, JSON.stringify(zodResult, null, 2));
+
+    if (!zodResult.success) {
+      const zodError = zodResult.error.flatten();
+      console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
+      // Call pro_check on the validation error — Prolog may decide a correction flow is needed
+      const zodOutput = { zod_error: zodError, ai_response: aiResponse };
+      const { data: stepRunForZod } = await getSupabase()
+        .from('step_runs')
+        .select('*')
+        .eq('id', stepRunId)
+        .maybeSingle();
+      if (stepRunForZod) {
+        const rules: string[] = [];
+        const plans: string[] = [];
+        if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+        if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+        if (context.plan_id) plans.push(context.plan_id);
+        const proCheckResult = await callProCheckOnOutput(stepRunForZod, zodOutput, rules, plans);
+        if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+      }
+      // If pro_check passed (or no correction), fail the step
+      await updateStepRun(stepRunId, {
+        status: 'failed',
+        error: `AI response failed schema: ${JSON.stringify(zodError)}`,
+        trace: { ai_response: aiResponse, zod_result: zodError, step: 'zod_validation' },
+      });
+      throw new Error(`Step ${step.ref} AI response failed schema validation`);
+    }
+
+    const validated = zodResult.data;
+    const next = validated.next ?? null;
+    const actions = Array.isArray(validated.actions) ? validated.actions : [];
+
+    // Auto-store top-level scalar fields from AI response as flow_run variables
+    // so subsequent steps can reference them via [[var:key]]
+    for (const [key, value] of Object.entries(validated)) {
+      if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        await getSupabase().from('variables').insert({
+          id: randomUUID(),
+          flow_run_id: flowRunId,
+          step_run_id: stepRunId,
+          key,
+          value: String(value),
+          scope: 'flow_run',
+          created_at: new Date().toISOString(),
+        }).maybeSingle();
+        // Also add to running context immediately
+        context[key] = value;
+      }
+    }
+
+    // Step 5 — Call pro_check on the validated AI response output
+    const { data: stepRunForProCheck } = await getSupabase()
       .from('step_runs')
       .select('*')
       .eq('id', stepRunId)
       .maybeSingle();
-    if (stepRunForZod) {
+    if (stepRunForProCheck) {
       const rules: string[] = [];
       const plans: string[] = [];
       if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
       if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
       if (context.plan_id) plans.push(context.plan_id);
-      const proCheckResult = await callProCheckOnOutput(stepRunForZod, zodOutput, rules, plans);
+      const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, validated, rules, plans);
       if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
     }
-    // If pro_check passed (or no correction), fail the step
-    await updateStepRun(stepRunId, {
-      status: 'failed',
-      error: `AI response failed schema: ${JSON.stringify(zodError)}`,
-      trace: { ai_response: aiResponse, zod_result: zodError, step: 'zod_validation' },
-    });
-    throw new Error(`Step ${step.ref} AI response failed schema validation`);
-  }
 
-  const validated = zodResult.data;
-  const next = validated.next ?? null;
-  const actions = Array.isArray(validated.actions) ? validated.actions : [];
+    // Step 6 — Execute actions (ONLY after pro_check pass)
+    for (const action of actions) {
+      if (action.type !== 'api') continue;
 
-  // Auto-store top-level scalar fields from AI response as flow_run variables
-  // so subsequent steps can reference them via [[var:key]]
-  for (const [key, value] of Object.entries(validated)) {
-    if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      await getSupabase().from('variables').insert({
+      // Resolve variables just before each action so subsequent actions
+      // can use variables set by previous actions in the same step
+      let url = normalizeValue(resolveVariables(action.endpoint, context));
+      let headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...normalizeValue(resolveVariables(action.headers || {}, context)),
+      };
+
+      const { data: endpoint } = await getSupabase()
+        .from('endpoint_registry')
+        .select('*')
+        .eq('name', action.endpoint)
+        .maybeSingle();
+
+      if (endpoint) {
+        url = normalizeValue(resolveVariables(endpoint.url, context));
+        headers = { ...(endpoint.headers || {}), ...headers };
+      }
+
+      let mergedPayload: any = undefined;
+
+      // Start from endpoint default (if exists)
+      if (endpoint?.sample_request) {
+        mergedPayload = { ...endpoint.sample_request };
+      }
+
+      // Apply AI payload (override defaults)
+      if (action.payload) {
+        const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
+        mergedPayload = mergedPayload
+          ? deepMerge(mergedPayload, resolvedPayload)
+          : resolvedPayload;
+      }
+
+      console.log(`[engine] executing action: ${action.method || 'GET'} ${url}`);
+      const res = await fetch(url, {
+        method: (action.method || 'GET').toUpperCase(),
+        headers,
+        body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
+      });
+
+      let responseBody: string | null = null;
+      try {
+        responseBody = await res.text();
+      } catch {
+        // ignore read errors
+      }
+
+      // Persist to api_calls table
+      const httpMethod = (action.method || 'GET').toUpperCase();
+      await getSupabase().from('api_calls').insert({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
-        key,
-        value: String(value),
-        scope: 'flow_run',
+        endpoint_name: url,
+        http_method: httpMethod,
+        request_url: url,
+        request_headers: headers,
+        request_body: mergedPayload,
+        response_status: res.status,
+        response_body: responseBody,
+        success: res.ok,
+        error: res.ok ? null : `HTTP ${res.status}`,
         created_at: new Date().toISOString(),
       }).maybeSingle();
-      // Also add to running context immediately
-      context[key] = value;
+
+      // Auto-store response as variable for subsequent steps
+      if (res.ok && responseBody) {
+        try {
+          const parsed = JSON.parse(responseBody);
+          const varName = `api_response_${action.endpoint}`;
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: varName,
+            value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
+            scope: 'step_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+          // Also add to running context so subsequent actions in same step can use it
+          context[varName] = parsed;
+        } catch {
+          // response is not JSON, skip auto-store
+        }
+      }
+
+      if (!res.ok) {
+        const bodyStr = responseBody || '';
+        const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
+        if (shouldPause === 'paused') {
+          // Signal pause to outer runFlow without throwing
+          return { status: 'paused', stepRunId };
+        }
+        // pro_check passed despite API error — mark step failed and stop
+        // Merge result to preserve any existing fields (e.g. pro_check_request)
+        const { data: failedStepRun } = await getSupabase()
+          .from('step_runs')
+          .select('result')
+          .eq('id', stepRunId)
+          .maybeSingle();
+        const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
+        await updateStepRun(stepRunId, {
+          status: 'failed',
+          error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
+          result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
+        });
+        throw new Error(`API call failed: ${url} ${res.status}`);
+      }
+      console.log(`[engine] action completed: ${url} ${res.status}`);
     }
-  }
 
-  // Step 5 — Call pro_check on the validated AI response output
-  const { data: stepRunForProCheck } = await getSupabase()
-    .from('step_runs')
-    .select('*')
-    .eq('id', stepRunId)
-    .maybeSingle();
-  if (stepRunForProCheck) {
-    const rules: string[] = [];
-    const plans: string[] = [];
-    if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-    if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
-    if (context.plan_id) plans.push(context.plan_id);
-    const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, validated, rules, plans);
-    if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-  }
+    // Step 7 — Call pro_check on the final output (after all actions)
+    const finalOutput = { ...validated, actions_completed: actions.map(a => a.endpoint) };
+    const { data: stepRunAfterActions } = await getSupabase()
+      .from('step_runs')
+      .select('*')
+      .eq('id', stepRunId)
+      .maybeSingle();
+    if (stepRunAfterActions) {
+      const rules: string[] = [];
+      const plans: string[] = [];
+      if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+      if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+      if (context.plan_id) plans.push(context.plan_id);
+      const proCheckResult = await callProCheckOnOutput(stepRunAfterActions, finalOutput, rules, plans);
+      if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+    }
 
-  // Step 6 — Execute actions (ONLY after pro_check pass)
-  for (const action of actions) {
-    if (action.type !== 'api') continue;
-
-    // Resolve variables just before each action so subsequent actions
-    // can use variables set by previous actions in the same step
-    let url = normalizeValue(resolveVariables(action.endpoint, context));
-    let headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...normalizeValue(resolveVariables(action.headers || {}, context)),
+    // Step 8 — Persist everything
+    const trace = {
+      zod_result: 'valid',
+      step: 'completed',
     };
 
-    const { data: endpoint } = await getSupabase()
-      .from('endpoint_registry')
-      .select('*')
-      .eq('name', action.endpoint)
-      .maybeSingle();
-
-    if (endpoint) {
-      url = normalizeValue(resolveVariables(endpoint.url, context));
-      headers = { ...(endpoint.headers || {}), ...headers };
-    }
-
-    let mergedPayload: any = undefined;
-
-    // Start from endpoint default (if exists)
-    if (endpoint?.sample_request) {
-      mergedPayload = { ...endpoint.sample_request };
-    }
-
-    // Apply AI payload (override defaults)
-    if (action.payload) {
-      const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
-      mergedPayload = mergedPayload
-        ? deepMerge(mergedPayload, resolvedPayload)
-        : resolvedPayload;
-    }
-
-    console.log(`[engine] executing action: ${action.method || 'GET'} ${url}`);
-    const res = await fetch(url, {
-      method: (action.method || 'GET').toUpperCase(),
-      headers,
-      body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
+    await updateStepRun(stepRunId, {
+      ai_response: normalizeValue(validated),
+      ai_response_valid: true,
+      rendered_instructions: renderedInstructions,
+      resolved_variables: context,
+      trace,
+      status: 'completed',
     });
 
-    let responseBody: string | null = null;
-    try {
-      responseBody = await res.text();
-    } catch {
-      // ignore read errors
+    // Write refs entries for rules and plans from step metadata
+    const stepRules: string[] = [];
+    const stepPlans: string[] = [];
+    if (validated.pro_check?.rules) stepRules.push(...validated.pro_check.rules);
+    if (validated.pro_check?.plans) stepPlans.push(...validated.pro_check.plans);
+    if (step.rules && Array.isArray(step.rules)) stepRules.push(...step.rules);
+    if (step.plans && Array.isArray(step.plans)) stepPlans.push(...step.plans);
+    for (const ruleId of stepRules) {
+      await getSupabase().from('refs').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        rule_id: ruleId,
+        key: 'rule',
+        value: ruleId,
+        source: 'pro_check',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+    }
+    for (const planId of stepPlans) {
+      await getSupabase().from('refs').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        rule_id: planId,
+        key: 'plan',
+        value: 'referenced',
+        source: 'pro_check',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
     }
 
-    // Persist to api_calls table
-    const httpMethod = (action.method || 'GET').toUpperCase();
-    await getSupabase().from('api_calls').insert({
-      id: randomUUID(),
-      flow_run_id: flowRunId,
-      step_run_id: stepRunId,
-      endpoint_name: url,
-      http_method: httpMethod,
-      request_url: url,
-      request_headers: headers,
-      request_body: mergedPayload,
-      response_status: res.status,
-      response_body: responseBody,
-      success: res.ok,
-      error: res.ok ? null : `HTTP ${res.status}`,
-      created_at: new Date().toISOString(),
-    }).maybeSingle();
-
-    // Auto-store response as variable for subsequent steps
-    if (res.ok && responseBody) {
-      try {
-        const parsed = JSON.parse(responseBody);
-        const varName = `api_response_${action.endpoint}`;
-        await getSupabase().from('variables').insert({
-          id: randomUUID(),
-          flow_run_id: flowRunId,
-          step_run_id: stepRunId,
-          key: varName,
-          value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
-          scope: 'step_run',
-          created_at: new Date().toISOString(),
-        }).maybeSingle();
-        // Also add to running context so subsequent actions in same step can use it
-        context[varName] = parsed;
-      } catch {
-        // response is not JSON, skip auto-store
-      }
-    }
-
-    if (!res.ok) {
-      const bodyStr = responseBody || '';
-      const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
-      if (shouldPause === 'paused') {
-        // Signal pause to outer runFlow without throwing
-        return { status: 'paused', stepRunId };
-      }
-      // pro_check passed despite API error — mark step failed and stop
-      // Merge result to preserve any existing fields (e.g. pro_check_request)
-      const { data: failedStepRun } = await getSupabase()
-        .from('step_runs')
-        .select('result')
-        .eq('id', stepRunId)
-        .maybeSingle();
-      const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
-      await updateStepRun(stepRunId, {
-        status: 'failed',
-        error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
-        result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
+    // Step 9 — Conditions override
+    const conditionResult = await evaluateConditions(step.id, validated);
+    if (conditionResult === '__PAUSED__') {
+      // Condition matched but had no next_step_id or next_flow_id — pause for Mo
+      console.log(`[engine] step=${step.ref} condition matched, pausing for Mo`);
+      await updateFlowRun(flowRunId, {
+        status: 'paused',
+        paused_at_step_id: step.id,
       });
-      throw new Error(`API call failed: ${url} ${res.status}`);
+      return '__PAUSED__';
     }
-    console.log(`[engine] action completed: ${url} ${res.status}`);
-  }
+    if (conditionResult) {
+      console.log(`[engine] step=${step.ref} next=${conditionResult} (condition)`);
+      return conditionResult;
+    }
 
-  // Step 7 — Call pro_check on the final output (after all actions)
-  const finalOutput = { ...validated, actions_completed: actions.map(a => a.endpoint) };
-  const { data: stepRunAfterActions } = await getSupabase()
-    .from('step_runs')
-    .select('*')
-    .eq('id', stepRunId)
-    .maybeSingle();
-  if (stepRunAfterActions) {
-    const rules: string[] = [];
-    const plans: string[] = [];
-    if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-    if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
-    if (context.plan_id) plans.push(context.plan_id);
-    const proCheckResult = await callProCheckOnOutput(stepRunAfterActions, finalOutput, rules, plans);
-    if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-  }
+    // Step 10 — Direct transition
+    if (next) {
+      console.log(`[engine] step=${step.ref} next=${next}`);
+      return next;
+    }
 
-  // Step 8 — Persist everything
-  const trace = {
-    zod_result: 'valid',
-    step: 'completed',
-  };
-
-  await updateStepRun(stepRunId, {
-    ai_response: normalizeValue(validated),
-    ai_response_valid: true,
-    rendered_instructions: renderedInstructions,
-    resolved_variables: context,
-    trace,
-    status: 'completed',
-  });
-
-  // Write refs entries for rules and plans from step metadata
-  const stepRules: string[] = [];
-  const stepPlans: string[] = [];
-  if (validated.pro_check?.rules) stepRules.push(...validated.pro_check.rules);
-  if (validated.pro_check?.plans) stepPlans.push(...validated.pro_check.plans);
-  if (step.rules && Array.isArray(step.rules)) stepRules.push(...step.rules);
-  if (step.plans && Array.isArray(step.plans)) stepPlans.push(...step.plans);
-  for (const ruleId of stepRules) {
-    await getSupabase().from('refs').insert({
-      id: randomUUID(),
-      flow_run_id: flowRunId,
-      step_run_id: stepRunId,
-      rule_id: ruleId,
-      key: 'rule',
-      value: ruleId,
-      source: 'pro_check',
-      created_at: new Date().toISOString(),
-    }).maybeSingle();
-  }
-  for (const planId of stepPlans) {
-    await getSupabase().from('refs').insert({
-      id: randomUUID(),
-      flow_run_id: flowRunId,
-      step_run_id: stepRunId,
-      rule_id: planId,
-      key: 'plan',
-      value: 'referenced',
-      source: 'pro_check',
-      created_at: new Date().toISOString(),
-    }).maybeSingle();
-  }
-
-  // Step 9 — Conditions override
-  const conditionResult = await evaluateConditions(step.id, validated);
-  if (conditionResult === '__PAUSED__') {
-    // Condition matched but had no next_step_id or next_flow_id — pause for Mo
-    console.log(`[engine] step=${step.ref} condition matched, pausing for Mo`);
+    // Terminal step — no outgoing edge, pause for Mo
+    console.log(`[engine] step=${step.ref} is terminal, pausing for Mo`);
     await updateFlowRun(flowRunId, {
       status: 'paused',
       paused_at_step_id: step.id,
     });
     return '__PAUSED__';
-  }
-  if (conditionResult) {
-    console.log(`[engine] step=${step.ref} next=${conditionResult} (condition)`);
-    return conditionResult;
+  })();
+
+  let executionResult: any;
+  try {
+    executionResult = await Promise.race([executionPromise, timeoutPromise]);
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeout = msg.includes('timed out after 60s');
+    console.error(`[engine] step execution error:`, msg);
+
+    if (isTimeout) {
+      // Timeout — mark step as failed and trigger pro_check via handleApiFailure
+      await updateStepRun(stepRunId, {
+        status: 'failed',
+        error: msg,
+        result: { timeout: true, error: msg },
+      });
+      // Trigger pro_check so correction flow can be started
+      await handleApiFailure(
+        JSON.stringify({ timeout: true, error: msg }),
+        408,
+        'step://timeout',
+        context,
+        stepRunId,
+        flowRunId,
+        step,
+      );
+      return { status: 'paused', stepRunId };
+    }
+
+    // Re-throw non-timeout errors
+    throw err;
   }
 
-  // Step 10 — Direct transition
-  if (next) {
-    console.log(`[engine] step=${step.ref} next=${next}`);
-    return next;
-  }
-
-  // Terminal step — no outgoing edge, pause for Mo
-  console.log(`[engine] step=${step.ref} is terminal, pausing for Mo`);
-  await updateFlowRun(flowRunId, {
-    status: 'paused',
-    paused_at_step_id: step.id,
-  });
-  return '__PAUSED__';
+  // Propagate result from execution promise
+  return executionResult;
 }
 
 async function getFlowRun(flowRunId: string): Promise<any> {
