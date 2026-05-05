@@ -3,6 +3,215 @@ import { z } from 'zod';
 import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
+/**
+ * Query Prolog for a correction flow when pro_check returns "stop".
+ * Expects: correction_needed(StepRunId, Output, CorrectionFlowId, Variables).
+ * Returns { correctionFlowId, variables } or null.
+ */
+async function queryCorrectionFlow(
+  stepRunId: string,
+  output: any,
+): Promise<{ correctionFlowId: string; variables: Array<{ key: string; value: string }> } | null> {
+  const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
+  const outputJson = typeof output === 'string' ? output : JSON.stringify(output);
+  const query = `correction_needed('${stepRunId}', ${outputJson}, CorrectionFlowId, Variables).`;
+  try {
+    const res = await fetch(`${prologUrl}/api/v1/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: ['CorrectionFlowId', 'Variables'] }),
+    });
+    if (!res.ok) return null;
+    const result = await res.json();
+    if (!result?.CorrectionFlowId) return null;
+    return {
+      correctionFlowId: result.CorrectionFlowId,
+      variables: Array.isArray(result.Variables) ? result.Variables : [],
+    };
+  } catch (err) {
+    console.warn('[engine] queryCorrectionFlow failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Start a correction flow run and pause the original flow.
+ */
+async function startCorrectionFlow(
+  correctionFlowId: string,
+  variables: Array<{ key: string; value: string }>,
+  stepRunId: string,
+  flowRunId: string,
+  proCheckResult: any,
+  output: any,
+): Promise<void> {
+  const { getSupabase } = await import('../supabase');
+  const correctionFlowRunId = randomUUID();
+  const ts = new Date().toISOString();
+
+  // Create correction flow run
+  await getSupabase().from('flow_runs').insert({
+    id: correctionFlowRunId,
+    flow_id: correctionFlowId,
+    status: 'pending',
+    created_at: ts,
+    updated_at: ts,
+  });
+
+  // Insert variables from Prolog result
+  const varRows = variables.map(v => ({
+    id: randomUUID(),
+    key: v.key,
+    value: v.value,
+    scope: 'flow_run' as const,
+    flow_run_id: correctionFlowRunId,
+    created_at: ts,
+  }));
+  // Also include standard context variables
+  const standardVars = [
+    { key: 'var_failed_step_run_id', value: stepRunId },
+    { key: 'var_pro_check_result', value: JSON.stringify(proCheckResult) },
+    { key: 'var_original_flow_run_id', value: flowRunId },
+    { key: 'var_error_details', value: JSON.stringify({ output, pro_check: proCheckResult }) },
+  ];
+  for (const sv of standardVars) {
+    if (!variables.some(v => v.key === sv.key)) {
+      varRows.push({
+        id: randomUUID(),
+        key: sv.key,
+        value: sv.value,
+        scope: 'flow_run' as const,
+        flow_run_id: correctionFlowRunId,
+        created_at: ts,
+      });
+    }
+  }
+  await getSupabase().from('variables').insert(varRows);
+
+  // Start the correction flow internally so variables are preserved
+  (async () => {
+    try {
+      const { runFlow } = await import('./engine');
+      await runFlow(correctionFlowRunId, {});
+    } catch (err) {
+      console.error('[engine] Failed to start correction flow internally:', err);
+    }
+  })();
+
+  // Pause the original flow run
+  await getSupabase().from('flow_runs').update({
+    status: 'paused',
+    paused_at_step_id: stepRunId,
+  }).eq('id', flowRunId);
+
+  // Mark the step run as paused
+  await getSupabase().from('step_runs').update({
+    status: 'paused',
+    error: 'pro_check stop: correction flow started',
+    trace: {
+      output,
+      pro_check: proCheckResult,
+      correction_flow_id: correctionFlowId,
+      step: 'paused_by_procheck_correction',
+    },
+  }).eq('id', stepRunId);
+}
+
+/**
+ * Pause the flow run and step run with a given error message.
+ */
+async function pauseFlow(
+  stepRunId: string,
+  flowRunId: string,
+  error: string,
+  trace: Record<string, any>,
+): Promise<void> {
+  const { getSupabase } = await import('../supabase');
+  await getSupabase().from('step_runs').update({
+    status: 'paused',
+    error,
+    trace: { ...trace, step: 'paused_by_procheck' },
+  }).eq('id', stepRunId);
+  await getSupabase().from('flow_runs').update({
+    status: 'paused',
+    paused_at_step_id: stepRunId,
+  }).eq('id', flowRunId);
+}
+
+/**
+ * Unified pro_check handler: call pro_check on the given output, then
+ * if "stop", query Prolog for a correction flow. Returns true if the
+ * flow was paused (correction started or no correction available).
+ */
+async function callProCheckOnOutput(
+  output: any,
+  stepRunId: string,
+  flowRunId: string,
+  step: any,
+  context: Record<string, any>,
+): Promise<boolean> {
+  const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
+
+  // Collect rules and plans from step metadata
+  const rules: string[] = [];
+  const plans: string[] = [];
+  if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+  if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+  if (context.plan_id) plans.push(context.plan_id);
+
+  let proCheckResult: any = { status: 'pass' };
+  let prologReachable = true;
+  try {
+    const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response: output, rules, plans }),
+    });
+    if (prologRes.ok) {
+      proCheckResult = await prologRes.json();
+    } else {
+      prologReachable = false;
+    }
+  } catch (err) {
+    console.warn('[engine] pro_check call failed:', err);
+    prologReachable = false;
+  }
+
+  if (proCheckResult.status === 'stop') {
+    // Query Prolog for correction flow
+    const correction = await queryCorrectionFlow(stepRunId, output);
+    if (correction && correction.correctionFlowId) {
+      await startCorrectionFlow(
+        correction.correctionFlowId,
+        correction.variables || [],
+        stepRunId,
+        flowRunId,
+        proCheckResult,
+        output,
+      );
+    } else {
+      // No correction available from Prolog — pause with explanation
+      await pauseFlow(stepRunId, flowRunId, 'pro_check stop: no correction available', {
+        output,
+        pro_check: proCheckResult,
+      });
+    }
+    return true; // signal pause
+  }
+
+  if (!prologReachable) {
+    // Prolog unreachable — fail-safe pause
+    await pauseFlow(stepRunId, flowRunId, 'prolog unreachable, paused for Mo', {
+      output,
+      pro_check: proCheckResult,
+      prolog_reachable: false,
+    });
+    return true;
+  }
+
+  return false; // continue normal execution
+}
+
 async function handleApiFailure(
   responseBody: string,
   statusCode: number,
@@ -10,103 +219,10 @@ async function handleApiFailure(
   context: Record<string, any>,
   stepRunId: string,
   flowRunId: string,
+  step: any,
 ): Promise<boolean> {
   const errorDetails = { statusCode, body: responseBody, url };
-  const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
-  const proCheckPayload = {
-    response: errorDetails,
-    rules: ['rule_plan_id_must_be_uuid', 'rule_endpoint_variable_resolution'],
-    plans: [context.plan_id || 'unknown'],
-  };
-  let proCheckResult: any = { status: 'pass' };
-  let prologReachable = true;
-  try {
-    const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(proCheckPayload),
-    });
-    if (prologRes.ok) proCheckResult = await prologRes.json();
-    else prologReachable = false;
-  } catch (err) {
-    console.warn('[engine] pro_check on API failure failed:', err);
-    prologReachable = false;
-  }
-
-  // If prolog says stop, start the correction flow instead of just pausing
-  if (proCheckResult.status === 'stop') {
-    const { getSupabase } = await import('../supabase');
-    const correctionFlowId = 'b5f67e0f-014d-410f-bacf-eded371cbd98';
-    const correctionFlowRunId = randomUUID();
-    const ts = new Date().toISOString();
-
-    // Create correction flow run
-    await getSupabase().from('flow_runs').insert({
-      id: correctionFlowRunId,
-      flow_id: correctionFlowId,
-      status: 'pending',
-      created_at: ts,
-      updated_at: ts,
-    });
-
-    // Set variables for the correction flow
-    const variables = [
-      { id: randomUUID(), key: 'var_failed_step_run_id', value: stepRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-      { id: randomUUID(), key: 'var_pro_check_result', value: JSON.stringify(proCheckResult), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-      { id: randomUUID(), key: 'var_original_flow_run_id', value: flowRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-      { id: randomUUID(), key: 'var_error_details', value: JSON.stringify({ api_error: errorDetails, pro_check: proCheckResult }), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-    ];
-    await getSupabase().from('variables').insert(variables);
-
-    // Start the correction flow internally (no HTTP) so variables are preserved
-    (async () => {
-      try {
-        await runFlow(correctionFlowRunId, {});
-      } catch (err) {
-        console.error('[engine] Failed to start correction flow internally:', err);
-      }
-    })();
-
-    // Pause the original flow run and step run
-    await getSupabase().from('flow_runs').update({
-      status: 'paused',
-      paused_at_step_id: stepRunId,
-    }).eq('id', flowRunId);
-    await getSupabase().from('step_runs').update({
-      status: 'paused',
-      error: 'pro_check stop: correction flow started',
-      trace: {
-        api_error: errorDetails,
-        pro_check: proCheckResult,
-        prolog_reachable: prologReachable,
-        step: 'paused_by_procheck_correction',
-      },
-    }).eq('id', stepRunId);
-
-    return true; // signal pause
-  }
-
-  // If prolog is unreachable, just pause (fail-safe, no correction flow)
-  if (!prologReachable) {
-    const { getSupabase } = await import('../supabase');
-    await getSupabase().from('step_runs').update({
-      status: 'paused',
-      error: `API ${statusCode}: prolog unreachable, paused for Mo`,
-      trace: {
-        api_error: errorDetails,
-        pro_check: proCheckResult,
-        prolog_reachable: prologReachable,
-        step: 'paused_by_procheck',
-      },
-    }).eq('id', stepRunId);
-    await getSupabase().from('flow_runs').update({
-      status: 'paused',
-      paused_at_step_id: stepRunId,
-    }).eq('id', flowRunId);
-    return true;
-  }
-
-  return false; // signal continue (fail normally)
+  return callProCheckOnOutput(errorDetails, stepRunId, flowRunId, step, context);
 }
 
 function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
@@ -308,6 +424,11 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   if (!zodResult.success) {
     const zodError = zodResult.error.flatten();
     console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
+    // Call pro_check on the validation error — Prolog may decide a correction flow is needed
+    const zodOutput = { zod_error: zodError, ai_response: aiResponse };
+    const paused = await callProCheckOnOutput(zodOutput, stepRunId, flowRunId, step, context);
+    if (paused) return { status: 'paused', stepRunId };
+    // If pro_check passed (or no correction), fail the step
     await updateStepRun(stepRunId, {
       status: 'failed',
       error: `AI response failed schema: ${JSON.stringify(zodError)}`,
@@ -339,91 +460,11 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     }
   }
 
-  // Step 4 — Extract rules and plans from step/flow context
-  const rules: string[] = [];
-  const plans: string[] = [];
-  if (validated.pro_check?.rules) rules.push(...validated.pro_check.rules);
-  if (validated.pro_check?.plans) plans.push(...validated.pro_check.plans);
-  // Also load from step metadata if present
-  if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-  if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+  // Step 5 — Call pro_check on the validated AI response output
+  const paused = await callProCheckOnOutput(validated, stepRunId, flowRunId, step, context);
+  if (paused) return { status: 'paused', stepRunId };
 
-  // Step 5 — CALL PROLOG pro_check
-  const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
-  console.log(`[engine] calling prolog at ${prologUrl}/api/v1/pro_check`);
-  console.log(`[engine] pro_check payload:`, JSON.stringify({ response: validated, rules, plans }, null, 2));
-
-  let proCheckResult: { status: string; plans?: Array<{ id: string; status: string }> } = { status: 'pass' };
-  try {
-    const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ response: validated, rules, plans }),
-    });
-    if (prologRes.ok) {
-      proCheckResult = await prologRes.json();
-    } else {
-      console.warn(`[engine] prolog returned ${prologRes.status}, treating as pass`);
-    }
-  } catch (err) {
-    console.warn(`[engine] prolog call failed:`, err);
-    // If Prolog is unreachable, continue (fail-open for now)
-  }
-  console.log(`[engine] pro_check result:`, JSON.stringify(proCheckResult, null, 2));
-
-  // Step 6 — Handle Prolog response
-  if (proCheckResult.status === 'stop') {
-    // Instead of just pausing, start the correction flow with context
-    const correctionFlowId = 'b5f67e0f-014d-410f-bacf-eded371cbd98'; // fixed ID
-    const { getSupabase } = await import('../supabase');
-    
-    // Create a new flow run for the correction flow
-    const correctionFlowRunId = randomUUID();
-    const ts = new Date().toISOString();
-    await getSupabase().from('flow_runs').insert({
-        id: correctionFlowRunId,
-        flow_id: correctionFlowId,
-        status: 'pending',
-        created_at: ts,
-        updated_at: ts,
-    });
-    
-    // Set variables for the correction flow (scoped to this flow run)
-    const variables = [
-        { id: randomUUID(), key: 'var_failed_step_run_id', value: stepRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-        { id: randomUUID(), key: 'var_pro_check_result', value: JSON.stringify(proCheckResult), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-        { id: randomUUID(), key: 'var_original_flow_run_id', value: flowRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-        { id: randomUUID(), key: 'var_error_details', value: JSON.stringify({ pro_check: proCheckResult, step_ref: step.ref }), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
-    ];
-    await getSupabase().from('variables').insert(variables);
-    
-    // Start the correction flow internally (no HTTP) so variables are preserved
-    (async () => {
-      try {
-        await runFlow(correctionFlowRunId, {});
-      } catch (err) {
-        console.error('[engine] Failed to start correction flow internally:', err);
-      }
-    })();
-    
-    // Pause the original flow run
-    await getSupabase().from('flow_runs').update({
-        status: 'paused',
-        paused_at_step_id: stepRunId,
-    }).eq('id', flowRunId);
-    
-    // Mark the step run as paused (or failed with a note that correction flow started)
-    await getSupabase().from('step_runs').update({
-        status: 'paused',
-        error: 'pro_check stop: correction flow started',
-        trace: { pro_check: proCheckResult, step: 'paused_by_procheck_correction' }
-    }).eq('id', stepRunId);
-    
-    // Return early to stop execution of this flow run
-    return { status: 'paused', stepRunId };
-  }
-
-  // Step 7 — Execute actions (ONLY after Prolog pass)
+  // Step 6 — Execute actions (ONLY after pro_check pass)
   for (const action of actions) {
     if (action.type !== 'api') continue;
 
@@ -516,7 +557,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
 
     if (!res.ok) {
       const bodyStr = responseBody || '';
-      const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId);
+      const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
       if (shouldPause) {
         // Signal pause to outer runFlow without throwing
         return { status: 'paused', stepRunId };
@@ -526,12 +567,15 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     console.log(`[engine] action completed: ${url} ${res.status}`);
   }
 
+  // Step 7 — Call pro_check on the final output (after all actions)
+  const finalOutput = { ...validated, actions_completed: actions.map(a => a.endpoint) };
+  const pausedAfterActions = await callProCheckOnOutput(finalOutput, stepRunId, flowRunId, step, context);
+  if (pausedAfterActions) return { status: 'paused', stepRunId };
+
   // Step 8 — Persist everything
-  const planStatuses = proCheckResult.plans || [];
   const trace = {
     zod_result: 'valid',
-    pro_check_result: proCheckResult,
-    plan_statuses: planStatuses,
+    step: 'completed',
   };
 
   await updateStepRun(stepRunId, {
@@ -543,8 +587,14 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     status: 'completed',
   });
 
-  // Write refs entries for rules and plans
-  for (const ruleId of rules) {
+  // Write refs entries for rules and plans from step metadata
+  const stepRules: string[] = [];
+  const stepPlans: string[] = [];
+  if (validated.pro_check?.rules) stepRules.push(...validated.pro_check.rules);
+  if (validated.pro_check?.plans) stepPlans.push(...validated.pro_check.plans);
+  if (step.rules && Array.isArray(step.rules)) stepRules.push(...step.rules);
+  if (step.plans && Array.isArray(step.plans)) stepPlans.push(...step.plans);
+  for (const ruleId of stepRules) {
     await getSupabase().from('refs').insert({
       id: randomUUID(),
       flow_run_id: flowRunId,
@@ -556,14 +606,14 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
       created_at: new Date().toISOString(),
     }).maybeSingle();
   }
-  for (const plan of planStatuses) {
+  for (const planId of stepPlans) {
     await getSupabase().from('refs').insert({
       id: randomUUID(),
       flow_run_id: flowRunId,
       step_run_id: stepRunId,
-      rule_id: plan.id,
+      rule_id: planId,
       key: 'plan',
-      value: plan.status,
+      value: 'referenced',
       source: 'pro_check',
       created_at: new Date().toISOString(),
     }).maybeSingle();
