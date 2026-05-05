@@ -4,86 +4,45 @@ import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
 /**
- * Pause the flow run and step run with a given error message and store
- * the pro_check result (including correction_flow if present) in result.
- */
-async function pauseFlow(
-  stepRunId: string,
-  flowRunId: string,
-  error: string,
-  trace: Record<string, any>,
-  proCheckResult?: any,
-): Promise<void> {
-  const { getSupabase } = await import('../supabase');
-  const update: Record<string, any> = {
-    status: 'paused',
-    error,
-    trace: { ...trace, step: 'paused_by_procheck' },
-  };
-  if (proCheckResult) {
-    update.result = { pro_check: proCheckResult };
-  }
-  await getSupabase().from('step_runs').update(update).eq('id', stepRunId);
-  await getSupabase().from('flow_runs').update({
-    status: 'paused',
-    paused_at_step_id: stepRunId,
-  }).eq('id', flowRunId);
-}
-
-/**
- * Unified pro_check handler: call pro_check on the given output, then
- * if "stop", pause the step and store the pro_check result (including
- * correction_flow if present) in the step run's result field.
- * Does NOT auto-start any correction flow — the UI reads result.pro_check
- * and manually starts the correction flow via /start.
- * Returns true if the flow was paused.
+ * Call pro_check on the given output, store request/response in step run result,
+ * and if "stop", pause the step and flow run (do NOT fail, do NOT auto-start correction).
+ * Returns 'continue' or 'paused'.
  */
 async function callProCheckOnOutput(
+  stepRun: any,
   output: any,
-  stepRunId: string,
-  flowRunId: string,
-  step: any,
-  context: Record<string, any>,
-): Promise<boolean> {
+  rules: string[],
+  plans: string[],
+): Promise<'continue' | 'paused'> {
   const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
 
-  // Collect rules and plans from step metadata
-  const rules: string[] = [];
-  const plans: string[] = [];
-  if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-  if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
-  if (context.plan_id) plans.push(context.plan_id);
-
-  const proCheckPayload = { response: output, rules, plans };
-
-  // Fetch the step run to get current result
-  const { data: stepRun } = await getSupabase()
-    .from('step_runs')
-    .select('*')
-    .eq('id', stepRunId)
-    .maybeSingle();
-  if (!stepRun) {
-    console.warn('[engine] step run not found for pro_check');
-    return false;
-  }
-
-  // Store the pro_check request
-  stepRun.result = {
-    ...(stepRun.result || {}),
-    pro_check_request: proCheckPayload,
+  const proCheckRequest = {
+    response: output,
+    rules,
+    plans,
+    step_run_id: stepRun.id,
   };
-  await updateStepRun(stepRun.id, { result: stepRun.result });
 
-  let proCheckResult: any = { status: 'pass' };
+  // ----- STORE REQUEST IMMEDIATELY -----
+  const baseResult = stepRun.result && typeof stepRun.result === 'object' ? stepRun.result : {};
+  const resultWithRequest = {
+    ...baseResult,
+    pro_check_request: proCheckRequest,
+  };
+  await updateStepRun(stepRun.id, { result: resultWithRequest });
+  stepRun.result = resultWithRequest; // keep in-memory copy consistent
+
+  // ----- CALL PROLOG -----
+  let proCheckResponse: any = { status: 'pass' };
   let prologReachable = true;
   try {
     const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(proCheckPayload),
+      body: JSON.stringify(proCheckRequest),
     });
     if (prologRes.ok) {
-      proCheckResult = await prologRes.json();
+      proCheckResponse = await prologRes.json();
     } else {
       prologReachable = false;
     }
@@ -91,36 +50,44 @@ async function callProCheckOnOutput(
     console.warn('[engine] pro_check call failed:', err);
     prologReachable = false;
     // Store error in step run result
-    stepRun.result = {
+    const resultWithError = {
       ...stepRun.result,
       pro_check_error: { message: err.message, stack: err.stack },
     };
-    await updateStepRun(stepRun.id, { result: stepRun.result });
+    await updateStepRun(stepRun.id, { result: resultWithError });
+    stepRun.result = resultWithError;
   }
 
-  // Store pro_check response in step run result
-  stepRun.result = {
+  // ----- STORE RESPONSE IMMEDIATELY -----
+  const resultWithResponse = {
     ...stepRun.result,
-    pro_check: proCheckResult,
+    pro_check: proCheckResponse,
   };
-  await updateStepRun(stepRun.id, { result: stepRun.result });
+  await updateStepRun(stepRun.id, { result: resultWithResponse });
+  stepRun.result = resultWithResponse;
 
-  if (proCheckResult.status === 'stop') {
-    await pauseFlow(stepRunId, flowRunId, 'pro_check stop', { pro_check: proCheckResult });
-    return true; // signal pause
+  // ----- HANDLE STOP -----
+  if (proCheckResponse.status === 'stop') {
+    // Pause the step and the flow run – DO NOT FAIL
+    await updateStepRun(stepRun.id, { status: 'paused' });
+    await updateFlowRun(stepRun.flow_run_id, {
+      status: 'paused',
+      paused_at_step_id: stepRun.id,
+    });
+    return 'paused';
   }
 
   if (!prologReachable) {
     // Prolog unreachable — fail-safe pause
-    await pauseFlow(stepRunId, flowRunId, 'prolog unreachable, paused for Mo', {
-      output,
-      pro_check: proCheckResult,
-      prolog_reachable: false,
+    await updateStepRun(stepRun.id, { status: 'paused' });
+    await updateFlowRun(stepRun.flow_run_id, {
+      status: 'paused',
+      paused_at_step_id: stepRun.id,
     });
-    return true;
+    return 'paused';
   }
 
-  return false; // continue normal execution
+  return 'continue';
 }
 
 async function handleApiFailure(
@@ -131,7 +98,7 @@ async function handleApiFailure(
   stepRunId: string,
   flowRunId: string,
   step: any,
-): Promise<boolean> {
+): Promise<'continue' | 'paused'> {
   const errorMsg = `API ${statusCode}: ${(responseBody || '').slice(0, 500)}`;
   const apiError = { api_error: { statusCode, body: responseBody, url } };
 
@@ -139,17 +106,26 @@ async function handleApiFailure(
   // Merge with any existing result (e.g. from a previous partial write)
   const { data: existingStepRun } = await getSupabase()
     .from('step_runs')
-    .select('result')
+    .select('*')
     .eq('id', stepRunId)
     .maybeSingle();
-  const existingResult = existingStepRun?.result || {};
-  await getSupabase().from('step_runs').update({
+  if (!existingStepRun) return 'continue';
+  const existingResult = existingStepRun.result && typeof existingStepRun.result === 'object' ? existingStepRun.result : {};
+  await updateStepRun(stepRunId, {
     error: errorMsg,
     result: { ...existingResult, ...apiError },
-  }).eq('id', stepRunId);
+  });
+  existingStepRun.result = { ...existingResult, ...apiError };
+
+  // Collect rules and plans from step metadata
+  const rules: string[] = [];
+  const plans: string[] = [];
+  if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+  if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+  if (context.plan_id) plans.push(context.plan_id);
 
   // Let pro_check decide if the step should pause or fail
-  return callProCheckOnOutput(apiError, stepRunId, flowRunId, step, context);
+  return callProCheckOnOutput(existingStepRun, apiError, rules, plans);
 }
 
 function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
@@ -354,8 +330,20 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
     // Call pro_check on the validation error — Prolog may decide a correction flow is needed
     const zodOutput = { zod_error: zodError, ai_response: aiResponse };
-    const paused = await callProCheckOnOutput(zodOutput, stepRunId, flowRunId, step, context);
-    if (paused) return { status: 'paused', stepRunId };
+    const { data: stepRunForZod } = await getSupabase()
+      .from('step_runs')
+      .select('*')
+      .eq('id', stepRunId)
+      .maybeSingle();
+    if (stepRunForZod) {
+      const rules: string[] = [];
+      const plans: string[] = [];
+      if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+      if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+      if (context.plan_id) plans.push(context.plan_id);
+      const proCheckResult = await callProCheckOnOutput(stepRunForZod, zodOutput, rules, plans);
+      if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+    }
     // If pro_check passed (or no correction), fail the step
     await updateStepRun(stepRunId, {
       status: 'failed',
@@ -389,8 +377,20 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   }
 
   // Step 5 — Call pro_check on the validated AI response output
-  const paused = await callProCheckOnOutput(validated, stepRunId, flowRunId, step, context);
-  if (paused) return { status: 'paused', stepRunId };
+  const { data: stepRunForProCheck } = await getSupabase()
+    .from('step_runs')
+    .select('*')
+    .eq('id', stepRunId)
+    .maybeSingle();
+  if (stepRunForProCheck) {
+    const rules: string[] = [];
+    const plans: string[] = [];
+    if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+    if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+    if (context.plan_id) plans.push(context.plan_id);
+    const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, validated, rules, plans);
+    if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+  }
 
   // Step 6 — Execute actions (ONLY after pro_check pass)
   for (const action of actions) {
@@ -486,15 +486,22 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     if (!res.ok) {
       const bodyStr = responseBody || '';
       const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
-      if (shouldPause) {
+      if (shouldPause === 'paused') {
         // Signal pause to outer runFlow without throwing
         return { status: 'paused', stepRunId };
       }
       // pro_check passed despite API error — mark step failed and stop
+      // Merge result to preserve any existing fields (e.g. pro_check_request)
+      const { data: failedStepRun } = await getSupabase()
+        .from('step_runs')
+        .select('result')
+        .eq('id', stepRunId)
+        .maybeSingle();
+      const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
       await updateStepRun(stepRunId, {
         status: 'failed',
         error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
-        result: { api_error: { statusCode: res.status, body: bodyStr, url } },
+        result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
       });
       throw new Error(`API call failed: ${url} ${res.status}`);
     }
@@ -503,8 +510,20 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
 
   // Step 7 — Call pro_check on the final output (after all actions)
   const finalOutput = { ...validated, actions_completed: actions.map(a => a.endpoint) };
-  const pausedAfterActions = await callProCheckOnOutput(finalOutput, stepRunId, flowRunId, step, context);
-  if (pausedAfterActions) return { status: 'paused', stepRunId };
+  const { data: stepRunAfterActions } = await getSupabase()
+    .from('step_runs')
+    .select('*')
+    .eq('id', stepRunId)
+    .maybeSingle();
+  if (stepRunAfterActions) {
+    const rules: string[] = [];
+    const plans: string[] = [];
+    if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+    if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+    if (context.plan_id) plans.push(context.plan_id);
+    const proCheckResult = await callProCheckOnOutput(stepRunAfterActions, finalOutput, rules, plans);
+    if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+  }
 
   // Step 8 — Persist everything
   const trace = {
