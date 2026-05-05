@@ -1,9 +1,41 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { getSupabase } from '../supabase';
 
 
 @Controller('api/step-runs')
 export class ApiStepRunsController {
+  @Get(':id')
+  async get(@Param('id') id: string) {
+    const { data: stepRun, error } = await getSupabase()
+      .from('step_runs')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !stepRun) {
+      return { error: 'Step run not found' };
+    }
+
+    // Fetch step definition
+    const { data: step } = await getSupabase()
+      .from('steps')
+      .select('*')
+      .eq('id', stepRun.step_id)
+      .single();
+
+    // Fetch conditions
+    const { data: conditions } = await getSupabase()
+      .from('step_conditions')
+      .select('*')
+      .eq('step_id', stepRun.step_id);
+
+    return {
+      ...stepRun,
+      step: step || null,
+      conditions: conditions || [],
+    };
+  }
+
   @Get()
   async list(@Query('flow_run_id') flowRunId: string) {
     const { data: stepRuns } = await getSupabase()
