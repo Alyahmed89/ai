@@ -273,7 +273,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
   }
 }
 
-async function runStep(step: any, flowRunId: string, flowRun: any): Promise<string | null | { status: 'paused'; stepRunId: string }> {
+async function runStep(step: any, flowRunId: string, flowRun: any): Promise<string | null | { status: 'paused' | 'failed'; stepRunId: string }> {
   console.log(`[engine] runStep start stepRef=${step.ref} flowRunId=${flowRunId}`);
   const stepRunId = await createStepRun(flowRunId, step.id);
   console.log(`[engine] runStep stepRunId=${stepRunId}`);
@@ -313,7 +313,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     setTimeout(() => reject(new Error('Step execution timed out after 60s')), STEP_TIMEOUT_MS);
   });
 
-  const executionPromise = (async (): Promise<string | { status: 'paused'; stepRunId: string } | null> => {
+  const executionPromise = (async (): Promise<string | { status: 'paused' | 'failed'; stepRunId: string } | null> => {
     let aiResponse: any;
     try {
       aiResponse = await callLlm(step.system_message || null, userPrompt);
@@ -476,17 +476,23 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
         });
 
         // Call pro_check with the error (same pattern as handleApiFailure)
-        const proCheckResult = await callProCheckOnOutput(
-          { api_error: apiError },
-          context,
-          stepRunId,
-          flowRunId,
-          step,
-        );
-        if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+        const { data: failedStepRun } = await getSupabase()
+          .from('step_runs')
+          .select('*')
+          .eq('id', stepRunId)
+          .maybeSingle();
+        if (failedStepRun) {
+          const rules: string[] = [];
+          const plans: string[] = [];
+          if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+          if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+          if (context.plan_id) plans.push(context.plan_id);
+          const proCheckResult = await callProCheckOnOutput(failedStepRun, { api_error: apiError }, rules, plans);
+          if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+        }
 
         // pro_check passed despite error — step stays failed
-        return { status: 'failed', stepRunId };
+        return { status: 'failed' as const, stepRunId };
       }
 
       // Persist to api_calls table
