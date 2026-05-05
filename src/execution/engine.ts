@@ -423,37 +423,73 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
         headers = { ...(endpoint.headers || {}), ...headers };
       }
 
+      const httpMethod = (action.method || 'GET').toUpperCase();
       let mergedPayload: any = undefined;
 
-      // Start from endpoint default (if exists)
-      if (endpoint?.sample_request) {
-        mergedPayload = { ...endpoint.sample_request };
+      // Only build payload for methods that accept a body
+      if (httpMethod !== 'GET' && httpMethod !== 'HEAD') {
+        // Start from endpoint default (if exists)
+        if (endpoint?.sample_request) {
+          mergedPayload = { ...endpoint.sample_request };
+        }
+
+        // Apply AI payload (override defaults)
+        if (action.payload) {
+          const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
+          mergedPayload = mergedPayload
+            ? deepMerge(mergedPayload, resolvedPayload)
+            : resolvedPayload;
+        }
       }
 
-      // Apply AI payload (override defaults)
-      if (action.payload) {
-        const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
-        mergedPayload = mergedPayload
-          ? deepMerge(mergedPayload, resolvedPayload)
-          : resolvedPayload;
-      }
+      console.log(`[engine] executing action: ${httpMethod} ${url}`);
 
-      console.log(`[engine] executing action: ${action.method || 'GET'} ${url}`);
-      const res = await fetch(url, {
-        method: (action.method || 'GET').toUpperCase(),
-        headers,
-        body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
-      });
-
+      let res: Response;
       let responseBody: string | null = null;
       try {
-        responseBody = await res.text();
-      } catch {
-        // ignore read errors
+        res = await fetch(url, {
+          method: httpMethod,
+          headers,
+          body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
+        });
+        try {
+          responseBody = await res.text();
+        } catch {
+          // ignore read errors
+        }
+      } catch (err: any) {
+        // Step-level catch: do NOT let action errors bubble to flow run
+        const errorMsg = err?.message || String(err);
+        console.error(`[engine] action execution error: ${errorMsg}`, err);
+
+        // Store error in step run
+        const apiError = {
+          url,
+          method: httpMethod,
+          error: errorMsg,
+          statusCode: 0,
+        };
+        await updateStepRun(stepRunId, {
+          status: 'failed',
+          error: errorMsg,
+          result: { api_error: apiError },
+        });
+
+        // Call pro_check with the error (same pattern as handleApiFailure)
+        const proCheckResult = await callProCheckOnOutput(
+          { api_error: apiError },
+          context,
+          stepRunId,
+          flowRunId,
+          step,
+        );
+        if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+
+        // pro_check passed despite error — step stays failed
+        return { status: 'failed', stepRunId };
       }
 
       // Persist to api_calls table
-      const httpMethod = (action.method || 'GET').toUpperCase();
       await getSupabase().from('api_calls').insert({
         id: randomUUID(),
         flow_run_id: flowRunId,
