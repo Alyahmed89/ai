@@ -59,10 +59,9 @@ async function handleApiFailure(
     await getSupabase().from('variables').insert(variables);
 
     // Fire correction flow start asynchronously
-    fetch(`${process.env.BACKEND_URL}/start`, {
+    fetch(`${process.env.BACKEND_URL}/flows/${correctionFlowId}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ flowId: correctionFlowId, flowRunId: correctionFlowRunId, variables: variables.map(v => ({ name: v.key, value: v.value })) })
     }).catch(err => console.error('Failed to start correction flow:', err));
 
     // Pause the original flow run and step run
@@ -395,15 +394,10 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     ];
     await getSupabase().from('variables').insert(variables);
     
-    // Start the correction flow (by queuing execution – we can call startFlow directly or rely on the engine to pick it up)
-    // For simplicity, we'll call the internal startFlow function (assuming it's in scope). If not, we'll set status to 'pending'.
-    // But we cannot easily call startFlow here. Alternative: set correction flow run status to 'pending' and let a separate worker run it.
-    // However, to keep it synchronous, we'll invoke the correction flow's first step manually.
-    // The safest: call /start endpoint via fetch (async)
-    fetch(`${process.env.BACKEND_URL}/start`, {
+    // Start the correction flow via the /flows/:id/start endpoint
+    fetch(`${process.env.BACKEND_URL}/flows/${correctionFlowId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flowId: correctionFlowId, flowRunId: correctionFlowRunId, variables: variables.map(v => ({ name: v.key, value: v.value })) })
     }).catch(err => console.error('Failed to start correction flow:', err));
     
     // Pause the original flow run
