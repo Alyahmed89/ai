@@ -33,15 +33,63 @@ async function handleApiFailure(
     prologReachable = false;
   }
 
-  // Pause if prolog says stop, OR if prolog is unreachable (fail-safe)
-  if (proCheckResult.status === 'stop' || !prologReachable) {
+  // If prolog says stop, start the correction flow instead of just pausing
+  if (proCheckResult.status === 'stop') {
     const { getSupabase } = await import('../supabase');
-    const pauseReason = !prologReachable
-      ? `API ${statusCode}: prolog unreachable, paused for Mo`
-      : `API ${statusCode}: paused by pro_check`;
+    const correctionFlowId = 'b5f67e0f-014d-410f-bacf-eded371cbd98';
+    const correctionFlowRunId = randomUUID();
+    const ts = new Date().toISOString();
+
+    // Create correction flow run
+    await getSupabase().from('flow_runs').insert({
+      id: correctionFlowRunId,
+      flow_id: correctionFlowId,
+      status: 'pending',
+      created_at: ts,
+      updated_at: ts,
+    });
+
+    // Set variables for the correction flow
+    const variables = [
+      { id: randomUUID(), key: 'var_failed_step_run_id', value: stepRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+      { id: randomUUID(), key: 'var_pro_check_result', value: JSON.stringify(proCheckResult), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+      { id: randomUUID(), key: 'var_original_flow_run_id', value: flowRunId, scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+      { id: randomUUID(), key: 'var_error_details', value: JSON.stringify({ api_error: errorDetails, pro_check: proCheckResult }), scope: 'flow_run', flow_run_id: correctionFlowRunId, created_at: ts },
+    ];
+    await getSupabase().from('variables').insert(variables);
+
+    // Fire correction flow start asynchronously
+    fetch(`${process.env.BACKEND_URL}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flowId: correctionFlowId, flowRunId: correctionFlowRunId, variables: variables.map(v => ({ name: v.key, value: v.value })) })
+    }).catch(err => console.error('Failed to start correction flow:', err));
+
+    // Pause the original flow run and step run
+    await getSupabase().from('flow_runs').update({
+      status: 'paused',
+      paused_at_step_id: stepRunId,
+    }).eq('id', flowRunId);
     await getSupabase().from('step_runs').update({
       status: 'paused',
-      error: pauseReason,
+      error: 'pro_check stop: correction flow started',
+      trace: {
+        api_error: errorDetails,
+        pro_check: proCheckResult,
+        prolog_reachable: prologReachable,
+        step: 'paused_by_procheck_correction',
+      },
+    }).eq('id', stepRunId);
+
+    return true; // signal pause
+  }
+
+  // If prolog is unreachable, just pause (fail-safe, no correction flow)
+  if (!prologReachable) {
+    const { getSupabase } = await import('../supabase');
+    await getSupabase().from('step_runs').update({
+      status: 'paused',
+      error: `API ${statusCode}: prolog unreachable, paused for Mo`,
       trace: {
         api_error: errorDetails,
         pro_check: proCheckResult,
@@ -53,8 +101,9 @@ async function handleApiFailure(
       status: 'paused',
       paused_at_step_id: stepRunId,
     }).eq('id', flowRunId);
-    return true; // signal pause
+    return true;
   }
+
   return false; // signal continue (fail normally)
 }
 
