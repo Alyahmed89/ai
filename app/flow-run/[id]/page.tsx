@@ -216,23 +216,26 @@ export default function FlowRunPage() {
     setCorrectionStarting(stepRun.id)
     try {
       const cf = proCheck.correction_flow
-      const variables: Record<string, unknown> = {}
+      const inputVariables: Record<string, unknown> = {}
       for (const v of cf.variables) {
-        variables[v.name] = v.value
+        inputVariables[v.name] = v.value
       }
-      variables.var_original_flow_run_id = id
+      inputVariables.var_original_flow_run_id = id
 
       const res = await fetch(`${API_BASE}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          flow_id: cf.flow_id,
-          variables,
+          flowId: cf.flow_id,
+          input_variables: inputVariables,
         }),
       })
 
       if (!res.ok) {
-        console.error('Failed to start correction flow', await res.text())
+        const errText = await res.text()
+        console.error('Failed to start correction flow', errText)
+        alert(`Failed to start correction flow: ${res.status} ${errText}`)
+        setCorrectionStarting(null)
         return
       }
 
@@ -242,6 +245,7 @@ export default function FlowRunPage() {
       }
     } catch (e) {
       console.error('Failed to start correction flow', e)
+      alert(`Error starting correction flow: ${e}`)
     }
     setCorrectionStarting(null)
   }
