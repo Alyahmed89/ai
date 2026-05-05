@@ -72,17 +72,19 @@ async function callProCheckOnOutput(
     prologReachable = false;
   }
 
-  // Store pro_check result in step run's result, merging with any existing fields (e.g. api_error)
-  const { getSupabase } = await import('../supabase');
-  const { data: existingStepRun } = await getSupabase()
+  // Store pro_check response in step run result
+  const { data: stepRun } = await getSupabase()
     .from('step_runs')
-    .select('result')
+    .select('*')
     .eq('id', stepRunId)
     .maybeSingle();
-  const existingResult = existingStepRun?.result || {};
-  await getSupabase().from('step_runs').update({
-    result: { ...existingResult, pro_check: proCheckResult },
-  }).eq('id', stepRunId);
+  if (stepRun) {
+    stepRun.result = {
+      ...(stepRun.result || {}),
+      pro_check: proCheckResult,
+    };
+    await updateStepRun(stepRun.id, { result: stepRun.result });
+  }
 
   if (proCheckResult.status === 'stop') {
     const hasCorrection = !!(proCheckResult.correction_flow && proCheckResult.correction_flow.flow_id);
