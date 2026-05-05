@@ -685,7 +685,7 @@ async function updateStepRun(stepRunId: string, data: any): Promise<void> {
   if (error) throw new Error(`Failed to update step run: ${error.message}`);
 }
 
-export async function createFlowRun(flowId: string): Promise<string> {
+export async function createFlowRun(flowId: string, inputVariables?: Record<string, any>): Promise<string> {
   const id = randomUUID();
   const { error } = await getSupabase()
     .from('flow_runs')
@@ -697,6 +697,27 @@ export async function createFlowRun(flowId: string): Promise<string> {
       updated_at: new Date().toISOString(),
     });
   if (error) throw new Error(`Failed to create flow run: ${error.message}`);
+
+  // Store input variables as flow_run-scoped variable records
+  if (inputVariables && typeof inputVariables === 'object') {
+    for (const [key, value] of Object.entries(inputVariables)) {
+      const { error: varError } = await getSupabase()
+        .from('variables')
+        .insert({
+          id: randomUUID(),
+          flow_run_id: id,
+          step_run_id: null,
+          key,
+          value: typeof value === 'string' ? value : JSON.stringify(value),
+          scope: 'flow_run',
+          created_at: new Date().toISOString(),
+        });
+      if (varError) {
+        console.warn(`[engine] failed to store input variable ${key}:`, varError.message);
+      }
+    }
+  }
+
   return id;
 }
 
