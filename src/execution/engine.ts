@@ -4,107 +4,26 @@ import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
 /**
- * Start a correction flow from pro_check response and pause the original flow.
- * The correction_flow object must contain { flow_id, variables }.
- */
-async function startCorrectionFlowFromProCheck(
-  correctionFlow: { flow_id: string; variables: Array<{ key: string; value: string }> },
-  stepRunId: string,
-  flowRunId: string,
-  proCheckResult: any,
-  output: any,
-): Promise<void> {
-  const { getSupabase } = await import('../supabase');
-  const correctionFlowRunId = randomUUID();
-  const ts = new Date().toISOString();
-
-  // Create correction flow run
-  await getSupabase().from('flow_runs').insert({
-    id: correctionFlowRunId,
-    flow_id: correctionFlow.flow_id,
-    status: 'pending',
-    created_at: ts,
-    updated_at: ts,
-  });
-
-  // Insert variables from pro_check response
-  const varRows = (correctionFlow.variables || []).map(v => ({
-    id: randomUUID(),
-    key: v.key,
-    value: v.value,
-    scope: 'flow_run' as const,
-    flow_run_id: correctionFlowRunId,
-    created_at: ts,
-  }));
-  // Also include standard context variables
-  const standardVars = [
-    { key: 'var_failed_step_run_id', value: stepRunId },
-    { key: 'var_pro_check_result', value: JSON.stringify(proCheckResult) },
-    { key: 'var_original_flow_run_id', value: flowRunId },
-    { key: 'var_error_details', value: JSON.stringify({ output, pro_check: proCheckResult }) },
-  ];
-  for (const sv of standardVars) {
-    if (!varRows.some(r => r.key === sv.key)) {
-      varRows.push({
-        id: randomUUID(),
-        key: sv.key,
-        value: sv.value,
-        scope: 'flow_run' as const,
-        flow_run_id: correctionFlowRunId,
-        created_at: ts,
-      });
-    }
-  }
-  await getSupabase().from('variables').insert(varRows);
-
-  // Start the correction flow via POST /start
-  (async () => {
-    try {
-      const backendUrl = process.env.BACKEND_URL || 'https://ai.anyapp.cfd';
-      await fetch(`${backendUrl}/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flowId: correctionFlow.flow_id, flowRunId: correctionFlowRunId }),
-      });
-    } catch (err) {
-      console.error('[engine] Failed to start correction flow:', err);
-    }
-  })();
-
-  // Pause the original flow run
-  await getSupabase().from('flow_runs').update({
-    status: 'paused',
-    paused_at_step_id: stepRunId,
-  }).eq('id', flowRunId);
-
-  // Mark the step run as paused
-  await getSupabase().from('step_runs').update({
-    status: 'paused',
-    error: 'pro_check stop: correction flow started',
-    trace: {
-      output,
-      pro_check: proCheckResult,
-      correction_flow_id: correctionFlow.flow_id,
-      step: 'paused_by_procheck_correction',
-    },
-  }).eq('id', stepRunId);
-}
-
-/**
- * Pause the flow run and step run with a given error message.
+ * Pause the flow run and step run with a given error message and store
+ * the pro_check result (including correction_flow if present) in result.
  */
 async function pauseFlow(
   stepRunId: string,
   flowRunId: string,
   error: string,
   trace: Record<string, any>,
+  proCheckResult?: any,
 ): Promise<void> {
   const { getSupabase } = await import('../supabase');
-  await getSupabase().from('step_runs').update({
+  const update: Record<string, any> = {
     status: 'paused',
     error,
     trace: { ...trace, step: 'paused_by_procheck' },
-  }).eq('id', stepRunId);
+  };
+  if (proCheckResult) {
+    update.result = { pro_check: proCheckResult };
+  }
+  await getSupabase().from('step_runs').update(update).eq('id', stepRunId);
   await getSupabase().from('flow_runs').update({
     status: 'paused',
     paused_at_step_id: stepRunId,
@@ -113,7 +32,10 @@ async function pauseFlow(
 
 /**
  * Unified pro_check handler: call pro_check on the given output, then
- * if "stop" with correction_flow, start that correction flow and pause.
+ * if "stop", pause the step and store the pro_check result (including
+ * correction_flow if present) in the step run's result field.
+ * Does NOT auto-start any correction flow — the UI reads result.pro_check
+ * and manually starts the correction flow via /start.
  * Returns true if the flow was paused.
  */
 async function callProCheckOnOutput(
@@ -151,22 +73,16 @@ async function callProCheckOnOutput(
   }
 
   if (proCheckResult.status === 'stop') {
-    // If pro_check provides a correction_flow, start it
-    if (proCheckResult.correction_flow && proCheckResult.correction_flow.flow_id) {
-      await startCorrectionFlowFromProCheck(
-        proCheckResult.correction_flow,
-        stepRunId,
-        flowRunId,
-        proCheckResult,
-        output,
-      );
-    } else {
-      // No correction flow from pro_check — pause with explanation
-      await pauseFlow(stepRunId, flowRunId, 'pro_check stop: no correction available', {
-        output,
-        pro_check: proCheckResult,
-      });
-    }
+    const hasCorrection = !!(proCheckResult.correction_flow && proCheckResult.correction_flow.flow_id);
+    await pauseFlow(
+      stepRunId,
+      flowRunId,
+      hasCorrection
+        ? 'pro_check stop: correction flow available (manual start)'
+        : 'pro_check stop: no correction available',
+      { output, pro_check: proCheckResult },
+      proCheckResult,
+    );
     return true; // signal pause
   }
 
