@@ -283,33 +283,6 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   const renderedInstructions = step.instructions ? resolveVariables(step.instructions, context) : null;
   console.log(`[engine] rendered_instructions:`, renderedInstructions);
 
-  // Step 1.5 — Execute pre-defined context actions BEFORE the AI call
-  // These are actions defined in step.expected_response.actions that fetch data
-  // the AI needs to see. Results are stored in context variables.
-  if (step.expected_response?.actions) {
-    const preActions = step.expected_response.actions.filter((a: any) => a.type === 'api');
-    for (const action of preActions) {
-      const actionResult = await executeSingleAction(action, context, stepRunId, flowRunId, step);
-      if (actionResult === 'paused') {
-        return { status: 'paused', stepRunId };
-      }
-      if (actionResult && typeof actionResult === 'object') {
-        // Store the full response in context so the AI can reference it
-        const varName = `var_failed_step_data`;
-        await getSupabase().from('variables').insert({
-          id: randomUUID(),
-          flow_run_id: flowRunId,
-          step_run_id: stepRunId,
-          key: varName,
-          value: JSON.stringify(actionResult),
-          scope: 'step_run',
-          created_at: new Date().toISOString(),
-        }).maybeSingle();
-        context[varName] = actionResult;
-      }
-    }
-  }
-
   // Step 2 — Build LLM prompt with endpoint samples
   const schemaJson = JSON.stringify(step.expected_response, null, 2);
 
@@ -422,13 +395,117 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   // Step 6 — Execute actions (ONLY after pro_check pass)
   for (const action of actions) {
     if (action.type !== 'api') continue;
-    const actionResult = await executeSingleAction(action, context, stepRunId, flowRunId, step);
-    if (actionResult === 'paused') {
-      return { status: 'paused', stepRunId };
+
+    // Resolve variables just before each action so subsequent actions
+    // can use variables set by previous actions in the same step
+    let url = normalizeValue(resolveVariables(action.endpoint, context));
+    let headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...normalizeValue(resolveVariables(action.headers || {}, context)),
+    };
+
+    const { data: endpoint } = await getSupabase()
+      .from('endpoint_registry')
+      .select('*')
+      .eq('name', action.endpoint)
+      .maybeSingle();
+
+    if (endpoint) {
+      url = normalizeValue(resolveVariables(endpoint.url, context));
+      headers = { ...(endpoint.headers || {}), ...headers };
     }
-    if (actionResult === 'failed') {
-      throw new Error(`API call failed: ${action.endpoint}`);
+
+    let mergedPayload: any = undefined;
+
+    // Start from endpoint default (if exists)
+    if (endpoint?.sample_request) {
+      mergedPayload = { ...endpoint.sample_request };
     }
+
+    // Apply AI payload (override defaults)
+    if (action.payload) {
+      const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
+      mergedPayload = mergedPayload
+        ? deepMerge(mergedPayload, resolvedPayload)
+        : resolvedPayload;
+    }
+
+    console.log(`[engine] executing action: ${action.method || 'GET'} ${url}`);
+    const res = await fetch(url, {
+      method: (action.method || 'GET').toUpperCase(),
+      headers,
+      body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
+    });
+
+    let responseBody: string | null = null;
+    try {
+      responseBody = await res.text();
+    } catch {
+      // ignore read errors
+    }
+
+    // Persist to api_calls table
+    const httpMethod = (action.method || 'GET').toUpperCase();
+    await getSupabase().from('api_calls').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      endpoint_name: url,
+      http_method: httpMethod,
+      request_url: url,
+      request_headers: headers,
+      request_body: mergedPayload,
+      response_status: res.status,
+      response_body: responseBody,
+      success: res.ok,
+      error: res.ok ? null : `HTTP ${res.status}`,
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+
+    // Auto-store response as variable for subsequent steps
+    if (res.ok && responseBody) {
+      try {
+        const parsed = JSON.parse(responseBody);
+        const varName = `api_response_${action.endpoint}`;
+        await getSupabase().from('variables').insert({
+          id: randomUUID(),
+          flow_run_id: flowRunId,
+          step_run_id: stepRunId,
+          key: varName,
+          value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
+          scope: 'step_run',
+          created_at: new Date().toISOString(),
+        }).maybeSingle();
+        // Also add to running context so subsequent actions in same step can use it
+        context[varName] = parsed;
+      } catch {
+        // response is not JSON, skip auto-store
+      }
+    }
+
+    if (!res.ok) {
+      const bodyStr = responseBody || '';
+      const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
+      if (shouldPause === 'paused') {
+        // Signal pause to outer runFlow without throwing
+        return { status: 'paused', stepRunId };
+      }
+      // pro_check passed despite API error — mark step failed and stop
+      // Merge result to preserve any existing fields (e.g. pro_check_request)
+      const { data: failedStepRun } = await getSupabase()
+        .from('step_runs')
+        .select('result')
+        .eq('id', stepRunId)
+        .maybeSingle();
+      const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
+      await updateStepRun(stepRunId, {
+        status: 'failed',
+        error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
+        result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
+      });
+      throw new Error(`API call failed: ${url} ${res.status}`);
+    }
+    console.log(`[engine] action completed: ${url} ${res.status}`);
   }
 
   // Step 7 — Call pro_check on the final output (after all actions)
@@ -794,137 +871,4 @@ function deepMerge(base: any, override: any): any {
   }
 
   return result;
-}
-
-/**
- * Execute a single API action and return the parsed response body on success,
- * 'paused' if the action caused a pause (via pro_check), or 'failed' if the
- * action failed and pro_check did not pause.
- */
-async function executeSingleAction(
-  action: any,
-  context: Record<string, any>,
-  stepRunId: string,
-  flowRunId: string,
-  step: any,
-): Promise<any> {
-  // Resolve variables just before each action so subsequent actions
-  // can use variables set by previous actions in the same step
-  let url = normalizeValue(resolveVariables(action.endpoint, context));
-  let headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...normalizeValue(resolveVariables(action.headers || {}, context)),
-  };
-
-  const { data: endpoint } = await getSupabase()
-    .from('endpoint_registry')
-    .select('*')
-    .eq('name', action.endpoint)
-    .maybeSingle();
-
-  if (endpoint) {
-    url = normalizeValue(resolveVariables(endpoint.url, context));
-    headers = { ...(endpoint.headers || {}), ...headers };
-  }
-
-  let mergedPayload: any = undefined;
-
-  // Start from endpoint default (if exists)
-  if (endpoint?.sample_request) {
-    mergedPayload = { ...endpoint.sample_request };
-  }
-
-  // Apply AI payload (override defaults)
-  if (action.payload) {
-    const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
-    mergedPayload = mergedPayload
-      ? deepMerge(mergedPayload, resolvedPayload)
-      : resolvedPayload;
-  }
-
-  console.log(`[engine] executing action: ${action.method || 'GET'} ${url}`);
-  const res = await fetch(url, {
-    method: (action.method || 'GET').toUpperCase(),
-    headers,
-    body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
-  });
-
-  let responseBody: string | null = null;
-  try {
-    responseBody = await res.text();
-  } catch {
-    // ignore read errors
-  }
-
-  // Persist to api_calls table
-  const httpMethod = (action.method || 'GET').toUpperCase();
-  await getSupabase().from('api_calls').insert({
-    id: randomUUID(),
-    flow_run_id: flowRunId,
-    step_run_id: stepRunId,
-    endpoint_name: url,
-    http_method: httpMethod,
-    request_url: url,
-    request_headers: headers,
-    request_body: mergedPayload,
-    response_status: res.status,
-    response_body: responseBody,
-    success: res.ok,
-    error: res.ok ? null : `HTTP ${res.status}`,
-    created_at: new Date().toISOString(),
-  }).maybeSingle();
-
-  // Auto-store response as variable for subsequent steps
-  if (res.ok && responseBody) {
-    try {
-      const parsed = JSON.parse(responseBody);
-      const varName = `api_response_${action.endpoint}`;
-      await getSupabase().from('variables').insert({
-        id: randomUUID(),
-        flow_run_id: flowRunId,
-        step_run_id: stepRunId,
-        key: varName,
-        value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
-        scope: 'step_run',
-        created_at: new Date().toISOString(),
-      }).maybeSingle();
-      // Also add to running context so subsequent actions in same step can use it
-      context[varName] = parsed;
-    } catch {
-      // response is not JSON, skip auto-store
-    }
-  }
-
-  if (!res.ok) {
-    const bodyStr = responseBody || '';
-    const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
-    if (shouldPause === 'paused') {
-      return 'paused';
-    }
-    // pro_check passed despite API error — mark step failed and stop
-    // Merge result to preserve any existing fields (e.g. pro_check_request)
-    const { data: failedStepRun } = await getSupabase()
-      .from('step_runs')
-      .select('result')
-      .eq('id', stepRunId)
-      .maybeSingle();
-    const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
-    await updateStepRun(stepRunId, {
-      status: 'failed',
-      error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
-      result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
-    });
-    return 'failed';
-  }
-  console.log(`[engine] action completed: ${url} ${res.status}`);
-
-  // Return parsed response body on success
-  if (responseBody) {
-    try {
-      return JSON.parse(responseBody);
-    } catch {
-      return responseBody;
-    }
-  }
-  return null;
 }
