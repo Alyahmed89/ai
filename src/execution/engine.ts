@@ -58,11 +58,14 @@ async function handleApiFailure(
     ];
     await getSupabase().from('variables').insert(variables);
 
-    // Fire correction flow start asynchronously
-    fetch(`${process.env.BACKEND_URL}/flows/${correctionFlowId}/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }).catch(err => console.error('Failed to start correction flow:', err));
+    // Start the correction flow internally (no HTTP) so variables are preserved
+    (async () => {
+      try {
+        await runFlow(correctionFlowRunId, {});
+      } catch (err) {
+        console.error('[engine] Failed to start correction flow internally:', err);
+      }
+    })();
 
     // Pause the original flow run and step run
     await getSupabase().from('flow_runs').update({
@@ -394,11 +397,14 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     ];
     await getSupabase().from('variables').insert(variables);
     
-    // Start the correction flow via the /flows/:id/start endpoint
-    fetch(`${process.env.BACKEND_URL}/flows/${correctionFlowId}/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-    }).catch(err => console.error('Failed to start correction flow:', err));
+    // Start the correction flow internally (no HTTP) so variables are preserved
+    (async () => {
+      try {
+        await runFlow(correctionFlowRunId, {});
+      } catch (err) {
+        console.error('[engine] Failed to start correction flow internally:', err);
+      }
+    })();
     
     // Pause the original flow run
     await getSupabase().from('flow_runs').update({
