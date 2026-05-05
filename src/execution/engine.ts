@@ -56,19 +56,23 @@ async function callProCheckOnOutput(
 
   const proCheckPayload = { response: output, rules, plans };
 
-  // Store the pro_check request (optional, for UI visibility)
+  // Fetch the step run to get current result
   const { data: stepRun } = await getSupabase()
     .from('step_runs')
     .select('*')
     .eq('id', stepRunId)
     .maybeSingle();
-  if (stepRun) {
-    stepRun.result = {
-      ...(stepRun.result || {}),
-      pro_check_request: proCheckPayload,
-    };
-    await updateStepRun(stepRun.id, { result: stepRun.result });
+  if (!stepRun) {
+    console.warn('[engine] step run not found for pro_check');
+    return false;
   }
+
+  // Store the pro_check request
+  stepRun.result = {
+    ...(stepRun.result || {}),
+    pro_check_request: proCheckPayload,
+  };
+  await updateStepRun(stepRun.id, { result: stepRun.result });
 
   let proCheckResult: any = { status: 'pass' };
   let prologReachable = true;
@@ -83,19 +87,23 @@ async function callProCheckOnOutput(
     } else {
       prologReachable = false;
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[engine] pro_check call failed:', err);
     prologReachable = false;
-  }
-
-  // Store pro_check response in step run result
-  if (stepRun) {
+    // Store error in step run result
     stepRun.result = {
-      ...(stepRun.result || {}),
-      pro_check: proCheckResult,
+      ...stepRun.result,
+      pro_check_error: { message: err.message, stack: err.stack },
     };
     await updateStepRun(stepRun.id, { result: stepRun.result });
   }
+
+  // Store pro_check response in step run result
+  stepRun.result = {
+    ...stepRun.result,
+    pro_check: proCheckResult,
+  };
+  await updateStepRun(stepRun.id, { result: stepRun.result });
 
   if (proCheckResult.status === 'stop') {
     await pauseFlow(stepRunId, flowRunId, 'pro_check stop', { pro_check: proCheckResult });
@@ -128,9 +136,16 @@ async function handleApiFailure(
   const apiError = { api_error: { statusCode, body: responseBody, url } };
 
   // Store API error details in the step run so the UI displays them
+  // Merge with any existing result (e.g. from a previous partial write)
+  const { data: existingStepRun } = await getSupabase()
+    .from('step_runs')
+    .select('result')
+    .eq('id', stepRunId)
+    .maybeSingle();
+  const existingResult = existingStepRun?.result || {};
   await getSupabase().from('step_runs').update({
     error: errorMsg,
-    result: apiError,
+    result: { ...existingResult, ...apiError },
   }).eq('id', stepRunId);
 
   // Let pro_check decide if the step should pause or fail
