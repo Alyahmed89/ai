@@ -4,6 +4,8 @@ export const runtime = 'edge'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { ContextChatTrigger } from '@/components/ContextChatTrigger'
+import type { StepRunResult } from '@/types'
 
 interface StepRun {
   id: string
@@ -18,6 +20,7 @@ interface StepRun {
   started_at: number | null
   completed_at: number | null
   error: string | null
+  result?: StepRunResult | null
 }
 
 interface FlowStep {
@@ -34,6 +37,7 @@ interface StepRunWithDef extends StepRun {
 }
 
 const DEFAULT_VARIABLES = ['goal', 'memory', 'memory_prompt']
+const API_BASE = '/api/proxy'
 
 export default function FlowRunPage() {
   const params = useParams()
@@ -50,6 +54,7 @@ export default function FlowRunPage() {
   const [sending, setSending] = useState(false)
   const [showVars, setShowVars] = useState(false)
   const [selectedVarIdx, setSelectedVarIdx] = useState(0)
+  const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [variables, setVariables] = useState<string[]>(DEFAULT_VARIABLES)
 
@@ -204,6 +209,43 @@ export default function FlowRunPage() {
     }
   }
 
+  const startCorrectionFlow = async (stepRun: StepRunWithDef) => {
+    const proCheck = stepRun.result?.pro_check
+    if (!proCheck?.correction_flow?.flow_id) return
+
+    setCorrectionStarting(stepRun.id)
+    try {
+      const cf = proCheck.correction_flow
+      const variables: Record<string, unknown> = {}
+      for (const v of cf.variables) {
+        variables[v.name] = v.value
+      }
+      variables.var_original_flow_run_id = id
+
+      const res = await fetch(`${API_BASE}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flow_id: cf.flow_id,
+          variables,
+        }),
+      })
+
+      if (!res.ok) {
+        console.error('Failed to start correction flow', await res.text())
+        return
+      }
+
+      const data = await res.json()
+      if (data.flowRunId) {
+        window.open(`/flow-run/${data.flowRunId}`, '_blank')
+      }
+    } catch (e) {
+      console.error('Failed to start correction flow', e)
+    }
+    setCorrectionStarting(null)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white font-mono">
@@ -250,7 +292,15 @@ export default function FlowRunPage() {
 
                   {step.ai_response && (
                     <div className="mb-2">
-                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">ai response</span>
+                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+                        ai response
+                        <ContextChatTrigger
+                          label="ai_response"
+                          value={step.ai_response}
+                          stepRunId={step.id}
+                          flowRunId={id}
+                        />
+                      </span>
                       <JsonBlock
                         value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
                         stepId={step.id}
@@ -267,16 +317,89 @@ export default function FlowRunPage() {
                   {step.resolved_variables && Object.keys(step.resolved_variables).length > 0 && (
                     <div>
                       <span className="text-[10px] text-neutral-600 uppercase tracking-wider">resolved variables</span>
+                      <div className="space-y-1">
+                        {Object.entries(step.resolved_variables).map(([key, val]) => (
+                          <div key={key} className="flex items-start gap-2 text-xs">
+                            <span className="text-neutral-500 shrink-0">{key}:</span>
+                            <span className="text-neutral-400 break-all">
+                              {val}
+                              <ContextChatTrigger
+                                label={key}
+                                value={val}
+                                stepRunId={step.id}
+                                flowRunId={id}
+                              />
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pro Check Request */}
+                  {step.result?.pro_check_request && (
+                    <div className="mb-2">
+                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+                        pro check request
+                        <ContextChatTrigger
+                          label="pro_check_request"
+                          value={step.result.pro_check_request}
+                          stepRunId={step.id}
+                          flowRunId={id}
+                          relatedRules={step.result.pro_check_request.rules}
+                        />
+                      </span>
                       <JsonBlock
-                        value={JSON.stringify(step.resolved_variables)}
+                        value={JSON.stringify(step.result.pro_check_request)}
                         stepId={step.id}
-                        field="resolved_variables"
+                        field="result.pro_check_request"
                         editingKey={editingKey}
                         editValue={editValue}
                         onStartEdit={startEdit}
                         onSave={saveEdit}
                         onChange={setEditValue}
                       />
+                    </div>
+                  )}
+
+                  {/* Pro Check */}
+                  {step.result?.pro_check && (
+                    <div className="mb-2">
+                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+                        pro check
+                        <ContextChatTrigger
+                          label="pro_check"
+                          value={step.result.pro_check}
+                          stepRunId={step.id}
+                          flowRunId={id}
+                        />
+                      </span>
+                      <div className={`text-xs font-mono whitespace-pre-wrap ${
+                        step.result.pro_check.status === 'stop'
+                          ? 'text-red-400/80'
+                          : step.result.pro_check.status === 'approve'
+                          ? 'text-green-400/80'
+                          : 'text-neutral-400'
+                      }`}>
+                        {JSON.stringify(step.result.pro_check, null, 2)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Correction Flow Button */}
+                  {step.result?.pro_check?.status === 'stop' &&
+                    step.result.pro_check.correction_flow?.flow_id && (
+                    <div className="mt-3 pt-3 border-t border-neutral-800">
+                      <button
+                        onClick={() => startCorrectionFlow(step)}
+                        disabled={correctionStarting === step.id}
+                        className="text-xs text-amber-400/70 hover:text-amber-300
+                                   disabled:opacity-30 transition-colors"
+                      >
+                        {correctionStarting === step.id
+                          ? 'starting...'
+                          : 'Start Correction Flow →'}
+                      </button>
                     </div>
                   )}
 

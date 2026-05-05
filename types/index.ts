@@ -103,6 +103,35 @@ export interface PaginatedResponse<T> {
   total_pages: number;
 }
 
+// Pro Check Types
+export interface CorrectionFlowVariable {
+  name: string;
+  value: unknown;
+}
+
+export interface CorrectionFlow {
+  flow_id: string;
+  variables: CorrectionFlowVariable[];
+}
+
+export interface ProCheck {
+  status: 'stop' | 'continue' | 'approve';
+  correction_flow?: CorrectionFlow;
+}
+
+export interface ProCheckRequest {
+  response: Record<string, unknown>;
+  rules: unknown[];
+  plans: unknown[];
+  step_run_id: string;
+}
+
+export interface StepRunResult {
+  pro_check_request?: ProCheckRequest;
+  pro_check?: ProCheck;
+  [key: string]: unknown;
+}
+
 // Component Props Types
 export interface FlowRunProps {
   flowRun: FlowRun;
