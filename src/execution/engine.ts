@@ -4,42 +4,11 @@ import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
 /**
- * Query Prolog for a correction flow when pro_check returns "stop".
- * Expects: correction_needed(StepRunId, Output, CorrectionFlowId, Variables).
- * Returns { correctionFlowId, variables } or null.
+ * Start a correction flow from pro_check response and pause the original flow.
+ * The correction_flow object must contain { flow_id, variables }.
  */
-async function queryCorrectionFlow(
-  stepRunId: string,
-  output: any,
-): Promise<{ correctionFlowId: string; variables: Array<{ key: string; value: string }> } | null> {
-  const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
-  const outputJson = typeof output === 'string' ? output : JSON.stringify(output);
-  const query = `correction_needed('${stepRunId}', ${outputJson}, CorrectionFlowId, Variables).`;
-  try {
-    const res = await fetch(`${prologUrl}/api/v1/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: ['CorrectionFlowId', 'Variables'] }),
-    });
-    if (!res.ok) return null;
-    const result = await res.json();
-    if (!result?.CorrectionFlowId) return null;
-    return {
-      correctionFlowId: result.CorrectionFlowId,
-      variables: Array.isArray(result.Variables) ? result.Variables : [],
-    };
-  } catch (err) {
-    console.warn('[engine] queryCorrectionFlow failed:', err);
-    return null;
-  }
-}
-
-/**
- * Start a correction flow run and pause the original flow.
- */
-async function startCorrectionFlow(
-  correctionFlowId: string,
-  variables: Array<{ key: string; value: string }>,
+async function startCorrectionFlowFromProCheck(
+  correctionFlow: { flow_id: string; variables: Array<{ key: string; value: string }> },
   stepRunId: string,
   flowRunId: string,
   proCheckResult: any,
@@ -52,14 +21,14 @@ async function startCorrectionFlow(
   // Create correction flow run
   await getSupabase().from('flow_runs').insert({
     id: correctionFlowRunId,
-    flow_id: correctionFlowId,
+    flow_id: correctionFlow.flow_id,
     status: 'pending',
     created_at: ts,
     updated_at: ts,
   });
 
-  // Insert variables from Prolog result
-  const varRows = variables.map(v => ({
+  // Insert variables from pro_check response
+  const varRows = (correctionFlow.variables || []).map(v => ({
     id: randomUUID(),
     key: v.key,
     value: v.value,
@@ -75,7 +44,7 @@ async function startCorrectionFlow(
     { key: 'var_error_details', value: JSON.stringify({ output, pro_check: proCheckResult }) },
   ];
   for (const sv of standardVars) {
-    if (!variables.some(v => v.key === sv.key)) {
+    if (!varRows.some(r => r.key === sv.key)) {
       varRows.push({
         id: randomUUID(),
         key: sv.key,
@@ -111,7 +80,7 @@ async function startCorrectionFlow(
     trace: {
       output,
       pro_check: proCheckResult,
-      correction_flow_id: correctionFlowId,
+      correction_flow_id: correctionFlow.flow_id,
       step: 'paused_by_procheck_correction',
     },
   }).eq('id', stepRunId);
@@ -140,8 +109,8 @@ async function pauseFlow(
 
 /**
  * Unified pro_check handler: call pro_check on the given output, then
- * if "stop", query Prolog for a correction flow. Returns true if the
- * flow was paused (correction started or no correction available).
+ * if "stop" with correction_flow, start that correction flow and pause.
+ * Returns true if the flow was paused.
  */
 async function callProCheckOnOutput(
   output: any,
@@ -178,19 +147,17 @@ async function callProCheckOnOutput(
   }
 
   if (proCheckResult.status === 'stop') {
-    // Query Prolog for correction flow
-    const correction = await queryCorrectionFlow(stepRunId, output);
-    if (correction && correction.correctionFlowId) {
-      await startCorrectionFlow(
-        correction.correctionFlowId,
-        correction.variables || [],
+    // If pro_check provides a correction_flow, start it
+    if (proCheckResult.correction_flow && proCheckResult.correction_flow.flow_id) {
+      await startCorrectionFlowFromProCheck(
+        proCheckResult.correction_flow,
         stepRunId,
         flowRunId,
         proCheckResult,
         output,
       );
     } else {
-      // No correction available from Prolog — pause with explanation
+      // No correction flow from pro_check — pause with explanation
       await pauseFlow(stepRunId, flowRunId, 'pro_check stop: no correction available', {
         output,
         pro_check: proCheckResult,
@@ -222,6 +189,14 @@ async function handleApiFailure(
   step: any,
 ): Promise<boolean> {
   const errorDetails = { statusCode, body: responseBody, url };
+
+  // Store API error details in the step run so the UI displays them
+  const errorMsg = `API ${statusCode}: ${(responseBody || '').slice(0, 500)}`;
+  await getSupabase().from('step_runs').update({
+    error: errorMsg,
+    result: { api_error: { statusCode, body: responseBody, url } },
+  }).eq('id', stepRunId);
+
   return callProCheckOnOutput(errorDetails, stepRunId, flowRunId, step, context);
 }
 
