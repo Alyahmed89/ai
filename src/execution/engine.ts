@@ -54,13 +54,29 @@ async function callProCheckOnOutput(
   if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
   if (context.plan_id) plans.push(context.plan_id);
 
+  const proCheckPayload = { response: output, rules, plans };
+
+  // Store the pro_check request (optional, for UI visibility)
+  const { data: stepRun } = await getSupabase()
+    .from('step_runs')
+    .select('*')
+    .eq('id', stepRunId)
+    .maybeSingle();
+  if (stepRun) {
+    stepRun.result = {
+      ...(stepRun.result || {}),
+      pro_check_request: proCheckPayload,
+    };
+    await updateStepRun(stepRun.id, { result: stepRun.result });
+  }
+
   let proCheckResult: any = { status: 'pass' };
   let prologReachable = true;
   try {
     const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ response: output, rules, plans }),
+      body: JSON.stringify(proCheckPayload),
     });
     if (prologRes.ok) {
       proCheckResult = await prologRes.json();
@@ -73,11 +89,6 @@ async function callProCheckOnOutput(
   }
 
   // Store pro_check response in step run result
-  const { data: stepRun } = await getSupabase()
-    .from('step_runs')
-    .select('*')
-    .eq('id', stepRunId)
-    .maybeSingle();
   if (stepRun) {
     stepRun.result = {
       ...(stepRun.result || {}),
@@ -87,16 +98,7 @@ async function callProCheckOnOutput(
   }
 
   if (proCheckResult.status === 'stop') {
-    const hasCorrection = !!(proCheckResult.correction_flow && proCheckResult.correction_flow.flow_id);
-    await pauseFlow(
-      stepRunId,
-      flowRunId,
-      hasCorrection
-        ? 'pro_check stop: correction flow available (manual start)'
-        : 'pro_check stop: no correction available',
-      { output, pro_check: proCheckResult },
-      proCheckResult,
-    );
+    await pauseFlow(stepRunId, flowRunId, 'pro_check stop', { pro_check: proCheckResult });
     return true; // signal pause
   }
 
