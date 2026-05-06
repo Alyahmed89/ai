@@ -23,6 +23,20 @@ interface StepRun {
   result?: StepRunResult | null
 }
 
+interface ExpectedResponseProperty {
+  type?: string
+  required?: string[]
+  properties?: Record<string, unknown>
+  additionalProperties?: boolean
+}
+
+interface ExpectedResponse {
+  type?: string
+  required?: string[]
+  properties?: Record<string, ExpectedResponseProperty | unknown>
+  additionalProperties?: boolean
+}
+
 interface FlowStep {
   id: string
   flow_id: string
@@ -30,6 +44,7 @@ interface FlowStep {
   instructions: string | null
   ref: string | null
   order_index: number
+  expected_response?: ExpectedResponse | null
 }
 
 interface StepRunWithDef extends StepRun {
@@ -156,29 +171,61 @@ export default function FlowRunPage() {
     setShowVars(false)
   }
 
+  /** Determine the user input key from the paused step's expected_response schema */
+  const getUserInputKey = useCallback((): string => {
+    // Find the paused step (the one waiting for user input)
+    const pausedStep = [...steps]
+      .sort((a, b) => (b.order_index ?? 0) - (a.order_index ?? 0))
+      .find((s) => s.status === 'paused')
+    const er = pausedStep?.definition?.expected_response
+    if (er?.required && er.required.length > 0) {
+      const firstReq = er.required[0]
+      // If the first required key is "memory" and its property has its own required array
+      if (
+        firstReq === 'memory' &&
+        er.properties?.['memory'] &&
+        typeof er.properties['memory'] === 'object' &&
+        'required' in (er.properties['memory'] as Record<string, unknown>)
+      ) {
+        const memRequired = (er.properties['memory'] as ExpectedResponseProperty).required
+        if (memRequired && memRequired.length > 0) {
+          return memRequired[0]
+        }
+      }
+      return firstReq
+    }
+    return 'step_goal'
+  }, [steps])
+
   const handleSend = async () => {
     if (sending) return
     setSending(true)
     try {
-      const body = {
-        input_variables: {
-          goal: input || '',
-        },
-      }
+      const userInputKey = getUserInputKey()
 
       if (steps.length === 0 && flowId) {
         // No flow run yet — start the flow
         await fetch('/api/proxy/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ flowId, ...body }),
+          body: JSON.stringify({
+            flowId,
+            input_variables: {
+              [userInputKey]: input || '',
+            },
+          }),
         })
       } else {
         // Flow run exists — resume
         await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ flowRunId: id, ...body }),
+          body: JSON.stringify({
+            flowRunId: id,
+            user_input: {
+              [userInputKey]: input || '',
+            },
+          }),
         })
       }
       setInput('')
