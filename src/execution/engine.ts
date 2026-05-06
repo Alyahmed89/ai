@@ -364,6 +364,8 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     const validated = zodResult.data;
     const next = validated.next ?? null;
     const actions = Array.isArray(validated.actions) ? validated.actions : [];
+    const stepActions = Array.isArray(step.actions) ? step.actions : [];
+    const allActions = [...actions, ...stepActions];
 
     // Auto-store top-level scalar fields from AI response as flow_run variables
     // so subsequent steps can reference them via [[var:key]]
@@ -401,7 +403,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     }
 
     // Step 6 — Execute actions (ONLY after pro_check pass)
-    for (const action of actions) {
+    for (const action of allActions) {
       if (action.type !== 'api') continue;
 
       // Validate required fields before executing
@@ -607,7 +609,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     }
 
     // Step 7 — Call pro_check on the final output (after all actions)
-    const finalOutput = { ...validated, actions_completed: actions.map(a => a.endpoint) };
+    const finalOutput = { ...validated, actions_completed: allActions.map(a => a.endpoint) };
     const { data: stepRunAfterActions } = await getSupabase()
       .from('step_runs')
       .select('*')
