@@ -284,7 +284,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
   }
 }
 
-async function runStep(step: any, flowRunId: string, flowRun: any): Promise<string | null | { status: 'paused' | 'failed'; stepRunId: string }> {
+export async function runStep(step: any, flowRunId: string, flowRun: any): Promise<string | null | { status: 'paused' | 'failed'; stepRunId: string }> {
   console.log(`[engine] runStep start stepRef=${step.ref} flowRunId=${flowRunId}`);
   const stepRunId = await createStepRun(flowRunId, step.id);
   console.log(`[engine] runStep stepRunId=${stepRunId}`);
@@ -811,7 +811,7 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   return executionResult;
 }
 
-async function getFlowRun(flowRunId: string): Promise<any> {
+export async function getFlowRun(flowRunId: string): Promise<any> {
   const { data, error } = await getSupabase()
     .from('flow_runs')
     .select('*')
@@ -844,7 +844,7 @@ async function getStepByFlowAndRef(flowId: string, ref: string): Promise<any> {
   return data;
 }
 
-async function getStepById(stepId: string): Promise<any> {
+export async function getStepById(stepId: string): Promise<any> {
   const { data, error } = await getSupabase()
     .from('steps')
     .select('*')
