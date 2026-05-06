@@ -282,7 +282,13 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
   const context = await buildContext(flowRunId, stepRunId, flowRun);
 
   // Step 1 — Resolve variables in instructions
-  const renderedInstructions = step.instructions ? resolveVariables(step.instructions, context) : null;
+  let renderedInstructions: string | null = null;
+  try {
+    renderedInstructions = step.instructions ? resolveVariables(step.instructions, context) : null;
+  } catch (err: any) {
+    console.warn(`[engine] warning: failed to resolve variables in instructions: ${err.message}. Using raw instructions.`);
+    renderedInstructions = step.instructions || null;
+  }
   console.log(`[engine] rendered_instructions:`, renderedInstructions);
 
   // Step 2 — Build LLM prompt with endpoint samples
@@ -955,7 +961,10 @@ function resolveVariables(input: any, context: Record<string, any>): any {
   if (typeof input === 'string') {
     return input.replace(/\[\[var:([^\]]+)\]\]/g, (_match, key) => {
       const trimmed = key.trim();
-      return trimmed in context ? String(context[trimmed]) : _match;
+      if (!(trimmed in context)) {
+        throw new Error(`Variable '[[var:${trimmed}]]' not found in context`);
+      }
+      return String(context[trimmed]);
     });
   }
 
