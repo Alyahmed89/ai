@@ -404,6 +404,37 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
     for (const action of actions) {
       if (action.type !== 'api') continue;
 
+      // Validate required fields before executing
+      const requiredFields = ['type', 'method', 'endpoint', 'path'];
+      for (const field of requiredFields) {
+        if (!action[field]) {
+          const errorMsg = `Invalid action: missing required field '${field}'`;
+          console.error(`[engine] ${errorMsg}`, action);
+          const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+          const { data: stepRunForValidation } = await getSupabase()
+            .from('step_runs')
+            .select('*')
+            .eq('id', stepRunId)
+            .maybeSingle();
+          if (stepRunForValidation) {
+            const existingResult = stepRunForValidation.result && typeof stepRunForValidation.result === 'object' ? stepRunForValidation.result : {};
+            await updateStepRun(stepRunId, {
+              status: 'failed',
+              error: errorMsg,
+              result: { ...existingResult, api_error: errorObject },
+            });
+            const rules: string[] = [];
+            const plans: string[] = [];
+            if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+            if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+            if (context.plan_id) plans.push(context.plan_id);
+            const proCheckResult = await callProCheckOnOutput(stepRunForValidation, errorObject, rules, plans);
+            if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+          }
+          return { status: 'failed' as const, stepRunId };
+        }
+      }
+
       // Resolve variables just before each action so subsequent actions
       // can use variables set by previous actions in the same step
       let url = normalizeValue(resolveVariables(action.endpoint, context));
@@ -444,118 +475,135 @@ async function runStep(step: any, flowRunId: string, flowRun: any): Promise<stri
 
       console.log(`[engine] executing action: ${httpMethod} ${url}`);
 
-      let res: Response;
-      let responseBody: string | null = null;
+      // Wrap fetch + response parsing + non-ok handling in a single try/catch
       try {
-        res = await fetch(url, {
-          method: httpMethod,
-          headers,
-          body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
-        });
+        let res: Response;
+        let responseBody: string | null = null;
         try {
-          responseBody = await res.text();
-        } catch {
-          // ignore read errors
+          res = await fetch(url, {
+            method: httpMethod,
+            headers,
+            body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
+          });
+          try {
+            responseBody = await res.text();
+          } catch {
+            // ignore read errors
+          }
+        } catch (err: any) {
+          // Fetch-level error (network, DNS, etc.)
+          const errorMsg = err?.message || String(err);
+          const errorObject = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
+          const { data: stepRunForAction } = await getSupabase()
+            .from('step_runs')
+            .select('*')
+            .eq('id', stepRunId)
+            .maybeSingle();
+          if (stepRunForAction) {
+            const existingResult = stepRunForAction.result && typeof stepRunForAction.result === 'object' ? stepRunForAction.result : {};
+            await updateStepRun(stepRunId, {
+              status: 'failed',
+              error: errorMsg,
+              result: { ...existingResult, api_error: errorObject },
+            });
+            const rules: string[] = [];
+            const plans: string[] = [];
+            if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+            if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+            if (context.plan_id) plans.push(context.plan_id);
+            const proCheckResult = await callProCheckOnOutput(stepRunForAction, errorObject, rules, plans);
+            if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+          }
+          return { status: 'failed' as const, stepRunId };
         }
+
+        // Persist to api_calls table
+        await getSupabase().from('api_calls').insert({
+          id: randomUUID(),
+          flow_run_id: flowRunId,
+          step_run_id: stepRunId,
+          endpoint_name: url,
+          http_method: httpMethod,
+          request_url: url,
+          request_headers: headers,
+          request_body: mergedPayload,
+          response_status: res.status,
+          response_body: responseBody,
+          success: res.ok,
+          error: res.ok ? null : `HTTP ${res.status}`,
+          created_at: new Date().toISOString(),
+        }).maybeSingle();
+
+        // Auto-store response as variable for subsequent steps
+        if (res.ok && responseBody) {
+          try {
+            const parsed = JSON.parse(responseBody);
+            const varName = `api_response_${action.endpoint}`;
+            await getSupabase().from('variables').insert({
+              id: randomUUID(),
+              flow_run_id: flowRunId,
+              step_run_id: stepRunId,
+              key: varName,
+              value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
+              scope: 'step_run',
+              created_at: new Date().toISOString(),
+            }).maybeSingle();
+            // Also add to running context so subsequent actions in same step can use it
+            context[varName] = parsed;
+          } catch {
+            // response is not JSON, skip auto-store
+          }
+        }
+
+        if (!res.ok) {
+          const bodyStr = responseBody || '';
+          const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
+          if (shouldPause === 'paused') {
+            // Signal pause to outer runFlow without throwing
+            return { status: 'paused', stepRunId };
+          }
+          // pro_check passed despite API error — mark step failed and stop
+          // Merge result to preserve any existing fields (e.g. pro_check_request)
+          const { data: failedStepRun } = await getSupabase()
+            .from('step_runs')
+            .select('result')
+            .eq('id', stepRunId)
+            .maybeSingle();
+          const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
+          await updateStepRun(stepRunId, {
+            status: 'failed',
+            error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
+            result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
+          });
+          // Do NOT let the error propagate further — step is already marked failed
+          return { status: 'failed' as const, stepRunId };
+        }
+        console.log(`[engine] action completed: ${url} ${res.status}`);
       } catch (err: any) {
-        // Step-level catch: do NOT let action errors bubble to flow run
+        // Catch any unexpected error from the action block
         const errorMsg = err?.message || String(err);
-        console.error(`[engine] action execution error: ${errorMsg}`, err);
-
-        // Store error in step run
-        const apiError = {
-          url,
-          method: httpMethod,
-          error: errorMsg,
-          statusCode: 0,
-        };
-        await updateStepRun(stepRunId, {
-          status: 'failed',
-          error: errorMsg,
-          result: { api_error: apiError },
-        });
-
-        // Call pro_check with the error (same pattern as handleApiFailure)
-        const { data: failedStepRun } = await getSupabase()
+        const errorObject = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
+        const { data: stepRunForCatch } = await getSupabase()
           .from('step_runs')
           .select('*')
           .eq('id', stepRunId)
           .maybeSingle();
-        if (failedStepRun) {
+        if (stepRunForCatch) {
+          const existingResult = stepRunForCatch.result && typeof stepRunForCatch.result === 'object' ? stepRunForCatch.result : {};
+          await updateStepRun(stepRunId, {
+            status: 'failed',
+            error: errorMsg,
+            result: { ...existingResult, api_error: errorObject },
+          });
           const rules: string[] = [];
           const plans: string[] = [];
           if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
           if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
           if (context.plan_id) plans.push(context.plan_id);
-          const proCheckResult = await callProCheckOnOutput(failedStepRun, { api_error: apiError }, rules, plans);
-          if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+          await callProCheckOnOutput(stepRunForCatch, errorObject, rules, plans);
         }
-
-        // pro_check passed despite error — step stays failed
         return { status: 'failed' as const, stepRunId };
       }
-
-      // Persist to api_calls table
-      await getSupabase().from('api_calls').insert({
-        id: randomUUID(),
-        flow_run_id: flowRunId,
-        step_run_id: stepRunId,
-        endpoint_name: url,
-        http_method: httpMethod,
-        request_url: url,
-        request_headers: headers,
-        request_body: mergedPayload,
-        response_status: res.status,
-        response_body: responseBody,
-        success: res.ok,
-        error: res.ok ? null : `HTTP ${res.status}`,
-        created_at: new Date().toISOString(),
-      }).maybeSingle();
-
-      // Auto-store response as variable for subsequent steps
-      if (res.ok && responseBody) {
-        try {
-          const parsed = JSON.parse(responseBody);
-          const varName = `api_response_${action.endpoint}`;
-          await getSupabase().from('variables').insert({
-            id: randomUUID(),
-            flow_run_id: flowRunId,
-            step_run_id: stepRunId,
-            key: varName,
-            value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
-            scope: 'step_run',
-            created_at: new Date().toISOString(),
-          }).maybeSingle();
-          // Also add to running context so subsequent actions in same step can use it
-          context[varName] = parsed;
-        } catch {
-          // response is not JSON, skip auto-store
-        }
-      }
-
-      if (!res.ok) {
-        const bodyStr = responseBody || '';
-        const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
-        if (shouldPause === 'paused') {
-          // Signal pause to outer runFlow without throwing
-          return { status: 'paused', stepRunId };
-        }
-        // pro_check passed despite API error — mark step failed and stop
-        // Merge result to preserve any existing fields (e.g. pro_check_request)
-        const { data: failedStepRun } = await getSupabase()
-          .from('step_runs')
-          .select('result')
-          .eq('id', stepRunId)
-          .maybeSingle();
-        const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
-        await updateStepRun(stepRunId, {
-          status: 'failed',
-          error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
-          result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
-        });
-        throw new Error(`API call failed: ${url} ${res.status}`);
-      }
-      console.log(`[engine] action completed: ${url} ${res.status}`);
     }
 
     // Step 7 — Call pro_check on the final output (after all actions)
