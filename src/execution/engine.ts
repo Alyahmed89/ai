@@ -74,7 +74,7 @@ async function callProCheckOnOutput(
     await updateStepRun(stepRun.id, { status: 'paused' });
     await updateFlowRun(stepRun.flow_run_id, {
       status: 'paused',
-      paused_at_step_id: stepRun.id,
+      paused_at_step_id: stepRun.step_id,
     });
     return 'paused';
   }
@@ -85,7 +85,7 @@ async function callProCheckOnOutput(
     await updateStepRun(stepRun.id, { status: 'paused' });
     await updateFlowRun(stepRun.flow_run_id, {
       status: 'paused',
-      paused_at_step_id: stepRun.id,
+      paused_at_step_id: stepRun.step_id,
     });
     return 'paused';
   }
@@ -95,7 +95,7 @@ async function callProCheckOnOutput(
     await updateStepRun(stepRun.id, { status: 'paused' });
     await updateFlowRun(stepRun.flow_run_id, {
       status: 'paused',
-      paused_at_step_id: stepRun.id,
+      paused_at_step_id: stepRun.step_id,
     });
     return 'paused';
   }
