@@ -326,7 +326,7 @@ export default function FlowRunPage() {
                           <div key={key} className="flex items-start gap-2 text-xs">
                             <span className="text-neutral-500 shrink-0">{key}:</span>
                             <span className="text-neutral-400 break-all">
-                              {val}
+                              {typeof val === 'string' ? val : JSON.stringify(val, null, 2)}
                               <ContextChatTrigger
                                 label={key}
                                 value={val}
