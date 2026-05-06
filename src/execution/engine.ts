@@ -79,6 +79,17 @@ async function callProCheckOnOutput(
     return 'paused';
   }
 
+  // ----- HANDLE PAUSE -----
+  if (proCheckResponse.status === 'pause') {
+    // Pause the step and the flow run – no correction_flow needed
+    await updateStepRun(stepRun.id, { status: 'paused' });
+    await updateFlowRun(stepRun.flow_run_id, {
+      status: 'paused',
+      paused_at_step_id: stepRun.id,
+    });
+    return 'paused';
+  }
+
   if (!prologReachable) {
     // Prolog unreachable — fail-safe pause
     await updateStepRun(stepRun.id, { status: 'paused' });
