@@ -791,12 +791,21 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       .maybeSingle();
     if (sr) {
       const existingResult = sr.result && typeof sr.result === 'object' ? sr.result : {};
+      // Preserve next_step_id from ai_response so the flow loop can continue
+      const savedNextStepId = sr.ai_response?.next_step_id;
       await updateStepRun(stepRunId, {
         status: 'failed',
         error: msg,
         result: { ...existingResult, api_error: { message: msg } },
       });
       sr.result = { ...existingResult, api_error: { message: msg } };
+      // Re-inject next_step_id into result so it survives for the flow loop
+      if (savedNextStepId) {
+        await updateStepRun(stepRunId, {
+          result: { ...sr.result, next_step_id: savedNextStepId },
+        });
+        sr.result = { ...sr.result, next_step_id: savedNextStepId };
+      }
       // Trigger pro_check so correction flow can be started
       await callProCheckOnOutput(sr, { type: 'action_error', message: msg }, getRulesAndPlans(step, context), []);
     }
