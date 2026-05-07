@@ -673,6 +673,22 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             context[varName] = parsed;
             // Store in actionResults for pro_check
             actionResults[action.endpoint] = parsed;
+
+            // If the action has an output_var, also store the result under that key
+            // as a flow_run-scoped variable so subsequent steps can reference it
+            if (action.output_var) {
+              await getSupabase().from('variables').insert({
+                id: randomUUID(),
+                flow_run_id: flowRunId,
+                step_run_id: stepRunId,
+                key: action.output_var,
+                value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
+                scope: 'flow_run',
+                created_at: new Date().toISOString(),
+              }).maybeSingle();
+              // Inject into running context immediately
+              context[action.output_var] = parsed;
+            }
           } catch {
             // response is not JSON, skip auto-store
           }
