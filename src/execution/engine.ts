@@ -511,11 +511,16 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
           break;
         }
 
-        // Validate path: extract base path from endpoint URL and compare with action.path
+        // Validate path: accept relative paths (starting with endpoint base path)
+        // or full URLs that match the registered endpoint URL (ignoring query string)
         const endpointBasePath = extractBasePath(endpoint.url);
         const resolvedActionPath = resolveVariables(action.path, context);
-        if (!resolvedActionPath.startsWith(endpointBasePath)) {
-          const errorMsg = `Path mismatch for endpoint '${action.endpoint}': action path '${resolvedActionPath}' does not start with endpoint base path '${endpointBasePath}'`;
+        const actionPathNoQuery = resolvedActionPath.split('?')[0];
+        const endpointUrlNoQuery = endpoint.url.split('?')[0];
+        const isRelativeMatch = resolvedActionPath.startsWith(endpointBasePath);
+        const isFullUrlMatch = actionPathNoQuery === endpointUrlNoQuery;
+        if (!isRelativeMatch && !isFullUrlMatch) {
+          const errorMsg = `Path mismatch for endpoint '${action.endpoint}': action path '${resolvedActionPath}' does not start with endpoint base path '${endpointBasePath}' nor match endpoint URL '${endpoint.url}'`;
           console.error(`[engine] ${errorMsg}`);
           actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
           break;
