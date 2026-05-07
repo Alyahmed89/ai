@@ -458,14 +458,15 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
       // --- Validation phase (all checks before any network call) ---
 
-      // Validate required fields
-      const requiredFields = ['type', 'method', 'endpoint', 'path'];
-      let missingField: string | null = null;
-      for (const field of requiredFields) {
-        if (!action[field]) { missingField = field; break; }
+      // Validate required fields (type and endpoint are always required)
+      if (!action.type) {
+        const errorMsg = `Invalid action: missing required field 'type'`;
+        console.error(`[engine] ${errorMsg}`, action);
+        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+        break;
       }
-      if (missingField) {
-        const errorMsg = `Invalid action: missing required field '${missingField}'`;
+      if (!action.endpoint) {
+        const errorMsg = `Invalid action: missing required field 'endpoint'`;
         console.error(`[engine] ${errorMsg}`, action);
         actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
         break;
@@ -479,30 +480,46 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         .maybeSingle();
 
       if (!endpoint) {
-        const errorMsg = `Endpoint '${action.endpoint}' not found in registry`;
-        console.error(`[engine] ${errorMsg}`);
-        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        break;
+        // Endpoint not in registry — require explicit path
+        if (!action.path) {
+          const errorMsg = `Invalid action: missing required field 'path' (endpoint '${action.endpoint}' not found in registry)`;
+          console.error(`[engine] ${errorMsg}`, action);
+          actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+          break;
+        }
+      } else {
+        // Auto-fill method from registry if not specified
+        if (!action.method) {
+          action.method = endpoint.method || 'GET';
+        }
+        // Auto-fill path from registry URL if not specified
+        if (!action.path) {
+          action.path = endpoint.url;
+        }
       }
 
-      // Validate method
+      // Resolve method (default to GET if still missing)
       const actionMethod = (action.method || 'GET').toUpperCase();
-      const endpointMethod = (endpoint.method || 'GET').toUpperCase();
-      if (actionMethod !== endpointMethod) {
-        const errorMsg = `Method mismatch for endpoint '${action.endpoint}': action uses '${actionMethod}', endpoint expects '${endpointMethod}'`;
-        console.error(`[engine] ${errorMsg}`);
-        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        break;
-      }
 
-      // Validate path: extract base path from endpoint URL and compare with action.path
-      const endpointBasePath = extractBasePath(endpoint.url);
-      const resolvedActionPath = resolveVariables(action.path, context);
-      if (!resolvedActionPath.startsWith(endpointBasePath)) {
-        const errorMsg = `Path mismatch for endpoint '${action.endpoint}': action path '${resolvedActionPath}' does not start with endpoint base path '${endpointBasePath}'`;
-        console.error(`[engine] ${errorMsg}`);
-        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        break;
+      // If endpoint was found, validate method and path
+      if (endpoint) {
+        const endpointMethod = (endpoint.method || 'GET').toUpperCase();
+        if (actionMethod !== endpointMethod) {
+          const errorMsg = `Method mismatch for endpoint '${action.endpoint}': action uses '${actionMethod}', endpoint expects '${endpointMethod}'`;
+          console.error(`[engine] ${errorMsg}`);
+          actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+          break;
+        }
+
+        // Validate path: extract base path from endpoint URL and compare with action.path
+        const endpointBasePath = extractBasePath(endpoint.url);
+        const resolvedActionPath = resolveVariables(action.path, context);
+        if (!resolvedActionPath.startsWith(endpointBasePath)) {
+          const errorMsg = `Path mismatch for endpoint '${action.endpoint}': action path '${resolvedActionPath}' does not start with endpoint base path '${endpointBasePath}'`;
+          console.error(`[engine] ${errorMsg}`);
+          actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+          break;
+        }
       }
 
       // Validate output_var if present
