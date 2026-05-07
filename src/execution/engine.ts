@@ -157,49 +157,39 @@ async function handleApiFailure(
 }
 
 function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
-  // Build the step-specific schema from expected_response (e.g. { plan_id: string })
+  // Build the schema solely from step.expected_response as stored in the database.
+  // The DB is the only source of truth — no hardcoded fields are merged.
+  if (!stepExpectedResponse || typeof stepExpectedResponse !== 'object') {
+    return z.object({}).passthrough();
+  }
+
   let shape: Record<string, z.ZodTypeAny> = {};
-  if (stepExpectedResponse && typeof stepExpectedResponse === 'object') {
-    if (stepExpectedResponse.type === 'object' && stepExpectedResponse.properties) {
-      for (const [key, prop] of Object.entries<any>(stepExpectedResponse.properties)) {
-        switch (prop.type) {
-          case 'string': shape[key] = z.string(); break;
-          case 'number': shape[key] = z.number(); break;
-          case 'boolean': shape[key] = z.boolean(); break;
-          case 'integer': shape[key] = z.number().int(); break;
-          case 'array': shape[key] = z.array(z.any()); break;
-          case 'object': shape[key] = z.record(z.any()); break;
-          default: shape[key] = z.any(); break;
-        }
+  if (stepExpectedResponse.type === 'object' && stepExpectedResponse.properties) {
+    for (const [key, prop] of Object.entries<any>(stepExpectedResponse.properties)) {
+      switch (prop.type) {
+        case 'string': shape[key] = z.string(); break;
+        case 'number': shape[key] = z.number(); break;
+        case 'boolean': shape[key] = z.boolean(); break;
+        case 'integer': shape[key] = z.number().int(); break;
+        case 'array': shape[key] = z.array(z.any()); break;
+        case 'object': shape[key] = z.record(z.any()); break;
+        default: shape[key] = z.any(); break;
       }
-      if (stepExpectedResponse.required) {
-        const requiredSet = new Set(stepExpectedResponse.required);
-        const optionalShape: Record<string, z.ZodTypeAny> = {};
-        for (const key of Object.keys(shape)) {
-          optionalShape[key] = requiredSet.has(key) ? shape[key] : shape[key].optional();
-        }
-        shape = optionalShape;
+    }
+    if (stepExpectedResponse.required) {
+      const requiredSet = new Set(stepExpectedResponse.required);
+      const optionalShape: Record<string, z.ZodTypeAny> = {};
+      for (const key of Object.keys(shape)) {
+        optionalShape[key] = requiredSet.has(key) ? shape[key] : shape[key].optional();
       }
+      shape = optionalShape;
     }
   }
 
-  // Merge with engine-internal fields
-  return z.object({
-    ...shape,
-    next: z.string().nullable().optional(),
-    actions: z.array(z.object({
-      type: z.literal('api'),
-      endpoint: z.string(),
-      method: z.string().optional(),
-      payload: z.any().optional(),
-      headers: z.record(z.string()).optional(),
-    })).optional(),
-    pro_check: z.object({
-      rules: z.array(z.string()).optional(),
-      plans: z.array(z.string()).optional(),
-    }).optional(),
-    system_result: z.any().optional(),
-  }).passthrough();
+  // Use passthrough() when additionalProperties is true, so extra fields are accepted
+  const usePassthrough = stepExpectedResponse.additionalProperties === true;
+  const schema = z.object(shape);
+  return usePassthrough ? schema.passthrough() : schema;
 }
 
 export async function runFlow(flowRunId: string, userInput?: Record<string, any>): Promise<void> {
