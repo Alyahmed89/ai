@@ -198,24 +198,39 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
     if (flowRun.status === 'paused' && flowRun.paused_at_step_id) {
       console.log(`[engine] resuming from paused step ${flowRun.paused_at_step_id}`);
 
-      // Apply user_input variables before resuming
-      if (userInput && typeof userInput === 'object') {
-        for (const [key, value] of Object.entries(userInput)) {
-          await getSupabase().from('variables').insert({
-            id: randomUUID(),
-            flow_run_id: flowRunId,
-            step_run_id: null,
-            key,
-            value: typeof value === 'string' ? value : JSON.stringify(value),
-            scope: 'flow_run',
-            created_at: new Date().toISOString(),
-          }).maybeSingle();
-        }
-      }
-
       // Find the step after paused_at_step_id by order_index
       const pausedStep = await getStepById(flowRun.paused_at_step_id);
       if (!pausedStep) throw new Error(`Paused step ${flowRun.paused_at_step_id} not found`);
+
+      // Determine variable key from paused step's expected_response schema
+      let varKey = 'user_input';
+      const er = pausedStep.expected_response;
+      if (er) {
+        // Case 1: { required: ["memory"], properties: { memory: { required: ["step_goal"], ... } } }
+        if (Array.isArray(er.required) && er.required.includes('memory') && er.properties?.memory?.required?.length > 0) {
+          varKey = er.properties.memory.required[0];
+        }
+        // Case 2: { required: ["some_field"], ... }
+        else if (Array.isArray(er.required) && er.required.length > 0) {
+          varKey = er.required[0];
+        }
+      }
+
+      // Apply user_input as a single flow_run-scoped variable
+      if (userInput != null) {
+        const value = typeof userInput === 'object' && !Array.isArray(userInput)
+          ? String(Object.values(userInput)[0] ?? userInput)
+          : String(userInput);
+        await getSupabase().from('variables').insert({
+          id: randomUUID(),
+          flow_run_id: flowRunId,
+          step_run_id: null,
+          key: varKey,
+          value,
+          scope: 'flow_run',
+          created_at: new Date().toISOString(),
+        }).maybeSingle();
+      }
 
       const nextStep = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
       if (!nextStep) {
@@ -783,23 +798,25 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const isTimeout = msg.includes('timed out after 60s');
     console.error(`[engine] step execution error:`, msg);
 
-    if (isTimeout) {
-      // Timeout — mark step as failed and trigger pro_check via handleApiFailure
+    // Mark step_run as failed so it's never left "running" on error
+    const { data: sr } = await getSupabase()
+      .from('step_runs')
+      .select('*')
+      .eq('id', stepRunId)
+      .maybeSingle();
+    if (sr) {
+      const existingResult = sr.result && typeof sr.result === 'object' ? sr.result : {};
       await updateStepRun(stepRunId, {
         status: 'failed',
         error: msg,
-        result: { timeout: true, error: msg },
+        result: { ...existingResult, api_error: { message: msg } },
       });
+      sr.result = { ...existingResult, api_error: { message: msg } };
       // Trigger pro_check so correction flow can be started
-      await handleApiFailure(
-        JSON.stringify({ timeout: true, error: msg }),
-        408,
-        'step://timeout',
-        context,
-        stepRunId,
-        flowRunId,
-        step,
-      );
+      await callProCheckOnOutput(sr, { type: 'action_error', message: msg }, getRulesAndPlans(step, context), []);
+    }
+
+    if (isTimeout) {
       return { status: 'paused', stepRunId };
     }
 
