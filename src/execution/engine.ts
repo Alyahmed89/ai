@@ -1045,7 +1045,8 @@ function resolveVariables(input: any, context: Record<string, any>): any {
     return input.replace(/\[\[var:([^\]]+)\]\]/g, (_match, key) => {
       const trimmed = key.trim();
       if (!(trimmed in context)) {
-        throw new Error(`Variable '[[var:${trimmed}]]' not found in context`);
+        console.warn(`Variable '[[var:${trimmed}]]' not found in context, leaving as-is`);
+        return _match;
       }
       return String(context[trimmed]);
     });
