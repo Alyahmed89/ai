@@ -399,6 +399,27 @@ export default function FlowRunPage() {
                     )
                   })()}
 
+                  {/* Completed Actions */}
+                  {(() => {
+                    const completed = step.result?.actions_completed
+                    if (!Array.isArray(completed) || completed.length === 0) return null
+                    return (
+                      <div className="mb-2">
+                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
+                          completed actions ({completed.length})
+                        </span>
+                        <div className="space-y-2">
+                          {completed.map((action: unknown, i: number) => (
+                            <CompletedActionBlock
+                              key={i}
+                              action={action as Record<string, unknown>}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* Correction Flow Button */}
                   {step.result?.pro_check?.status === 'stop' &&
                     step.result.pro_check.correction_flow?.flow_id && (
@@ -528,6 +549,73 @@ function ActionBlock({ action }: { action: Record<string, unknown> }) {
           defaultOpen
         />
       )}
+    </div>
+  )
+}
+
+/** Renders a completed action with request details and response body */
+function CompletedActionBlock({ action }: { action: Record<string, unknown> }) {
+  const hasError = action.error || action.status === 'error' || action.status === 'failed'
+  const statusColor = hasError ? 'text-red-400/80' : 'text-green-400/80'
+
+  // Build request object from known request fields
+  const requestObj: Record<string, unknown> = {}
+  const requestFields = ['method', 'endpoint', 'path', 'payload', 'url', 'headers', 'type']
+  for (const k of requestFields) {
+    if (k in action) {
+      requestObj[k] = action[k]
+    }
+  }
+
+  // Build response object
+  const responseObj: Record<string, unknown> = {}
+  if ('response' in action) responseObj.response = action.response
+  if ('response_body' in action) responseObj.response_body = action.response_body
+  if ('result' in action) responseObj.result = action.result
+  if ('data' in action) responseObj.data = action.data
+  if ('status_code' in action) responseObj.status_code = action.status_code
+  if ('status' in action) responseObj.status = action.status
+  if (hasError && action.error) responseObj.error = action.error
+
+  const hasResponse = Object.keys(responseObj).length > 0
+
+  const endpoint = action.endpoint as string | undefined
+  const method = action.method as string | undefined
+  const statusCode = action.status_code as string | number | undefined
+
+  return (
+    <div>
+      {endpoint && (
+        <div className="flex items-center gap-2 mb-1.5">
+          {method && (
+            <span className={`text-[10px] font-semibold uppercase ${statusColor}`}>
+              {method}
+            </span>
+          )}
+          <span className="text-[11px] text-neutral-400 truncate">{endpoint}</span>
+          {statusCode && (
+            <span className={`text-[10px] ml-auto ${statusColor}`}>
+              {String(statusCode)}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        {Object.keys(requestObj).length > 0 && (
+          <CollapsibleJson
+            label="request"
+            value={JSON.stringify(requestObj, null, 2)}
+            defaultOpen
+          />
+        )}
+        {hasResponse && (
+          <CollapsibleJson
+            label={hasError ? 'error response' : 'response'}
+            value={JSON.stringify(responseObj, null, 2)}
+            defaultOpen
+          />
+        )}
+      </div>
     </div>
   )
 }
