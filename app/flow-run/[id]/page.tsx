@@ -378,6 +378,27 @@ export default function FlowRunPage() {
                     </div>
                   )}
 
+                  {/* Actions */}
+                  {(() => {
+                    const actions = step.result?.pro_check_request?.response?.actions
+                    if (!Array.isArray(actions) || actions.length === 0) return null
+                    return (
+                      <div className="mb-2">
+                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
+                          actions ({actions.length})
+                        </span>
+                        <div className="space-y-2">
+                          {actions.map((action: unknown, i: number) => (
+                            <ActionBlock
+                              key={i}
+                              action={action as Record<string, unknown>}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* Correction Flow Button */}
                   {step.result?.pro_check?.status === 'stop' &&
                     step.result.pro_check.correction_flow?.flow_id && (
@@ -432,6 +453,81 @@ export default function FlowRunPage() {
           </form>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** A collapsible JSON block with a label */
+function CollapsibleJson({
+  label,
+  value,
+  defaultOpen = false,
+}: {
+  label: string
+  value: string
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  let formatted: string
+  try {
+    formatted = JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    formatted = value
+  }
+
+  return (
+    <div className="border border-neutral-800 rounded overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-500 uppercase tracking-wider hover:text-neutral-300 transition-colors"
+      >
+        <span>{label}</span>
+        <span className="text-neutral-700">{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <pre className="text-[11px] text-neutral-400 px-3 pb-2 whitespace-pre-wrap overflow-x-auto">
+          {formatted}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+/** Renders a single action with its request and response side by side */
+function ActionBlock({ action }: { action: Record<string, unknown> }) {
+  // Separate request fields from response fields
+  const requestFields = ['type', 'method', 'endpoint', 'path', 'payload', 'url', 'headers']
+  const responseFields = ['response', 'response_body', 'result', 'data', 'status_code', 'status']
+
+  const requestObj: Record<string, unknown> = {}
+  const responseObj: Record<string, unknown> = {}
+
+  for (const [k, v] of Object.entries(action)) {
+    if (responseFields.includes(k)) {
+      responseObj[k] = v
+    } else {
+      requestObj[k] = v
+    }
+  }
+
+  // If nothing ended up in response, put everything in request
+  const hasResponse = Object.keys(responseObj).length > 0
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <CollapsibleJson
+        label="request"
+        value={JSON.stringify(hasResponse ? requestObj : action, null, 2)}
+        defaultOpen
+      />
+      {hasResponse && (
+        <CollapsibleJson
+          label="response"
+          value={JSON.stringify(responseObj, null, 2)}
+          defaultOpen
+        />
+      )}
     </div>
   )
 }
