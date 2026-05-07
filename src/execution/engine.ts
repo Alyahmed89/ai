@@ -426,23 +426,9 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       }
     }
 
-    // Step 5 — Call pro_check on the validated AI response output
-    const { data: stepRunForProCheck } = await getSupabase()
-      .from('step_runs')
-      .select('*')
-      .eq('id', stepRunId)
-      .maybeSingle();
-    if (stepRunForProCheck) {
-      const rules: string[] = [];
-      const plans: string[] = [];
-      if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-      if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
-      if (context.plan_id) plans.push(context.plan_id);
-      const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, validated, rules, plans);
-      if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-    }
-
-    // Step 6 — Execute actions (ONLY after pro_check pass)
+        // Step 5 — Execute actions (before pro_check so results are included)
+    const actionResults: Record<string, any> = {};
+    let actionError: any = null;
     for (const action of allActions) {
       if (action.type !== 'api') continue;
 
@@ -457,14 +443,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       if (missingField) {
         const errorMsg = `Invalid action: missing required field '${missingField}'`;
         console.error(`[engine] ${errorMsg}`, action);
-        const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        const sr = await fetchStepRun(stepRunId);
-        if (sr) {
-          await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-          const proCheckResult = await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-          if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-        }
-        return { status: 'failed' as const, stepRunId };
+        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+        break;
       }
 
       // Look up endpoint in registry
@@ -477,13 +457,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       if (!endpoint) {
         const errorMsg = `Endpoint '${action.endpoint}' not found in registry`;
         console.error(`[engine] ${errorMsg}`);
-        const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        const sr = await fetchStepRun(stepRunId);
-        if (sr) {
-          await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-          await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-        }
-        return { status: 'failed' as const, stepRunId };
+        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+        break;
       }
 
       // Validate method
@@ -492,13 +467,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       if (actionMethod !== endpointMethod) {
         const errorMsg = `Method mismatch for endpoint '${action.endpoint}': action uses '${actionMethod}', endpoint expects '${endpointMethod}'`;
         console.error(`[engine] ${errorMsg}`);
-        const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        const sr = await fetchStepRun(stepRunId);
-        if (sr) {
-          await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-          await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-        }
-        return { status: 'failed' as const, stepRunId };
+        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+        break;
       }
 
       // Validate path: extract base path from endpoint URL and compare with action.path
@@ -507,26 +477,16 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       if (!resolvedActionPath.startsWith(endpointBasePath)) {
         const errorMsg = `Path mismatch for endpoint '${action.endpoint}': action path '${resolvedActionPath}' does not start with endpoint base path '${endpointBasePath}'`;
         console.error(`[engine] ${errorMsg}`);
-        const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        const sr = await fetchStepRun(stepRunId);
-        if (sr) {
-          await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-          await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-        }
-        return { status: 'failed' as const, stepRunId };
+        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+        break;
       }
 
       // Validate output_var if present
       if (action.output_var && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(action.output_var)) {
         const errorMsg = `Invalid output_var '${action.output_var}' for endpoint '${action.endpoint}': must be a valid identifier`;
         console.error(`[engine] ${errorMsg}`);
-        const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-        const sr = await fetchStepRun(stepRunId);
-        if (sr) {
-          await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-          await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-        }
-        return { status: 'failed' as const, stepRunId };
+        actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+        break;
       }
 
       // Validate payload against endpoint sample_request schema
@@ -539,26 +499,16 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
           } else if (actionMethod !== 'GET' && actionMethod !== 'HEAD') {
             const errorMsg = `Missing payload for endpoint '${action.endpoint}': expected payload matching sample_request`;
             console.error(`[engine] ${errorMsg}`);
-            const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-            const sr = await fetchStepRun(stepRunId);
-            if (sr) {
-              await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-              await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-            }
-            return { status: 'failed' as const, stepRunId };
+            actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+            break;
           }
         } catch (err: any) {
           if (err instanceof z.ZodError) {
             const details = err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
             const errorMsg = `Invalid payload for endpoint '${action.endpoint}': ${details}`;
             console.error(`[engine] ${errorMsg}`);
-            const errorObject = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
-            const sr = await fetchStepRun(stepRunId);
-            if (sr) {
-              await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-              await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-            }
-            return { status: 'failed' as const, stepRunId };
+            actionError = { type: 'action_error', message: errorMsg, action, stack: new Error(errorMsg).stack };
+            break;
           }
           throw err;
         }
@@ -618,14 +568,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         } catch (err: any) {
           // Fetch-level error (network, DNS, etc.)
           const errorMsg = err?.message || String(err);
-          const errorObject = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
-          const sr = await fetchStepRun(stepRunId);
-          if (sr) {
-            await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-            const proCheckResult = await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-            if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-          }
-          return { status: 'failed' as const, stepRunId };
+          actionError = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
+          break;
         }
 
         // Persist to api_calls table
@@ -661,6 +605,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             }).maybeSingle();
             // Also add to running context so subsequent actions in same step can use it
             context[varName] = parsed;
+            // Store in actionResults for pro_check
+            actionResults[action.endpoint] = parsed;
           } catch {
             // response is not JSON, skip auto-store
           }
@@ -673,50 +619,35 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             // Signal pause to outer runFlow without throwing
             return { status: 'paused', stepRunId };
           }
-          // pro_check passed despite API error — mark step failed and stop
-          // Merge result to preserve any existing fields (e.g. pro_check_request)
-          const { data: failedStepRun } = await getSupabase()
-            .from('step_runs')
-            .select('result')
-            .eq('id', stepRunId)
-            .maybeSingle();
-          const failedResult = failedStepRun?.result && typeof failedStepRun.result === 'object' ? failedStepRun.result : {};
-          await updateStepRun(stepRunId, {
-            status: 'failed',
-            error: `API ${res.status}: ${(bodyStr || '').slice(0, 500)}`,
-            result: { ...failedResult, api_error: { statusCode: res.status, body: bodyStr, url } },
-          });
-          // Do NOT let the error propagate further — step is already marked failed
-          return { status: 'failed' as const, stepRunId };
+          // pro_check passed despite API error — record error and continue
+          actionError = { type: 'action_error', statusCode: res.status, body: bodyStr, url };
+          break;
         }
         console.log(`[engine] action completed: ${url} ${res.status}`);
       } catch (err: any) {
         // Catch any unexpected error from the action block
         const errorMsg = err?.message || String(err);
-        const errorObject = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
-        const sr = await fetchStepRun(stepRunId);
-        if (sr) {
-          await failStepRun(stepRunId, errorMsg, { ...getResult(sr), api_error: errorObject });
-          await callProCheckOnOutput(sr, errorObject, getRulesAndPlans(step, context), []);
-        }
-        return { status: 'failed' as const, stepRunId };
+        actionError = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
+        break;
       }
     }
 
-    // Step 7 — Call pro_check on the final output (after all actions)
-    const finalOutput = { ...validated, actions_completed: allActions.map(a => a.endpoint) };
-    const { data: stepRunAfterActions } = await getSupabase()
+    // Step 6 — Call pro_check on merged output (AI response + action results + any error)
+    const mergedOutput = actionError
+      ? { ...validated, action_results: actionResults, action_error: actionError }
+      : { ...validated, action_results: actionResults };
+    const { data: stepRunForProCheck } = await getSupabase()
       .from('step_runs')
       .select('*')
       .eq('id', stepRunId)
       .maybeSingle();
-    if (stepRunAfterActions) {
+    if (stepRunForProCheck) {
       const rules: string[] = [];
       const plans: string[] = [];
       if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
       if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
       if (context.plan_id) plans.push(context.plan_id);
-      const proCheckResult = await callProCheckOnOutput(stepRunAfterActions, finalOutput, rules, plans);
+      const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, mergedOutput, rules, plans);
       if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
     }
 
