@@ -273,7 +273,15 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       }
 
       if (stepResult === '__PAUSED__') {
-        // Step paused itself (condition matched with no next edge)
+        // Step paused itself — check if there's a next step by order_index
+        const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
+        if (nextStep) {
+          // Continue to next step instead of pausing
+          await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
+          currentStep = nextStep;
+          continue;
+        }
+        // No next step — truly terminal
         console.log(`[engine] flow paused at step ${currentStep.id}`);
         return;
       }
