@@ -1005,6 +1005,10 @@ async function evaluateConditions(stepId: string, expected: any): Promise<string
 async function buildContext(flowRunId: string, stepRunId: string, flowRun: any): Promise<Record<string, any>> {
   const context: Record<string, any> = {};
 
+  // auto-inject identifiers
+  context['flow_run_id'] = flowRunId;
+  context['step_run_id'] = stepRunId;
+
   // flow_run level
   if (flowRun?.input_variables) {
     Object.assign(context, flowRun.input_variables);
