@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Controller, Get, Post, Put, Delete, Param, Query, Body } from '@nestjs/common';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
@@ -47,10 +48,10 @@ export class ApiFlowStepsController {
       throw new Error('flow_id is required');
     }
     const record = {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
-      ref: body.ref || crypto.randomUUID(),
+      ref: body.ref || randomUUID(),
       system_message: body.system_message || null,
       instructions: body.instructions,
       expected_response: body.expected_response,
