@@ -278,6 +278,31 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       }
 
       if (stepResult === '__PAUSED__') {
+        // Check if the AI response included a next_step_id for dynamic flow control
+        const { data: pausedStepRun } = await getSupabase()
+          .from('step_runs')
+          .select('ai_response')
+          .eq('flow_run_id', flowRunId)
+          .eq('step_id', currentStep.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const pausedNextStepId = pausedStepRun?.ai_response?.next_step_id;
+        if (pausedNextStepId && typeof pausedNextStepId === 'string' && pausedNextStepId.trim() !== '') {
+          if (pausedNextStepId === currentStep.id) {
+            console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
+            break;
+          }
+          const dynamicStep = await getStepById(pausedNextStepId);
+          if (dynamicStep) {
+            console.log(`[engine] AI-driven next_step_id=${pausedNextStepId} -> step ref=${dynamicStep.ref}`);
+            await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
+            currentStep = dynamicStep;
+            continue;
+          }
+          console.warn(`[engine] next_step_id=${pausedNextStepId} not found, falling back to order-based navigation`);
+        }
+
         // Step paused itself — check if there's a next step by order_index
         const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
         if (nextStep) {
