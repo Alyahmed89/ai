@@ -51,7 +51,6 @@ interface StepRunWithDef extends StepRun {
   definition?: FlowStep
 }
 
-const DEFAULT_VARIABLES = ['goal', 'memory', 'memory_prompt']
 const API_BASE = '/api/proxy'
 
 export default function FlowRunPage() {
@@ -65,13 +64,9 @@ export default function FlowRunPage() {
   const [loading, setLoading] = useState(true)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
-  const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
-  const [showVars, setShowVars] = useState(false)
-  const [selectedVarIdx, setSelectedVarIdx] = useState(0)
   const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [variables, setVariables] = useState<string[]>(DEFAULT_VARIABLES)
+  const [inputs, setInputs] = useState<Record<string, string>>({})
 
   const fetchData = useCallback(async () => {
     if (!id) return
@@ -111,64 +106,36 @@ export default function FlowRunPage() {
     return () => clearInterval(interval)
   }, [fetchData])
 
-  // Extract available_variables from step run context
-  useEffect(() => {
-    for (const step of steps) {
-      const ctx = (step as any).context
-      if (ctx?.available_variables) {
-        setVariables(ctx.available_variables)
-        return
+  /** Extract required variable names from a paused step's expected_response */
+  const getRequiredVars = useCallback((step: StepRunWithDef | undefined): string[] => {
+    const er = step?.definition?.expected_response
+    if (er?.required && er.required.length > 0) {
+      const firstReq = er.required[0]
+      if (
+        firstReq === 'memory' &&
+        er.properties?.['memory'] &&
+        typeof er.properties['memory'] === 'object' &&
+        'required' in (er.properties['memory'] as Record<string, unknown>)
+      ) {
+        const memRequired = (er.properties['memory'] as ExpectedResponseProperty).required
+        if (memRequired && memRequired.length > 0) {
+          return memRequired
+        }
       }
+      return er.required
     }
-  }, [steps])
+    return ['user_input']
+  }, [])
 
-  const insertVariable = (name: string) => {
-    const prefix = input ? ' ' : ''
-    setInput((prev) => prev + prefix + name)
-    setShowVars(false)
-    inputRef.current?.focus()
-  }
+  /** The paused step (most recent one with status paused) */
+  const pausedStep = [...steps]
+    .sort((a, b) => (b.order_index ?? 0) - (a.order_index ?? 0))
+    .find((s) => s.status === 'paused')
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (showVars) {
-        insertVariable(variables[selectedVarIdx])
-        return
-      }
-      handleSend()
-      return
-    }
+  const requiredVars = getRequiredVars(pausedStep)
 
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      if (showVars) {
-        insertVariable(variables[selectedVarIdx])
-      } else {
-        setSelectedVarIdx(0)
-        setShowVars(true)
-      }
-      return
-    }
-
-    if (showVars) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedVarIdx((prev) => (prev + 1) % variables.length)
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedVarIdx((prev) => (prev - 1 + variables.length) % variables.length)
-        return
-      }
-      if (e.key === 'Escape') {
-        setShowVars(false)
-        return
-      }
-    }
-
-    setShowVars(false)
+  const handleInputChange = (name: string, value: string) => {
+    setInputs((prev) => ({ ...prev, [name]: value }))
   }
 
   const handleSend = async () => {
@@ -183,22 +150,26 @@ export default function FlowRunPage() {
           body: JSON.stringify({
             flowId,
             input_variables: {
-              goal: input || '',
+              goal: inputs['goal'] || '',
             },
           }),
         })
       } else {
         // Flow run exists — resume
+        const userInput: Record<string, string> = {}
+        for (const v of requiredVars) {
+          userInput[v] = inputs[v] || ''
+        }
         await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             flowRunId: id,
-            user_input: input || '',
+            user_input: userInput,
           }),
         })
       }
-      setInput('')
+      setInputs({})
       setTimeout(fetchData, 500)
     } catch (e) {
       console.error('Failed to send', e)
@@ -432,40 +403,33 @@ export default function FlowRunPage() {
           </div>
         )}
 
-        <div className="mt-12 flex gap-3 relative">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={() => setTimeout(() => setShowVars(false), 150)}
-            placeholder="send input... (tab for variables)"
-            className="flex-1 bg-transparent text-white border-none outline-none text-sm placeholder-neutral-600"
-          />
-          <button
-            onClick={handleSend}
-            disabled={sending}
-            className="text-sm text-neutral-600 hover:text-white disabled:opacity-30 transition-colors"
+        <div className="mt-12">
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSend() }}
+            className="space-y-3"
           >
-            {sending ? '...' : 'send'}
-          </button>
-
-          {showVars && variables.length > 0 && (
-            <div className="absolute bottom-full left-0 mb-1 bg-neutral-900 border border-neutral-800 text-xs">
-              {variables.map((v, i) => (
-                <div
-                  key={v}
-                  onMouseDown={(e) => { e.preventDefault(); insertVariable(v) }}
-                  className={`px-3 py-1.5 cursor-pointer ${
-                    i === selectedVarIdx ? 'text-white bg-neutral-800' : 'text-neutral-400'
-                  }`}
-                >
+            {requiredVars.map((v) => (
+              <div key={v}>
+                <label className="text-[10px] text-neutral-600 uppercase tracking-wider block mb-1">
                   {v}
-                </div>
-              ))}
-            </div>
-          )}
+                </label>
+                <input
+                  type="text"
+                  value={inputs[v] || ''}
+                  onChange={(e) => handleInputChange(v, e.target.value)}
+                  placeholder={`enter ${v}...`}
+                  className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700"
+                />
+              </div>
+            ))}
+            <button
+              type="submit"
+              disabled={sending}
+              className="text-sm text-neutral-600 hover:text-white disabled:opacity-30 transition-colors"
+            >
+              {sending ? '...' : 'send'}
+            </button>
+          </form>
         </div>
       </div>
     </div>
