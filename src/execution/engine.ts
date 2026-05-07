@@ -288,6 +288,30 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       if (!stepResult) break;
 
+      // Check if the AI response included a next_step_id for dynamic flow control
+      const { data: completedStepRun } = await getSupabase()
+        .from('step_runs')
+        .select('ai_response')
+        .eq('flow_run_id', flowRunId)
+        .eq('step_id', currentStep.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextStepId = completedStepRun?.ai_response?.next_step_id;
+      if (nextStepId && typeof nextStepId === 'string' && nextStepId.trim() !== '') {
+        if (nextStepId === currentStep.id) {
+          console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
+          break;
+        }
+        const dynamicStep = await getStepById(nextStepId);
+        if (dynamicStep) {
+          console.log(`[engine] AI-driven next_step_id=${nextStepId} -> step ref=${dynamicStep.ref}`);
+          currentStep = dynamicStep;
+          continue;
+        }
+        console.warn(`[engine] next_step_id=${nextStepId} not found, falling back to order-based navigation`);
+      }
+
       const nextStep = await getStepByFlowAndRef(flowRun.flow_id, stepResult as string);
       if (!nextStep) throw new Error(`Step ref "${stepResult}" not found in flow ${flowRun.flow_id}`);
       currentStep = nextStep;
