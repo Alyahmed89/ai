@@ -459,6 +459,21 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const actionResults: Record<string, any> = {};
     let actionError: any = null;
     for (const action of allActions) {
+      // Auto-fill type, method, and path from endpoint registry before any checks.
+      // This allows actions with just {"endpoint":"prolog_rules","output_var":"rules"}.
+      if (action.endpoint && (!action.type || !action.method || !action.path)) {
+        const { data: endpoint } = await getSupabase()
+          .from('endpoint_registry')
+          .select('*')
+          .eq('name', action.endpoint)
+          .maybeSingle();
+        if (endpoint) {
+          if (!action.type) action.type = 'api';
+          if (!action.method) action.method = endpoint.method || 'GET';
+          if (!action.path) action.path = endpoint.url;
+        }
+      }
+
       if (action.type !== 'api') continue;
 
       // --- Validation phase (all checks before any network call) ---
@@ -477,7 +492,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         break;
       }
 
-      // Look up endpoint in registry
+      // Look up endpoint in registry (again if not already fetched above)
       const { data: endpoint } = await getSupabase()
         .from('endpoint_registry')
         .select('*')
