@@ -68,26 +68,41 @@ async function callProCheckOnOutput(
   await updateStepRun(stepRun.id, { result: resultWithResponse });
   stepRun.result = resultWithResponse;
 
+  // ----- CHECK FOR AI-DRIVEN next_step_id -----
+  // If the AI response includes a next_step_id, it overrides pro_check stop/pause
+  // so the conversational flow can continue to the specified step.
+  const hasNextStepId = output?.next_step_id && typeof output.next_step_id === 'string' && output.next_step_id.trim() !== '';
+
   // ----- HANDLE STOP -----
   if (proCheckResponse.status === 'stop') {
-    // Pause the step and the flow run – DO NOT FAIL
-    await updateStepRun(stepRun.id, { status: 'paused' });
-    await updateFlowRun(stepRun.flow_run_id, {
-      status: 'paused',
-      paused_at_step_id: stepRun.step_id,
-    });
-    return 'paused';
+    if (hasNextStepId) {
+      // next_step_id overrides stop — store pro_check result for debugging but do not halt
+      console.log(`[engine] pro_check=stop overridden by next_step_id=${output.next_step_id}`);
+    } else {
+      // Pause the step and the flow run – DO NOT FAIL
+      await updateStepRun(stepRun.id, { status: 'paused' });
+      await updateFlowRun(stepRun.flow_run_id, {
+        status: 'paused',
+        paused_at_step_id: stepRun.step_id,
+      });
+      return 'paused';
+    }
   }
 
   // ----- HANDLE PAUSE -----
   if (proCheckResponse.status === 'pause') {
-    // Pause the step and the flow run – no correction_flow needed
-    await updateStepRun(stepRun.id, { status: 'paused' });
-    await updateFlowRun(stepRun.flow_run_id, {
-      status: 'paused',
-      paused_at_step_id: stepRun.step_id,
-    });
-    return 'paused';
+    if (hasNextStepId) {
+      // next_step_id overrides pause — store pro_check result for debugging but do not halt
+      console.log(`[engine] pro_check=pause overridden by next_step_id=${output.next_step_id}`);
+    } else {
+      // Pause the step and the flow run – no correction_flow needed
+      await updateStepRun(stepRun.id, { status: 'paused' });
+      await updateFlowRun(stepRun.flow_run_id, {
+        status: 'paused',
+        paused_at_step_id: stepRun.step_id,
+      });
+      return 'paused';
+    }
   }
 
   if (!prologReachable) {
