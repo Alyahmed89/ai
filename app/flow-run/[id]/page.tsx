@@ -171,38 +171,10 @@ export default function FlowRunPage() {
     setShowVars(false)
   }
 
-  /** Determine the user input key from the paused step's expected_response schema */
-  const getUserInputKey = useCallback((): string => {
-    // Find the paused step (the one waiting for user input)
-    const pausedStep = [...steps]
-      .sort((a, b) => (b.order_index ?? 0) - (a.order_index ?? 0))
-      .find((s) => s.status === 'paused')
-    const er = pausedStep?.definition?.expected_response
-    if (er?.required && er.required.length > 0) {
-      const firstReq = er.required[0]
-      // If the first required key is "memory" and its property has its own required array
-      if (
-        firstReq === 'memory' &&
-        er.properties?.['memory'] &&
-        typeof er.properties['memory'] === 'object' &&
-        'required' in (er.properties['memory'] as Record<string, unknown>)
-      ) {
-        const memRequired = (er.properties['memory'] as ExpectedResponseProperty).required
-        if (memRequired && memRequired.length > 0) {
-          return memRequired[0]
-        }
-      }
-      return firstReq
-    }
-    return 'step_goal'
-  }, [steps])
-
   const handleSend = async () => {
     if (sending) return
     setSending(true)
     try {
-      const userInputKey = getUserInputKey()
-
       if (steps.length === 0 && flowId) {
         // No flow run yet — start the flow
         await fetch('/api/proxy/start', {
@@ -211,7 +183,7 @@ export default function FlowRunPage() {
           body: JSON.stringify({
             flowId,
             input_variables: {
-              [userInputKey]: input || '',
+              goal: input || '',
             },
           }),
         })
@@ -222,9 +194,7 @@ export default function FlowRunPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             flowRunId: id,
-            user_input: {
-              [userInputKey]: input || '',
-            },
+            user_input: input || '',
           }),
         })
       }
