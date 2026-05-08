@@ -257,11 +257,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       currentStep = firstStep;
     }
 
+    const visited = new Set<string>();
     const maxSteps = 50;
     let stepCount = 0;
 
     while (currentStep) {
       if (stepCount >= maxSteps) throw new Error('Max steps exceeded');
+      if (visited.has(currentStep.id)) throw new Error('Cycle detected');
+      visited.add(currentStep.id);
       stepCount++;
 
       console.log(`[engine] executing step stepCount=${stepCount} stepId=${currentStep.id} ref=${currentStep.ref}`);
@@ -1105,8 +1108,7 @@ function resolveVariables(input: any, context: Record<string, any>): any {
         console.warn(`Variable '[[var:${trimmed}]]' not found in context, leaving as-is`);
         return _match;
       }
-      const val = context[trimmed];
-      return typeof val === 'object' ? JSON.stringify(val) : String(val);
+      return String(context[trimmed]);
     });
   }
 
