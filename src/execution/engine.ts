@@ -461,24 +461,24 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const stepActions = Array.isArray(step.actions) ? step.actions : [];
     const allActions = [...actions, ...stepActions];
 
-    // Auto-store top-level scalar fields from AI response as flow_run variables
+    // Auto-store ALL top-level fields from AI response as flow_run variables
     // so subsequent steps can reference them via [[var:key]]
-    // Complex objects (chat_memory, etc.) are persisted by step actions.
+    // Excludes control fields like 'actions', 'next_step_id', 'pro_check'
     for (const [key, value] of Object.entries(validated)) {
       if (key === 'next' || key === 'actions' || key === 'next_step_id' || key === 'pro_check') continue;
-      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-        await getSupabase().from('variables').insert({
-          id: randomUUID(),
-          flow_run_id: flowRunId,
-          step_run_id: stepRunId,
-          key,
-          value: String(value),
-          scope: 'flow_run',
-          created_at: new Date().toISOString(),
-        }).maybeSingle();
-        // Also add to running context immediately
-        context[key] = value;
-      }
+      if (value === undefined || value === null) continue;
+      const strValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key,
+        value: strValue,
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      // Also add to running context immediately
+      context[key] = value;
     }
 
         // Step 5 — Execute actions (before pro_check so results are included)
