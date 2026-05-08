@@ -67,6 +67,8 @@ export default function FlowRunPage() {
   const [sending, setSending] = useState(false)
   const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
+  const [chatMode, setChatMode] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const fetchData = useCallback(async () => {
     if (!id) return
@@ -106,6 +108,12 @@ export default function FlowRunPage() {
     return () => clearInterval(interval)
   }, [fetchData])
 
+  useEffect(() => {
+    if (chatMode && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [steps, chatMode])
+
   /** Extract required variable names from a paused step's expected_response */
   const getRequiredVars = useCallback((step: StepRunWithDef | undefined): string[] => {
     const er = step?.definition?.expected_response
@@ -133,6 +141,32 @@ export default function FlowRunPage() {
     .find((s) => s.status === 'paused')
 
   const requiredVars = getRequiredVars(pausedStep)
+
+  /** Build chat messages from step runs */
+  const chatMessages = (() => {
+    const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
+    const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    for (const s of sorted) {
+      // User input: resolved_variables contains step_goal
+      const goal = s.resolved_variables?.step_goal
+      if (goal) {
+        msgs.push({ role: 'user', text: goal, id: `${s.id}-goal` })
+      }
+      // Assistant response: ai_response or chat_message in ai_response
+      if (s.ai_response) {
+        let chatMsg = ''
+        if (typeof s.ai_response === 'string') {
+          chatMsg = s.ai_response
+        } else if (typeof s.ai_response === 'object' && s.ai_response !== null) {
+          chatMsg = (s.ai_response as Record<string, unknown>).chat_message as string || ''
+        }
+        if (chatMsg) {
+          msgs.push({ role: 'assistant', text: chatMsg, id: `${s.id}-resp` })
+        }
+      }
+    }
+    return msgs
+  })()
 
   const handleInputChange = (name: string, value: string) => {
     setInputs((prev) => ({ ...prev, [name]: value }))
@@ -248,226 +282,278 @@ export default function FlowRunPage() {
 
   return (
     <div className="min-h-screen bg-black text-white font-mono">
-      <div className="max-w-3xl mx-auto px-6 py-12">
-        <button onClick={() => router.push('/')} className="text-neutral-600 hover:text-white mb-8">
-          &larr; back
-        </button>
-
-        <div className="mb-8">
-          <h1 className="text-lg mb-2">flow run</h1>
-          <p className="text-neutral-600 text-xs">{id}</p>
+      <div className="max-w-3xl mx-auto px-6 py-12 pb-28">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <button onClick={() => router.push('/')} className="text-neutral-600 hover:text-white">
+              &larr; back
+            </button>
+            <h1 className="text-lg mt-2 mb-1">flow run</h1>
+            <p className="text-neutral-600 text-xs">{id}</p>
+          </div>
+          {/* Toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="text-[10px] uppercase tracking-wider text-neutral-500">
+              {chatMode ? 'chat' : 'debug'}
+            </span>
+            <div
+              onClick={() => setChatMode(!chatMode)}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                chatMode ? 'bg-blue-600' : 'bg-neutral-800'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  chatMode ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </div>
+          </label>
         </div>
 
-        {steps.length === 0 ? (
-          <p className="text-neutral-600">no steps yet</p>
-        ) : (
-          <div className="space-y-8">
-            {steps
-              .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-              .map((step) => (
-                <div key={step.id} className="border border-neutral-800 rounded p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="text-xs text-neutral-500">#{step.order_index}</span>
-                    {step.definition?.ref && (
-                      <span className="text-xs text-amber-400/70">{step.definition.ref}</span>
-                    )}
-                    {step.definition?.title && (
-                      <span className="text-sm text-white font-semibold">{step.definition.title}</span>
-                    )}
-                    <span className="text-xs text-neutral-600">{step.step_id}</span>
-                    <span className="text-xs text-neutral-500 ml-auto">{step.status}</span>
-                  </div>
-
-                  {step.definition?.instructions && (
-                    <p className="text-xs text-neutral-400 mb-3 italic">{step.definition.instructions}</p>
-                  )}
-
-                  {step.ai_response && (
-                    <div className="mb-2">
-                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
-                        ai response
-                        <ContextChatTrigger
-                          label="ai_response"
-                          value={step.ai_response}
-                          stepRunId={step.id}
-                          flowRunId={id}
-                        />
-                      </span>
-                      <JsonBlock
-                        value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
-                        stepId={step.id}
-                        field="ai_response"
-                        editingKey={editingKey}
-                        editValue={editValue}
-                        onStartEdit={startEdit}
-                        onSave={saveEdit}
-                        onChange={setEditValue}
-                      />
-                    </div>
-                  )}
-
-                  {step.resolved_variables && Object.keys(step.resolved_variables).length > 0 && (
-                    <div>
-                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">resolved variables</span>
-                      <div className="space-y-1">
-                        {Object.entries(step.resolved_variables).map(([key, val]) => (
-                          <div key={key} className="flex items-start gap-2 text-xs">
-                            <span className="text-neutral-500 shrink-0">{key}:</span>
-                            <span className="text-neutral-400 break-all">
-                              {typeof val === 'string' ? val : JSON.stringify(val, null, 2)}
-                              <ContextChatTrigger
-                                label={key}
-                                value={val}
-                                stepRunId={step.id}
-                                flowRunId={id}
-                              />
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pro Check Request */}
-                  {step.result?.pro_check_request && (
-                    <div className="mb-2">
-                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
-                        pro check request
-                        <ContextChatTrigger
-                          label="pro_check_request"
-                          value={step.result.pro_check_request}
-                          stepRunId={step.id}
-                          flowRunId={id}
-                          relatedRules={step.result.pro_check_request.rules}
-                        />
-                      </span>
-                      <JsonBlock
-                        value={JSON.stringify(step.result.pro_check_request)}
-                        stepId={step.id}
-                        field="result.pro_check_request"
-                        editingKey={editingKey}
-                        editValue={editValue}
-                        onStartEdit={startEdit}
-                        onSave={saveEdit}
-                        onChange={setEditValue}
-                      />
-                    </div>
-                  )}
-
-                  {/* Pro Check */}
-                  {step.result?.pro_check && (
-                    <div className="mb-2">
-                      <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
-                        pro check
-                        <ContextChatTrigger
-                          label="pro_check"
-                          value={step.result.pro_check}
-                          stepRunId={step.id}
-                          flowRunId={id}
-                        />
-                      </span>
-                      <div className={`text-xs font-mono whitespace-pre-wrap ${
-                        step.result.pro_check.status === 'stop'
-                          ? 'text-red-400/80'
-                          : step.result.pro_check.status === 'approve'
-                          ? 'text-green-400/80'
-                          : 'text-neutral-400'
-                      }`}>
-                        {JSON.stringify(step.result.pro_check, null, 2)}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  {(() => {
-                    const actions = step.result?.pro_check_request?.response?.actions
-                    if (!Array.isArray(actions) || actions.length === 0) return null
-                    return (
-                      <div className="mb-2">
-                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
-                          actions ({actions.length})
-                        </span>
-                        <div className="space-y-2">
-                          {actions.map((action: unknown, i: number) => (
-                            <ActionBlock
-                              key={i}
-                              action={action as Record<string, unknown>}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* Completed Actions */}
-                  {(() => {
-                    const completed = step.result?.actions_completed
-                    if (!Array.isArray(completed) || completed.length === 0) return null
-                    return (
-                      <div className="mb-2">
-                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
-                          completed actions ({completed.length})
-                        </span>
-                        <div className="space-y-2">
-                          {completed.map((action: unknown, i: number) => (
-                            <CompletedActionBlock
-                              key={i}
-                              action={action as Record<string, unknown>}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* Correction Flow Button */}
-                  {step.result?.pro_check?.status === 'stop' &&
-                    step.result.pro_check.correction_flow?.flow_id && (
-                    <div className="mt-3 pt-3 border-t border-neutral-800">
-                      <button
-                        onClick={() => startCorrectionFlow(step)}
-                        disabled={correctionStarting === step.id}
-                        className="text-xs text-amber-400/70 hover:text-amber-300
-                                   disabled:opacity-30 transition-colors"
-                      >
-                        {correctionStarting === step.id
-                          ? 'starting...'
-                          : 'Start Correction Flow →'}
-                      </button>
-                    </div>
-                  )}
-
-                  {step.error && (
-                    <p className="text-xs text-red-500 mt-2">{step.error}</p>
-                  )}
+        {chatMode ? (
+          /* ── Chat Mode ── */
+          <div className="space-y-4">
+            {chatMessages.length === 0 && (
+              <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
+            )}
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-blue-600 text-white rounded-br-md'
+                      : 'bg-neutral-800 text-neutral-200 rounded-bl-md'
+                  }`}
+                >
+                  {msg.text}
                 </div>
-              ))}
-          </div>
-        )}
-
-        <div className="mt-12">
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleSend() }}
-            className="space-y-3"
-          >
-            {requiredVars.map((v) => (
-              <div key={v}>
-                <label className="text-[10px] text-neutral-600 uppercase tracking-wider block mb-1">
-                  {v}
-                </label>
-                <input
-                  type="text"
-                  value={inputs[v] || ''}
-                  onChange={(e) => handleInputChange(v, e.target.value)}
-                  placeholder={`enter ${v}...`}
-                  className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700"
-                />
               </div>
             ))}
+            <div ref={chatEndRef} />
+          </div>
+        ) : (
+          /* ── Debug Mode ── */
+          steps.length === 0 ? (
+            <p className="text-neutral-600">no steps yet</p>
+          ) : (
+            <div className="space-y-8">
+              {steps
+                .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                .map((step) => (
+                  <div key={step.id} className="border border-neutral-800 rounded p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="text-xs text-neutral-500">#{step.order_index}</span>
+                      {step.definition?.ref && (
+                        <span className="text-xs text-amber-400/70">{step.definition.ref}</span>
+                      )}
+                      {step.definition?.title && (
+                        <span className="text-sm text-white font-semibold">{step.definition.title}</span>
+                      )}
+                      <span className="text-xs text-neutral-600">{step.step_id}</span>
+                      <span className="text-xs text-neutral-500 ml-auto">{step.status}</span>
+                    </div>
+
+                    {step.definition?.instructions && (
+                      <p className="text-xs text-neutral-400 mb-3 italic">{step.definition.instructions}</p>
+                    )}
+
+                    {step.ai_response && (
+                      <div className="mb-2">
+                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+                          ai response
+                          <ContextChatTrigger
+                            label="ai_response"
+                            value={step.ai_response}
+                            stepRunId={step.id}
+                            flowRunId={id}
+                          />
+                        </span>
+                        <JsonBlock
+                          value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
+                          stepId={step.id}
+                          field="ai_response"
+                          editingKey={editingKey}
+                          editValue={editValue}
+                          onStartEdit={startEdit}
+                          onSave={saveEdit}
+                          onChange={setEditValue}
+                        />
+                      </div>
+                    )}
+
+                    {step.resolved_variables && Object.keys(step.resolved_variables).length > 0 && (
+                      <div>
+                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider">resolved variables</span>
+                        <div className="space-y-1">
+                          {Object.entries(step.resolved_variables).map(([key, val]) => (
+                            <div key={key} className="flex items-start gap-2 text-xs">
+                              <span className="text-neutral-500 shrink-0">{key}:</span>
+                              <span className="text-neutral-400 break-all">
+                                {typeof val === 'string' ? val : JSON.stringify(val, null, 2)}
+                                <ContextChatTrigger
+                                  label={key}
+                                  value={val}
+                                  stepRunId={step.id}
+                                  flowRunId={id}
+                                />
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pro Check Request */}
+                    {step.result?.pro_check_request && (
+                      <div className="mb-2">
+                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+                          pro check request
+                          <ContextChatTrigger
+                            label="pro_check_request"
+                            value={step.result.pro_check_request}
+                            stepRunId={step.id}
+                            flowRunId={id}
+                            relatedRules={step.result.pro_check_request.rules}
+                          />
+                        </span>
+                        <JsonBlock
+                          value={JSON.stringify(step.result.pro_check_request)}
+                          stepId={step.id}
+                          field="result.pro_check_request"
+                          editingKey={editingKey}
+                          editValue={editValue}
+                          onStartEdit={startEdit}
+                          onSave={saveEdit}
+                          onChange={setEditValue}
+                        />
+                      </div>
+                    )}
+
+                    {/* Pro Check */}
+                    {step.result?.pro_check && (
+                      <div className="mb-2">
+                        <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+                          pro check
+                          <ContextChatTrigger
+                            label="pro_check"
+                            value={step.result.pro_check}
+                            stepRunId={step.id}
+                            flowRunId={id}
+                          />
+                        </span>
+                        <div className={`text-xs font-mono whitespace-pre-wrap ${
+                          step.result.pro_check.status === 'stop'
+                            ? 'text-red-400/80'
+                            : step.result.pro_check.status === 'approve'
+                            ? 'text-green-400/80'
+                            : 'text-neutral-400'
+                        }`}>
+                          {JSON.stringify(step.result.pro_check, null, 2)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    {(() => {
+                      const actions = step.result?.pro_check_request?.response?.actions
+                      if (!Array.isArray(actions) || actions.length === 0) return null
+                      return (
+                        <div className="mb-2">
+                          <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
+                            actions ({actions.length})
+                          </span>
+                          <div className="space-y-2">
+                            {actions.map((action: unknown, i: number) => (
+                              <ActionBlock
+                                key={i}
+                                action={action as Record<string, unknown>}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Completed Actions */}
+                    {(() => {
+                      const completed = step.result?.actions_completed
+                      if (!Array.isArray(completed) || completed.length === 0) return null
+                      return (
+                        <div className="mb-2">
+                          <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
+                            completed actions ({completed.length})
+                          </span>
+                          <div className="space-y-2">
+                            {completed.map((action: unknown, i: number) => (
+                              <CompletedActionBlock
+                                key={i}
+                                action={action as Record<string, unknown>}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Correction Flow Button */}
+                    {step.result?.pro_check?.status === 'stop' &&
+                      step.result.pro_check.correction_flow?.flow_id && (
+                      <div className="mt-3 pt-3 border-t border-neutral-800">
+                        <button
+                          onClick={() => startCorrectionFlow(step)}
+                          disabled={correctionStarting === step.id}
+                          className="text-xs text-amber-400/70 hover:text-amber-300
+                                     disabled:opacity-30 transition-colors"
+                        >
+                          {correctionStarting === step.id
+                            ? 'starting...'
+                            : 'Start Correction Flow →'}
+                        </button>
+                      </div>
+                    )}
+
+                    {step.error && (
+                      <p className="text-xs text-red-500 mt-2">{step.error}</p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )
+        )}
+      </div>
+
+      {/* ── Fixed Input Footer ── */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur border-t border-neutral-800">
+        <div className="max-w-3xl mx-auto px-6 py-4">
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSend() }}
+            className="flex items-end gap-3"
+          >
+            <div className="flex-1 space-y-2">
+              {requiredVars.map((v) => (
+                <div key={v}>
+                  <label className="text-[10px] text-neutral-600 uppercase tracking-wider block mb-1">
+                    {v}
+                  </label>
+                  <input
+                    type="text"
+                    value={inputs[v] || ''}
+                    onChange={(e) => handleInputChange(v, e.target.value)}
+                    placeholder={`enter ${v}...`}
+                    className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700"
+                  />
+                </div>
+              ))}
+            </div>
             <button
               type="submit"
               disabled={sending}
-              className="text-sm text-neutral-600 hover:text-white disabled:opacity-30 transition-colors"
+              className="shrink-0 text-sm text-neutral-600 hover:text-white disabled:opacity-30 transition-colors pb-0.5"
             >
               {sending ? '...' : 'send'}
             </button>
