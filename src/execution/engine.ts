@@ -1069,30 +1069,16 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
     Object.assign(context, flowRun.input_variables);
   }
 
-  // variables table — scope priority: step_run > flow_run > global
+  // variables table — apply in created_at order so latest value per key wins
   const { data: vars } = await getSupabase()
     .from('variables')
     .select('*')
-    .or(`flow_run_id.eq.${flowRunId},scope.eq.global`);
+    .or(`flow_run_id.eq.${flowRunId},scope.eq.global`)
+    .order('created_at', { ascending: true });
 
   if (vars) {
-    // step_run scoped first
     for (const v of vars) {
-      if (v.step_run_id === stepRunId) {
-        context[v.key] = v.value;
-      }
-    }
-    // then flow_run scoped (won't overwrite step_run)
-    for (const v of vars) {
-      if (v.scope === 'flow_run' && v.flow_run_id === flowRunId && !(v.key in context)) {
-        context[v.key] = v.value;
-      }
-    }
-    // then global (won't overwrite anything already set)
-    for (const v of vars) {
-      if (v.scope === 'global' && !(v.key in context)) {
-        context[v.key] = v.value;
-      }
+      context[v.key] = v.value;
     }
   }
 
