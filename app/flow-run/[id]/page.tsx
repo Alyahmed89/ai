@@ -142,7 +142,16 @@ export default function FlowRunPage() {
 
   const requiredVars = getRequiredVars(pausedStep)
 
-  /** Build chat messages from step runs */
+  /** Whether the flow is currently processing (waiting for assistant reply) */
+  const isProcessing = (() => {
+    if (steps.length === 0) return false
+    const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    const last = sorted[sorted.length - 1]
+    // Processing if the last step is not paused (i.e. running/completed without a pause)
+    return last.status !== 'paused'
+  })()
+
+  /** Build chat messages from step runs, deduplicating consecutive identical texts */
   const chatMessages = (() => {
     const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
@@ -165,7 +174,16 @@ export default function FlowRunPage() {
         }
       }
     }
-    return msgs
+    // Deduplicate consecutive messages with the same text
+    const deduped: typeof msgs = []
+    for (const m of msgs) {
+      const prev = deduped[deduped.length - 1]
+      if (prev && prev.role === m.role && prev.text === m.text) {
+        continue // skip duplicate
+      }
+      deduped.push(m)
+    }
+    return deduped
   })()
 
   const handleInputChange = (name: string, value: string) => {
@@ -334,6 +352,18 @@ export default function FlowRunPage() {
                 </div>
               </div>
             ))}
+            {isProcessing && (
+              <div className="flex justify-start">
+                <div className="bg-neutral-800 text-neutral-400 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm">
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+                      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
+                    </svg>
+                    Thinking…
+                  </span>
+                </div>
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
         ) : (
@@ -532,19 +562,21 @@ export default function FlowRunPage() {
         <div className="max-w-3xl mx-auto px-6 py-4">
           <form
             onSubmit={(e) => { e.preventDefault(); handleSend() }}
-            className="flex items-end gap-3"
+            className="flex items-center gap-3"
           >
-            <div className="flex-1 space-y-2">
+            <div className="flex-1">
               {requiredVars.map((v) => (
                 <div key={v}>
-                  <label className="text-[10px] text-neutral-600 uppercase tracking-wider block mb-1">
-                    {v}
-                  </label>
+                  {!chatMode && (
+                    <label className="text-[10px] text-neutral-600 uppercase tracking-wider block mb-1">
+                      {v}
+                    </label>
+                  )}
                   <input
                     type="text"
                     value={inputs[v] || ''}
                     onChange={(e) => handleInputChange(v, e.target.value)}
-                    placeholder={`enter ${v}...`}
+                    placeholder={chatMode ? 'Type a message…' : `enter ${v}...`}
                     className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700"
                   />
                 </div>
@@ -553,9 +585,15 @@ export default function FlowRunPage() {
             <button
               type="submit"
               disabled={sending}
-              className="shrink-0 text-sm text-neutral-600 hover:text-white disabled:opacity-30 transition-colors pb-0.5"
+              className="shrink-0 text-sm text-neutral-200 hover:text-white disabled:opacity-30 transition-colors"
             >
-              {sending ? '...' : 'send'}
+              {sending ? (
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 16 16" fill="none">
+                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
+                </svg>
+              ) : (
+                'send'
+              )}
             </button>
           </form>
         </div>
