@@ -315,21 +315,20 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       if (!stepResult) break;
 
-      // Check if the AI set a next_step_id in its response
+      // Follow the AI's next_step_id if present
       const { data: stepRun } = await getSupabase()
         .from('step_runs')
-        .select('result, ai_response, step_id')
+        .select('result, step_id')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', currentStep.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const aiResp = (stepRun?.result as any)?.ai_response || stepRun?.ai_response;
-      const nextIdFromAI = aiResp?.next_step_id;
-      if (nextIdFromAI && typeof nextIdFromAI === 'string' && nextIdFromAI.length > 0 && nextIdFromAI !== stepRun?.step_id) {
-        const nextStep = await getStepById(nextIdFromAI);
-        if (nextStep) {
-          currentStep = nextStep;
+      const aiNext = (stepRun?.result as any)?.next_step_id;
+      if (aiNext && typeof aiNext === 'string' && aiNext.length > 0 && aiNext !== stepRun?.step_id) {
+        const next = await getStepById(aiNext);
+        if (next) {
+          currentStep = next;
           continue;
         }
       }
