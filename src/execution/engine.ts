@@ -255,11 +255,37 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
     }
 
     const visited = new Set<string>();
+    const stepHistory: string[] = [];
     const maxSteps = 50;
     let stepCount = 0;
 
     while (currentStep) {
       if (stepCount >= maxSteps) throw new Error('Max steps exceeded');
+
+      // --- Stop channel: check if Mo requested a halt ---
+      const { data: fr } = await getSupabase()
+        .from('flow_runs')
+        .select('stop_requested')
+        .eq('id', flowRunId)
+        .maybeSingle();
+      if (fr?.stop_requested) {
+        console.log(`[engine] stop requested for flowRunId=${flowRunId}, halting`);
+        await updateFlowRun(flowRunId, { status: 'stopped', stop_requested: false });
+        return;
+      }
+
+      // --- Adaptive loop detection ---
+      stepHistory.push(currentStep.id);
+      if (stepHistory.length >= 6) {
+        const last3 = stepHistory.slice(-3);
+        const prev3 = stepHistory.slice(-6, -3);
+        if (last3[0] === prev3[0] && last3[1] === prev3[1] && last3[2] === prev3[2]) {
+          console.log(`[engine] adaptive loop detected: ${last3.join(' → ')}, pausing flow`);
+          await updateFlowRun(flowRunId, { status: 'paused', paused_at_step_id: currentStep.id });
+          return;
+        }
+      }
+
       if (visited.has(currentStep.id)) throw new Error('Cycle detected');
       visited.add(currentStep.id);
       stepCount++;
@@ -421,35 +447,67 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
     // Step 3 — Zod validate ai_response against expected_response schema
     const schema = buildExpectedResponseSchema(step.expected_response);
-    const zodResult = schema.safeParse(aiResponse);
+    let zodResult = schema.safeParse(aiResponse);
     console.log(`[engine] zod validation:`, JSON.stringify(zodResult, null, 2));
 
     if (!zodResult.success) {
-      const zodError = zodResult.error.flatten();
-      console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
-      // Call pro_check on the validation error — Prolog may decide a correction flow is needed
-      const zodOutput = { zod_error: zodError, ai_response: aiResponse };
-      const { data: stepRunForZod } = await getSupabase()
-        .from('step_runs')
-        .select('*')
-        .eq('id', stepRunId)
-        .maybeSingle();
-      if (stepRunForZod) {
-        const rules: string[] = [];
-        const plans: string[] = [];
-        if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-        if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
-        if (context.plan_id) plans.push(context.plan_id);
-        const proCheckResult = await callProCheckOnOutput(stepRunForZod, zodOutput, rules, plans);
-        if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-      }
-      // If pro_check passed (or no correction), fail the step
+      const firstZodError = zodResult.error.flatten();
+      console.error(`[engine] zod validation FAILED:`, JSON.stringify(firstZodError, null, 2));
+
+      // Store validation error in step run
       await updateStepRun(stepRunId, {
-        status: 'failed',
-        error: `AI response failed schema: ${JSON.stringify(zodError)}`,
-        trace: { ai_response: aiResponse, zod_result: zodError, step: 'zod_validation' },
+        validation_errors: [firstZodError],
       });
-      throw new Error(`Step ${step.ref} AI response failed schema validation`);
+
+      // Give the AI one chance to self-correct by feeding the error back
+      const followUpPrompt = `Your previous response was invalid. Here is the error: ${JSON.stringify(firstZodError)}. Please output a corrected JSON that satisfies the schema.`;
+      const previousMessages = [
+        { role: 'user', content: userPrompt },
+        { role: 'assistant', content: JSON.stringify(aiResponse) },
+      ];
+      let retryResponse: any;
+      try {
+        retryResponse = await callLlm(step.system_message || null, followUpPrompt, previousMessages);
+      } catch (retryErr) {
+        const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        console.error(`[engine] LLM retry call failed:`, msg);
+        // Fall through to original failure path below
+      }
+
+      if (retryResponse) {
+        zodResult = schema.safeParse(retryResponse);
+        console.log(`[engine] zod retry validation:`, JSON.stringify(zodResult, null, 2));
+      }
+
+      if (!retryResponse || !zodResult.success) {
+        const zodError = zodResult?.error?.flatten() ?? firstZodError;
+        // Call pro_check on the validation error — Prolog may decide a correction flow is needed
+        const zodOutput = { zod_error: zodError, ai_response: aiResponse };
+        const { data: stepRunForZod } = await getSupabase()
+          .from('step_runs')
+          .select('*')
+          .eq('id', stepRunId)
+          .maybeSingle();
+        if (stepRunForZod) {
+          const rules: string[] = [];
+          const plans: string[] = [];
+          if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+          if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+          if (context.plan_id) plans.push(context.plan_id);
+          const proCheckResult = await callProCheckOnOutput(stepRunForZod, zodOutput, rules, plans);
+          if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+        }
+        // If pro_check passed (or no correction), fail the step
+        await updateStepRun(stepRunId, {
+          status: 'failed',
+          error: `AI response failed schema: ${JSON.stringify(zodError)}`,
+          trace: { ai_response: aiResponse, retry_response: retryResponse, zod_result: zodError, step: 'zod_validation' },
+        });
+        throw new Error(`Step ${step.ref} AI response failed schema validation`);
+      }
+
+      // Retry succeeded — use the corrected response
+      aiResponse = retryResponse;
     }
 
     const validated = zodResult.data;

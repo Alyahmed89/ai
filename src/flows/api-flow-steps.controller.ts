@@ -87,3 +87,15 @@ export class ApiFlowStepsController {
     return { success: true };
   }
 }
+
+@Controller('api/flow-runs')
+export class ApiFlowRunsController {
+  @Post(':id/stop')
+  async stop(@Param('id') id: string) {
+    await supabaseFetch(`flow_runs?id=eq.${id}`, {
+      method: 'PATCH',
+      body: { stop_requested: true },
+    });
+    return { status: 'stopping' };
+  }
+}

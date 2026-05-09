@@ -17,6 +17,7 @@ const LLMResponseSchema = z.object({
 export async function callLlm(
   system: string | null,
   user: string,
+  previousMessages?: Array<{ role: string; content: string }>,
 ): Promise<any> {
   if (!DEEPSEEK_API_KEY) {
     throw new Error('DEEPSEEK_API_KEY not set');
@@ -25,6 +26,9 @@ export async function callLlm(
   const messages: Array<{ role: string; content: string }> = [];
   if (system) {
     messages.push({ role: 'system', content: system });
+  }
+  if (previousMessages) {
+    messages.push(...previousMessages);
   }
   messages.push({ role: 'user', content: user });
 

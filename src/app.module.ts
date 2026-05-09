@@ -4,7 +4,7 @@ import { FlowsController } from './flows/flows.controller';
 import { FlowRunsController } from './flow-runs/flow-runs.controller';
 import { HealthController } from './health.controller';
 import { ApiFlowsController } from './flows/api-flows.controller';
-import { ApiFlowStepsController } from './flows/api-flow-steps.controller';
+import { ApiFlowStepsController, ApiFlowRunsController } from './flows/api-flow-steps.controller';
 import { ApiFlowsStepsOrderController } from './flows/api-flows-steps-order.controller';
 import { ApiVariablesController } from './flow-runs/api-variables.controller';
 import { ApiEndpointsController } from './flow-runs/api-endpoints.controller';
@@ -31,6 +31,7 @@ import { PlansService } from './plans/plans.service';
     HealthController,
     ApiFlowsController,
     ApiFlowStepsController,
+    ApiFlowRunsController,
     ApiFlowsStepsOrderController,
     ApiVariablesController,
     ApiEndpointsController,
