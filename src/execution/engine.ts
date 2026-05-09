@@ -294,6 +294,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           if (dynamicStep) {
             console.log(`[engine] AI-driven next_step_id=${pausedNextStepId} -> step ref=${dynamicStep.ref}`);
             await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
+            visited.delete(pausedNextStepId);
             currentStep = dynamicStep;
             continue;
           }
@@ -328,6 +329,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       if (aiNext && typeof aiNext === 'string' && aiNext.length > 0 && aiNext !== stepRun?.step_id) {
         const next = await getStepById(aiNext);
         if (next) {
+          visited.delete(aiNext);
           currentStep = next;
           continue;
         }
