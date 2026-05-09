@@ -315,16 +315,17 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       if (!stepResult) break;
 
-      // next_step_id in result always takes priority over order_index
+      // Always respect next_step_id after step completion — check result then ai_response
       const { data: completedStepRun } = await getSupabase()
         .from('step_runs')
-        .select('result')
+        .select('result, ai_response')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', currentStep.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const nextStepId = completedStepRun?.result?.next_step_id;
+      const nextStepId = completedStepRun?.result?.next_step_id
+        || completedStepRun?.ai_response?.next_step_id;
       if (nextStepId && typeof nextStepId === 'string' && nextStepId.trim() !== '' && nextStepId !== currentStep.id) {
         const dynamicStep = await getStepById(nextStepId);
         if (dynamicStep) {
