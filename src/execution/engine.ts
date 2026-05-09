@@ -1069,16 +1069,18 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
     Object.assign(context, flowRun.input_variables);
   }
 
-  // variables table — apply in created_at order so latest value per key wins
+  // variables table — most recent row per key wins (descending order, first write wins)
   const { data: vars } = await getSupabase()
     .from('variables')
     .select('*')
     .or(`flow_run_id.eq.${flowRunId},scope.eq.global`)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false });
 
   if (vars) {
     for (const v of vars) {
-      context[v.key] = v.value;
+      if (!(v.key in context)) {
+        context[v.key] = v.value;
+      }
     }
   }
 
