@@ -336,8 +336,12 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         console.warn(`[engine] next_step_id=${nextStepId} not found, falling back to order-based navigation`);
       }
 
-      const nextStep = await getStepByFlowAndRef(flowRun.flow_id, stepResult as string);
-      if (!nextStep) throw new Error(`Step ref "${stepResult}" not found in flow ${flowRun.flow_id}`);
+      // Fall back to order-index advancement
+      const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
+      if (!nextStep) {
+        console.log(`[engine] no step after order_index ${currentStep.order_index}, completing flow`);
+        break;
+      }
       currentStep = nextStep;
     }
 
