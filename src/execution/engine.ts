@@ -315,24 +315,20 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       if (!stepResult) break;
 
-      // Check if the AI response included a next_step_id for dynamic flow control
+      // next_step_id in result always takes priority over order_index
       const { data: completedStepRun } = await getSupabase()
         .from('step_runs')
-        .select('ai_response')
+        .select('result')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', currentStep.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const nextStepId = completedStepRun?.ai_response?.next_step_id;
-      if (nextStepId && typeof nextStepId === 'string' && nextStepId.trim() !== '') {
-        if (nextStepId === currentStep.id) {
-          console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
-          break;
-        }
+      const nextStepId = completedStepRun?.result?.next_step_id;
+      if (nextStepId && typeof nextStepId === 'string' && nextStepId.trim() !== '' && nextStepId !== currentStep.id) {
         const dynamicStep = await getStepById(nextStepId);
         if (dynamicStep) {
-          console.log(`[engine] AI-driven next_step_id=${nextStepId} -> step ref=${dynamicStep.ref}`);
+          console.log(`[engine] next_step_id=${nextStepId} -> step ref=${dynamicStep.ref}`);
           currentStep = dynamicStep;
           continue;
         }
@@ -767,13 +763,22 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       step: 'completed',
     };
 
+    // Persist next_step_id in result so the main loop can read it
+    const validatedNorm = normalizeValue(validated);
+    const nextStepIdFromOutput = validatedNorm?.next_step_id;
+    const resultData: Record<string, any> = {};
+    if (nextStepIdFromOutput && typeof nextStepIdFromOutput === 'string' && nextStepIdFromOutput.trim() !== '') {
+      resultData.next_step_id = nextStepIdFromOutput;
+    }
+
     await updateStepRun(stepRunId, {
-      ai_response: normalizeValue(validated),
+      ai_response: validatedNorm,
       ai_response_valid: true,
       rendered_instructions: renderedInstructions,
       resolved_variables: context,
       trace,
       status: 'completed',
+      result: resultData,
     });
 
     // Write refs entries for rules and plans from step metadata
