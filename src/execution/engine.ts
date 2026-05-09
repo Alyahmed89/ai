@@ -315,7 +315,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       if (!stepResult) break;
 
-      // Always respect next_step_id after step completion — check result then ai_response
+      // Check if the AI set a next_step_id
       const { data: completedStepRun } = await getSupabase()
         .from('step_runs')
         .select('result, ai_response')
@@ -324,19 +324,21 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const nextStepId = completedStepRun?.result?.next_step_id
-        || completedStepRun?.ai_response?.next_step_id;
-      if (nextStepId && typeof nextStepId === 'string' && nextStepId.trim() !== '' && nextStepId !== currentStep.id) {
-        const dynamicStep = await getStepById(nextStepId);
-        if (dynamicStep) {
-          console.log(`[engine] next_step_id=${nextStepId} -> step ref=${dynamicStep.ref}`);
-          currentStep = dynamicStep;
+      const stepRunResult = completedStepRun?.result || {};
+      const aiResponse = stepRunResult.ai_response || completedStepRun?.ai_response || {};
+      const nextStepId = aiResponse.next_step_id || stepRunResult.next_step_id;
+
+      if (nextStepId && nextStepId !== currentStep.id) {
+        const nextStep = await getStepById(nextStepId);
+        if (nextStep) {
+          console.log(`[engine] next_step_id=${nextStepId} -> step ref=${nextStep.ref}`);
+          currentStep = nextStep;
           continue;
         }
         console.warn(`[engine] next_step_id=${nextStepId} not found, falling back to order-based navigation`);
       }
 
-      // Fall back to order-index advancement
+      // Fall through to order_index advancement if no valid next_step_id
       const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
       if (!nextStep) {
         console.log(`[engine] no step after order_index ${currentStep.order_index}, completing flow`);
