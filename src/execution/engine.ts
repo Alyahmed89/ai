@@ -315,27 +315,23 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       if (!stepResult) break;
 
-      // Check if the AI set a next_step_id
-      const { data: completedStepRun } = await getSupabase()
+      // Check if the AI set a next_step_id in its response
+      const { data: stepRun } = await getSupabase()
         .from('step_runs')
-        .select('result, ai_response')
+        .select('result, ai_response, step_id')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', currentStep.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const stepRunResult = completedStepRun?.result || {};
-      const aiResponse = stepRunResult.ai_response || completedStepRun?.ai_response || {};
-      const nextStepId = aiResponse.next_step_id || stepRunResult.next_step_id;
-
-      if (nextStepId && nextStepId !== currentStep.id) {
-        const nextStep = await getStepById(nextStepId);
+      const aiResp = (stepRun?.result as any)?.ai_response || stepRun?.ai_response;
+      const nextIdFromAI = aiResp?.next_step_id;
+      if (nextIdFromAI && typeof nextIdFromAI === 'string' && nextIdFromAI.length > 0 && nextIdFromAI !== stepRun?.step_id) {
+        const nextStep = await getStepById(nextIdFromAI);
         if (nextStep) {
-          console.log(`[engine] next_step_id=${nextStepId} -> step ref=${nextStep.ref}`);
           currentStep = nextStep;
           continue;
         }
-        console.warn(`[engine] next_step_id=${nextStepId} not found, falling back to order-based navigation`);
       }
 
       // Fall through to order_index advancement if no valid next_step_id
