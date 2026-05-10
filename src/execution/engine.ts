@@ -431,6 +431,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
   const executionPromise = (async (): Promise<string | { status: 'paused' | 'failed'; stepRunId: string } | null> => {
     let aiResponse: any;
+    let llmError: string | null = null;
     try {
       aiResponse = await callLlm(step.system_message || null, userPrompt);
     } catch (err) {
@@ -442,24 +443,42 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         try {
           aiResponse = await callLlm(step.system_message || null, userPrompt);
         } catch (retryErr) {
-          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-          console.error(`[engine] LLM retry also failed:`, retryMsg);
+          llmError = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          console.error(`[engine] LLM retry also failed:`, llmError);
           await updateStepRun(stepRunId, {
             status: 'failed',
-            error: retryMsg,
-            trace: { llm_error: retryMsg, step: 'llm' },
+            error: llmError,
+            trace: { llm_error: llmError, step: 'llm' },
           });
-          throw new Error(`Step ${step.ref} LLM failed after retry: ${retryMsg}`);
         }
       } else {
+        llmError = msg;
         console.error(`[engine] LLM call failed:`, msg);
         await updateStepRun(stepRunId, {
           status: 'failed',
           error: msg,
           trace: { llm_error: msg, step: 'llm' },
         });
-        throw new Error(`Step ${step.ref} LLM failed: ${msg}`);
       }
+    }
+
+    if (llmError && !aiResponse) {
+      // Proceed to pro_check so it can decide a correction flow
+      const { data: failedStepRun } = await getSupabase()
+        .from('step_runs')
+        .select('*')
+        .eq('id', stepRunId)
+        .maybeSingle();
+      if (failedStepRun) {
+        const rules: string[] = [];
+        const plans: string[] = [];
+        if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+        if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+        if (context.plan_id) plans.push(context.plan_id);
+        const proCheckResult = await callProCheckOnOutput(failedStepRun, { llm_error: llmError }, rules, plans);
+        if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+      }
+      throw new Error(`Step ${step.ref} LLM failed: ${llmError}`);
     }
 
     // Step 3 — Zod validate ai_response against expected_response schema
