@@ -435,50 +435,39 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     try {
       aiResponse = await callLlm(step.system_message || null, userPrompt);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      llmError = err instanceof Error ? err.message : String(err);
       const isTimeoutOrAbort = err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError');
-      if (isTimeoutOrAbort) {
-        console.warn(`[engine] LLM call timed out/aborted, retrying once after 2s:`, msg);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        try {
-          aiResponse = await callLlm(step.system_message || null, userPrompt);
-        } catch (retryErr) {
-          llmError = retryErr instanceof Error ? retryErr.message : String(retryErr);
-          console.error(`[engine] LLM retry also failed:`, llmError);
-          await updateStepRun(stepRunId, {
-            status: 'failed',
-            error: llmError,
-            trace: { llm_error: llmError, step: 'llm' },
-          });
-        }
-      } else {
-        llmError = msg;
-        console.error(`[engine] LLM call failed:`, msg);
-        await updateStepRun(stepRunId, {
-          status: 'failed',
-          error: msg,
-          trace: { llm_error: msg, step: 'llm' },
-        });
-      }
-    }
+      const errorType = isTimeoutOrAbort ? 'timeout_error' : 'llm_error';
+      console.error(`[engine] LLM call failed:`, llmError);
 
-    if (llmError && !aiResponse) {
-      // Proceed to pro_check so it can decide a correction flow
-      const { data: failedStepRun } = await getSupabase()
-        .from('step_runs')
-        .select('*')
-        .eq('id', stepRunId)
-        .maybeSingle();
-      if (failedStepRun) {
-        const rules: string[] = [];
-        const plans: string[] = [];
-        if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-        if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
-        if (context.plan_id) plans.push(context.plan_id);
-        const proCheckResult = await callProCheckOnOutput(failedStepRun, { llm_error: llmError }, rules, plans);
-        if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-      }
-      throw new Error(`Step ${step.ref} LLM failed: ${llmError}`);
+      // Store error as flow_run variable
+      const errorPayload = { type: errorType, message: llmError, step_id: step.id, details: err instanceof Error ? err.stack : null };
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: 'engine_error',
+        value: JSON.stringify(errorPayload),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: errorType,
+        value: JSON.stringify(errorPayload),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      context.engine_error = errorPayload;
+      context[errorType] = errorPayload;
+
+      // Build synthetic response routing to assistant_summarize
+      const fallbackNext = step.expected_response?.properties?.next?.const
+        || step.expected_response?.properties?.next_step_id?.const
+        || '3eeba100-50eb-4826-8faf-07aa4b64fca4';
+      aiResponse = { next: fallbackNext, next_step_id: fallbackNext, chat_message: 'An error occurred. Please try again.' };
     }
 
     // Step 3 — Zod validate ai_response against expected_response schema
@@ -491,6 +480,16 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
 
       // Store the Zod error as a flow_run variable so the next step can handle it
+      const errorPayload = { type: 'zod_error', message: 'Zod validation failed', step_id: step.id, details: zodError };
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: 'engine_error',
+        value: JSON.stringify(errorPayload),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
       await getSupabase().from('variables').insert({
         id: randomUUID(),
         flow_run_id: flowRunId,
@@ -500,9 +499,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         scope: 'flow_run',
         created_at: new Date().toISOString(),
       }).maybeSingle();
-      context.zod_error = zodError;
-
-      // Also store the invalid AI response for debugging
       await getSupabase().from('variables').insert({
         id: randomUUID(),
         flow_run_id: flowRunId,
@@ -512,18 +508,18 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         scope: 'flow_run',
         created_at: new Date().toISOString(),
       }).maybeSingle();
+      context.engine_error = errorPayload;
+      context.zod_error = zodError;
 
       // Use the step's expected_response fallback next if defined
       const fallbackNext = step.expected_response?.properties?.next?.const
         || step.expected_response?.properties?.next_step_id?.const
-        || null;
+        || '3eeba100-50eb-4826-8faf-07aa4b64fca4';
 
       // Build a synthetic valid response with the fallback next and original AI fields
       const syntheticResponse: Record<string, any> = { ...aiResponse };
-      if (fallbackNext) {
-        syntheticResponse.next = fallbackNext;
-        syntheticResponse.next_step_id = fallbackNext;
-      }
+      syntheticResponse.next = fallbackNext;
+      syntheticResponse.next_step_id = fallbackNext;
       // Ensure required fields for the schema exist with defaults
       for (const reqField of (step.expected_response?.required || [])) {
         if (!(reqField in syntheticResponse)) {
@@ -837,6 +833,31 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       }
     }
 
+    // Store action error as flow_run variable if present
+    if (actionError) {
+      const errorPayload = { type: 'action_error', message: actionError.message || 'Action failed', step_id: step.id, details: actionError };
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: 'engine_error',
+        value: JSON.stringify(errorPayload),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: 'action_error',
+        value: JSON.stringify(errorPayload),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      context.engine_error = errorPayload;
+      context.action_error = errorPayload;
+    }
+
     // Step 6 — Call pro_check on merged output (AI response + action results + any error)
     const mergedOutput = actionError
       ? { ...validated, action_results: actionResults, action_error: actionError }
@@ -951,6 +972,28 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const isTimeout = msg.includes('timed out after 60s');
     console.error(`[engine] step execution error:`, msg);
 
+    // Store error as flow_run variable
+    const errorType = isTimeout ? 'timeout_error' : 'execution_error';
+    const errorPayload = { type: errorType, message: msg, step_id: step.id, details: err instanceof Error ? err.stack : null };
+    await getSupabase().from('variables').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      key: 'engine_error',
+      value: JSON.stringify(errorPayload),
+      scope: 'flow_run',
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+    await getSupabase().from('variables').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      key: errorType,
+      value: JSON.stringify(errorPayload),
+      scope: 'flow_run',
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+
     // Mark step_run as failed so it's never left "running" on error
     const { data: sr } = await getSupabase()
       .from('step_runs')
@@ -975,7 +1018,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         sr.result = { ...sr.result, next_step_id: savedNextStepId };
       }
       // Trigger pro_check so correction flow can be started
-      await callProCheckOnOutput(sr, { type: 'action_error', message: msg }, getRulesAndPlans(step, context), []);
+      await callProCheckOnOutput(sr, { type: errorType, message: msg }, getRulesAndPlans(step, context), []);
     }
 
     if (isTimeout) {
