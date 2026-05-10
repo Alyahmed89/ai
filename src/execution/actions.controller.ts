@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Param } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { FlowsService } from '../flows/flows.service';
 import { FlowRunsService } from '../flow-runs/flow-runs.service';
 import { getSupabase } from '../supabase';
@@ -47,5 +48,40 @@ export class ActionsController {
       .maybeSingle();
 
     return { step_run: stepRun };
+  }
+
+  @Post('flow-runs/:id/interrupt')
+  async interrupt(@Param('id') id: string, @Body() body: { user_input: string }) {
+    // Find the current (latest) step run for this flow run
+    const { data: latestStepRun } = await getSupabase()
+      .from('step_runs')
+      .select('step_id')
+      .eq('flow_run_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const pausedAtStepId = latestStepRun?.step_id || null;
+
+    // Set flow run status to paused
+    await getSupabase()
+      .from('flow_runs')
+      .update({ status: 'paused', paused_at_step_id: pausedAtStepId, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    // Insert the user's message as a step_goal variable
+    if (body.user_input) {
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: id,
+        step_run_id: null,
+        key: 'step_goal',
+        value: body.user_input,
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+    }
+
+    return { status: 'paused', flow_run_id: id };
   }
 }

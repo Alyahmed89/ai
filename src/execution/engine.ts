@@ -262,15 +262,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
     while (currentStep) {
       if (stepCount >= maxSteps) throw new Error('Max steps exceeded');
 
-      // --- Stop channel: check if Mo requested a halt ---
-      const { data: fr } = await getSupabase()
+      // --- Check if flow was paused externally (e.g. via interrupt endpoint) ---
+      const { data: currentFr } = await getSupabase()
         .from('flow_runs')
-        .select('stop_requested')
+        .select('status')
         .eq('id', flowRunId)
         .maybeSingle();
-      if (fr?.stop_requested) {
-        console.log(`[engine] stop requested for flowRunId=${flowRunId}, halting`);
-        await updateFlowRun(flowRunId, { status: 'stopped', stop_requested: false });
+      if (currentFr?.status === 'paused') {
+        console.log(`[engine] flow ${flowRunId} is paused, halting iteration`);
         return;
       }
 
@@ -316,11 +315,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
             break;
           }
+          visited.delete(pausedNextStepId);
           const dynamicStep = await getStepById(pausedNextStepId);
           if (dynamicStep) {
             console.log(`[engine] AI-driven next_step_id=${pausedNextStepId} -> step ref=${dynamicStep.ref}`);
             await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
-            visited.delete(pausedNextStepId);
             currentStep = dynamicStep;
             continue;
           }
