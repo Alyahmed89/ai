@@ -248,6 +248,22 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       // Fresh start
       await updateFlowRun(flowRunId, { status: 'running' });
 
+      // Store userInput as step_goal so the first step (receive_query) can read it
+      if (userInput != null) {
+        const value = typeof userInput === 'object' && !Array.isArray(userInput)
+          ? String(Object.values(userInput)[0] ?? userInput)
+          : String(userInput);
+        await getSupabase().from('variables').insert({
+          id: randomUUID(),
+          flow_run_id: flowRunId,
+          step_run_id: null,
+          key: 'step_goal',
+          value,
+          scope: 'flow_run',
+          created_at: new Date().toISOString(),
+        }).maybeSingle();
+      }
+
       const firstStep = await getFirstStep(flowRun.flow_id);
       if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
       console.log(`[engine] firstStep id=${firstStep.id} ref=${firstStep.ref}`);
