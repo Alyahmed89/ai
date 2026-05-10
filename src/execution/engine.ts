@@ -316,14 +316,36 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             break;
           }
           visited.delete(pausedNextStepId);
-          const dynamicStep = await getStepById(pausedNextStepId);
-          if (dynamicStep) {
-            console.log(`[engine] AI-driven next_step_id=${pausedNextStepId} -> step ref=${dynamicStep.ref}`);
-            await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
-            currentStep = dynamicStep;
-            continue;
+          try {
+            const dynamicStep = await getStepById(pausedNextStepId);
+            if (dynamicStep) {
+              console.log(`[engine] AI-driven next_step_id=${pausedNextStepId} -> step ref=${dynamicStep.ref}`);
+              await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
+              currentStep = dynamicStep;
+              continue;
+            }
+          } catch (err: any) {
+            const errorPayload = { type: 'routing_error', message: `No step found with id ${pausedNextStepId}`, step_id: currentStep.id, bad_next_step_id: pausedNextStepId };
+            await getSupabase().from('variables').insert({
+              id: randomUUID(),
+              flow_run_id: flowRunId,
+              step_run_id: stepRunId,
+              key: 'engine_error',
+              value: JSON.stringify(errorPayload),
+              scope: 'flow_run',
+              created_at: new Date().toISOString(),
+            }).maybeSingle();
+            await getSupabase().from('variables').insert({
+              id: randomUUID(),
+              flow_run_id: flowRunId,
+              step_run_id: stepRunId,
+              key: 'routing_error',
+              value: JSON.stringify(errorPayload),
+              scope: 'flow_run',
+              created_at: new Date().toISOString(),
+            }).maybeSingle();
+            console.warn(`[engine] ${errorPayload.message}, falling back to order-based navigation`);
           }
-          console.warn(`[engine] next_step_id=${pausedNextStepId} not found, falling back to order-based navigation`);
         }
 
         // Step paused itself — check if there's a next step by order_index
@@ -352,11 +374,45 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         .maybeSingle();
       const aiNext = (stepRun?.result as any)?.next_step_id;
       if (aiNext && typeof aiNext === 'string' && aiNext.length > 0 && aiNext !== stepRun?.step_id) {
-        const next = await getStepById(aiNext);
-        if (next) {
-          visited.delete(aiNext);
-          currentStep = next;
-          continue;
+        try {
+          const next = await getStepById(aiNext);
+          if (next) {
+            visited.delete(aiNext);
+            currentStep = next;
+            continue;
+          }
+        } catch (err: any) {
+          // Step UUID not found — store as error variable and use step's own fallback
+          const errorPayload = { type: 'routing_error', message: `No step found with id ${aiNext}`, step_id: currentStep.id, bad_next_step_id: aiNext };
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: 'engine_error',
+            value: JSON.stringify(errorPayload),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: 'routing_error',
+            value: JSON.stringify(errorPayload),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+          console.warn(`[engine] ${errorPayload.message}, using step fallback`);
+          // Use the current step's expected_response.next.const as fallback
+          const fallbackNext = currentStep.expected_response?.properties?.next?.const;
+          if (fallbackNext && fallbackNext !== currentStep.id) {
+            const fallbackStep = await getStepById(fallbackNext).catch(() => null);
+            if (fallbackStep) {
+              visited.delete(fallbackNext);
+              currentStep = fallbackStep;
+              continue;
+            }
+          }
         }
       }
 
