@@ -250,16 +250,15 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       // Store userInput as step_goal so the first step (receive_query) can read it
       if (userInput != null) {
-        // Normalize: if value is { step_goal: "..." }, extract the inner string
-        const normalizedValue = typeof userInput === 'object' && userInput.step_goal
-          ? String(userInput.step_goal)
-          : String(Object.values(userInput)[0] ?? userInput);
+        const value = typeof userInput === 'object' && !Array.isArray(userInput)
+          ? String(Object.values(userInput)[0] ?? userInput)
+          : String(userInput);
         await getSupabase().from('variables').insert({
           id: randomUUID(),
           flow_run_id: flowRunId,
           step_run_id: null,
           key: 'step_goal',
-          value: normalizedValue,
+          value,
           scope: 'flow_run',
           created_at: new Date().toISOString(),
         }).maybeSingle();

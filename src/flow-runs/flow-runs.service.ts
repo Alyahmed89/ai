@@ -12,16 +12,12 @@ export class FlowRunsService {
     if (flowRun.status === 'paused') {
       // Inject user input as step_goal
       if (userInput != null) {
-        // Normalize: if value is { step_goal: "..." }, extract the inner string
-        const normalizedValue = typeof userInput === 'object' && userInput.step_goal
-          ? String(userInput.step_goal)
-          : String(userInput);
         await getSupabase().from('variables').insert({
           id: randomUUID(),
           flow_run_id: id,
           step_run_id: null,
           key: 'step_goal',
-          value: normalizedValue,
+          value: userInput,
           scope: 'flow_run',
           created_at: new Date().toISOString(),
         }).maybeSingle();
@@ -51,16 +47,12 @@ export class FlowRunsService {
         })
         .eq('id', id);
 
-      // Normalize: if value is { step_goal: "..." }, extract the inner string
-      const normalizedValue = typeof userInput === 'object' && userInput.step_goal
-        ? String(userInput.step_goal)
-        : String(userInput);
       await getSupabase().from('variables').insert({
         id: randomUUID(),
         flow_run_id: id,
         step_run_id: null,
         key: 'step_goal',
-        value: normalizedValue,
+        value: userInput,
         scope: 'flow_run',
         created_at: new Date().toISOString(),
       }).maybeSingle();

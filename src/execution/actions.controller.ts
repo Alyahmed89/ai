@@ -79,16 +79,12 @@ export class ActionsController {
 
     // Insert the user's message as a step_goal variable
     if (body.user_input) {
-      // Normalize: if value is { step_goal: "..." }, extract the inner string
-      const normalizedValue = typeof body.user_input === 'object' && body.user_input.step_goal
-        ? String(body.user_input.step_goal)
-        : String(body.user_input);
       await getSupabase().from('variables').insert({
         id: randomUUID(),
         flow_run_id: id,
         step_run_id: null,
         key: 'step_goal',
-        value: normalizedValue,
+        value: body.user_input,
         scope: 'flow_run',
         created_at: new Date().toISOString(),
       }).maybeSingle();
