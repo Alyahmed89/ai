@@ -51,7 +51,14 @@ export class ActionsController {
   }
 
   @Post('flow-runs/:id/interrupt')
-  async interrupt(@Param('id') id: string, @Body() body: { user_input: string }) {
+  async interrupt(@Param('id') id: string, @Body() body: { user_input?: string }) {
+    // Check current flow run status
+    const flowRun = await getFlowRun(id);
+    if (!flowRun) throw new Error(`Flow run ${id} not found`);
+    if (flowRun.status !== 'running') {
+      return { status: 'already_paused', flow_run_id: id };
+    }
+
     // Find the current (latest) step run for this flow run
     const { data: latestStepRun } = await getSupabase()
       .from('step_runs')
