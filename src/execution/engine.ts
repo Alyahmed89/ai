@@ -547,7 +547,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       zodResult = { success: true, data: syntheticResponse } as any;
     }
 
-    const validated = zodResult.data;
+    const validated = zodResult.data!;
     const next = validated.next ?? null;
     const actions = Array.isArray(validated.actions) ? validated.actions : [];
     const stepActions = Array.isArray(step.actions) ? step.actions : [];
