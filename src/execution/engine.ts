@@ -303,13 +303,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         // Check if the AI response included a next_step_id for dynamic flow control
         const { data: pausedStepRun } = await getSupabase()
           .from('step_runs')
-          .select('ai_response')
+          .select('id, ai_response')
           .eq('flow_run_id', flowRunId)
           .eq('step_id', currentStep.id)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         const pausedNextStepId = pausedStepRun?.ai_response?.next_step_id;
+        const pausedStepRunId = pausedStepRun?.id;
         if (pausedNextStepId && typeof pausedNextStepId === 'string' && pausedNextStepId.trim() !== '') {
           if (pausedNextStepId === currentStep.id) {
             console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
@@ -329,7 +330,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             await getSupabase().from('variables').insert({
               id: randomUUID(),
               flow_run_id: flowRunId,
-              step_run_id: stepRunId,
+              step_run_id: pausedStepRunId || currentStep.id,
               key: 'engine_error',
               value: JSON.stringify(errorPayload),
               scope: 'flow_run',
@@ -338,7 +339,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             await getSupabase().from('variables').insert({
               id: randomUUID(),
               flow_run_id: flowRunId,
-              step_run_id: stepRunId,
+              step_run_id: pausedStepRunId || currentStep.id,
               key: 'routing_error',
               value: JSON.stringify(errorPayload),
               scope: 'flow_run',
@@ -366,13 +367,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       // Follow the AI's next_step_id if present
       const { data: stepRun } = await getSupabase()
         .from('step_runs')
-        .select('result, step_id')
+        .select('id, result, step_id')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', currentStep.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       const aiNext = (stepRun?.result as any)?.next_step_id;
+      const stepRunId = stepRun?.id;
       if (aiNext && typeof aiNext === 'string' && aiNext.length > 0 && aiNext !== stepRun?.step_id) {
         try {
           const next = await getStepById(aiNext);
@@ -387,7 +389,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           await getSupabase().from('variables').insert({
             id: randomUUID(),
             flow_run_id: flowRunId,
-            step_run_id: stepRunId,
+            step_run_id: stepRunId || currentStep.id,
             key: 'engine_error',
             value: JSON.stringify(errorPayload),
             scope: 'flow_run',
@@ -396,7 +398,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           await getSupabase().from('variables').insert({
             id: randomUUID(),
             flow_run_id: flowRunId,
-            step_run_id: stepRunId,
+            step_run_id: stepRunId || currentStep.id,
             key: 'routing_error',
             value: JSON.stringify(errorPayload),
             scope: 'flow_run',
