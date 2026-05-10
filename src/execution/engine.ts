@@ -487,63 +487,64 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     console.log(`[engine] zod validation:`, JSON.stringify(zodResult, null, 2));
 
     if (!zodResult.success) {
-      const firstZodError = zodResult.error.flatten();
-      console.error(`[engine] zod validation FAILED:`, JSON.stringify(firstZodError, null, 2));
+      const zodError = zodResult.error.flatten();
+      console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
 
-      // Store validation error in step run
+      // Store the Zod error as a flow_run variable so the next step can handle it
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: 'zod_error',
+        value: JSON.stringify(zodError),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      context.zod_error = zodError;
+
+      // Also store the invalid AI response for debugging
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: 'zod_ai_response',
+        value: JSON.stringify(aiResponse),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+
+      // Use the step's expected_response fallback next if defined
+      const fallbackNext = step.expected_response?.properties?.next?.const
+        || step.expected_response?.properties?.next_step_id?.const
+        || null;
+
+      // Build a synthetic valid response with the fallback next and original AI fields
+      const syntheticResponse: Record<string, any> = { ...aiResponse };
+      if (fallbackNext) {
+        syntheticResponse.next = fallbackNext;
+        syntheticResponse.next_step_id = fallbackNext;
+      }
+      // Ensure required fields for the schema exist with defaults
+      for (const reqField of (step.expected_response?.required || [])) {
+        if (!(reqField in syntheticResponse)) {
+          if (reqField === 'actions') syntheticResponse[reqField] = [];
+          else if (reqField === 'chat_message') syntheticResponse[reqField] = 'I encountered an error processing your request. Please try again.';
+          else if (reqField === 'step_goal') syntheticResponse[reqField] = '';
+          else if (reqField === 'chat_memory') syntheticResponse[reqField] = context.chat_memory || '';
+          else if (reqField === 'structured_memory') syntheticResponse[reqField] = context.structured_memory || '{}';
+          else syntheticResponse[reqField] = '';
+        }
+      }
+
+      // Mark step run with validation error but continue
       await updateStepRun(stepRunId, {
-        validation_errors: [firstZodError],
+        validation_errors: [zodError],
+        trace: { ai_response: aiResponse, zod_result: zodError, step: 'zod_validation' },
       });
 
-      // Give the AI one chance to self-correct by feeding the error back
-      const followUpPrompt = `Your previous response was invalid. Here is the error: ${JSON.stringify(firstZodError)}. Please output a corrected JSON that satisfies the schema.`;
-      const previousMessages = [
-        { role: 'user', content: userPrompt },
-        { role: 'assistant', content: JSON.stringify(aiResponse) },
-      ];
-      let retryResponse: any;
-      try {
-        retryResponse = await callLlm(step.system_message || null, followUpPrompt, previousMessages);
-      } catch (retryErr) {
-        const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-        console.error(`[engine] LLM retry call failed:`, msg);
-        // Fall through to original failure path below
-      }
-
-      if (retryResponse) {
-        zodResult = schema.safeParse(retryResponse);
-        console.log(`[engine] zod retry validation:`, JSON.stringify(zodResult, null, 2));
-      }
-
-      if (!retryResponse || !zodResult.success) {
-        const zodError = zodResult?.error?.flatten() ?? firstZodError;
-        // Call pro_check on the validation error — Prolog may decide a correction flow is needed
-        const zodOutput = { zod_error: zodError, ai_response: aiResponse };
-        const { data: stepRunForZod } = await getSupabase()
-          .from('step_runs')
-          .select('*')
-          .eq('id', stepRunId)
-          .maybeSingle();
-        if (stepRunForZod) {
-          const rules: string[] = [];
-          const plans: string[] = [];
-          if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-          if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
-          if (context.plan_id) plans.push(context.plan_id);
-          const proCheckResult = await callProCheckOnOutput(stepRunForZod, zodOutput, rules, plans);
-          if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
-        }
-        // If pro_check passed (or no correction), fail the step
-        await updateStepRun(stepRunId, {
-          status: 'failed',
-          error: `AI response failed schema: ${JSON.stringify(zodError)}`,
-          trace: { ai_response: aiResponse, retry_response: retryResponse, zod_result: zodError, step: 'zod_validation' },
-        });
-        throw new Error(`Step ${step.ref} AI response failed schema validation`);
-      }
-
-      // Retry succeeded — use the corrected response
-      aiResponse = retryResponse;
+      // Use synthetic response so the engine continues to action execution and routing
+      aiResponse = syntheticResponse;
+      zodResult = { success: true, data: syntheticResponse } as any;
     }
 
     const validated = zodResult.data;
