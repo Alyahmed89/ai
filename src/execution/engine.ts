@@ -435,13 +435,31 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       aiResponse = await callLlm(step.system_message || null, userPrompt);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[engine] LLM call failed:`, msg);
-      await updateStepRun(stepRunId, {
-        status: 'failed',
-        error: msg,
-        trace: { llm_error: msg, step: 'llm' },
-      });
-      throw new Error(`Step ${step.ref} LLM failed: ${msg}`);
+      const isTimeoutOrAbort = err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError');
+      if (isTimeoutOrAbort) {
+        console.warn(`[engine] LLM call timed out/aborted, retrying once after 2s:`, msg);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+          aiResponse = await callLlm(step.system_message || null, userPrompt);
+        } catch (retryErr) {
+          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          console.error(`[engine] LLM retry also failed:`, retryMsg);
+          await updateStepRun(stepRunId, {
+            status: 'failed',
+            error: retryMsg,
+            trace: { llm_error: retryMsg, step: 'llm' },
+          });
+          throw new Error(`Step ${step.ref} LLM failed after retry: ${retryMsg}`);
+        }
+      } else {
+        console.error(`[engine] LLM call failed:`, msg);
+        await updateStepRun(stepRunId, {
+          status: 'failed',
+          error: msg,
+          trace: { llm_error: msg, step: 'llm' },
+        });
+        throw new Error(`Step ${step.ref} LLM failed: ${msg}`);
+      }
     }
 
     // Step 3 — Zod validate ai_response against expected_response schema
