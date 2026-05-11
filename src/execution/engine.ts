@@ -240,14 +240,23 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }).maybeSingle();
       }
 
-      const nextStep = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
-      if (!nextStep) {
-        // No next step — this was the last step, so just complete
-        await updateFlowRun(flowRunId, { status: 'completed', paused_at_step_id: null });
-        console.log(`[engine] no step after paused step, completing flow`);
-        return;
+      // If user provided new input, restart from the first step (receive_query)
+      // so the new step_goal gets processed fresh through the entire flow.
+      if (userInput != null) {
+        const firstStep = await getFirstStep(flowRun.flow_id);
+        if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
+        console.log(`[engine] new user input, restarting from first step ${firstStep.id}`);
+        currentStep = firstStep;
+      } else {
+        const nextStep = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
+        if (!nextStep) {
+          // No next step — this was the last step, so just complete
+          await updateFlowRun(flowRunId, { status: 'completed', paused_at_step_id: null });
+          console.log(`[engine] no step after paused step, completing flow`);
+          return;
+        }
+        currentStep = nextStep;
       }
-      currentStep = nextStep;
 
       await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
     } else {
