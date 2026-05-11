@@ -112,7 +112,39 @@ async function callProCheckOnOutput(
     return 'paused';
   }
 
+  // ----- CHECK FOR input_ PREFIXED VARIABLES WITH NULL VALUES -----
+  // Any variable whose name starts with "input_" and has a null/empty value
+  // triggers a pause so the user can fill it in via /resume.
+  const inputVars = findInputVarsWithNullValue(output);
+  if (inputVars.length > 0) {
+    console.log(`[engine] input_ variables with null value detected: ${inputVars.join(', ')}, pausing`);
+    await updateStepRun(stepRun.id, { status: 'paused' });
+    await updateFlowRun(stepRun.flow_run_id, {
+      status: 'paused',
+      paused_at_step_id: stepRun.step_id,
+    });
+    return 'paused';
+  }
+
   return 'continue';
+}
+
+/**
+ * Recursively search the output object for any key starting with "input_"
+ * whose value is null, undefined, or empty string.
+ */
+function findInputVarsWithNullValue(obj: any, prefix = ''): string[] {
+  const results: string[] = [];
+  if (!obj || typeof obj !== 'object') return results;
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    if (key.startsWith('input_') && (value === null || value === undefined || value === '' || value === 'null')) {
+      results.push(fullKey);
+    } else if (typeof value === 'object' && !Array.isArray(value)) {
+      results.push(...findInputVarsWithNullValue(value, fullKey));
+    }
+  }
+  return results;
 }
 
 async function handleApiFailure(
