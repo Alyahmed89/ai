@@ -220,9 +220,15 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       // Apply user_input as a single flow_run-scoped variable
       if (userInput != null) {
-        const value = typeof userInput === 'object' && !Array.isArray(userInput)
-          ? String(Object.values(userInput)[0] ?? userInput)
-          : String(userInput);
+        // Normalize: handle plain string, JSON string, or JSON object
+        let parsed = userInput;
+        if (typeof parsed === 'string') {
+          try { parsed = JSON.parse(parsed); } catch {}
+        }
+        const value = typeof parsed === 'object' && !Array.isArray(parsed)
+          ? String(Object.values(parsed)[0] ?? parsed)
+          : String(parsed);
+
         await getSupabase().from('variables').insert({
           id: randomUUID(),
           flow_run_id: flowRunId,
@@ -280,6 +286,15 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         const prev3 = stepHistory.slice(-6, -3);
         if (last3[0] === prev3[0] && last3[1] === prev3[1] && last3[2] === prev3[2]) {
           console.log(`[engine] adaptive loop detected: ${last3.join(' → ')}, pausing flow`);
+          await updateFlowRun(flowRunId, { status: 'paused', paused_at_step_id: currentStep.id });
+          return;
+        }
+        // Check for alternating 2-step pattern (A, B, A, B, A, B)
+        const last6 = stepHistory.slice(-6);
+        if (last6[0] === last6[2] && last6[2] === last6[4] &&
+            last6[1] === last6[3] && last6[3] === last6[5] &&
+            last6[0] !== last6[1]) {
+          console.log(`[engine] alternating 2-step loop detected: ${last6[0]} ↔ ${last6[1]}, pausing flow`);
           await updateFlowRun(flowRunId, { status: 'paused', paused_at_step_id: currentStep.id });
           return;
         }
@@ -448,6 +463,33 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
   // Build variable context
   const context = await buildContext(flowRunId, stepRunId, flowRun);
+
+  // If this is the assistant step, fetch relevant rules/terms from Prolog
+  if (step.ref === 'assistant' || step.title === 'assistant') {
+    const stepGoal = context['step_goal'];
+    if (stepGoal && typeof stepGoal === 'string' && stepGoal.trim().length > 0) {
+      const keywords = stepGoal.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 3)
+        .slice(0, 10);
+      if (keywords.length > 0) {
+        const prologBase = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
+        const [rulesRes, termsRes] = await Promise.all([
+          fetch(`${prologBase}/api/v1/rules?search=${encodeURIComponent(keywords.join(' '))}`),
+          fetch(`${prologBase}/api/v1/terms?search=${encodeURIComponent(keywords.join(' '))}`)
+        ]);
+        try {
+          const rules = await rulesRes.json();
+          context['relevant_rules'] = JSON.stringify(rules);
+        } catch {}
+        try {
+          const terms = await termsRes.json();
+          context['relevant_terms'] = JSON.stringify(terms);
+        } catch {}
+      }
+    }
+  }
 
   // Step 1 — Resolve variables in instructions
   let renderedInstructions: string | null = null;
@@ -1303,7 +1345,11 @@ function resolveVariables(input: any, context: Record<string, any>): any {
         console.warn(`Variable '[[var:${trimmed}]]' not found in context, leaving as-is`);
         return _match;
       }
-      return String(context[trimmed]);
+      const val = context[trimmed];
+      if (typeof val === 'object' && val !== null) {
+        return JSON.stringify(val);
+      }
+      return String(val);
     });
   }
 
