@@ -108,12 +108,6 @@ export default function FlowRunPage() {
     return () => clearInterval(interval)
   }, [fetchData])
 
-  useEffect(() => {
-    if (chatMode && chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [steps, chatMode])
-
   /** Extract required variable names from a paused step's expected_response */
   const getRequiredVars = useCallback((step: StepRunWithDef | undefined): string[] => {
     const er = step?.definition?.expected_response
@@ -142,12 +136,11 @@ export default function FlowRunPage() {
 
   const requiredVars = getRequiredVars(pausedStep)
 
-  /** Seed inputs from the latest step's resolved_variables so step_goal persists */
+  /** Seed inputs from the latest paused step's resolved_variables so step_goal persists.
+   *  Only sets the value if the input is currently empty, so the user can always type freely. */
   useEffect(() => {
-    if (steps.length === 0) return
-    const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    const last = sorted[sorted.length - 1]
-    const rv = last.resolved_variables
+    if (!pausedStep) return
+    const rv = pausedStep.resolved_variables
     if (!rv) return
     setInputs((prev) => {
       const next = { ...prev }
@@ -156,7 +149,8 @@ export default function FlowRunPage() {
         const val = rv[key]
         if (val !== undefined && val !== null) {
           const strVal = typeof val === 'string' ? val : JSON.stringify(val)
-          if (prev[key] !== strVal) {
+          // Only seed if the input is empty (user hasn't started typing)
+          if (!prev[key] && prev[key] !== strVal) {
             next[key] = strVal
             changed = true
           }
@@ -164,27 +158,31 @@ export default function FlowRunPage() {
       }
       return changed ? next : prev
     })
-  }, [steps, requiredVars])
+  }, [pausedStep, requiredVars])
 
-  /** Whether the flow is currently processing (waiting for assistant reply) */
+  /** Whether the flow is currently processing (waiting for assistant reply).
+   *  True only when there is no paused step — i.e. the flow is actively running. */
   const isProcessing = (() => {
     if (steps.length === 0) return false
-    const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    const last = sorted[sorted.length - 1]
-    // Processing if the last step is not paused (i.e. running/completed without a pause)
-    return last.status !== 'paused'
+    return !steps.some((s) => s.status === 'paused')
   })()
 
-  /** Build chat messages from step runs, deduplicating consecutive identical texts */
+  /** Build chat messages from step runs.
+   *  - User messages: only from the FIRST step run that has step_goal (shown once).
+   *  - Assistant messages: only from ai_response.chat_message (each shown once). */
   const chatMessages = (() => {
     const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    let userMessageShown = false
     for (const s of sorted) {
-      // User input: resolved_variables contains step_goal (may be a string or an object)
-      const goal = s.resolved_variables?.step_goal
-      if (goal) {
-        const text = typeof goal === 'string' ? goal : JSON.stringify(goal)
-        msgs.push({ role: 'user', text, id: `${s.id}-goal` })
+      // User input: only show the very first step_goal encountered
+      if (!userMessageShown) {
+        const goal = s.resolved_variables?.step_goal
+        if (goal) {
+          const text = typeof goal === 'string' ? goal : JSON.stringify(goal)
+          msgs.push({ role: 'user', text, id: `${s.id}-goal` })
+          userMessageShown = true
+        }
       }
       // Assistant response: ai_response or chat_message in ai_response
       if (s.ai_response) {
@@ -199,17 +197,15 @@ export default function FlowRunPage() {
         }
       }
     }
-    // Deduplicate consecutive messages with the same text
-    const deduped: typeof msgs = []
-    for (const m of msgs) {
-      const prev = deduped[deduped.length - 1]
-      if (prev && prev.role === m.role && prev.text === m.text) {
-        continue // skip duplicate
-      }
-      deduped.push(m)
-    }
-    return deduped
+    return msgs
   })()
+
+  /** Auto-scroll to bottom only when the flow is actively processing */
+  useEffect(() => {
+    if (chatMode && isProcessing && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [steps, chatMode, isProcessing])
 
   const handleInputChange = (name: string, value: string) => {
     setInputs((prev) => ({ ...prev, [name]: value }))
@@ -233,16 +229,14 @@ export default function FlowRunPage() {
         })
       } else {
         // Flow run exists — resume
-        const userInput: Record<string, string> = {}
-        for (const v of requiredVars) {
-          userInput[v] = inputs[v] || ''
-        }
+        // Send the raw text as a plain string, not wrapped in an object
+        const rawText = inputs[requiredVars[0]] || ''
         await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             flowRunId: id,
-            user_input: userInput,
+            user_input: rawText,
           }),
         })
       }
