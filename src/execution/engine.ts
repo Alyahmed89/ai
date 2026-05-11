@@ -316,12 +316,6 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
             break;
           }
-          // Validate UUID format to catch truncated IDs from AI output
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (!uuidRegex.test(pausedNextStepId.trim())) {
-            console.warn(`[engine] invalid UUID format for next_step_id: ${pausedNextStepId}, falling through to order-based navigation`);
-            break;
-          }
           visited.delete(pausedNextStepId);
           try {
             const dynamicStep = await getStepById(pausedNextStepId);
@@ -382,19 +376,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       const aiNext = (stepRun?.result as any)?.next_step_id;
       const stepRunId = stepRun?.id;
       if (aiNext && typeof aiNext === 'string' && aiNext.length > 0 && aiNext !== stepRun?.step_id) {
-        // Validate UUID format to catch truncated IDs from AI output
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(aiNext.trim())) {
-          console.warn(`[engine] invalid UUID format for next_step_id: ${aiNext}, falling through to order-based navigation`);
-        } else {
-          try {
-            const next = await getStepById(aiNext);
-            if (next) {
-              visited.delete(aiNext);
-              currentStep = next;
-              continue;
-            }
-          } catch (err: any) {
+        try {
+          const next = await getStepById(aiNext);
+          if (next) {
+            visited.delete(aiNext);
+            currentStep = next;
+            continue;
+          }
+        } catch (err: any) {
           // Step UUID not found — store as error variable and use step's own fallback
           const errorPayload = { type: 'routing_error', message: `No step found with id ${aiNext}`, step_id: currentStep.id, bad_next_step_id: aiNext };
           await getSupabase().from('variables').insert({
@@ -427,7 +416,6 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             }
           }
         }
-      }
       }
 
       // Fall through to order_index advancement if no valid next_step_id

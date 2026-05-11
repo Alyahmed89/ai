@@ -55,27 +55,6 @@ export class ActionsController {
     // Check current flow run status
     const flowRun = await getFlowRun(id);
     if (!flowRun) throw new Error(`Flow run ${id} not found`);
-
-    // If flow is paused, resume it with the user's input
-    if (flowRun.status === 'paused') {
-      if (body.user_input) {
-        await getSupabase().from('variables').insert({
-          id: randomUUID(),
-          flow_run_id: id,
-          step_run_id: null,
-          key: 'step_goal',
-          value: body.user_input,
-          scope: 'flow_run',
-          created_at: new Date().toISOString(),
-        }).maybeSingle();
-      }
-      await getSupabase()
-        .from('flow_runs')
-        .update({ status: 'running', paused_at_step_id: null, updated_at: new Date().toISOString() })
-        .eq('id', id);
-      return { status: 'resumed', flow_run_id: id };
-    }
-
     if (flowRun.status !== 'running') {
       return { status: 'already_paused', flow_run_id: id };
     }
