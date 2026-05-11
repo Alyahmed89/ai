@@ -18,7 +18,7 @@ export class FlowRunsController {
   }
 
   @Post(':id/resume')
-  async resume(@Param('id') id: string, @Body() body: { user_input?: string }) {
+  async resume(@Param('id') id: string, @Body() body: { user_input?: Record<string, any> }) {
     return this.flowRunsService.resume(id, body.user_input);
   }
 
