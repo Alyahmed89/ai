@@ -10,7 +10,8 @@ export class FlowRunsService {
     if (!flowRun) throw new Error(`Flow run ${id} not found`);
 
     if (flowRun.status === 'paused') {
-      // Inject user input as step_goal
+      // Inject user input as step_goal and set running
+      // The already-running engine loop picks up step_goal on its next iteration
       if (userInput != null) {
         await getSupabase().from('variables').insert({
           id: randomUUID(),
@@ -22,9 +23,10 @@ export class FlowRunsService {
           created_at: new Date().toISOString(),
         }).maybeSingle();
       }
-      // Restart the engine — runFlow reads the paused status and resumes from paused_at_step_id
-      const { runFlow } = await import('../execution/engine');
-      runFlow(id).catch(err => console.error('Flow execution error:', err));
+      await getSupabase()
+        .from('flow_runs')
+        .update({ status: 'running', paused_at_step_id: null, updated_at: new Date().toISOString() })
+        .eq('id', id);
       return { status: 'resumed', flow_run_id: id };
     }
 

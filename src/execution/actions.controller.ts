@@ -51,7 +51,6 @@ export class ActionsController {
   }
 
   @Post('flow-runs/:id/pause')
-  @Post('flow-runs/:id/interrupt')
   async pause(@Param('id') id: string, @Body() body: { user_input?: string }) {
     const flowRun = await getFlowRun(id);
     if (!flowRun) throw new Error(`Flow run ${id} not found`);
