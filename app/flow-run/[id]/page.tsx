@@ -156,10 +156,11 @@ export default function FlowRunPage() {
     const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
     for (const s of sorted) {
-      // User input: resolved_variables contains step_goal
+      // User input: resolved_variables contains step_goal (may be a string or an object)
       const goal = s.resolved_variables?.step_goal
       if (goal) {
-        msgs.push({ role: 'user', text: goal, id: `${s.id}-goal` })
+        const text = typeof goal === 'string' ? goal : JSON.stringify(goal)
+        msgs.push({ role: 'user', text, id: `${s.id}-goal` })
       }
       // Assistant response: ai_response or chat_message in ai_response
       if (s.ai_response) {
