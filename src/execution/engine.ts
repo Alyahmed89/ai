@@ -1397,6 +1397,17 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
     }
   }
 
+  // Create top-level aliases for memory.* keys so that
+  // [[var:intent]] resolves the same as [[var:memory.intent]].
+  // This keeps step instructions simpler and maintains backward compatibility.
+  const memoryKeys = Object.keys(context).filter(k => k.startsWith('memory.'));
+  for (const mk of memoryKeys) {
+    const shortKey = mk.slice('memory.'.length);
+    if (!(shortKey in context)) {
+      context[shortKey] = context[mk];
+    }
+  }
+
   return context;
 }
 
