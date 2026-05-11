@@ -622,24 +622,52 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const stepActions = Array.isArray(step.actions) ? step.actions : [];
     const allActions = [...actions, ...stepActions];
 
-    // Auto-store top-level scalar fields from AI response as flow_run variables
+    // Auto-store fields from AI response as flow_run variables
     // so subsequent steps can reference them via [[var:key]]
-    for (const [key, value] of Object.entries(validated)) {
-      if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
-      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-        await getSupabase().from('variables').insert({
-          id: randomUUID(),
-          flow_run_id: flowRunId,
-          step_run_id: stepRunId,
-          key,
-          value: String(value),
-          scope: 'flow_run',
-          created_at: new Date().toISOString(),
-        }).maybeSingle();
-        // Also add to running context immediately
-        context[key] = value;
+    const autoStore = async (obj: Record<string, any>, prefix?: string) => {
+      for (const [key, value] of Object.entries(obj)) {
+        if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
+        const varKey = prefix ? `${prefix}.${key}` : key;
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: varKey,
+            value: String(value),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+          context[varKey] = value;
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          // Nested object — store as JSON and also recurse for direct access
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: varKey,
+            value: JSON.stringify(value),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+          context[varKey] = value;
+          await autoStore(value, varKey);
+        } else {
+          // Array or other — store as JSON string
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: varKey,
+            value: JSON.stringify(value),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+          context[varKey] = value;
+        }
       }
-    }
+    };
+    await autoStore(validated);
 
         // Step 5 — Execute actions (before pro_check so results are included)
     const actionResults: Record<string, any> = {};
