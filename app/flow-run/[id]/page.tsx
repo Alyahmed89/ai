@@ -142,6 +142,30 @@ export default function FlowRunPage() {
 
   const requiredVars = getRequiredVars(pausedStep)
 
+  /** Seed inputs from the latest step's resolved_variables so step_goal persists */
+  useEffect(() => {
+    if (steps.length === 0) return
+    const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    const last = sorted[sorted.length - 1]
+    const rv = last.resolved_variables
+    if (!rv) return
+    setInputs((prev) => {
+      const next = { ...prev }
+      let changed = false
+      for (const key of requiredVars) {
+        const val = rv[key]
+        if (val !== undefined && val !== null) {
+          const strVal = typeof val === 'string' ? val : JSON.stringify(val)
+          if (prev[key] !== strVal) {
+            next[key] = strVal
+            changed = true
+          }
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [steps, requiredVars])
+
   /** Whether the flow is currently processing (waiting for assistant reply) */
   const isProcessing = (() => {
     if (steps.length === 0) return false
@@ -222,7 +246,6 @@ export default function FlowRunPage() {
           }),
         })
       }
-      setInputs({})
       setTimeout(fetchData, 500)
     } catch (e) {
       console.error('Failed to send', e)
