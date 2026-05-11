@@ -464,33 +464,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
   // Build variable context
   const context = await buildContext(flowRunId, stepRunId, flowRun);
 
-  // If this is the assistant step, fetch relevant rules/terms from Prolog
-  if (step.ref === 'assistant' || step.title === 'assistant') {
-    const stepGoal = context['step_goal'];
-    if (stepGoal && typeof stepGoal === 'string' && stepGoal.trim().length > 0) {
-      const keywords = stepGoal.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 3)
-        .slice(0, 10);
-      if (keywords.length > 0) {
-        const prologBase = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
-        const [rulesRes, termsRes] = await Promise.all([
-          fetch(`${prologBase}/api/v1/rules?search=${encodeURIComponent(keywords.join(' '))}`),
-          fetch(`${prologBase}/api/v1/terms?search=${encodeURIComponent(keywords.join(' '))}`)
-        ]);
-        try {
-          const rules = await rulesRes.json();
-          context['relevant_rules'] = JSON.stringify(rules);
-        } catch {}
-        try {
-          const terms = await termsRes.json();
-          context['relevant_terms'] = JSON.stringify(terms);
-        } catch {}
-      }
-    }
-  }
-
   // Step 1 — Resolve variables in instructions
   let renderedInstructions: string | null = null;
   try {
