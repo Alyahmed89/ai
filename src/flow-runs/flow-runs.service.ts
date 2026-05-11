@@ -5,20 +5,22 @@ import { getFlowRun } from '../execution/engine';
 
 @Injectable()
 export class FlowRunsService {
-  async resume(id: string, userInput?: string) {
+  async resume(id: string, userInput?: Record<string, any>) {
     const flowRun = await getFlowRun(id);
     if (!flowRun) throw new Error(`Flow run ${id} not found`);
 
     if (flowRun.status === 'paused') {
-      // Inject user input as step_goal and set running
-      // The already-running engine loop picks up step_goal on its next iteration
+      // Same logic as /interrupt's resume branch: inject step_goal, set running
       if (userInput != null) {
+        const value = typeof userInput === 'object' && !Array.isArray(userInput)
+          ? String(Object.values(userInput)[0] ?? userInput)
+          : String(userInput);
         await getSupabase().from('variables').insert({
           id: randomUUID(),
           flow_run_id: id,
           step_run_id: null,
           key: 'step_goal',
-          value: userInput,
+          value,
           scope: 'flow_run',
           created_at: new Date().toISOString(),
         }).maybeSingle();
@@ -27,44 +29,12 @@ export class FlowRunsService {
         .from('flow_runs')
         .update({ status: 'running', paused_at_step_id: null, updated_at: new Date().toISOString() })
         .eq('id', id);
-      return { status: 'resumed', flow_run_id: id };
+    } else {
+      // Fresh start — run the engine
+      const { runFlow } = await import('../execution/engine');
+      await runFlow(id, userInput);
     }
 
-    if (flowRun.status === 'running' && userInput != null) {
-      // Flow is running — pause it and store the user's message
-      const { data: latestStepRun } = await getSupabase()
-        .from('step_runs')
-        .select('step_id')
-        .eq('flow_run_id', id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      await getSupabase()
-        .from('flow_runs')
-        .update({
-          status: 'paused',
-          paused_at_step_id: latestStepRun?.step_id || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      await getSupabase().from('variables').insert({
-        id: randomUUID(),
-        flow_run_id: id,
-        step_run_id: null,
-        key: 'step_goal',
-        value: userInput,
-        scope: 'flow_run',
-        created_at: new Date().toISOString(),
-      }).maybeSingle();
-
-      return { status: 'paused', flow_run_id: id };
-    }
-
-    // Fresh start — run the engine
-    const { runFlow } = await import('../execution/engine');
-    await runFlow(id, userInput ? { user_input: userInput } : undefined);
-    return { status: 'resumed', flow_run_id: id };
+    return { status: 'resumed' };
   }
 }
