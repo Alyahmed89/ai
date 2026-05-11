@@ -64,7 +64,6 @@ export default function FlowRunPage() {
   const [loading, setLoading] = useState(true)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
-  const [sending, setSending] = useState(false)
   const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [chatMode, setChatMode] = useState(false)
@@ -212,8 +211,6 @@ export default function FlowRunPage() {
   }
 
   const handleSend = async () => {
-    if (sending) return
-    setSending(true)
     try {
       if (steps.length === 0 && flowId) {
         // No flow run yet — start the flow
@@ -244,7 +241,6 @@ export default function FlowRunPage() {
     } catch (e) {
       console.error('Failed to send', e)
     }
-    setSending(false)
   }
 
   const startEdit = (key: string, value: string) => {
@@ -602,16 +598,9 @@ export default function FlowRunPage() {
             </div>
             <button
               type="submit"
-              disabled={sending}
-              className="shrink-0 text-sm text-neutral-200 hover:text-white disabled:opacity-30 transition-colors"
+              className="shrink-0 text-sm text-neutral-200 hover:text-white transition-colors"
             >
-              {sending ? (
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
-                </svg>
-              ) : (
-                'send'
-              )}
+              send
             </button>
           </form>
         </div>
