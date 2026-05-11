@@ -55,9 +55,6 @@ export class ActionsController {
     // Check current flow run status
     const flowRun = await getFlowRun(id);
     if (!flowRun) throw new Error(`Flow run ${id} not found`);
-    if (flowRun.status !== 'running') {
-      return { status: 'already_paused', flow_run_id: id };
-    }
 
     // Find the current (latest) step run for this flow run
     const { data: latestStepRun } = await getSupabase()
@@ -70,13 +67,8 @@ export class ActionsController {
 
     const pausedAtStepId = latestStepRun?.step_id || null;
 
-    // Set flow run status to paused
-    await getSupabase()
-      .from('flow_runs')
-      .update({ status: 'paused', paused_at_step_id: pausedAtStepId, updated_at: new Date().toISOString() })
-      .eq('id', id);
-
-    // Insert the user's message as a step_goal variable
+    // Always store the user's message as a step_goal variable,
+    // regardless of current flow status, so resume picks it up.
     if (body.user_input) {
       await getSupabase().from('variables').insert({
         id: randomUUID(),
@@ -88,6 +80,12 @@ export class ActionsController {
         created_at: new Date().toISOString(),
       }).maybeSingle();
     }
+
+    // Set flow run status to paused (no-op if already paused)
+    await getSupabase()
+      .from('flow_runs')
+      .update({ status: 'paused', paused_at_step_id: pausedAtStepId, updated_at: new Date().toISOString() })
+      .eq('id', id);
 
     return { status: 'paused', flow_run_id: id };
   }
