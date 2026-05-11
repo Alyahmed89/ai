@@ -247,11 +247,34 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       let varKey = 'user_input';
       const er = pausedStep.expected_response;
       if (er) {
-        // Case 1: { required: ["memory"], properties: { memory: { required: ["step_goal"], ... } } }
-        if (Array.isArray(er.required) && er.required.includes('memory') && er.properties?.memory?.required?.length > 0) {
-          varKey = er.properties.memory.required[0];
+        // Helper to find the first field starting with "input_" in a required list
+        const findInputVar = (reqList: string[], props: Record<string, any>): string | null => {
+          for (const field of reqList) {
+            if (field.startsWith('input_')) return field;
+            // Check nested in memory
+            if (field === 'memory' && props?.memory?.properties) {
+              const memReq = props.memory.required;
+              if (Array.isArray(memReq)) {
+                for (const mf of memReq) {
+                  if (mf.startsWith('input_')) return mf;
+                }
+              }
+            }
+          }
+          return null;
+        };
+
+        // Priority 1: input_ prefixed field at top level
+        const topInput = Array.isArray(er.required) ? findInputVar(er.required, er.properties) : null;
+        if (topInput) {
+          varKey = topInput;
         }
-        // Case 2: { required: ["some_field"], ... }
+        // Priority 2: input_ prefixed field inside memory
+        else if (Array.isArray(er.required) && er.required.includes('memory') && er.properties?.memory?.required?.length > 0) {
+          const memInput = er.properties.memory.required.find((f: string) => f.startsWith('input_'));
+          varKey = memInput || er.properties.memory.required[0];
+        }
+        // Priority 3: first required field at top level
         else if (Array.isArray(er.required) && er.required.length > 0) {
           varKey = er.required[0];
         }
