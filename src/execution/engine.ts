@@ -195,22 +195,15 @@ function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any
   let shape: Record<string, z.ZodTypeAny> = {};
   if (stepExpectedResponse.type === 'object' && stepExpectedResponse.properties) {
     for (const [key, prop] of Object.entries<any>(stepExpectedResponse.properties)) {
-      let fieldSchema: z.ZodTypeAny;
       switch (prop.type) {
-        case 'string': fieldSchema = z.string(); break;
-        case 'number': fieldSchema = z.number(); break;
-        case 'boolean': fieldSchema = z.boolean(); break;
-        case 'integer': fieldSchema = z.number().int(); break;
-        case 'array': fieldSchema = z.array(z.any()); break;
-        case 'object': fieldSchema = z.record(z.any()); break;
-        default: fieldSchema = z.any(); break;
+        case 'string': shape[key] = z.string(); break;
+        case 'number': shape[key] = z.number(); break;
+        case 'boolean': shape[key] = z.boolean(); break;
+        case 'integer': shape[key] = z.number().int(); break;
+        case 'array': shape[key] = z.array(z.any()); break;
+        case 'object': shape[key] = z.record(z.any()); break;
+        default: shape[key] = z.any(); break;
       }
-      // Fields starting with "input_" accept null so the AI can signal
-      // that user input is needed (the engine pauses and waits for /resume).
-      if (key.startsWith('input_')) {
-        fieldSchema = fieldSchema.nullable();
-      }
-      shape[key] = fieldSchema;
     }
     if (stepExpectedResponse.required) {
       const requiredSet = new Set(stepExpectedResponse.required);
