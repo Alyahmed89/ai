@@ -247,6 +247,7 @@ export default function FlowRunPage() {
     const msgs: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
     const seenAssistant = new Set<string>()
+    const seenUserText = new Set<string>()
     for (const s of sorted) {
       // User input: collect all input_* fields from resolved_variables
       const rv = s.resolved_variables as Record<string, unknown> | null
@@ -259,7 +260,8 @@ export default function FlowRunPage() {
             if (!userText) userText = v
           }
         }
-        if (userText) {
+        if (userText && !seenUserText.has(userText)) {
+          seenUserText.add(userText)
           msgs.push({ role: 'user', text: userText, data: inputFields, id: `${s.id}-user` })
         }
       }
