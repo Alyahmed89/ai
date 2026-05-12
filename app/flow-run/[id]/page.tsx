@@ -135,7 +135,8 @@ export default function FlowRunPage() {
 
   const requiredVars = getRequiredVars(pausedStep)
 
-  /** Seed inputs from the latest paused step's resolved_variables so step_goal persists.
+  /** Seed inputs from the latest paused step's resolved_variables.
+   *  Only seeds non-chat_message fields (chat_message is user-authored).
    *  Only sets the value if the input is currently empty, so the user can always type freely. */
   useEffect(() => {
     if (!pausedStep) return
@@ -145,11 +146,12 @@ export default function FlowRunPage() {
       const next = { ...prev }
       let changed = false
       for (const key of requiredVars) {
+        if (key === 'chat_message') continue // never auto-seed the user's message
         const val = rv[key]
         if (val !== undefined && val !== null) {
           const strVal = typeof val === 'string' ? val : JSON.stringify(val)
           // Only seed if the input is empty (user hasn't started typing)
-          if (!prev[key] && prev[key] !== strVal) {
+          if (!prev[key]) {
             next[key] = strVal
             changed = true
           }
@@ -167,32 +169,29 @@ export default function FlowRunPage() {
   })()
 
   /** Build chat messages from step runs.
-   *  - User messages: only from the FIRST step run that has step_goal (shown once).
-   *  - Assistant messages: only from ai_response.chat_message (each shown once). */
+   *  - User messages: from resolved_variables.chat_message (what the user typed in the chat_message field).
+   *  - Assistant messages: from ai_response.chat_message (each shown once). */
   const chatMessages = (() => {
     const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    let userMessageShown = false
+    const seenUserMessages = new Set<string>()
     for (const s of sorted) {
-      // User input: only show the very first step_goal encountered
-      if (!userMessageShown) {
-        const goal = s.resolved_variables?.step_goal
-        if (goal) {
-          const text = typeof goal === 'string' ? goal : JSON.stringify(goal)
-          msgs.push({ role: 'user', text, id: `${s.id}-goal` })
-          userMessageShown = true
-        }
+      // User input: show chat_message from resolved_variables (what the user actually typed)
+      const chatMsg = s.resolved_variables?.chat_message
+      if (chatMsg && typeof chatMsg === 'string' && !seenUserMessages.has(chatMsg)) {
+        seenUserMessages.add(chatMsg)
+        msgs.push({ role: 'user', text: chatMsg, id: `${s.id}-user` })
       }
       // Assistant response: ai_response or chat_message in ai_response
       if (s.ai_response) {
-        let chatMsg = ''
+        let assistantMsg = ''
         if (typeof s.ai_response === 'string') {
-          chatMsg = s.ai_response
+          assistantMsg = s.ai_response
         } else if (typeof s.ai_response === 'object' && s.ai_response !== null) {
-          chatMsg = (s.ai_response as Record<string, unknown>).chat_message as string || ''
+          assistantMsg = (s.ai_response as Record<string, unknown>).chat_message as string || ''
         }
-        if (chatMsg) {
-          msgs.push({ role: 'assistant', text: chatMsg, id: `${s.id}-resp` })
+        if (assistantMsg) {
+          msgs.push({ role: 'assistant', text: assistantMsg, id: `${s.id}-resp` })
         }
       }
     }
@@ -226,14 +225,17 @@ export default function FlowRunPage() {
         })
       } else {
         // Flow run exists — resume
-        // Send the raw text as a plain string, not wrapped in an object
-        const rawText = inputs[requiredVars[0]] || ''
+        // Build input_variables from all required vars
+        const inputVars: Record<string, string> = {}
+        for (const v of requiredVars) {
+          if (inputs[v]) inputVars[v] = inputs[v]
+        }
         await fetch('/api/proxy/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             flowRunId: id,
-            user_input: rawText,
+            user_input: inputVars,
           }),
         })
       }
