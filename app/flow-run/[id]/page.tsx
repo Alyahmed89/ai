@@ -449,7 +449,7 @@ export default function FlowRunPage() {
   const fetchEvents = useCallback(async () => {
     if (!id) return
     try {
-      const res = await fetch(`/api/proxy/api/flow-runs/${id}/events`)
+      const res = await fetch(`/api/proxy/flow-runs/${id}/events`)
       if (res.ok) {
         const data = await res.json()
         const list = Array.isArray(data) ? data : data?.events ?? []
@@ -466,7 +466,7 @@ export default function FlowRunPage() {
   const fetchContext = useCallback(async () => {
     if (!id) return
     try {
-      const res = await fetch(`/api/proxy/api/flow-runs/${id}/context`)
+      const res = await fetch(`/api/proxy/flow-runs/${id}/context`)
       if (res.ok) {
         const data = await res.json()
         setContext(data)
@@ -491,33 +491,59 @@ export default function FlowRunPage() {
     }
   }, [fetchData, fetchEvents, fetchContext])
 
-  /** Extract required variable names from a paused step's expected_response */
-  const getRequiredVars = useCallback((step: StepRunWithDef | undefined): string[] => {
-    const er = step?.definition?.expected_response
-    if (er?.required && er.required.length > 0) {
-      const firstReq = er.required[0]
-      if (
-        firstReq === 'memory' &&
-        er.properties?.['memory'] &&
-        typeof er.properties['memory'] === 'object' &&
-        'required' in (er.properties['memory'] as Record<string, unknown>)
-      ) {
-        const memRequired = (er.properties['memory'] as ExpectedResponseProperty).required
-        if (memRequired && memRequired.length > 0) {
-          return memRequired
-        }
-      }
-      return er.required
-    }
-    return ['user_input']
-  }, [])
-
   /** The paused step (most recent one with status paused) */
   const pausedStep = [...steps]
     .sort((a, b) => (b.order_index ?? 0) - (a.order_index ?? 0))
     .find((s) => s.status === 'paused')
 
-  const requiredVars = getRequiredVars(pausedStep)
+  /**
+   * Normalize available_variables from context — they can be strings or objects.
+   */
+  const normalizedVars: { name: string; display?: DisplayMeta; value?: unknown }[] = (() => {
+    const raw = context?.available_variables ?? []
+    return raw.map((v: unknown) => {
+      if (typeof v === 'string') return { name: v }
+      if (typeof v === 'object' && v !== null) {
+        const obj = v as Record<string, unknown>
+        return {
+          name: String(obj.name ?? ''),
+          display: obj.display as DisplayMeta | undefined,
+          value: obj.value,
+        }
+      }
+      return { name: String(v) }
+    })
+  })()
+
+  /** Available variables from context that are user inputs */
+  const inputVariables = normalizedVars.filter(
+    (v) => v.display?.ui_input || v.name.startsWith('input_')
+  )
+
+  /**
+   * Determine which variables to prompt the user for.
+   * Priority: context.available_variables (from /flow-runs/:id/context).
+   * Fallback: parse expected_response.required from the paused step definition.
+   */
+  const allRequiredVars = (() => {
+    // Prefer context available_variables — they have the correct dotted names
+    if (normalizedVars.length > 0) {
+      return normalizedVars
+        .filter((v) => v.display?.ui_input || v.name.startsWith('input_') || v.name.startsWith('memory.'))
+        .map((v) => v.name)
+    }
+    // Fallback: parse expected_response from the paused step
+    const er = pausedStep?.definition?.expected_response
+    if (er?.required && er.required.length > 0) {
+      // Check if any required field is 'memory' with nested required fields
+      const memProp = er.properties?.['memory'] as ExpectedResponseProperty | undefined
+      if (er.required.includes('memory') && memProp?.required && memProp.required.length > 0) {
+        return memProp.required.map((r: string) => `memory.${r}`)
+      }
+      return er.required
+    }
+    return ['user_input']
+  })()
 
   /** Seed inputs from the latest paused step's resolved_variables.
    *  Only seeds non-chat_message fields (chat_message is user-authored).
@@ -529,9 +555,12 @@ export default function FlowRunPage() {
     setInputs((prev) => {
       const next = { ...prev }
       let changed = false
-      for (const key of requiredVars) {
+      for (const key of allRequiredVars) {
         if (key === 'chat_message') continue // never auto-seed the user's message
-        const val = rv[key]
+        // For dotted keys like memory.input_user_input, look up nested value
+        const val = key.includes('.')
+          ? key.split('.').reduce((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), rv as unknown)
+          : (rv as Record<string, unknown>)[key]
         if (val !== undefined && val !== null) {
           const strVal = typeof val === 'string' ? val : JSON.stringify(val)
           // Only seed if the input is empty (user hasn't started typing)
@@ -543,7 +572,7 @@ export default function FlowRunPage() {
       }
       return changed ? next : prev
     })
-  }, [pausedStep, requiredVars])
+  }, [pausedStep, allRequiredVars])
 
   /** Whether the flow is currently processing (waiting for assistant reply).
    *  True only when there is no paused step — i.e. the flow is actively running. */
@@ -552,22 +581,10 @@ export default function FlowRunPage() {
     return !steps.some((s) => s.status === 'paused')
   })()
 
-  /** Available variables from context that are user inputs */
-  const inputVariables = (context?.available_variables ?? []).filter(
-    (v) => v.display?.ui_input || v.name.startsWith('input_')
-  )
-
-  /** Merge required vars from step definition with context input variables */
-  const allRequiredVars = (() => {
-    const fromDef = requiredVars
-    const fromContext = inputVariables.map((v) => v.name)
-    const merged = [...new Set([...fromDef, ...fromContext])]
-    return merged
-  })()
-
   /** Build chat messages from step runs.
    *  - User messages: from resolved_variables input_* fields (what the user actually typed).
-   *  - Assistant messages: from ai_response.chat_message (each shown once). */
+   *  - Assistant messages: from ai_response.chat_message, falling back to
+   *    result.pro_check_request.response.chat_message for older step runs. */
   const chatMessages = (() => {
     const msgs: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
@@ -591,9 +608,9 @@ export default function FlowRunPage() {
         }
       }
       // Assistant response: ai_response.chat_message (each shown once)
+      let assistantMsg = ''
+      let data: Record<string, unknown> = {}
       if (s.ai_response) {
-        let assistantMsg = ''
-        let data: Record<string, unknown> = {}
         if (typeof s.ai_response === 'string') {
           assistantMsg = s.ai_response
           data = { response: s.ai_response }
@@ -603,10 +620,16 @@ export default function FlowRunPage() {
           data = { ...resp }
           delete data.chat_message
         }
-        if (assistantMsg && !seenAssistant.has(assistantMsg)) {
-          seenAssistant.add(assistantMsg)
-          msgs.push({ role: 'assistant', text: assistantMsg, data, id: `${s.id}-resp` })
-        }
+      }
+      // Fallback: pro_check_request.response.chat_message for older step runs
+      if (!assistantMsg && s.result?.pro_check_request?.response?.chat_message) {
+        assistantMsg = s.result.pro_check_request.response.chat_message as string
+        data = { ...(s.result.pro_check_request.response as Record<string, unknown>) }
+        delete data.chat_message
+      }
+      if (assistantMsg && !seenAssistant.has(assistantMsg)) {
+        seenAssistant.add(assistantMsg)
+        msgs.push({ role: 'assistant', text: assistantMsg, data, id: `${s.id}-resp` })
       }
     }
     return msgs
@@ -621,6 +644,19 @@ export default function FlowRunPage() {
 
   const handleInputChange = (name: string, value: string) => {
     setInputs((prev) => ({ ...prev, [name]: value }))
+  }
+
+  /** Set a nested value on an object from a dotted path like "memory.input_user_input". */
+  function setNested(obj: Record<string, unknown>, path: string[], value: string): void {
+    const key = path[0]
+    if (path.length === 1) {
+      obj[key] = value
+    } else {
+      if (!obj[key] || typeof obj[key] !== 'object') {
+        obj[key] = {}
+      }
+      setNested(obj[key] as Record<string, unknown>, path.slice(1), value)
+    }
   }
 
   const handleSend = async () => {
@@ -639,10 +675,17 @@ export default function FlowRunPage() {
         })
       } else {
         // Flow run exists — resume
-        // Build input_variables from all required vars
-        const inputVars: Record<string, string> = {}
-        for (const v of requiredVars) {
-          if (inputs[v]) inputVars[v] = inputs[v]
+        // Build user_input from allRequiredVars, supporting dotted paths for nested objects
+        const inputVars: Record<string, unknown> = {}
+        for (const v of allRequiredVars) {
+          const val = inputs[v]
+          if (val) {
+            if (v.includes('.')) {
+              setNested(inputVars, v.split('.'), val)
+            } else {
+              inputVars[v] = val
+            }
+          }
         }
         await fetch('/api/proxy/resume', {
           method: 'POST',
@@ -1022,7 +1065,8 @@ export default function FlowRunPage() {
               {allRequiredVars.map((v) => {
                 const ctxVar = inputVariables.find((iv) => iv.name === v)
                 const display = ctxVar?.display?.ui_display
-                const label = ctxVar?.display?.label || v
+                // Use display label, or last segment of dotted path, or full name
+                const label = ctxVar?.display?.label || (v.includes('.') ? v.split('.').pop()! : v)
                 return (
                   <div key={v}>
                     {!chatMode && (
@@ -1039,7 +1083,7 @@ export default function FlowRunPage() {
                         type="text"
                         value={inputs[v] || ''}
                         onChange={(e) => handleInputChange(v, e.target.value)}
-                        placeholder={chatMode ? 'Type a message…' : `enter ${v}...`}
+                        placeholder={chatMode ? 'Type a message…' : `enter ${label}...`}
                         className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700"
                       />
                     )}
