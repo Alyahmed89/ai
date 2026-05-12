@@ -300,9 +300,12 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           varKey = topInput;
         }
         // Priority 2: input_ prefixed field inside memory
+        // Prefix with "memory." so the variable is stored as memory.input_user_input,
+        // matching what [[var:memory.input_user_input]] expects in step instructions.
         else if (Array.isArray(er.required) && er.required.includes('memory') && er.properties?.memory?.required?.length > 0) {
           const memInput = er.properties.memory.required.find((f: string) => f.startsWith('input_'));
-          varKey = memInput || er.properties.memory.required[0];
+          const rawKey = memInput || er.properties.memory.required[0];
+          varKey = `memory.${rawKey}`;
         }
         // Priority 3: first required field at top level
         else if (Array.isArray(er.required) && er.required.length > 0) {
