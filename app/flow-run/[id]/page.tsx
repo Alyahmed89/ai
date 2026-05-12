@@ -241,22 +241,29 @@ export default function FlowRunPage() {
   })()
 
   /** Build chat messages from step runs.
-   *  Each message has a role, a short summary text, and the full data object
-   *  which is rendered as YAML-like key-value pairs. */
+   *  - User messages: from resolved_variables input_* fields (what the user actually typed).
+   *  - Assistant messages: from ai_response.chat_message (each shown once). */
   const chatMessages = (() => {
     const msgs: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    const seenUserMessages = new Set<string>()
+    const seenAssistant = new Set<string>()
     for (const s of sorted) {
-      // User input: show chat_message from resolved_variables (what the user actually typed)
-      const chatMsg = s.resolved_variables?.chat_message
-      if (chatMsg && typeof chatMsg === 'string' && !seenUserMessages.has(chatMsg)) {
-        seenUserMessages.add(chatMsg)
-        const data = { ...(s.resolved_variables as Record<string, unknown> || {}) }
-        delete data.chat_message
-        msgs.push({ role: 'user', text: chatMsg, data, id: `${s.id}-user` })
+      // User input: collect all input_* fields from resolved_variables
+      const rv = s.resolved_variables as Record<string, unknown> | null
+      if (rv) {
+        const inputFields: Record<string, unknown> = {}
+        let userText = ''
+        for (const [k, v] of Object.entries(rv)) {
+          if (k.startsWith('input_') && v && typeof v === 'string' && v.trim()) {
+            inputFields[k] = v
+            if (!userText) userText = v
+          }
+        }
+        if (userText) {
+          msgs.push({ role: 'user', text: userText, data: inputFields, id: `${s.id}-user` })
+        }
       }
-      // Assistant response: ai_response or chat_message in ai_response
+      // Assistant response: ai_response.chat_message (each shown once)
       if (s.ai_response) {
         let assistantMsg = ''
         let data: Record<string, unknown> = {}
@@ -269,7 +276,8 @@ export default function FlowRunPage() {
           data = { ...resp }
           delete data.chat_message
         }
-        if (assistantMsg) {
+        if (assistantMsg && !seenAssistant.has(assistantMsg)) {
+          seenAssistant.add(assistantMsg)
           msgs.push({ role: 'assistant', text: assistantMsg, data, id: `${s.id}-resp` })
         }
       }
