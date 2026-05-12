@@ -45,14 +45,23 @@ export class ContextController {
     // Build available_variables from the step's expected_response schema.
     // Fields with display.ui_input === true are user-inputtable prompts.
     // Fields with display.ui_display define how to render the value.
+    // Also recurse into nested objects (e.g. memory.properties) to find input_ fields.
     const availableVariables: string[] = [];
+    const collectInputFields = (props: Record<string, any>, prefix?: string) => {
+      for (const [key, prop] of Object.entries<any>(props || {})) {
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+        if (key.startsWith('input_') || prop?.display?.ui_input) {
+          if (!availableVariables.includes(fullKey)) availableVariables.push(fullKey);
+        }
+        // Recurse into nested object properties
+        if (prop?.type === 'object' && prop?.properties) {
+          collectInputFields(prop.properties, fullKey);
+        }
+      }
+    };
     for (const step of steps) {
       if (step.expected_response?.properties) {
-        for (const [key, prop] of Object.entries<any>(step.expected_response.properties)) {
-          if (key.startsWith('input_') || prop?.display?.ui_input) {
-            if (!availableVariables.includes(key)) availableVariables.push(key);
-          }
-        }
+        collectInputFields(step.expected_response.properties);
       }
     }
     if (availableVariables.length === 0) {

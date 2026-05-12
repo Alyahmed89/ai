@@ -1217,7 +1217,24 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       context.action_error = errorPayload;
     }
 
-    // Step 6 — Call pro_check on merged output (AI response + action results + any error)
+    // Step 6 — Persist ai_response and resolved_variables BEFORE pro_check,
+    // so the frontend can read them for chat mode even if the step pauses.
+    const validatedNorm = normalizeValue(validated);
+    const nextStepIdFromOutput = validatedNorm?.next_step_id;
+    const resultData: Record<string, any> = {};
+    if (nextStepIdFromOutput && typeof nextStepIdFromOutput === 'string' && nextStepIdFromOutput.trim() !== '') {
+      resultData.next_step_id = nextStepIdFromOutput;
+    }
+
+    await updateStepRun(stepRunId, {
+      ai_response: validatedNorm,
+      ai_response_valid: true,
+      rendered_instructions: renderedInstructions,
+      resolved_variables: context,
+      result: resultData,
+    });
+
+    // Step 7 — Call pro_check on merged output (AI response + action results + any error)
     const mergedOutput = actionError
       ? { ...validated, action_results: actionResults, action_error: actionError }
       : { ...validated, action_results: actionResults };
@@ -1236,28 +1253,15 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
     }
 
-    // Step 8 — Persist everything
+    // Step 8 — Mark step completed
     const trace = {
       zod_result: 'valid',
       step: 'completed',
     };
 
-    // Persist next_step_id in result so the main loop can read it
-    const validatedNorm = normalizeValue(validated);
-    const nextStepIdFromOutput = validatedNorm?.next_step_id;
-    const resultData: Record<string, any> = {};
-    if (nextStepIdFromOutput && typeof nextStepIdFromOutput === 'string' && nextStepIdFromOutput.trim() !== '') {
-      resultData.next_step_id = nextStepIdFromOutput;
-    }
-
     await updateStepRun(stepRunId, {
-      ai_response: validatedNorm,
-      ai_response_valid: true,
-      rendered_instructions: renderedInstructions,
-      resolved_variables: context,
       trace,
       status: 'completed',
-      result: resultData,
     });
 
     // Write refs entries for rules and plans from step metadata
