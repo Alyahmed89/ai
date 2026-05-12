@@ -6,6 +6,32 @@ import { callLlm } from './llm';
 const STEP_TIMEOUT_MS = 60000;
 
 /**
+ * Emit an execution event for the frontend trace display.
+ * Events are stored in the execution_events table and can be
+ * polled by the UI to show real-time progress.
+ */
+async function emitEvent(
+  flowRunId: string,
+  stepRunId: string | null,
+  eventType: string,
+  payload: Record<string, any>,
+): Promise<void> {
+  try {
+    await getSupabase().from('execution_events').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      event_type: eventType,
+      payload,
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+  } catch (err) {
+    // Swallow errors so event emission never breaks the main flow
+    console.warn('[engine] failed to emit event:', err);
+  }
+}
+
+/**
  * Call pro_check on the given output, store request/response in step run result,
  * and if "stop", pause the step and flow run (do NOT fail, do NOT auto-start correction).
  * Returns 'continue' or 'paused'.
@@ -238,6 +264,10 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
     let currentStep: any;
     if (flowRun.status === 'paused' && flowRun.paused_at_step_id) {
       console.log(`[engine] resuming from paused step ${flowRun.paused_at_step_id}`);
+      await emitEvent(flowRunId, null, 'flow.resume', {
+        paused_at_step_id: flowRun.paused_at_step_id,
+        has_user_input: userInput != null,
+      });
 
       // Find the step after paused_at_step_id by order_index
       const pausedStep = await getStepById(flowRun.paused_at_step_id);
@@ -335,6 +365,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         // No next step — this was the last step, so just complete
         await updateFlowRun(flowRunId, { status: 'completed', paused_at_step_id: null });
         console.log(`[engine] no step after paused step, completing flow`);
+        await emitEvent(flowRunId, null, 'flow.complete', { reason: 'no_next_step_after_resume' });
         return;
       }
       currentStep = nextStep;
@@ -347,6 +378,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       const firstStep = await getFirstStep(flowRun.flow_id);
       if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
       console.log(`[engine] firstStep id=${firstStep.id} ref=${firstStep.ref}`);
+      await emitEvent(flowRunId, null, 'flow.start', {
+        flow_id: flowRun.flow_id,
+        first_step_id: firstStep.id,
+        first_step_ref: firstStep.ref,
+      });
       currentStep = firstStep;
     }
 
@@ -366,6 +402,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         .maybeSingle();
       if (currentFr?.status === 'paused') {
         console.log(`[engine] flow ${flowRunId} is paused, halting iteration`);
+        await emitEvent(flowRunId, null, 'flow.paused', { reason: 'external_interrupt', step_id: currentStep.id });
         return;
       }
 
@@ -376,6 +413,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         const prev3 = stepHistory.slice(-6, -3);
         if (last3[0] === prev3[0] && last3[1] === prev3[1] && last3[2] === prev3[2]) {
           console.log(`[engine] adaptive loop detected: ${last3.join(' → ')}, pausing flow`);
+          await emitEvent(flowRunId, null, 'flow.loop_detected', {
+            pattern: last3.join(' → '),
+            type: '3-step-repeat',
+            step_id: currentStep.id,
+          });
           await updateFlowRun(flowRunId, { status: 'paused', paused_at_step_id: currentStep.id });
           return;
         }
@@ -385,6 +427,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             last6[1] === last6[3] && last6[3] === last6[5] &&
             last6[0] !== last6[1]) {
           console.log(`[engine] alternating 2-step loop detected: ${last6[0]} ↔ ${last6[1]}, pausing flow`);
+          await emitEvent(flowRunId, null, 'flow.loop_detected', {
+            pattern: `${last6[0]} ↔ ${last6[1]}`,
+            type: '2-step-alternating',
+            step_id: currentStep.id,
+          });
           await updateFlowRun(flowRunId, { status: 'paused', paused_at_step_id: currentStep.id });
           return;
         }
@@ -395,12 +442,19 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       stepCount++;
 
       console.log(`[engine] executing step stepCount=${stepCount} stepId=${currentStep.id} ref=${currentStep.ref}`);
+      await emitEvent(flowRunId, null, 'step.start', {
+        step_id: currentStep.id,
+        step_ref: currentStep.ref,
+        step_title: currentStep.title,
+        step_count: stepCount,
+      });
       const stepResult = await runStep(currentStep, flowRunId, flowRun);
       console.log(`[engine] step done ref=${currentStep.ref} stepResult=${JSON.stringify(stepResult)}`);
 
       // Handle paused signal from API failure pro_check
       if (stepResult && typeof stepResult === 'object' && 'status' in stepResult && stepResult.status === 'paused') {
         console.log(`[engine] flow paused at step ${currentStep.id} due to API failure`);
+        await emitEvent(flowRunId, null, 'flow.paused', { reason: 'api_failure', step_id: currentStep.id });
         return;
       }
 
@@ -419,6 +473,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         if (pausedNextStepId && typeof pausedNextStepId === 'string' && pausedNextStepId.trim() !== '') {
           if (pausedNextStepId === currentStep.id) {
             console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
+            await emitEvent(flowRunId, pausedStepRunId, 'routing.skip', {
+              reason: 'next_step_id_points_to_self',
+              step_id: currentStep.id,
+              next_step_id: pausedNextStepId,
+            });
             break;
           }
           visited.delete(pausedNextStepId);
@@ -426,6 +485,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             const dynamicStep = await getStepById(pausedNextStepId);
             if (dynamicStep) {
               console.log(`[engine] AI-driven next_step_id=${pausedNextStepId} -> step ref=${dynamicStep.ref}`);
+              await emitEvent(flowRunId, pausedStepRunId, 'routing.ai', {
+                from_step_id: currentStep.id,
+                from_step_ref: currentStep.ref,
+                to_step_id: pausedNextStepId,
+                to_step_ref: dynamicStep.ref,
+                to_step_title: dynamicStep.title,
+                reason: 'ai_next_step_id_from_paused_step',
+              });
               await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
               currentStep = dynamicStep;
               continue;
@@ -451,6 +518,12 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
               created_at: new Date().toISOString(),
             }).maybeSingle();
             console.warn(`[engine] ${errorPayload.message}, falling back to order-based navigation`);
+            await emitEvent(flowRunId, pausedStepRunId, 'routing.error', {
+              from_step_id: currentStep.id,
+              bad_next_step_id: pausedNextStepId,
+              error: errorPayload.message,
+              fallback: 'order_index',
+            });
           }
         }
 
@@ -458,12 +531,21 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
         if (nextStep) {
           // Continue to next step instead of pausing
+          await emitEvent(flowRunId, null, 'routing.order', {
+            from_step_id: currentStep.id,
+            from_step_ref: currentStep.ref,
+            to_step_id: nextStep.id,
+            to_step_ref: nextStep.ref,
+            to_step_title: nextStep.title,
+            reason: 'paused_step_order_advance',
+          });
           await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
           currentStep = nextStep;
           continue;
         }
         // No next step — truly terminal
         console.log(`[engine] flow paused at step ${currentStep.id}`);
+        await emitEvent(flowRunId, null, 'flow.paused', { reason: 'terminal_step', step_id: currentStep.id });
         return;
       }
 
@@ -485,6 +567,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           const next = await getStepById(aiNext);
           if (next) {
             visited.delete(aiNext);
+            await emitEvent(flowRunId, stepRunId, 'routing.ai', {
+              from_step_id: currentStep.id,
+              from_step_ref: currentStep.ref,
+              to_step_id: aiNext,
+              to_step_ref: next.ref,
+              to_step_title: next.title,
+              reason: 'ai_next_step_id',
+            });
             currentStep = next;
             continue;
           }
@@ -510,6 +600,12 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             created_at: new Date().toISOString(),
           }).maybeSingle();
           console.warn(`[engine] ${errorPayload.message}, using step fallback`);
+          await emitEvent(flowRunId, stepRunId, 'routing.error', {
+            from_step_id: currentStep.id,
+            bad_next_step_id: aiNext,
+            error: errorPayload.message,
+            fallback: 'expected_response_next_const',
+          });
           // Use the current step's expected_response.next.const as fallback
           const fallbackNext = currentStep.expected_response?.properties?.next?.const;
           if (fallbackNext && fallbackNext !== currentStep.id) {
@@ -527,16 +623,27 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
       if (!nextStep) {
         console.log(`[engine] no step after order_index ${currentStep.order_index}, completing flow`);
+        await emitEvent(flowRunId, null, 'flow.complete', { reason: 'no_next_step_by_order', step_id: currentStep.id });
         break;
       }
+      await emitEvent(flowRunId, null, 'routing.order', {
+        from_step_id: currentStep.id,
+        from_step_ref: currentStep.ref,
+        to_step_id: nextStep.id,
+        to_step_ref: nextStep.ref,
+        to_step_title: nextStep.title,
+        reason: 'order_index_advance',
+      });
       currentStep = nextStep;
     }
 
     await updateFlowRun(flowRunId, { status: 'completed' });
     console.log(`[engine] runFlow completed flowRunId=${flowRunId}`);
+    await emitEvent(flowRunId, null, 'flow.complete', { reason: 'normal_completion' });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[engine] runFlow error flowRunId=${flowRunId}:`, msg);
+    await emitEvent(flowRunId, null, 'flow.error', { error: msg });
     try {
       await updateFlowRun(flowRunId, { status: 'failed', error: msg });
     } catch (updateErr) {
@@ -587,6 +694,15 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
   const userPrompt = `${renderedInstructions || ''}${endpointSamples}\n\nReturn ONLY valid JSON matching this schema:\n${schemaJson}`;
 
+  // Emit LLM call event
+  await emitEvent(flowRunId, stepRunId, 'llm.call', {
+    step_id: step.id,
+    step_ref: step.ref,
+    system_message: step.system_message,
+    user_prompt: userPrompt,
+    schema: step.expected_response,
+  });
+
   // Wrap AI call + action execution + post-processing in a timeout race
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error('Step execution timed out after 60s')), STEP_TIMEOUT_MS);
@@ -597,11 +713,22 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     let llmError: string | null = null;
     try {
       aiResponse = await callLlm(step.system_message || null, userPrompt);
+      await emitEvent(flowRunId, stepRunId, 'llm.response', {
+        step_id: step.id,
+        step_ref: step.ref,
+        response: aiResponse,
+      });
     } catch (err) {
       llmError = err instanceof Error ? err.message : String(err);
       const isTimeoutOrAbort = err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError');
       const errorType = isTimeoutOrAbort ? 'timeout_error' : 'llm_error';
       console.error(`[engine] LLM call failed:`, llmError);
+      await emitEvent(flowRunId, stepRunId, 'llm.error', {
+        step_id: step.id,
+        step_ref: step.ref,
+        error: llmError,
+        error_type: errorType,
+      });
 
       // Store error as flow_run variable
       const errorPayload = { type: errorType, message: llmError, step_id: step.id, details: err instanceof Error ? err.stack : null };
@@ -925,6 +1052,15 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       }
 
       console.log(`[engine] executing action: ${httpMethod} ${url}`);
+      await emitEvent(flowRunId, stepRunId, 'api.call', {
+        step_id: step.id,
+        step_ref: step.ref,
+        endpoint: action.endpoint,
+        method: httpMethod,
+        url,
+        headers,
+        payload: mergedPayload,
+      });
 
       // Wrap fetch + response parsing + non-ok handling in a single try/catch
       try {
@@ -945,6 +1081,12 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
           // Fetch-level error (network, DNS, etc.)
           const errorMsg = err?.message || String(err);
           actionError = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
+          await emitEvent(flowRunId, stepRunId, 'api.error', {
+            step_id: step.id,
+            step_ref: step.ref,
+            endpoint: action.endpoint,
+            error: errorMsg,
+          });
           break;
         }
 
@@ -1009,17 +1151,43 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
           const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
           if (shouldPause === 'paused') {
             // Signal pause to outer runFlow without throwing
+            await emitEvent(flowRunId, stepRunId, 'api.paused', {
+              step_id: step.id,
+              step_ref: step.ref,
+              endpoint: action.endpoint,
+              status: res.status,
+            });
             return { status: 'paused', stepRunId };
           }
           // pro_check passed despite API error — record error and continue
           actionError = { type: 'action_error', statusCode: res.status, body: bodyStr, url };
+          await emitEvent(flowRunId, stepRunId, 'api.error', {
+            step_id: step.id,
+            step_ref: step.ref,
+            endpoint: action.endpoint,
+            status: res.status,
+            body: bodyStr,
+          });
           break;
         }
         console.log(`[engine] action completed: ${url} ${res.status}`);
+        await emitEvent(flowRunId, stepRunId, 'api.complete', {
+          step_id: step.id,
+          step_ref: step.ref,
+          endpoint: action.endpoint,
+          status: res.status,
+          response: responseBody ? tryParseJson(responseBody) : null,
+        });
       } catch (err: any) {
         // Catch any unexpected error from the action block
         const errorMsg = err?.message || String(err);
         actionError = { type: 'action_error', message: errorMsg, action, stack: err?.stack };
+        await emitEvent(flowRunId, stepRunId, 'api.error', {
+          step_id: step.id,
+          step_ref: step.ref,
+          endpoint: action.endpoint,
+          error: errorMsg,
+        });
         break;
       }
     }
@@ -1555,6 +1723,18 @@ function deepMerge(base: any, override: any): any {
   }
 
   return result;
+}
+
+/**
+ * Safely attempt to parse a string as JSON.
+ * Returns the parsed object on success, or null on failure.
+ */
+function tryParseJson(str: string): any {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
 }
 
 // --- Action validation helpers ---

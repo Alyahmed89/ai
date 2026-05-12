@@ -42,6 +42,23 @@ export class ContextController {
       }
     }
 
+    // Build available_variables from the step's expected_response schema.
+    // Fields with display.ui_input === true are user-inputtable prompts.
+    // Fields with display.ui_display define how to render the value.
+    const availableVariables: string[] = [];
+    for (const step of steps) {
+      if (step.expected_response?.properties) {
+        for (const [key, prop] of Object.entries<any>(step.expected_response.properties)) {
+          if (key.startsWith('input_') || prop?.display?.ui_input) {
+            if (!availableVariables.includes(key)) availableVariables.push(key);
+          }
+        }
+      }
+    }
+    if (availableVariables.length === 0) {
+      availableVariables.push('goal', 'memory', 'memory_prompt');
+    }
+
     return {
       flow_run: flowRun,
       steps,
@@ -53,7 +70,7 @@ export class ContextController {
         step: stepVars,
         step_run: stepRunVars,
       },
-      available_variables: ['goal', 'memory', 'memory_prompt'],
+      available_variables: availableVariables,
     };
   }
 

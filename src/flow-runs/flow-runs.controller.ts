@@ -85,8 +85,19 @@ export class FlowRunsController {
     });
   }
 
+  @Get(':id/events')
+  async events(@Param('id') id: string) {
+    const { data } = await getSupabase()
+      .from('execution_events')
+      .select('*')
+      .eq('flow_run_id', id)
+      .order('created_at', { ascending: true });
+    return data || [];
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string) {
+    await getSupabase().from('execution_events').delete().eq('flow_run_id', id);
     await getSupabase().from('refs').delete().eq('flow_run_id', id);
     await getSupabase().from('api_calls').delete().eq('flow_run_id', id);
     await getSupabase().from('step_runs').delete().eq('flow_run_id', id);
