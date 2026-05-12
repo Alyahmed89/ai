@@ -280,7 +280,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Apply user_input as a single flow_run-scoped variable
+      // Apply user_input as a flow_run-scoped variable associated with the paused step's step_run
       if (userInput != null) {
         // Normalize: handle plain string, JSON string, or JSON object
         let parsed = userInput;
@@ -291,10 +291,20 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           ? String(Object.values(parsed)[0] ?? parsed)
           : String(parsed);
 
+        // Find the step_run for the paused step so the resume value is
+        // associated with that step_run, ensuring proper step_run scoping.
+        const { data: pausedStepRun } = await getSupabase()
+          .from('step_runs')
+          .select('id')
+          .eq('flow_run_id', flowRunId)
+          .eq('step_id', flowRun.paused_at_step_id)
+          .order('created_at', { ascending: false })
+          .maybeSingle();
+
         await getSupabase().from('variables').insert({
           id: randomUUID(),
           flow_run_id: flowRunId,
-          step_run_id: null,
+          step_run_id: pausedStepRun?.id ?? null,
           key: varKey,
           value,
           scope: 'flow_run',
@@ -1382,7 +1392,23 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
     Object.assign(context, flowRun.input_variables);
   }
 
-  // variables table — most recent row per key wins (descending order, first write wins)
+  // Fetch step_runs for this flow run to determine execution order.
+  // We need this so variables set by later step_runs take priority over
+  // earlier ones when the same key is used across multiple steps.
+  const { data: stepRuns } = await getSupabase()
+    .from('step_runs')
+    .select('id, created_at')
+    .eq('flow_run_id', flowRunId)
+    .order('created_at', { ascending: true });
+
+  const stepRunOrder = new Map<string, number>();
+  if (stepRuns) {
+    stepRuns.forEach((sr: any, idx: number) => {
+      stepRunOrder.set(sr.id, idx);
+    });
+  }
+
+  // Fetch all variables for this flow run (plus globals).
   const { data: vars } = await getSupabase()
     .from('variables')
     .select('*')
@@ -1390,9 +1416,45 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
     .order('created_at', { ascending: false });
 
   if (vars) {
+    // Group variables by key.
+    // For each key, we want the value from the "most recent" step_run.
+    // Resume artifacts (step_run_id = null) are used as fallback only
+    // when no step_run has set that key.
+    const grouped: Record<string, any[]> = {};
     for (const v of vars) {
-      if (!(v.key in context)) {
-        context[v.key] = v.value;
+      if (!grouped[v.key]) grouped[v.key] = [];
+      grouped[v.key].push(v);
+    }
+
+    for (const [key, entries] of Object.entries(grouped)) {
+      if (key in context) continue; // flow_run.input_variables takes priority
+
+      // Separate step-run-scoped entries from resume artifacts
+      const stepRunEntries = entries.filter(e => e.step_run_id != null);
+      const resumeEntries = entries.filter(e => e.step_run_id == null);
+
+      let chosen = null;
+
+      if (stepRunEntries.length > 0) {
+        // Sort by step_run execution order (descending) so the latest step_run wins.
+        // Break ties by variable created_at (descending).
+        stepRunEntries.sort((a, b) => {
+          const orderA = stepRunOrder.get(a.step_run_id) ?? -1;
+          const orderB = stepRunOrder.get(b.step_run_id) ?? -1;
+          if (orderB !== orderA) return orderB - orderA;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        chosen = stepRunEntries[0];
+      } else if (resumeEntries.length > 0) {
+        // No step-run-scoped entry — use the most recent resume artifact
+        resumeEntries.sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        chosen = resumeEntries[0];
+      }
+
+      if (chosen) {
+        context[key] = chosen.value;
       }
     }
   }
