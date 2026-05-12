@@ -408,6 +408,7 @@ export default function FlowRunPage() {
   const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [chatMode, setChatMode] = useState(false)
+  const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<FlowEvent[]>([])
   const [context, setContext] = useState<FlowContext | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -681,6 +682,7 @@ export default function FlowRunPage() {
   }
 
   const handleSend = async () => {
+    setSending(true)
     try {
       if (steps.length === 0 && flowId) {
         // No flow run yet — start the flow
@@ -700,12 +702,10 @@ export default function FlowRunPage() {
         const inputVars: Record<string, unknown> = {}
         for (const v of allRequiredVars) {
           const val = inputs[v]
-          if (val) {
-            if (v.includes('.')) {
-              setNested(inputVars, v.split('.'), val)
-            } else {
-              inputVars[v] = val
-            }
+          if (v.includes('.')) {
+            setNested(inputVars, v.split('.'), val ?? '')
+          } else {
+            inputVars[v] = val ?? ''
           }
         }
         await fetch('/api/proxy/resume', {
@@ -717,9 +717,12 @@ export default function FlowRunPage() {
           }),
         })
       }
+      setInputs({})
       setTimeout(fetchData, 500)
     } catch (e) {
       console.error('Failed to send', e)
+    } finally {
+      setSending(false)
     }
   }
 
@@ -1114,15 +1117,41 @@ export default function FlowRunPage() {
             </div>
             <button
               type="submit"
-              className="shrink-0 text-sm text-neutral-200 hover:text-white transition-colors"
+              disabled={sending}
+              className="shrink-0 text-sm text-neutral-200 hover:text-white transition-colors disabled:text-neutral-600 disabled:cursor-not-allowed"
             >
-              send
+              {sending ? (
+                <span className="flex items-center gap-1.5">
+                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  sending
+                </span>
+              ) : (
+                'send'
+              )}
             </button>
           </form>
         </div>
       </div>
     </div>
   )
+}
+
+/** Format JSON: single-line if flat, indented with spaces if nested (tree). */
+function formatJson(value: string): string {
+  try {
+    const parsed = JSON.parse(value)
+    if (typeof parsed === 'object' && parsed !== null) {
+      const values = Array.isArray(parsed) ? parsed : Object.values(parsed)
+      const isFlat = !values.some((v) => v !== null && typeof v === 'object')
+      if (isFlat) return JSON.stringify(parsed)
+    }
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return value
+  }
 }
 
 /** A collapsible JSON block with a label */
@@ -1136,13 +1165,7 @@ function CollapsibleJson({
   defaultOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
-
-  let formatted: string
-  try {
-    formatted = JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    formatted = value
-  }
+  const formatted = formatJson(value)
 
   return (
     <div className="border border-neutral-800 rounded overflow-hidden">
@@ -1288,13 +1311,7 @@ function JsonBlock({
 }) {
   const key = `${stepId}-${field}`
   const isEditing = editingKey === key
-
-  let formatted: string
-  try {
-    formatted = JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    formatted = value
-  }
+  const formatted = formatJson(value)
 
   return (
     <div className="mb-2">
