@@ -280,16 +280,15 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Apply user_input as a flow_run-scoped variable associated with the paused step's step_run
+      // Apply user_input as flow_run-scoped variables associated with the paused step's step_run.
+      // When the frontend sends an object, each key is stored as its own variable,
+      // so the step can reference any of them by name (e.g. [[var:input_user_confirmation]]).
       if (userInput != null) {
         // Normalize: handle plain string, JSON string, or JSON object
         let parsed = userInput;
         if (typeof parsed === 'string') {
           try { parsed = JSON.parse(parsed); } catch {}
         }
-        const value = typeof parsed === 'object' && !Array.isArray(parsed)
-          ? String(Object.values(parsed)[0] ?? parsed)
-          : String(parsed);
 
         // Find the step_run for the paused step so the resume value is
         // associated with that step_run, ensuring proper step_run scoping.
@@ -301,15 +300,34 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           .order('created_at', { ascending: false })
           .maybeSingle();
 
-        await getSupabase().from('variables').insert({
-          id: randomUUID(),
-          flow_run_id: flowRunId,
-          step_run_id: pausedStepRun?.id ?? null,
-          key: varKey,
-          value,
-          scope: 'flow_run',
-          created_at: new Date().toISOString(),
-        }).maybeSingle();
+        const stepRunId = pausedStepRun?.id ?? null;
+
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+          // Object mode: store each key as its own variable
+          const inserts = Object.entries(parsed).map(([key, val]) => ({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key,
+            value: String(val ?? ''),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }));
+          if (inserts.length > 0) {
+            await getSupabase().from('variables').insert(inserts);
+          }
+        } else {
+          // Scalar mode: use the inferred varKey from the step's expected_response
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: varKey,
+            value: String(parsed),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+        }
       }
 
       const nextStep = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
