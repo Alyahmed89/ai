@@ -498,6 +498,7 @@ export default function FlowRunPage() {
 
   /**
    * Normalize available_variables from context — they can be strings or objects.
+   * Used for display metadata (labels, display hints) in debug mode.
    */
   const normalizedVars: { name: string; display?: DisplayMeta; value?: unknown }[] = (() => {
     const raw = context?.available_variables ?? []
@@ -515,35 +516,55 @@ export default function FlowRunPage() {
     })
   })()
 
-  /** Available variables from context that are user inputs */
+  /**
+   * Determine the single user input variable for the current paused step.
+   *
+   * Each step config defines exactly one user-facing input. We derive it from
+   * the step's expected_response.required:
+   *  - Fields starting with "input_" are direct user inputs (e.g. input_user_confirmation)
+   *  - If "memory" is required, its nested required fields with "input_" prefix
+   *    are user inputs (e.g. memory.input_user_input)
+   *
+   * Falls back to filtering available_variables by "input_" or "memory." prefix
+   * when the step definition has no expected_response.
+   */
+  const allRequiredVars = (() => {
+    const er = pausedStep?.definition?.expected_response
+    if (er?.required && er.required.length > 0) {
+      // Direct user input fields (input_*)
+      const directInputs = er.required.filter((r: string) => r.startsWith('input_'))
+      if (directInputs.length > 0) return directInputs
+
+      // Nested under memory: check memory.required for input_* fields
+      if (er.required.includes('memory')) {
+        const memProp = er.properties?.['memory'] as ExpectedResponseProperty | undefined
+        if (memProp?.required && memProp.required.length > 0) {
+          const memInputs = memProp.required.filter((r: string) => r.startsWith('input_'))
+          if (memInputs.length > 0) return memInputs.map((r: string) => `memory.${r}`)
+          // If memory has required fields but none start with input_,
+          // the first memory required field is the user input (e.g. memory.input_user_input)
+          return [`memory.${memProp.required[0]}`]
+        }
+      }
+
+      // Fallback: exclude chat_message from required, return the rest
+      const nonChat = er.required.filter((r: string) => r !== 'chat_message')
+      if (nonChat.length > 0) return nonChat
+    }
+
+    // Fallback: filter available_variables for user-facing names
+    const fromContext = normalizedVars
+      .filter((v) => v.display?.ui_input || v.name.startsWith('input_') || v.name.startsWith('memory.'))
+      .map((v) => v.name)
+    if (fromContext.length > 0) return fromContext
+
+    return ['user_input']
+  })()
+
+  /** Available variables from context that are user inputs (used for display metadata) */
   const inputVariables = normalizedVars.filter(
     (v) => v.display?.ui_input || v.name.startsWith('input_')
   )
-
-  /**
-   * Determine which variables to prompt the user for.
-   * Priority: context.available_variables (from /flow-runs/:id/context).
-   * Fallback: parse expected_response.required from the paused step definition.
-   */
-  const allRequiredVars = (() => {
-    // Prefer context available_variables — they have the correct dotted names
-    if (normalizedVars.length > 0) {
-      return normalizedVars
-        .filter((v) => v.display?.ui_input || v.name.startsWith('input_') || v.name.startsWith('memory.'))
-        .map((v) => v.name)
-    }
-    // Fallback: parse expected_response from the paused step
-    const er = pausedStep?.definition?.expected_response
-    if (er?.required && er.required.length > 0) {
-      // Check if any required field is 'memory' with nested required fields
-      const memProp = er.properties?.['memory'] as ExpectedResponseProperty | undefined
-      if (er.required.includes('memory') && memProp?.required && memProp.required.length > 0) {
-        return memProp.required.map((r: string) => `memory.${r}`)
-      }
-      return er.required
-    }
-    return ['user_input']
-  })()
 
   /** Seed inputs from the latest paused step's resolved_variables.
    *  Only seeds non-chat_message fields (chat_message is user-authored).
