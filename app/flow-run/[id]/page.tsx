@@ -53,6 +53,78 @@ interface StepRunWithDef extends StepRun {
 
 const API_BASE = '/api/proxy'
 
+/** Recursively format a value as YAML-like text. */
+function formatYaml(key: string, value: unknown, indent: number = 0): string {
+  const pad = '  '.repeat(indent)
+  if (value === null || value === undefined) {
+    return `${pad}- ${key}: null`
+  }
+  if (typeof value === 'string') {
+    // Collapse multi-line strings into a single line
+    const inline = value.replace(/\s+/g, ' ').trim()
+    return `${pad}- ${key}: ${inline}`
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return `${pad}- ${key}: ${String(value)}`
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `${pad}- ${key}: []`
+    const lines = [`${pad}- ${key}:`]
+    for (const item of value) {
+      if (typeof item === 'object' && item !== null) {
+        lines.push(`${pad}  - ${JSON.stringify(item)}`)
+      } else {
+        lines.push(`${pad}  - ${String(item)}`)
+      }
+    }
+    return lines.join('\n')
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length === 0) return `${pad}- ${key}: {}`
+    const lines = [`${pad}- ${key}:`]
+    for (const [k, v] of entries) {
+      lines.push(formatYaml(k, v, indent + 1))
+    }
+    return lines.join('\n')
+  }
+  return `${pad}- ${key}: ${String(value)}`
+}
+
+/** A single chat bubble — click to toggle YAML details. */
+function ChatBubble({ msg }: {
+  msg: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }
+}) {
+  const [open, setOpen] = useState(false)
+  const hasData = Object.keys(msg.data).length > 0
+
+  const yamlLines = hasData
+    ? Object.entries(msg.data).map(([k, v]) => formatYaml(k, v)).join('\n')
+    : ''
+
+  return (
+    <div
+      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+    >
+      <div
+        className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed cursor-pointer select-none ${
+          msg.role === 'user'
+            ? 'bg-blue-600 text-white rounded-br-md'
+            : 'bg-neutral-800 text-neutral-200 rounded-bl-md'
+        }`}
+        onClick={() => setOpen(!open)}
+      >
+        <div>-- {msg.text}</div>
+        {hasData && open && (
+          <pre className="mt-2 pt-2 border-t border-white/10 text-xs text-neutral-300 whitespace-pre-wrap font-sans">
+            {yamlLines}
+          </pre>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function FlowRunPage() {
   const params = useParams()
   const router = useRouter()
@@ -169,10 +241,10 @@ export default function FlowRunPage() {
   })()
 
   /** Build chat messages from step runs.
-   *  - User messages: from resolved_variables.chat_message (what the user typed in the chat_message field).
-   *  - Assistant messages: from ai_response.chat_message (each shown once). */
+   *  Each message has a role, a short summary text, and the full data object
+   *  which is rendered as YAML-like key-value pairs. */
   const chatMessages = (() => {
-    const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
+    const msgs: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
     const seenUserMessages = new Set<string>()
     for (const s of sorted) {
@@ -180,18 +252,25 @@ export default function FlowRunPage() {
       const chatMsg = s.resolved_variables?.chat_message
       if (chatMsg && typeof chatMsg === 'string' && !seenUserMessages.has(chatMsg)) {
         seenUserMessages.add(chatMsg)
-        msgs.push({ role: 'user', text: chatMsg, id: `${s.id}-user` })
+        const data = { ...(s.resolved_variables as Record<string, unknown> || {}) }
+        delete data.chat_message
+        msgs.push({ role: 'user', text: chatMsg, data, id: `${s.id}-user` })
       }
       // Assistant response: ai_response or chat_message in ai_response
       if (s.ai_response) {
         let assistantMsg = ''
+        let data: Record<string, unknown> = {}
         if (typeof s.ai_response === 'string') {
           assistantMsg = s.ai_response
+          data = { response: s.ai_response }
         } else if (typeof s.ai_response === 'object' && s.ai_response !== null) {
-          assistantMsg = (s.ai_response as Record<string, unknown>).chat_message as string || ''
+          const resp = s.ai_response as Record<string, unknown>
+          assistantMsg = (resp.chat_message as string) || ''
+          data = { ...resp }
+          delete data.chat_message
         }
         if (assistantMsg) {
-          msgs.push({ role: 'assistant', text: assistantMsg, id: `${s.id}-resp` })
+          msgs.push({ role: 'assistant', text: assistantMsg, data, id: `${s.id}-resp` })
         }
       }
     }
@@ -353,20 +432,7 @@ export default function FlowRunPage() {
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
             {chatMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white rounded-br-md'
-                      : 'bg-neutral-800 text-neutral-200 rounded-bl-md'
-                  }`}
-                >
-                  {msg.text}
-                </div>
-              </div>
+              <ChatBubble key={msg.id} msg={msg} />
             ))}
             {isProcessing && (
               <div className="flex justify-start">
