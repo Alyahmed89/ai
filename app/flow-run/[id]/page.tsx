@@ -494,7 +494,7 @@ export default function FlowRunPage() {
 
   /** The paused step (most recent one with status paused) */
   const pausedStep = [...steps]
-    .sort((a, b) => (b.order_index ?? 0) - (a.order_index ?? 0))
+    .reverse()
     .find((s) => s.status === 'paused')
 
   /**
@@ -944,7 +944,7 @@ export default function FlowRunPage() {
                               <div key={key} className="flex items-start gap-2 text-xs">
                                 <span className="text-neutral-500 shrink-0">{key}:</span>
                                 <span className="text-neutral-400 break-all">
-                                  {typeof val === 'string' ? val : JSON.stringify(val, null, 2)}
+                                  {typeof val === 'string' ? val : formatJson(JSON.stringify(val))}
                                   <ContextChatTrigger
                                     label={key}
                                     value={val}
@@ -1003,7 +1003,7 @@ export default function FlowRunPage() {
                               ? 'text-green-400/80'
                               : 'text-neutral-400'
                           }`}>
-                            {JSON.stringify(step.result.pro_check, null, 2)}
+                            {formatJson(JSON.stringify(step.result.pro_check))}
                           </div>
                         </div>
                       )}
@@ -1145,7 +1145,8 @@ function formatJson(value: string): string {
     const parsed = JSON.parse(value)
     if (typeof parsed === 'object' && parsed !== null) {
       const values = Array.isArray(parsed) ? parsed : Object.values(parsed)
-      const isFlat = !values.some((v) => v !== null && typeof v === 'object')
+      // Flat = no nested objects (arrays like [] are not considered nested)
+      const isFlat = !values.some((v) => v !== null && typeof v === 'object' && !Array.isArray(v))
       if (isFlat) return JSON.stringify(parsed)
     }
     return JSON.stringify(parsed, null, 2)
