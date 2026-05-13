@@ -336,13 +336,28 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         const stepRunId = pausedStepRun?.id ?? null;
 
         if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          // Object mode: store each key as its own variable
-          const inserts = Object.entries(parsed).map(([key, val]) => ({
+          // Object mode: flatten nested keys with dot notation so that
+          // { memory: { input_user_input: "hi" } } becomes
+          // key="memory.input_user_input", value="hi".
+          // This matches what resolveVariables() expects for [[var:memory.input_user_input]].
+          const flatten = (obj: Record<string, any>, prefix = ''): Record<string, string> => {
+            const result: Record<string, string> = {};
+            for (const [k, v] of Object.entries(obj)) {
+              const flatKey = prefix ? `${prefix}.${k}` : k;
+              if (v && typeof v === 'object' && !Array.isArray(v)) {
+                Object.assign(result, flatten(v, flatKey));
+              } else {
+                result[flatKey] = String(v ?? '');
+              }
+            }
+            return result;
+          };
+          const inserts = Object.entries(flatten(parsed)).map(([key, val]) => ({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId,
             key,
-            value: String(val ?? ''),
+            value: val,
             scope: 'flow_run',
             created_at: new Date().toISOString(),
           }));
