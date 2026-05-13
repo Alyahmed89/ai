@@ -123,35 +123,22 @@ function formatYaml(key: string, value: unknown, indent: number = 0): string {
   return `${pad}- ${key}: ${String(value)}`
 }
 
-/** A single chat bubble — click to toggle YAML details. */
+/** A single chat bubble. */
 function ChatBubble({ msg }: {
   msg: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }
 }) {
-  const [open, setOpen] = useState(false)
-  const hasData = Object.keys(msg.data).length > 0
-
-  const yamlLines = hasData
-    ? Object.entries(msg.data).map(([k, v]) => formatYaml(k, v)).join('\n')
-    : ''
-
   return (
     <div
       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed cursor-pointer select-none ${
+        className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm leading-relaxed ${
           msg.role === 'user'
-            ? 'bg-blue-600 text-white rounded-br-md'
-            : 'bg-neutral-800 text-neutral-200 rounded-bl-md'
+            ? 'bg-neutral-100 text-neutral-900 rounded-br-sm'
+            : 'bg-neutral-800 text-neutral-200 rounded-bl-sm'
         }`}
-        onClick={() => setOpen(!open)}
       >
-        <div>-- {msg.text}</div>
-        {hasData && open && (
-          <pre className="mt-2 pt-2 border-t border-white/10 text-xs text-neutral-300 whitespace-pre-wrap font-sans">
-            {yamlLines}
-          </pre>
-        )}
+        <div>{msg.text}</div>
       </div>
     </div>
   )
@@ -407,7 +394,7 @@ export default function FlowRunPage() {
   const [editValue, setEditValue] = useState('')
   const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
-  const [chatMode, setChatMode] = useState(searchParams?.get('chatmode') === '1')
+  const [chatMode, setChatMode] = useState(searchParams?.get('chatmode') !== '0')
   const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<FlowEvent[]>([])
   const [context, setContext] = useState<FlowContext | null>(null)
@@ -558,6 +545,9 @@ export default function FlowRunPage() {
       .filter((v) => v.display?.ui_input || v.name.startsWith('input_') || v.name.startsWith('memory.'))
       .map((v) => v.name)
     if (fromContext.length > 0) return fromContext
+
+    // No steps yet — this is a fresh flow start, use 'goal' as the input variable
+    if (steps.length === 0) return ['goal']
 
     return ['user_input']
   })()
@@ -810,7 +800,12 @@ export default function FlowRunPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white font-mono">
-        <div className="max-w-3xl mx-auto px-6 py-12 text-neutral-600">loading...</div>
+        <div className="max-w-3xl mx-auto px-6 py-12">
+          <button onClick={() => router.push('/')} className="text-neutral-600 hover:text-white mb-8 block">
+            &larr; back
+          </button>
+          <p className="text-neutral-600">loading...</p>
+        </div>
       </div>
     )
   }
@@ -837,15 +832,11 @@ export default function FlowRunPage() {
                 const next = !chatMode
                 setChatMode(next)
                 const url = new URL(window.location.href)
-                if (next) {
-                  url.searchParams.set('chatmode', '1')
-                } else {
-                  url.searchParams.delete('chatmode')
-                }
+                url.searchParams.set('chatmode', next ? '1' : '0')
                 router.replace(url.pathname + url.search)
               }}
               className={`relative w-10 h-5 rounded-full transition-colors ${
-                chatMode ? 'bg-blue-600' : 'bg-neutral-800'
+                chatMode ? 'bg-neutral-600' : 'bg-neutral-800'
               }`}
             >
               <div

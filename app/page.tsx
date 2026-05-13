@@ -17,12 +17,18 @@ interface FlowRun {
   status: string
   started_at: number | null
   completed_at: number | null
+  created_at?: string
+}
+
+interface FlowRunWithTitle extends FlowRun {
+  title: string
+  flowName: string
 }
 
 export default function Home() {
   const router = useRouter()
   const [flows, setFlows] = useState<Flow[]>([])
-  const [flowRuns, setFlowRuns] = useState<FlowRun[]>([])
+  const [flowRuns, setFlowRuns] = useState<FlowRunWithTitle[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
@@ -34,18 +40,64 @@ export default function Home() {
           fetch('/api/proxy/api/flows'),
           fetch('/api/proxy/flow-runs'),
         ])
+        let flowsList: Flow[] = []
         if (flowsRes.ok) {
           const data = await flowsRes.json()
-          setFlows(Array.isArray(data) ? data : [])
+          flowsList = Array.isArray(data) ? data : []
+          setFlows(flowsList)
         }
+        const flowMap = new Map(flowsList.map((f) => [f.id, f.name]))
+
+        let runs: FlowRun[] = []
         if (flowRunsRes.ok) {
           const data = await flowRunsRes.json()
-          setFlowRuns(Array.isArray(data) ? data : [])
+          runs = Array.isArray(data) ? data : []
+        }
+
+        // Show latest 30 runs, sorted by created_at desc
+        const sorted = [...runs].sort((a, b) => {
+          const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
+          const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
+          return bTime - aTime
+        })
+        const latest = sorted.slice(0, 30)
+
+        // Show immediately with id-based titles, then enrich with context
+        const initial = latest.map((run) => ({
+          ...run,
+          title: run.id.slice(0, 8),
+          flowName: flowMap.get(run.flow_id) || run.flow_id.slice(0, 8),
+        }))
+        setFlowRuns(initial)
+        setLoading(false)
+
+        // Fetch context for each run in background to get first variable value as title
+        for (const run of latest) {
+          try {
+            const ctxRes = await fetch(`/api/proxy/flow-runs/${run.id}/context`)
+            if (ctxRes.ok) {
+              const ctx = await ctxRes.json()
+              const vars = ctx.available_variables ?? []
+              const firstVal = vars.find((v: unknown) => {
+                const val = typeof v === 'object' && v !== null ? (v as Record<string, unknown>).value : undefined
+                return val !== undefined && val !== null && String(val).trim()
+              })
+              if (firstVal) {
+                const val = typeof firstVal === 'object' ? (firstVal as Record<string, unknown>).value : null
+                if (val) {
+                  const title = String(val).replace(/\s+/g, ' ').trim().slice(0, 60)
+                  setFlowRuns((prev) => prev.map((r) => r.id === run.id ? { ...r, title } : r))
+                }
+              }
+            }
+          } catch {
+            // keep id-based title
+          }
         }
       } catch (e) {
         console.error('Failed to fetch data', e)
+        setLoading(false)
       }
-      setLoading(false)
     }
     fetchData()
   }, [])
@@ -116,10 +168,10 @@ export default function Home() {
                     className="px-3 py-2 cursor-pointer hover:bg-neutral-900 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <span className="text-neutral-400 text-sm truncate flex-1">
-                        {run.id.slice(0, 8)}...
+                      <span className="text-neutral-200 text-sm truncate flex-1">
+                        {run.title}
                       </span>
-                      <span className="text-xs text-neutral-600">{run.status}</span>
+                      <span className="text-xs text-neutral-600">{run.flowName}</span>
                     </div>
                   </div>
                 ))}
