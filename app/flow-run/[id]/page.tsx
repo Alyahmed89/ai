@@ -407,7 +407,7 @@ export default function FlowRunPage() {
   const [editValue, setEditValue] = useState('')
   const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
   const [inputs, setInputs] = useState<Record<string, string>>({})
-  const [chatMode, setChatMode] = useState(false)
+  const [chatMode, setChatMode] = useState(searchParams?.get('chatmode') === '1')
   const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<FlowEvent[]>([])
   const [context, setContext] = useState<FlowContext | null>(null)
@@ -833,7 +833,17 @@ export default function FlowRunPage() {
               {chatMode ? 'chat' : 'debug'}
             </span>
             <div
-              onClick={() => setChatMode(!chatMode)}
+              onClick={() => {
+                const next = !chatMode
+                setChatMode(next)
+                const url = new URL(window.location.href)
+                if (next) {
+                  url.searchParams.set('chatmode', '1')
+                } else {
+                  url.searchParams.delete('chatmode')
+                }
+                router.replace(url.pathname + url.search)
+              }}
               className={`relative w-10 h-5 rounded-full transition-colors ${
                 chatMode ? 'bg-blue-600' : 'bg-neutral-800'
               }`}
