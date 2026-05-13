@@ -604,32 +604,36 @@ export default function FlowRunPage() {
   })()
 
   /** Build chat messages from step runs.
-   *  - User messages: from resolved_variables input_* fields (what the user actually typed).
+   *  Order: AI message of step N, then user message from step N+1's input_* fields.
    *  - Assistant messages: from ai_response.chat_message, falling back to
-   *    result.pro_check_request.response.chat_message for older step runs. */
+   *    result.pro_check_request.response.chat_message for older step runs.
+   *  - User messages: from the NEXT step's resolved_variables input_* fields,
+   *    because the user's response to step N is consumed by step N+1. */
   const chatMessages = (() => {
     const msgs: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }[] = []
     const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
     const seenAssistant = new Set<string>()
     const seenUserText = new Set<string>()
-    for (const s of sorted) {
-      // User input: collect all input_* fields from resolved_variables
+
+    /** Extract user message from a step run's resolved_variables (input_* fields). */
+    function getUserMsg(s: StepRunWithDef): { text: string; data: Record<string, unknown> } | null {
       const rv = s.resolved_variables as Record<string, unknown> | null
-      if (rv) {
-        const inputFields: Record<string, unknown> = {}
-        let userText = ''
-        for (const [k, v] of Object.entries(rv)) {
-          if (k.startsWith('input_') && v && typeof v === 'string' && v.trim()) {
-            inputFields[k] = v
-            if (!userText) userText = v
-          }
-        }
-        if (userText && !seenUserText.has(userText)) {
-          seenUserText.add(userText)
-          msgs.push({ role: 'user', text: userText, data: inputFields, id: `${s.id}-user` })
+      if (!rv) return null
+      const inputFields: Record<string, unknown> = {}
+      let userText = ''
+      for (const [k, v] of Object.entries(rv)) {
+        if (k.startsWith('input_') && v && typeof v === 'string' && v.trim()) {
+          inputFields[k] = v
+          if (!userText) userText = v
         }
       }
-      // Assistant response: ai_response.chat_message (each shown once)
+      if (!userText || seenUserText.has(userText)) return null
+      seenUserText.add(userText)
+      return { text: userText, data: inputFields }
+    }
+
+    /** Extract assistant message from a step run. */
+    function getAssistantMsg(s: StepRunWithDef): { text: string; data: Record<string, unknown> } | null {
       let assistantMsg = ''
       let data: Record<string, unknown> = {}
       if (s.ai_response) {
@@ -649,9 +653,25 @@ export default function FlowRunPage() {
         data = { ...(s.result.pro_check_request.response as Record<string, unknown>) }
         delete data.chat_message
       }
-      if (assistantMsg && !seenAssistant.has(assistantMsg)) {
-        seenAssistant.add(assistantMsg)
-        msgs.push({ role: 'assistant', text: assistantMsg, data, id: `${s.id}-resp` })
+      if (!assistantMsg || seenAssistant.has(assistantMsg)) return null
+      seenAssistant.add(assistantMsg)
+      return { text: assistantMsg, data }
+    }
+
+    for (let i = 0; i < sorted.length; i++) {
+      const s = sorted[i]
+      // AI message for this step
+      const assistant = getAssistantMsg(s)
+      if (assistant) {
+        msgs.push({ role: 'assistant', text: assistant.text, data: assistant.data, id: `${s.id}-resp` })
+      }
+      // User message from the NEXT step's input_* fields (user's response to this step's AI)
+      const next = sorted[i + 1]
+      if (next) {
+        const user = getUserMsg(next)
+        if (user) {
+          msgs.push({ role: 'user', text: user.text, data: user.data, id: `${next.id}-user` })
+        }
       }
     }
     return msgs
