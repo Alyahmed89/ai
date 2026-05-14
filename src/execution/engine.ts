@@ -44,11 +44,106 @@ async function callProCheckOnOutput(
 ): Promise<'continue' | 'paused'> {
   const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
 
+  // --- Local validation before Prolog call ---
+  const validationErrors: string[] = [];
+
+  // 1. Check for hallucinated outputs (keys not in guaranteed_outputs)
+  const step = await getStepById(stepRun.step_id).catch(() => null);
+  const guaranteedOutputs = step?.guaranteed_outputs;
+  if (guaranteedOutputs && typeof guaranteedOutputs === 'object') {
+    const allowedKeys = new Set([
+      ...Object.keys(guaranteedOutputs),
+      'next_step_id', 'actions', 'chat_message', 'next', 'pro_check',
+      'action_results', 'action_error', 'contract_failures', 'zod_validation_error',
+    ]);
+    for (const key of Object.keys(output)) {
+      if (key === 'action_results' || key === 'action_error' || key === 'contract_failures' || key === 'zod_validation_error') continue;
+      if (!allowedKeys.has(key)) {
+        validationErrors.push(`Hallucinated output key: ${key} (not in guaranteed_outputs)`);
+      }
+    }
+  }
+
+  // 2. Check for unresolved refs
+  if (output.refs && Array.isArray(output.refs)) {
+    for (const ref of output.refs) {
+      const { data: existingRef } = await getSupabase()
+        .from('refs')
+        .select('id')
+        .eq('id', ref)
+        .maybeSingle();
+      if (!existingRef) {
+        validationErrors.push(`Unresolved ref: ${ref}`);
+      }
+    }
+  }
+
+  // 3. Check for invalid symbolic task references
+  if (output.task_ids && Array.isArray(output.task_ids)) {
+    for (const taskId of output.task_ids) {
+      const { data: term } = await getSupabase()
+        .from('terms')
+        .select('id')
+        .eq('name', taskId)
+        .maybeSingle();
+      if (!term) {
+        validationErrors.push(`Invalid symbolic task: ${taskId} not found in terms`);
+      }
+    }
+  }
+
+  // 4. Check for illegal self-transitions
+  if (output.next_step_id && step) {
+    if (output.next_step_id === step.id) {
+      validationErrors.push('Illegal transition: next_step_id points to self');
+    }
+    // Verify target step exists
+    const { data: targetStep } = await getSupabase()
+      .from('steps')
+      .select('id')
+      .eq('id', output.next_step_id)
+      .maybeSingle();
+    if (!targetStep) {
+      validationErrors.push(`Illegal transition: next_step_id ${output.next_step_id} does not exist`);
+    }
+  }
+
+  // 5. Check for invalid flow routing
+  if (output.next_flow_id) {
+    const { data: targetFlow } = await getSupabase()
+      .from('flows')
+      .select('id')
+      .eq('id', output.next_flow_id)
+      .maybeSingle();
+    if (!targetFlow) {
+      validationErrors.push(`Invalid flow routing: next_flow_id ${output.next_flow_id} does not exist`);
+    }
+  }
+
+  // 6. Check for invalid variable mutations (AI cannot write to reserved prefixes)
+  if (output.variables && typeof output.variables === 'object') {
+    for (const varKey of Object.keys(output.variables)) {
+      if (varKey.startsWith('input_') || varKey.startsWith('memory.')) {
+        validationErrors.push(`Invalid variable mutation: AI cannot write to reserved prefix "${varKey}"`);
+      }
+    }
+  }
+
+  // 7. Include contract failures from earlier validation
+  if (output.contract_failures && Array.isArray(output.contract_failures)) {
+    validationErrors.push(...output.contract_failures.map((f: string) => `Contract failure: ${f}`));
+  }
+
   const proCheckRequest = {
     response: output,
     rules,
     plans,
     step_run_id: stepRun.id,
+    validation_errors: validationErrors,
+    step_contracts: {
+      required_inputs: step?.required_inputs,
+      guaranteed_outputs: step?.guaranteed_outputs,
+    },
   };
 
   // ----- STORE REQUEST IMMEDIATELY -----
@@ -94,38 +189,26 @@ async function callProCheckOnOutput(
   await updateStepRun(stepRun.id, { result: resultWithResponse });
   stepRun.result = resultWithResponse;
 
-  // ----- CHECK FOR AI-DRIVEN next_step_id -----
-  // If the AI response includes a next_step_id that points to a different step,
-  // it overrides pro_check stop/pause so the conversational flow always continues.
-  const nid = output?.next_step_id;
-  const hasValidNextStepId = typeof nid === 'string' && nid.trim() !== '' && nid !== stepRun.step_id;
-
   // ----- HANDLE STOP -----
+  // NOTE: next_step_id does NOT override pro_check. The AI never decides
+  // execution structure — pro_check is authoritative for all transitions.
   if (proCheckResponse.status === 'stop') {
-    if (hasValidNextStepId) {
-      console.log(`[engine] pro_check=stop overridden by next_step_id=${nid}`);
-    } else {
-      await updateStepRun(stepRun.id, { status: 'paused' });
-      await updateFlowRun(stepRun.flow_run_id, {
-        status: 'paused',
-        paused_at_step_id: stepRun.step_id,
-      });
-      return 'paused';
-    }
+    await updateStepRun(stepRun.id, { status: 'paused' });
+    await updateFlowRun(stepRun.flow_run_id, {
+      status: 'paused',
+      paused_at_step_id: stepRun.step_id,
+    });
+    return 'paused';
   }
 
   // ----- HANDLE PAUSE -----
   if (proCheckResponse.status === 'pause') {
-    if (hasValidNextStepId) {
-      console.log(`[engine] pro_check=pause overridden by next_step_id=${nid}`);
-    } else {
-      await updateStepRun(stepRun.id, { status: 'paused' });
-      await updateFlowRun(stepRun.flow_run_id, {
-        status: 'paused',
-        paused_at_step_id: stepRun.step_id,
-      });
-      return 'paused';
-    }
+    await updateStepRun(stepRun.id, { status: 'paused' });
+    await updateFlowRun(stepRun.flow_run_id, {
+      status: 'paused',
+      paused_at_step_id: stepRun.step_id,
+    });
+    return 'paused';
   }
 
   if (!prologReachable) {
@@ -378,20 +461,40 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      const nextStep = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
-      if (!nextStep) {
-        // No next step — this was the last step, so just complete
-        await updateFlowRun(flowRunId, { status: 'completed', paused_at_step_id: null });
-        console.log(`[engine] no step after paused step, completing flow`);
-        await emitEvent(flowRunId, null, 'flow.complete', { reason: 'no_next_step_after_resume' });
-        return;
-      }
-      currentStep = nextStep;
-
+      // Re-run the paused step itself with the new user input.
+      // Do NOT advance to the next step by order_index.
+      currentStep = pausedStep;
       await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
     } else {
       // Fresh start
       await updateFlowRun(flowRunId, { status: 'running' });
+
+      // Normalize user input if present (Phase 3).
+      // User language is translated into canonical symbolic language before execution.
+      if (flowRun.input_variables?.raw_input) {
+        console.log(`[engine] normalizing user input: ${flowRun.input_variables.raw_input}`);
+        await emitEvent(flowRunId, null, 'normalization.start', {
+          raw_input: flowRun.input_variables.raw_input,
+        });
+        const normalized = await normalizeUserInput(flowRun.input_variables.raw_input, flowRunId);
+        for (const [key, value] of Object.entries(normalized.variables)) {
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: null,
+            key,
+            value,
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+        }
+        console.log(`[engine] normalized input: canonical="${normalized.canonical}" terms=[${normalized.matchedTerms.join(',')}]`);
+        await emitEvent(flowRunId, null, 'normalization.complete', {
+          canonical: normalized.canonical,
+          symbolic: normalized.symbolic,
+          matched_terms: normalized.matchedTerms,
+        });
+      }
 
       const firstStep = await getFirstStep(flowRun.flow_id);
       if (!firstStep) throw new Error(`No steps found for flow ${flowRun.flow_id}`);
@@ -545,25 +648,10 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           }
         }
 
-        // Step paused itself — check if there's a next step by order_index
-        const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
-        if (nextStep) {
-          // Continue to next step instead of pausing
-          await emitEvent(flowRunId, null, 'routing.order', {
-            from_step_id: currentStep.id,
-            from_step_ref: currentStep.ref,
-            to_step_id: nextStep.id,
-            to_step_ref: nextStep.ref,
-            to_step_title: nextStep.title,
-            reason: 'paused_step_order_advance',
-          });
-          await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
-          currentStep = nextStep;
-          continue;
-        }
-        // No next step — truly terminal
+        // Step paused itself — stop immediately.
+        // Do NOT auto-continue by order_index. Flow only resumes through explicit /resume endpoint.
         console.log(`[engine] flow paused at step ${currentStep.id}`);
-        await emitEvent(flowRunId, null, 'flow.paused', { reason: 'terminal_step', step_id: currentStep.id });
+        await emitEvent(flowRunId, null, 'flow.paused', { reason: 'step_paused', step_id: currentStep.id });
         return;
       }
 
@@ -679,6 +767,104 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
   // Build variable context
   const context = await buildContext(flowRunId, stepRunId, flowRun);
 
+  // Apply canonical variable normalization if step has aliases.
+  // This ensures different variable names (e.g. input_selected_plan_name,
+  // memory.selected_plan_name, selected_plan_name) all resolve to the
+  // canonical name (selected_plan_name) internally.
+  if (step.variable_aliases && typeof step.variable_aliases === 'object') {
+    const beforeKeys = Object.keys(context).sort().join(',');
+    Object.assign(context, normalizeCanonicalVariables(context, step.variable_aliases));
+    const afterKeys = Object.keys(context).sort().join(',');
+    console.log(`[engine] canonical normalization: keys before=${beforeKeys} after=${afterKeys}`);
+    await emitEvent(flowRunId, stepRunId, 'normalization.aliases', {
+      before: beforeKeys,
+      after: afterKeys,
+      aliases: step.variable_aliases,
+    });
+  }
+
+  // Step 0.5 — Contract validation
+  // Check required_inputs before proceeding
+  if (Array.isArray(step.required_inputs)) {
+    const missing = step.required_inputs.filter(
+      (key: string) => context[key] === undefined || context[key] === null || context[key] === ''
+    );
+    if (missing.length > 0) {
+      console.log(`[engine] missing required inputs: ${missing.join(', ')}, pausing`);
+      await emitEvent(flowRunId, stepRunId, 'contract.missing_inputs', {
+        missing,
+        required: step.required_inputs,
+        step_id: step.id,
+      });
+      await updateStepRun(stepRunId, {
+        status: 'paused',
+        result: { pause_reason: 'missing_required_inputs', missing_variables: missing },
+      });
+      await updateFlowRun(flowRunId, {
+        status: 'paused',
+        paused_at_step_id: step.id,
+      });
+      return { status: 'paused', stepRunId };
+    }
+  }
+
+  // Check blocking_conditions
+  if (Array.isArray(step.blocking_conditions)) {
+    for (const condition of step.blocking_conditions) {
+      const value = context[condition.field];
+      let triggered = false;
+      if (condition.operator === 'is_null') triggered = value === undefined || value === null || value === '';
+      else if (condition.operator === 'equals') triggered = value === condition.value;
+      else if (condition.operator === 'not_equals') triggered = value !== condition.value;
+      if (triggered) {
+        const msg = `Blocking condition triggered: ${condition.field} ${condition.operator} ${condition.value || 'null'}`;
+        console.log(`[engine] ${msg}`);
+        await emitEvent(flowRunId, stepRunId, 'contract.blocking_condition', {
+          condition,
+          resolved_value: value,
+          step_id: step.id,
+        });
+        await updateStepRun(stepRunId, {
+          status: 'failed',
+          error: msg,
+          result: { blocking_condition: condition, resolved_value: value },
+        });
+        await updateFlowRun(flowRunId, {
+          status: 'failed',
+          error: msg,
+          paused_at_step_id: step.id,
+        });
+        return { status: 'failed', stepRunId };
+      }
+    }
+  }
+
+  // Check pause_conditions
+  if (Array.isArray(step.pause_conditions)) {
+    for (const condition of step.pause_conditions) {
+      const value = context[condition.field];
+      let triggered = false;
+      if (condition.operator === 'is_null') triggered = value === undefined || value === null || value === '';
+      else if (condition.operator === 'equals') triggered = value === condition.value;
+      if (triggered) {
+        console.log(`[engine] pause condition triggered: ${condition.field} is null, pausing`);
+        await emitEvent(flowRunId, stepRunId, 'contract.pause_condition', {
+          condition,
+          step_id: step.id,
+        });
+        await updateStepRun(stepRunId, {
+          status: 'paused',
+          result: { pause_reason: 'pause_condition_triggered', condition },
+        });
+        await updateFlowRun(flowRunId, {
+          status: 'paused',
+          paused_at_step_id: step.id,
+        });
+        return { status: 'paused', stepRunId };
+      }
+    }
+  }
+
   // Step 1 — Resolve variables in instructions
   let renderedInstructions: string | null = null;
   try {
@@ -787,7 +973,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       const zodError = zodResult.error.flatten();
       console.error(`[engine] zod validation FAILED:`, JSON.stringify(zodError, null, 2));
 
-      // Store the Zod error as a flow_run variable so the next step can handle it
+      // Store the Zod error as a flow_run variable
       const errorPayload = { type: 'zod_error', message: 'Zod validation failed', step_id: step.id, details: zodError };
       await getSupabase().from('variables').insert({
         id: randomUUID(),
@@ -819,36 +1005,53 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       context.engine_error = errorPayload;
       context.zod_error = zodError;
 
-      // Use the step's expected_response fallback next if defined
-      const fallbackNext = step.expected_response?.properties?.next?.const
-        || step.expected_response?.properties?.next_step_id?.const
-        || '3eeba100-50eb-4826-8faf-07aa4b64fca4';
-
-      // Build a synthetic valid response with the fallback next and original AI fields
-      const syntheticResponse: Record<string, any> = { ...aiResponse };
-      syntheticResponse.next = fallbackNext;
-      syntheticResponse.next_step_id = fallbackNext;
-      // Ensure required fields for the schema exist with defaults
-      for (const reqField of (step.expected_response?.required || [])) {
-        if (!(reqField in syntheticResponse)) {
-          if (reqField === 'actions') syntheticResponse[reqField] = [];
-          else if (reqField === 'chat_message') syntheticResponse[reqField] = 'I encountered an error processing your request. Please try again.';
-          else if (reqField === 'step_goal') syntheticResponse[reqField] = '';
-          else if (reqField === 'chat_memory') syntheticResponse[reqField] = context.chat_memory || '';
-          else if (reqField === 'structured_memory') syntheticResponse[reqField] = context.structured_memory || '{}';
-          else syntheticResponse[reqField] = '';
-        }
-      }
-
-      // Mark step run with validation error but continue
+      // Mark step run with validation error
       await updateStepRun(stepRunId, {
         validation_errors: [zodError],
         trace: { ai_response: aiResponse, zod_result: zodError, step: 'zod_validation' },
       });
 
-      // Use synthetic response so the engine continues to action execution and routing
-      aiResponse = syntheticResponse;
-      zodResult = { success: true, data: syntheticResponse } as any;
+      // Do NOT build synthetic response. Do NOT continue normally.
+      // Route to pro_check with the validation failure so it can decide:
+      // pause (for correction) or stop (if unrecoverable).
+      const zodFailureOutput = {
+        ...aiResponse,
+        zod_validation_error: zodError,
+        contract_failures: [`Zod validation failed: ${JSON.stringify(zodError)}`],
+      };
+
+      // Persist the failed response
+      await updateStepRun(stepRunId, {
+        ai_response: normalizeValue(zodFailureOutput),
+        ai_response_valid: false,
+        rendered_instructions: renderedInstructions,
+        resolved_variables: context,
+        result: { zod_error: zodError },
+      });
+
+      // Send to pro_check for correction routing
+      const { data: stepRunForProCheck } = await getSupabase()
+        .from('step_runs')
+        .select('*')
+        .eq('id', stepRunId)
+        .maybeSingle();
+      if (stepRunForProCheck) {
+        const rules: string[] = [];
+        const plans: string[] = [];
+        if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
+        if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
+        if (context.plan_id) plans.push(context.plan_id);
+        const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, zodFailureOutput, rules, plans);
+        if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
+      }
+
+      // If pro_check didn't pause, pause anyway — never continue from zod failure
+      await updateStepRun(stepRunId, { status: 'paused' });
+      await updateFlowRun(flowRunId, {
+        status: 'paused',
+        paused_at_step_id: step.id,
+      });
+      return { status: 'paused', stepRunId };
     }
 
     const validated = zodResult.data!;
@@ -857,12 +1060,58 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const stepActions = Array.isArray(step.actions) ? step.actions : [];
     const allActions = [...actions, ...stepActions];
 
-    // Auto-store fields from AI response as flow_run variables
-    // so subsequent steps can reference them via [[var:key]]
+    // Step 3.5 — Validate guaranteed_outputs
+    const contractFailures: string[] = [];
+    if (step.guaranteed_outputs && typeof step.guaranteed_outputs === 'object') {
+      for (const [key] of Object.entries<any>(step.guaranteed_outputs)) {
+        if (!(key in validated) || validated[key] === undefined || validated[key] === null) {
+          contractFailures.push(`Missing guaranteed output: ${key}`);
+        }
+      }
+      if (contractFailures.length > 0) {
+        console.log(`[engine] contract validation failures: ${contractFailures.join(', ')}`);
+        await emitEvent(flowRunId, stepRunId, 'contract.missing_outputs', {
+          failures: contractFailures,
+          guaranteed_outputs: step.guaranteed_outputs,
+          step_id: step.id,
+        });
+        await updateStepRun(stepRunId, {
+          result: { contract_failures: contractFailures, ai_response: validated },
+        });
+      }
+    }
+
+    // Auto-store fields from AI response as flow_run variables.
+    // ONLY stores keys that are:
+    //   1. In step.guaranteed_outputs (the contract)
+    //   2. In step.output_storage (explicit storage map)
+    //   3. Engine-reserved keys (chat_message, step_goal, chat_memory, structured_memory)
+    // This prevents AI from creating arbitrary variables (variable drift).
     const autoStore = async (obj: Record<string, any>, prefix?: string) => {
+      // Build allowed key set from contracts
+      const guaranteedKeys = new Set<string>();
+      if (step.guaranteed_outputs && typeof step.guaranteed_outputs === 'object') {
+        for (const k of Object.keys(step.guaranteed_outputs)) {
+          guaranteedKeys.add(k);
+        }
+      }
+      const outputStorageMap: Record<string, string> = {};
+      if (step.output_storage && typeof step.output_storage === 'object') {
+        for (const [k, v] of Object.entries(step.output_storage)) {
+          outputStorageMap[k] = v as string;
+          guaranteedKeys.add(k);
+        }
+      }
+      const engineReserved = new Set(['chat_message', 'step_goal', 'chat_memory', 'structured_memory', 'actions']);
+
       for (const [key, value] of Object.entries(obj)) {
+        // Skip non-contract, non-reserved keys
+        if (!guaranteedKeys.has(key) && !engineReserved.has(key)) {
+          console.log(`[engine] autoStore skipping non-contract key: ${key} (not in guaranteed_outputs or output_storage)`);
+          continue;
+        }
         if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
-        const varKey = prefix ? `${prefix}.${key}` : key;
+        const varKey = outputStorageMap[key] || (prefix ? `${prefix}.${key}` : key);
         if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
           await getSupabase().from('variables').insert({
             id: randomUUID(),
@@ -1252,10 +1501,10 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       result: resultData,
     });
 
-    // Step 7 — Call pro_check on merged output (AI response + action results + any error)
+    // Step 7 — Call pro_check on merged output (AI response + action results + any error + contract failures)
     const mergedOutput = actionError
-      ? { ...validated, action_results: actionResults, action_error: actionError }
-      : { ...validated, action_results: actionResults };
+      ? { ...validated, action_results: actionResults, action_error: actionError, contract_failures: contractFailures }
+      : { ...validated, action_results: actionResults, contract_failures: contractFailures };
     const { data: stepRunForProCheck } = await getSupabase()
       .from('step_runs')
       .select('*')
@@ -1679,6 +1928,109 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
   }
 
   return context;
+}
+
+/**
+ * Retrieve refs by key, rule_id, or flow_run_id.
+ * Refs support shell commands, tool references, documentation,
+ * execution hints, rendering hints, and symbolic mappings.
+ * The value field is treated as a structured payload (JSON), not plain text.
+ */
+async function getRefs(options: {
+  flow_run_id?: string;
+  key?: string;
+  rule_id?: string;
+  source?: string;
+}): Promise<any[]> {
+  let query = getSupabase().from('refs').select('*');
+  if (options.flow_run_id) query = query.eq('flow_run_id', options.flow_run_id);
+  if (options.key) query = query.eq('key', options.key);
+  if (options.rule_id) query = query.eq('rule_id', options.rule_id);
+  if (options.source) query = query.eq('source', options.source);
+  const { data } = await query.order('created_at', { ascending: false });
+  return data || [];
+}
+
+/**
+ * Normalize variable aliases into canonical names.
+ * Given a context with potentially multiple names for the same variable,
+ * this ensures downstream steps only see canonical names.
+ * Canonical values always win; aliases only fill missing canonical values.
+ * Never overwrites a non-empty canonical value.
+ */
+function normalizeCanonicalVariables(
+  context: Record<string, any>,
+  aliases: Record<string, string[]>
+): Record<string, any> {
+  const normalized = { ...context };
+  for (const [canonical, aliasList] of Object.entries(aliases)) {
+    // Skip if canonical already has a non-empty value
+    const existing = normalized[canonical];
+    if (existing !== undefined && existing !== null && existing !== '') {
+      continue;
+    }
+    // Find first alias that has a non-empty value
+    for (const alias of aliasList) {
+      const value = normalized[alias];
+      if (value !== undefined && value !== null && value !== '') {
+        normalized[canonical] = value;
+        break;
+      }
+    }
+  }
+  return normalized;
+}
+
+/**
+ * Normalize raw user input against active terms.
+ * Pipeline: raw input → alias matching → canonical symbolic replacement → variable extraction.
+ * Preserves raw_input, normalized_input, and symbolic_input separately.
+ * Never mutates original raw input. No embeddings, no vector logic.
+ *
+ * Architecture:
+ *   User Prompt → normalization → canonical symbolic terms → step contracts → execution
+ *   User language is just translated into canonical symbolic language.
+ */
+export async function normalizeUserInput(
+  input: string,
+  flowRunId: string
+): Promise<{ canonical: string; symbolic: string; matchedTerms: string[]; variables: Record<string, string> }> {
+  const matchedTerms: string[] = [];
+  let symbolic = input;
+
+  // Fetch active terms
+  const { data: terms } = await getSupabase()
+    .from('terms')
+    .select('name, aliases')
+    .eq('is_active', true);
+
+  if (terms) {
+    for (const term of terms) {
+      const aliases: string[] = [term.name, ...(term.aliases || [])];
+      for (const alias of aliases) {
+        if (!alias || typeof alias !== 'string') continue;
+        const idx = symbolic.toLowerCase().indexOf(alias.toLowerCase());
+        if (idx !== -1) {
+          matchedTerms.push(term.name);
+          // Replace with canonical name (preserve case of canonical)
+          symbolic = symbolic.slice(0, idx) + term.name + symbolic.slice(idx + alias.length);
+          break;
+        }
+      }
+    }
+  }
+
+  // Deduplicate matched terms
+  const uniqueTerms = [...new Set(matchedTerms)];
+
+  const variables: Record<string, string> = {
+    raw_input: input,
+    normalized_input: symbolic,
+    symbolic_input: symbolic,
+    matched_terms: JSON.stringify(uniqueTerms),
+  };
+
+  return { canonical: symbolic, symbolic, matchedTerms: uniqueTerms, variables };
 }
 
 function resolveVariables(input: any, context: Record<string, any>): any {
