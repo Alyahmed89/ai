@@ -43,7 +43,20 @@ export class ApiFlowStepsController {
   }
 
   @Post()
-  async create(@Body() body: { flow_id: string; title: string; ref?: string; system_message?: string; instructions: string; expected_response: any; actions?: any[]; order_index?: number }) {
+  async create(@Body() body: {
+    flow_id: string;
+    title: string;
+    ref?: string;
+    system_message?: string;
+    instructions: string;
+    expected_response: any;
+    actions?: any[];
+    order_index?: number;
+    guaranteed_outputs?: Record<string, any>;
+    output_storage?: Record<string, string>;
+    required_inputs?: string[];
+    variable_aliases?: Record<string, string[]>;
+  }) {
     if (!body.flow_id) {
       throw new Error('flow_id is required');
     }
@@ -56,6 +69,10 @@ export class ApiFlowStepsController {
       instructions: body.instructions,
       expected_response: body.expected_response,
       actions: body.actions || null,
+      guaranteed_outputs: body.guaranteed_outputs || null,
+      output_storage: body.output_storage || null,
+      required_inputs: body.required_inputs || null,
+      variable_aliases: body.variable_aliases || null,
       order_index: body.order_index ?? 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -66,7 +83,19 @@ export class ApiFlowStepsController {
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: { title?: string; ref?: string; system_message?: string; instructions?: string; expected_response?: any; actions?: any[]; order_index?: number }) {
+  async update(@Param('id') id: string, @Body() body: {
+    title?: string;
+    ref?: string;
+    system_message?: string;
+    instructions?: string;
+    expected_response?: any;
+    actions?: any[];
+    order_index?: number;
+    guaranteed_outputs?: Record<string, any>;
+    output_storage?: Record<string, string>;
+    required_inputs?: string[];
+    variable_aliases?: Record<string, string[]>;
+  }) {
     const updates: any = { updated_at: new Date().toISOString() };
     if (body.title !== undefined) updates.title = body.title;
     if (body.ref !== undefined) updates.ref = body.ref;
@@ -75,6 +104,10 @@ export class ApiFlowStepsController {
     if (body.expected_response !== undefined) updates.expected_response = body.expected_response;
     if (body.actions !== undefined) updates.actions = body.actions;
     if (body.order_index !== undefined) updates.order_index = body.order_index;
+    if (body.guaranteed_outputs !== undefined) updates.guaranteed_outputs = body.guaranteed_outputs;
+    if (body.output_storage !== undefined) updates.output_storage = body.output_storage;
+    if (body.required_inputs !== undefined) updates.required_inputs = body.required_inputs;
+    if (body.variable_aliases !== undefined) updates.variable_aliases = body.variable_aliases;
     const data = await supabaseFetch(`steps?id=eq.${id}`, { method: 'PATCH', body: updates, params: { select: '*' } });
     return Array.isArray(data) ? data[0] : data;
   }

@@ -134,12 +134,27 @@ async function callProCheckOnOutput(
     validationErrors.push(...output.contract_failures.map((f: string) => `Contract failure: ${f}`));
   }
 
+  // Collect normalized variables from the step run context for pro_check visibility
+  const normalizedVars: Record<string, any> = {};
+  if (stepRun.result?.resolved_variables) {
+    const ctx = stepRun.result.resolved_variables;
+    for (const k of Object.keys(ctx)) {
+      if (k.startsWith('input_') || k.startsWith('memory.') || k === 'normalized_input' || k === 'matched_terms' || k === 'selected_plan_name' || k === 'task_ids' || k === 'selected_task_id') {
+        normalizedVars[k] = ctx[k];
+      }
+    }
+  }
+
   const proCheckRequest = {
     response: output,
     rules,
     plans,
     step_run_id: stepRun.id,
     validation_errors: validationErrors,
+    contract_failures: output.contract_failures || [],
+    guaranteed_outputs: step?.guaranteed_outputs || {},
+    required_inputs: step?.required_inputs || [],
+    normalized_vars: normalizedVars,
     step_contracts: {
       required_inputs: step?.required_inputs,
       guaranteed_outputs: step?.guaranteed_outputs,
@@ -580,76 +595,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       }
 
       if (stepResult === '__PAUSED__') {
-        // Check if the AI response included a next_step_id for dynamic flow control
-        const { data: pausedStepRun } = await getSupabase()
-          .from('step_runs')
-          .select('id, ai_response')
-          .eq('flow_run_id', flowRunId)
-          .eq('step_id', currentStep.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const pausedNextStepId = pausedStepRun?.ai_response?.next_step_id;
-        const pausedStepRunId = pausedStepRun?.id;
-        if (pausedNextStepId && typeof pausedNextStepId === 'string' && pausedNextStepId.trim() !== '') {
-          if (pausedNextStepId === currentStep.id) {
-            console.log(`[engine] next_step_id points to current step, breaking to avoid infinite loop`);
-            await emitEvent(flowRunId, pausedStepRunId, 'routing.skip', {
-              reason: 'next_step_id_points_to_self',
-              step_id: currentStep.id,
-              next_step_id: pausedNextStepId,
-            });
-            break;
-          }
-          visited.delete(pausedNextStepId);
-          try {
-            const dynamicStep = await getStepById(pausedNextStepId);
-            if (dynamicStep) {
-              console.log(`[engine] AI-driven next_step_id=${pausedNextStepId} -> step ref=${dynamicStep.ref}`);
-              await emitEvent(flowRunId, pausedStepRunId, 'routing.ai', {
-                from_step_id: currentStep.id,
-                from_step_ref: currentStep.ref,
-                to_step_id: pausedNextStepId,
-                to_step_ref: dynamicStep.ref,
-                to_step_title: dynamicStep.title,
-                reason: 'ai_next_step_id_from_paused_step',
-              });
-              await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
-              currentStep = dynamicStep;
-              continue;
-            }
-          } catch (err: any) {
-            const errorPayload = { type: 'routing_error', message: `No step found with id ${pausedNextStepId}`, step_id: currentStep.id, bad_next_step_id: pausedNextStepId };
-            await getSupabase().from('variables').insert({
-              id: randomUUID(),
-              flow_run_id: flowRunId,
-              step_run_id: pausedStepRunId || currentStep.id,
-              key: 'engine_error',
-              value: JSON.stringify(errorPayload),
-              scope: 'flow_run',
-              created_at: new Date().toISOString(),
-            }).maybeSingle();
-            await getSupabase().from('variables').insert({
-              id: randomUUID(),
-              flow_run_id: flowRunId,
-              step_run_id: pausedStepRunId || currentStep.id,
-              key: 'routing_error',
-              value: JSON.stringify(errorPayload),
-              scope: 'flow_run',
-              created_at: new Date().toISOString(),
-            }).maybeSingle();
-            console.warn(`[engine] ${errorPayload.message}, falling back to order-based navigation`);
-            await emitEvent(flowRunId, pausedStepRunId, 'routing.error', {
-              from_step_id: currentStep.id,
-              bad_next_step_id: pausedNextStepId,
-              error: errorPayload.message,
-              fallback: 'order_index',
-            });
-          }
-        }
-
         // Step paused itself — stop immediately.
-        // Do NOT auto-continue by order_index. Flow only resumes through explicit /resume endpoint.
+        // Do NOT auto-continue by order_index or AI next_step_id.
+        // Flow only resumes through explicit /resume endpoint, which re-runs the SAME paused step.
+        // The AI's next_step_id from a paused response is stale and MUST NOT be followed;
+        // the step will generate a fresh response when re-run after resume.
         console.log(`[engine] flow paused at step ${currentStep.id}`);
         await emitEvent(flowRunId, null, 'flow.paused', { reason: 'step_paused', step_id: currentStep.id });
         return;
@@ -1086,17 +1036,18 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     //   1. In step.guaranteed_outputs (the contract)
     //   2. In step.output_storage (explicit storage map)
     //   3. Engine-reserved keys (chat_message, step_goal, chat_memory, structured_memory)
+    //   4. Nested keys under an already-authorized parent (recursive persistence)
     // This prevents AI from creating arbitrary variables (variable drift).
-    const autoStore = async (obj: Record<string, any>, prefix?: string) => {
-      // Build allowed key set from contracts
+    const autoStore = async (obj: Record<string, any>, prefix?: string, isRecursive?: boolean) => {
+      // Build allowed key set from contracts (only at top level)
       const guaranteedKeys = new Set<string>();
-      if (step.guaranteed_outputs && typeof step.guaranteed_outputs === 'object') {
+      if (!isRecursive && step.guaranteed_outputs && typeof step.guaranteed_outputs === 'object') {
         for (const k of Object.keys(step.guaranteed_outputs)) {
           guaranteedKeys.add(k);
         }
       }
       const outputStorageMap: Record<string, string> = {};
-      if (step.output_storage && typeof step.output_storage === 'object') {
+      if (!isRecursive && step.output_storage && typeof step.output_storage === 'object') {
         for (const [k, v] of Object.entries(step.output_storage)) {
           outputStorageMap[k] = v as string;
           guaranteedKeys.add(k);
@@ -1105,8 +1056,9 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       const engineReserved = new Set(['chat_message', 'step_goal', 'chat_memory', 'structured_memory', 'actions']);
 
       for (const [key, value] of Object.entries(obj)) {
-        // Skip non-contract, non-reserved keys
-        if (!guaranteedKeys.has(key) && !engineReserved.has(key)) {
+        // Skip non-contract, non-reserved keys (only check at top level;
+        // recursive calls inherit authorization from parent key)
+        if (!isRecursive && !guaranteedKeys.has(key) && !engineReserved.has(key)) {
           console.log(`[engine] autoStore skipping non-contract key: ${key} (not in guaranteed_outputs or output_storage)`);
           continue;
         }
@@ -1135,7 +1087,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             created_at: new Date().toISOString(),
           }).maybeSingle();
           context[varKey] = value;
-          await autoStore(value, varKey);
+          // Recurse with isRecursive=true so nested keys are NOT filtered again
+          await autoStore(value, varKey, true);
         } else {
           // Array or other — store as JSON string
           await getSupabase().from('variables').insert({
