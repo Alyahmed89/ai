@@ -825,6 +825,90 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
   }
   console.log(`[engine] rendered_instructions:`, renderedInstructions);
 
+  // Check if this is an action-only step (no expected_response = no AI call).
+  // Action-only steps execute actions directly and put the result in chat_message.
+  const isActionOnly = !step.expected_response && Array.isArray(step.actions) && step.actions.length > 0;
+
+  if (isActionOnly) {
+    console.log(`[engine] action-only step, skipping AI call`);
+    // Execute actions directly without AI
+    const stepActions = Array.isArray(step.actions) ? step.actions : [];
+    const actionResults: Record<string, any> = {};
+    let actionError: any = null;
+    for (const action of stepActions) {
+      const result = await executeAction(action, context, stepRunId, flowRunId, step);
+      if (result && result.status === 'paused') return { status: 'paused', stepRunId };
+      if (result && result.error) {
+        actionError = result.error;
+        break;
+      }
+      if (result && result.data !== undefined) {
+        actionResults[action.endpoint || 'action'] = result.data;
+      }
+    }
+
+    // Build synthetic validated response from action results
+    const chatMessage = actionError
+      ? `Action error: ${actionError.message || JSON.stringify(actionError)}`
+      : Object.values(actionResults)[0] || 'Action completed';
+
+    const validated = {
+      chat_message: typeof chatMessage === 'string' ? chatMessage : JSON.stringify(chatMessage),
+      actions: stepActions,
+    };
+
+    // Store action results as flow_run variables
+    for (const [key, value] of Object.entries(actionResults)) {
+      const varKey = `action_result_${key}`;
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: varKey,
+        value: typeof value === 'string' ? value : JSON.stringify(value),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      context[varKey] = value;
+    }
+
+    // Store action error if present
+    if (actionError) {
+      const errorPayload = { type: 'action_error', message: actionError.message || 'Action failed', step_id: step.id, details: actionError };
+      await getSupabase().from('variables').insert({
+        id: randomUUID(),
+        flow_run_id: flowRunId,
+        step_run_id: stepRunId,
+        key: 'engine_error',
+        value: JSON.stringify(errorPayload),
+        scope: 'flow_run',
+        created_at: new Date().toISOString(),
+      }).maybeSingle();
+      context.engine_error = errorPayload;
+    }
+
+    // Store chat_message in context
+    context.chat_message = validated.chat_message;
+
+    // Persist step run result
+    await updateStepRun(stepRunId, {
+      ai_response: validated,
+      ai_response_valid: true,
+      rendered_instructions: renderedInstructions,
+      resolved_variables: context,
+      result: {},
+    });
+
+    // Mark step completed
+    const trace = {
+      step: 'completed',
+      action_only: true,
+    };
+    await updateStepRun(stepRunId, { trace });
+    await updateFlowRun(flowRunId, { status: 'active' });
+    return null; // signal success, continue to next step
+  }
+
   // Step 2 — Build LLM prompt with endpoint samples
   const schemaJson = JSON.stringify(step.expected_response, null, 2);
 
