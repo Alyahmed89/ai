@@ -47,6 +47,11 @@ interface FlowStep {
   ref: string | null
   order_index: number
   expected_response?: ExpectedResponse | null
+  /** Frontend-only presentation hints (optional, never affect execution) */
+  status_label?: string
+  silent?: boolean
+  chat_visible?: boolean
+  debug_visible?: boolean
 }
 
 interface StepRunWithDef extends StepRun {
@@ -356,7 +361,8 @@ function TraceEvent({ event }: { event: FlowEvent }) {
   }
 }
 
-/** Live execution trace panel */
+/** Live execution trace panel — used only in debug mode.
+ *  Deduplicates repeated events, shows newest first, capped at 100 entries. */
 function ExecutionTrace({ events }: { events: FlowEvent[] }) {
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -366,14 +372,28 @@ function ExecutionTrace({ events }: { events: FlowEvent[] }) {
 
   if (events.length === 0) return null
 
+  // Deduplicate: keep only the last occurrence of each unique (type, timestamp) pair
+  const seen = new Set<string>()
+  const deduped: FlowEvent[] = []
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i]
+    const key = `${ev.type}:${ev.timestamp}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      deduped.push(ev)
+    }
+  }
+  // Newest first, capped at 100
+  const display = deduped.slice(0, 100)
+
   return (
     <div className="border border-neutral-800 rounded-lg overflow-hidden">
       <div className="bg-neutral-900 px-3 py-1.5 text-[10px] text-neutral-500 uppercase tracking-wider border-b border-neutral-800">
         Execution Trace
       </div>
       <div className="px-3 py-2 space-y-2 max-h-80 overflow-y-auto">
-        {events.map((ev, i) => (
-          <TraceEvent key={i} event={ev} />
+        {display.map((ev, i) => (
+          <TraceEvent key={`${ev.type}:${ev.timestamp}:${i}`} event={ev} />
         ))}
         <div ref={endRef} />
       </div>
@@ -400,6 +420,7 @@ export default function FlowRunPage() {
   const [sending, setSending] = useState(false)
   const [events, setEvents] = useState<FlowEvent[]>([])
   const [context, setContext] = useState<FlowContext | null>(null)
+  const [transientStatus, setTransientStatus] = useState<string | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   /* ── Fetch flow run + step runs + definitions ── */
@@ -626,10 +647,14 @@ export default function FlowRunPage() {
    *  - Assistant messages: from ai_response.chat_message, falling back to
    *    result.pro_check_request.response.chat_message for older step runs.
    *  - User messages: from the NEXT step's resolved_variables input_* fields,
-   *    because the user's response to step N is consumed by step N+1. */
+   *    because the user's response to step N is consumed by step N+1.
+   *
+   *  Steps with silent=true or chat_visible=false are excluded from chat rendering. */
   const chatMessages = (() => {
     const msgs: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }[] = []
-    const sorted = [...steps].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    const sorted = [...steps]
+      .filter((s) => !s.definition?.silent && s.definition?.chat_visible !== false)
+      .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
     const seenAssistant = new Set<string>()
     const seenUserText = new Set<string>()
 
@@ -694,6 +719,60 @@ export default function FlowRunPage() {
     }
     return msgs
   })()
+
+  /**
+   * Derive a transient status string from the latest events and step definitions.
+   * Returns null when no step is actively executing (i.e. response has arrived).
+   */
+  const derivedStatus: string | null = (() => {
+    if (!isProcessing) return null
+    if (events.length === 0) {
+      // No events yet — show a generic status
+      return 'Thinking…'
+    }
+
+    // Find the most recent step.start event
+    const stepStarts = events.filter((e) => e.type === 'step.start')
+    if (stepStarts.length === 0) return 'Thinking…'
+
+    const latestStart = stepStarts[stepStarts.length - 1]
+    const stepId = latestStart.data?.step_id as string | undefined
+
+    // Check if there's a completion event after this step.start
+    const startIdx = events.indexOf(latestStart)
+    const hasCompletion = events.slice(startIdx + 1).some(
+      (e) => e.type === 'llm.response' || e.type === 'flow.complete' || e.type === 'flow.error'
+    )
+    if (hasCompletion) return null
+
+    // Look for the step definition to get status_label or title
+    const stepDef = stepId ? steps.find((s) => s.step_id === stepId)?.definition : undefined
+    if (stepDef?.status_label) return stepDef.status_label
+    if (stepDef?.title) return stepDef.title
+
+    // Check for more specific event types to derive a better status
+    const recentEvents = events.slice(-5)
+    const llmCall = recentEvents.find((e) => e.type === 'llm.call')
+    if (llmCall) return 'Calling AI…'
+
+    const apiCall = recentEvents.find((e) => e.type === 'api.call')
+    if (apiCall) {
+      const method = String(apiCall.data?.method || '')
+      const endpoint = String(apiCall.data?.url || apiCall.data?.endpoint || '')
+      return `Calling ${method} ${endpoint}…`
+    }
+
+    // Fallback: derive from step title or event data
+    const title = latestStart.data?.title as string | undefined
+    if (title) return title
+
+    return 'Thinking…'
+  })()
+
+  /** Sync transientStatus from derivedStatus via effect */
+  useEffect(() => {
+    setTransientStatus(derivedStatus)
+  }, [derivedStatus])
 
   /** Auto-scroll to bottom only when the flow is actively processing */
   useEffect(() => {
@@ -897,46 +976,46 @@ export default function FlowRunPage() {
         </div>
 
         {chatMode ? (
-          /* ── Chat Mode ── */
+          /* ── Chat Mode ──
+           * Only shows: user messages, assistant messages, and transient live status.
+           * NO execution traces, NO bullets, NO JSON, NO variables, NO debug panels.
+           * Feels like ChatGPT — conversation only.
+           */
           <div className="space-y-4">
-            {chatMessages.length === 0 && (
+            {chatMessages.length === 0 && !transientStatus && (
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
             {chatMessages.map((msg) => (
               <ChatBubble key={msg.id} msg={msg} />
             ))}
-            {isProcessing && (
-              <div className="space-y-3">
-                {/* Execution trace replaces the Thinking spinner */}
-                <ExecutionTrace events={events} />
-                {events.length === 0 && (
-                  <div className="flex justify-start">
-                    <div className="bg-neutral-800 text-neutral-400 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm">
-                      <span className="flex items-center gap-2">
-                        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
-                          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
-                        </svg>
-                        Thinking…
-                      </span>
-                    </div>
-                  </div>
-                )}
+            {/* Transient live status — appears while step executes, disappears on response */}
+            {transientStatus && (
+              <div className="flex justify-start">
+                <div className="bg-neutral-800 text-neutral-400 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm">
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+                      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
+                    </svg>
+                    {transientStatus}
+                  </span>
+                </div>
               </div>
             )}
             <div ref={chatEndRef} />
           </div>
         ) : (
-          /* ── Debug Mode ── */
+          /* ── Debug Mode ──
+           * Shows all execution internals: traces, variables, pro_check, actions,
+           * routing, normalization, contracts, refs, timing, engine events.
+           * Structured with collapsible sections, deduplicated traces, newest first.
+           */
           <>
-            {/* Execution trace (always visible in debug mode when running) */}
+            {/* Execution trace (collapsible, always visible in debug mode when running) */}
             {isProcessing && <ExecutionTrace events={events} />}
 
-            {/* Context variables display */}
+            {/* Context variables (collapsible) */}
             {context?.available_variables && context.available_variables.length > 0 && (
-              <div className="border border-neutral-800 rounded-lg overflow-hidden mb-6">
-                <div className="bg-neutral-900 px-3 py-1.5 text-[10px] text-neutral-500 uppercase tracking-wider border-b border-neutral-800">
-                  Context Variables
-                </div>
+              <CollapsibleSection label={`Context Variables (${context.available_variables.length})`} defaultOpen={false}>
                 <div className="divide-y divide-neutral-800">
                   {context.available_variables.map((v) => (
                     <div key={v.name} className="px-3 py-2">
@@ -954,7 +1033,7 @@ export default function FlowRunPage() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </CollapsibleSection>
             )}
 
             {steps.length === 0 ? (
@@ -962,21 +1041,25 @@ export default function FlowRunPage() {
             ) : (
               <div className="space-y-8">
                 {steps
+                  .filter((s) => s.definition?.debug_visible !== false)
                   .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
                   .map((step) => (
-                    <div key={step.id} className="border border-neutral-800 rounded p-4">
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="text-xs text-neutral-500">#{step.order_index}</span>
-                        {step.definition?.ref && (
-                          <span className="text-xs text-amber-400/70">{step.definition.ref}</span>
-                        )}
-                        {step.definition?.title && (
-                          <span className="text-sm text-white font-semibold">{step.definition.title}</span>
-                        )}
-                        <span className="text-xs text-neutral-600">{step.step_id}</span>
-                        <span className="text-xs text-neutral-500 ml-auto">{step.status}</span>
-                      </div>
-
+                    <CollapsibleSection
+                      key={step.id}
+                      label={
+                        <span className="flex items-center gap-2">
+                          <span className="text-xs text-neutral-500">#{step.order_index}</span>
+                          {step.definition?.ref && (
+                            <span className="text-xs text-amber-400/70">{step.definition.ref}</span>
+                          )}
+                          {step.definition?.title && (
+                            <span className="text-sm text-white font-semibold">{step.definition.title}</span>
+                          )}
+                          <span className="text-[10px] text-neutral-600 ml-auto">{step.status}</span>
+                        </span>
+                      }
+                      defaultOpen={false}
+                    >
                       {step.definition?.instructions && (
                         <p className="text-xs text-neutral-400 mb-3 italic">{step.definition.instructions}</p>
                       )}
@@ -1139,7 +1222,7 @@ export default function FlowRunPage() {
                       {step.error && (
                         <p className="text-xs text-red-500 mt-2">{step.error}</p>
                       )}
-                    </div>
+                    </CollapsibleSection>
                   ))}
               </div>
             )}
@@ -1222,6 +1305,32 @@ function formatJson(value: string): string {
   } catch {
     return value
   }
+}
+
+/** A generic collapsible section with a label (string or JSX) and content. */
+function CollapsibleSection({
+  label,
+  children,
+  defaultOpen = false,
+}: {
+  label: string | React.ReactNode
+  children: React.ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="border border-neutral-800 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-500 uppercase tracking-wider hover:text-neutral-300 transition-colors bg-neutral-900/50"
+      >
+        <span>{label}</span>
+        <span className="text-neutral-700">{open ? '−' : '+'}</span>
+      </button>
+      {open && <div className="px-3 py-2">{children}</div>}
+    </div>
+  )
 }
 
 /** A collapsible JSON block with a label */
