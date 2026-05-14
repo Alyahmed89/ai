@@ -5,7 +5,7 @@ export const runtime = 'edge'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ContextChatTrigger } from '@/components/ContextChatTrigger'
-import type { StepRunResult } from '@/types'
+import type { FlowRun, StepRunResult } from '@/types'
 
 /* ── Types ── */
 
@@ -235,8 +235,8 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">▶</span>
           <div>
             <span className="font-semibold">Step: </span>
-            <span>{String(data.title || data.ref || data.step_id || 'unknown')}</span>
-            {!!data.ref && <span className="text-neutral-500 ml-1">({String(data.ref)})</span>}
+            <span>{String(data?.title || data?.ref || data?.step_id || 'unknown')}</span>
+            {!!data?.ref && <span className="text-neutral-500 ml-1">({String(data.ref)})</span>}
           </div>
         </div>
       )
@@ -247,7 +247,7 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">🤖</span>
           <div>
             <span className="font-semibold">Calling AI...</span>
-            {!!data.prompt && (
+            {!!data?.prompt && (
               <div className="mt-0.5 text-purple-300/70 line-clamp-3">{String(data.prompt)}</div>
             )}
           </div>
@@ -260,7 +260,7 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">✓</span>
           <div>
             <span className="font-semibold">AI Response</span>
-            {!!data.response && (
+            {!!data?.response && (
               <div className="mt-0.5 text-purple-200/70 line-clamp-3">{String(data.response)}</div>
             )}
           </div>
@@ -273,7 +273,7 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">↗</span>
           <div>
             <span className="font-semibold">Calling API: </span>
-            <span>{String(data.method || 'GET')} {String(data.url || data.endpoint || '')}</span>
+            <span>{String(data?.method || 'GET')} {String(data?.url || data?.endpoint || '')}</span>
           </div>
         </div>
       )
@@ -284,12 +284,12 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">✓</span>
           <div>
             <span className="font-semibold">API Complete </span>
-            {data.status_code != null && (
+            {data?.status_code != null && (
               <span className={Number(data.status_code) >= 400 ? 'text-red-400' : 'text-green-400'}>
                 {String(data.status_code)}
               </span>
             )}
-            {!!data.body && (
+            {!!data?.body && (
               <div className="mt-0.5 text-amber-200/70 line-clamp-2">{String(data.body)}</div>
             )}
           </div>
@@ -302,7 +302,7 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">→</span>
           <div>
             <span className="font-semibold">Routing to next step: </span>
-            <span>{String(data.step_title || data.ref || data.step_id || 'unknown')}</span>
+            <span>{String(data?.step_title || data?.ref || data?.step_id || 'unknown')}</span>
           </div>
         </div>
       )
@@ -323,7 +323,7 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">✓</span>
           <div>
             <span className="font-semibold">Flow Complete</span>
-            {!!data.message && <div className="mt-0.5 text-green-300/70">{String(data.message)}</div>}
+            {!!data?.message && <div className="mt-0.5 text-green-300/70">{String(data.message)}</div>}
           </div>
         </div>
       )
@@ -334,8 +334,8 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">✗</span>
           <div>
             <span className="font-semibold">Flow Error</span>
-            {!!(data.message || data.error) && (
-              <div className="mt-0.5 text-red-300/70">{String(data.message || data.error)}</div>
+            {!!(data?.message || data?.error) && (
+              <div className="mt-0.5 text-red-300/70">{String(data?.message || data?.error)}</div>
             )}
           </div>
         </div>
@@ -347,7 +347,7 @@ function TraceEvent({ event }: { event: FlowEvent }) {
           <span className="shrink-0 mt-0.5">•</span>
           <div>
             <span className="font-semibold">{type}</span>
-            {Object.keys(data).length > 0 && (
+            {data && typeof data === 'object' && Object.keys(data).length > 0 && (
               <pre className="mt-0.5 text-neutral-500 whitespace-pre-wrap">{JSON.stringify(data)}</pre>
             )}
           </div>
@@ -388,8 +388,10 @@ export default function FlowRunPage() {
   const id = params?.id as string
   const flowId = searchParams?.get('flowId') || ''
 
+  const [flowRun, setFlowRun] = useState<FlowRun | null>(null)
   const [steps, setSteps] = useState<StepRunWithDef[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [correctionStarting, setCorrectionStarting] = useState<string | null>(null)
@@ -400,24 +402,38 @@ export default function FlowRunPage() {
   const [context, setContext] = useState<FlowContext | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  /* ── Fetch step runs + definitions (kept for debug mode & resume) ── */
+  /* ── Fetch flow run + step runs + definitions ── */
   const fetchData = useCallback(async () => {
     if (!id) return
+    setLoadError(null)
     try {
-      const [stepsRes, defsRes] = await Promise.all([
+      const [flowRunRes, stepsRes, defsRes] = await Promise.all([
+        fetch(`/api/proxy/flow-runs/${id}`),
         fetch(`/api/proxy/api/step-runs?flow_run_id=${id}`),
         fetch('/api/proxy/api/flow-steps'),
       ])
 
+      if (flowRunRes.ok) {
+        const flowRunData = await flowRunRes.json()
+        // Handle both direct object and { data: ... } wrapper
+        const fr = flowRunData?.data ?? flowRunData
+        if (fr && typeof fr === 'object' && fr.id) {
+          setFlowRun(fr as FlowRun)
+        }
+      } else {
+        setLoadError(`Flow run API returned ${flowRunRes.status}`)
+      }
+
       let defs: FlowStep[] = []
       if (defsRes.ok) {
         const defsData = await defsRes.json()
-        defs = Array.isArray(defsData) ? defsData : []
+        defs = Array.isArray(defsData) ? defsData : Array.isArray(defsData?.data) ? defsData.data : []
       }
 
       if (stepsRes.ok) {
         const stepsData = await stepsRes.json()
-        const parsed: StepRunWithDef[] = (Array.isArray(stepsData) ? stepsData : []).map(
+        const rawSteps = Array.isArray(stepsData) ? stepsData : Array.isArray(stepsData?.data) ? stepsData.data : []
+        const parsed: StepRunWithDef[] = rawSteps.map(
           (s: StepRun) => ({
             ...s,
             definition: defs.find((d) => d.id === s.step_id),
@@ -428,7 +444,8 @@ export default function FlowRunPage() {
         }
       }
     } catch (e) {
-      console.error('Failed to fetch step runs', e)
+      console.error('Failed to fetch data', e)
+      setLoadError(`Failed to fetch data: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
     setLoading(false)
   }, [id])
@@ -440,8 +457,8 @@ export default function FlowRunPage() {
       const res = await fetch(`/api/proxy/flow-runs/${id}/events`)
       if (res.ok) {
         const data = await res.json()
-        const list = Array.isArray(data) ? data : data?.events ?? []
-        if (list.length > 0) {
+        const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : data?.events ?? []
+        if (Array.isArray(list) && list.length > 0) {
           setEvents(list)
         }
       }
@@ -457,7 +474,10 @@ export default function FlowRunPage() {
       const res = await fetch(`/api/proxy/flow-runs/${id}/context`)
       if (res.ok) {
         const data = await res.json()
-        setContext(data)
+        const ctx = data?.data ?? data
+        if (ctx && typeof ctx === 'object') {
+          setContext(ctx as FlowContext)
+        }
       }
     } catch {
       /* endpoint may not exist yet */
@@ -465,19 +485,27 @@ export default function FlowRunPage() {
   }, [id])
 
   useEffect(() => {
+    if (!id) return
+
     fetchData()
     fetchEvents()
     fetchContext()
+
+    // Loading timeout: show error if still loading after 20s
+    const loadingTimer = setTimeout(() => {
+      setLoadError((prev) => prev || 'Loading timed out — backend may be unreachable')
+    }, 20000)
 
     const interval = setInterval(fetchData, 3000)
     const eventsInterval = setInterval(fetchEvents, 800)
     const contextInterval = setInterval(fetchContext, 5000)
     return () => {
+      clearTimeout(loadingTimer)
       clearInterval(interval)
       clearInterval(eventsInterval)
       clearInterval(contextInterval)
     }
-  }, [fetchData, fetchEvents, fetchContext])
+  }, [fetchData, fetchEvents, fetchContext, id])
 
   /** The paused step (most recent one with status paused) */
   const pausedStep = [...steps]
@@ -687,7 +715,10 @@ export default function FlowRunPage() {
       if (!obj[key] || typeof obj[key] !== 'object') {
         obj[key] = {}
       }
-      setNested(obj[key] as Record<string, unknown>, path.slice(1), value)
+      const next = obj[key]
+      if (next && typeof next === 'object') {
+        setNested(next as Record<string, unknown>, path.slice(1), value)
+      }
     }
   }
 
@@ -706,7 +737,7 @@ export default function FlowRunPage() {
             },
           }),
         })
-      } else {
+      } else if (id && steps.length > 0) {
         // Flow run exists — resume
         // Build user_input from allRequiredVars, supporting dotted paths for nested objects
         const inputVars: Record<string, unknown> = {}
@@ -764,8 +795,10 @@ export default function FlowRunPage() {
     try {
       const cf = proCheck.correction_flow
       const inputVariables: Record<string, unknown> = {}
-      for (const v of cf.variables) {
-        inputVariables[v.name] = v.value
+      if (Array.isArray(cf.variables)) {
+        for (const v of cf.variables) {
+          inputVariables[v.name] = v.value
+        }
       }
       inputVariables.var_original_flow_run_id = id
 
@@ -787,7 +820,7 @@ export default function FlowRunPage() {
       }
 
       const data = await res.json()
-      if (data.flowRunId) {
+      if (data?.flowRunId) {
         window.open(`/flow-run/${data.flowRunId}`, '_blank')
       }
     } catch (e) {
@@ -797,6 +830,8 @@ export default function FlowRunPage() {
     setCorrectionStarting(null)
   }
 
+  // Show loading state while fetching initial data.
+  // flowRun is optional — the page can render with just steps data.
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white font-mono">
@@ -804,7 +839,20 @@ export default function FlowRunPage() {
           <button onClick={() => router.push('/')} className="text-neutral-600 hover:text-white mb-8 block">
             &larr; back
           </button>
-          <p className="text-neutral-600">loading...</p>
+          {loadError ? (
+            <div>
+              <p className="text-red-400 mb-4">{loadError}</p>
+              <p className="text-neutral-500 text-sm mb-4">Flow run ID: {id || '(none)'}</p>
+              <button
+                onClick={() => { setLoading(true); setLoadError(null); fetchData() }}
+                className="text-sm text-neutral-400 hover:text-white underline"
+              >
+                retry
+              </button>
+            </div>
+          ) : (
+            <p className="text-neutral-600">loading...</p>
+          )}
         </div>
       </div>
     )
