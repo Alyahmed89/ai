@@ -1,0 +1,183 @@
+[
+  {
+    "flow": "plan_selector_flow",
+    "steps": [
+      {
+        "name": "list_plans",
+        "order_index": 0,
+        "input": {
+          "endpoint": "prolog_query",
+          "query": "plan(PlanId, Name, Status), Status = ready."
+        },
+        "output_storage": {
+          "memory.plans_list": "plans_list",
+          "memory.plans_count": "plans_count"
+        },
+        "guaranteed_outputs": [
+          "plans_list",
+          "plans_count"
+        ],
+        "required_inputs": [],
+        "instructions": "Query Prolog for all plans with status=ready. Store result in memory.plans_list."
+      },
+      {
+        "name": "select_plan",
+        "order_index": 1,
+        "input": {
+          "endpoint": "none",
+          "strategy": "highest_priority"
+        },
+        "output_storage": {
+          "memory.selected_plan_id": "selected_plan_id",
+          "memory.selected_plan_name": "selected_plan_name"
+        },
+        "guaranteed_outputs": [
+          "selected_plan_id",
+          "selected_plan_name"
+        ],
+        "required_inputs": [
+          "plans_list"
+        ],
+        "instructions": "Select highest priority plan from memory.plans_list. If none found, pause and ask user."
+      },
+      {
+        "name": "generate_tasks",
+        "order_index": 2,
+        "input": {
+          "endpoint": "prolog_query",
+          "query": "task(TaskId, PlanId, Status, Context), PlanId = [[var:selected_plan_id]], Status = pending."
+        },
+        "output_storage": {
+          "memory.task_ids": "task_ids",
+          "memory.selected_task_id": "selected_task_id"
+        },
+        "guaranteed_outputs": [
+          "task_ids",
+          "selected_task_id"
+        ],
+        "required_inputs": [
+          "selected_plan_id"
+        ],
+        "instructions": "Query tasks for selected plan. Pick top pending task. If none, pause and report."
+      },
+      {
+        "name": "execute_task",
+        "order_index": 3,
+        "input": {
+          "endpoint": "shell",
+          "refs_source": "task_context"
+        },
+        "output_storage": {
+          "memory.task_result": "task_result",
+          "memory.task_status": "task_status"
+        },
+        "guaranteed_outputs": [
+          "task_result",
+          "task_status"
+        ],
+        "required_inputs": [
+          "selected_task_id",
+          "task_context"
+        ],
+        "instructions": "Execute shell commands from task context refs. If any command fails, pause and report."
+      },
+      {
+        "name": "report_result",
+        "order_index": 4,
+        "input": {
+          "endpoint": "prolog_query",
+          "query": "update_task_status(TaskId, Status), TaskId = [[var:selected_task_id]], Status = [[var:task_status]]."
+        },
+        "output_storage": {
+          "memory.last_run": "last_run"
+        },
+        "guaranteed_outputs": [
+          "last_run"
+        ],
+        "required_inputs": [
+          "selected_task_id",
+          "task_status"
+        ],
+        "instructions": "Update task status in Prolog. Report completion."
+      }
+    ]
+  },
+  {
+    "flow": "test_flow",
+    "steps": [
+      {
+        "name": "ping_prolog",
+        "order_index": 0,
+        "input": {
+          "endpoint": "prolog_query",
+          "query": "true."
+        },
+        "output_storage": {
+          "memory.prolog_reachable": "prolog_reachable"
+        },
+        "guaranteed_outputs": [
+          "prolog_reachable"
+        ],
+        "required_inputs": [],
+        "instructions": "Ping Prolog API. If unreachable, pause and report."
+      },
+      {
+        "name": "resolve_var",
+        "order_index": 1,
+        "input": {
+          "endpoint": "none",
+          "test_payload": {
+            "message": "[[var:test_value]]"
+          }
+        },
+        "output_storage": {
+          "memory.var_resolved": "var_resolved"
+        },
+        "guaranteed_outputs": [
+          "var_resolved"
+        ],
+        "required_inputs": [
+          "test_value"
+        ],
+        "instructions": "Verify [[var:test_value]] resolves correctly. If unresolved placeholders remain, pause and report."
+      },
+      {
+        "name": "autoStore_check",
+        "order_index": 2,
+        "input": {
+          "endpoint": "none",
+          "declare_output": {
+            "undeclared_key": "should_not_persist"
+          }
+        },
+        "output_storage": {
+          "memory.autoStore_passed": "autoStore_passed"
+        },
+        "guaranteed_outputs": [
+          "autoStore_passed"
+        ],
+        "required_inputs": [],
+        "instructions": "Verify only declared keys persist. Undeclared keys must be rejected. Report pass/fail."
+      },
+      {
+        "name": "report",
+        "order_index": 3,
+        "input": {
+          "endpoint": "none"
+        },
+        "output_storage": {
+          "memory.test_results": "test_results"
+        },
+        "guaranteed_outputs": [
+          "test_results"
+        ],
+        "required_inputs": [
+          "prolog_reachable",
+          "var_resolved",
+          "autoStore_passed"
+        ],
+        "instructions": "Print pass/fail for each contract. If any test failed, pause and report."
+      }
+    ]
+  }
+]
