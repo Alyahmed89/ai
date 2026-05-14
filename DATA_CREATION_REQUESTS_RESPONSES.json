@@ -1,0 +1,381 @@
+{
+  "rows_created": [
+    {
+      "type": "rule",
+      "name": "step_creation_template",
+      "request": {
+        "method": "POST",
+        "url": "https://supabase.anyapp.cfd/rest/v1/rules",
+        "headers": {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        "body": {
+          "rule_id": "da6d12be-b9d0-4450-8ede-5db8ae74ee3a",
+          "name": "step_creation_template",
+          "namespace": "core",
+          "content": "step_creation_template(StepId, FlowId, Context) :- step(StepId, FlowId, _, Context), Context = _{refs: _, task_template: _, instructions: _, system_message: _}.",
+          "description": "Template rule for creating steps from task context.",
+          "tags": [
+            "step_creation",
+            "template",
+            "core",
+            "production"
+          ],
+          "context": {
+            "refs": {
+              "files": [
+                "/workspace/deepseek-agent/src/execution/engine.ts",
+                "/workspace/deepseek-agent/src/execution/types.ts",
+                "[[var:target_file]]"
+              ],
+              "endpoints": [
+                {
+                  "url": "https://ai.anyapp.cfd/api/query",
+                  "name": "query_supabase"
+                },
+                {
+                  "url": "[[var:api_url]]",
+                  "name": "[[var:api_endpoint]]"
+                }
+              ],
+              "shell_commands": [
+                "cd /workspace/deepseek-agent && npx jest [[var:test_file]]",
+                "cd /workspace/deepseek-agent && npx eslint [[var:source_file]]"
+              ]
+            },
+            "instructions": "Execute the shell commands in order. If any command fails, pause and report.",
+            "task_template": {
+              "name": "[[var:task_name]]",
+              "flow_id": "[[var:target_flow_id]]",
+              "priority": "[[var:task_priority]]",
+              "depends_on": [
+                "[[var:dependency_task_id]]"
+              ],
+              "description": "[[var:task_description]]"
+            },
+            "system_message": "You are a step execution engine. Run the commands and report results."
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": 3571,
+          "name": "step_creation_template"
+        }
+      }
+    },
+    {
+      "type": "rule",
+      "name": "tasking_rule_sample",
+      "request": {
+        "method": "POST",
+        "url": "https://supabase.anyapp.cfd/rest/v1/rules",
+        "headers": {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        "body": {
+          "rule_id": "99d07fbc-a894-41e5-9df4-bd1fec240c2b",
+          "name": "tasking_rule_sample",
+          "namespace": "core",
+          "content": "tasking_rule_sample(TaskId, FlowRunId, Context) :- task(TaskId, FlowRunId, pending, Context), Context = _{refs: _, task_template: _, instructions: _, system_message: _}.",
+          "description": "Sample tasking rule. Its context JSON is the source of truth for what a task looks like.",
+          "tags": [
+            "tasking",
+            "sample",
+            "production",
+            "source-of-truth"
+          ],
+          "context": {
+            "refs": {
+              "files": [
+                "/workspace/deepseek-agent/package.json",
+                "/workspace/deepseek-agent/tsconfig.json",
+                "[[var:source_file_path]]",
+                "[[var:test_file_path]]"
+              ],
+              "endpoints": [
+                {
+                  "url": "https://ai.anyapp.cfd/api/query",
+                  "name": "query_supabase"
+                },
+                {
+                  "url": "https://ai.anyapp.cfd/api/rules",
+                  "name": "create_rule"
+                },
+                {
+                  "url": "[[var:custom_endpoint_url]]",
+                  "name": "[[var:custom_endpoint_name]]"
+                }
+              ],
+              "shell_commands": [
+                "cd /workspace/deepseek-agent && git pull origin [[var:branch_name]]",
+                "cd /workspace/deepseek-agent && npm run build",
+                "cd /workspace/deepseek-agent && npm test -- --testPathPattern=[[var:test_pattern]]"
+              ]
+            },
+            "instructions": "Run the build and test commands. If tests fail, pause and report failures.",
+            "task_template": {
+              "name": "[[var:task_name]]",
+              "flow_id": "[[var:target_flow_id]]",
+              "priority": "[[var:task_priority]]",
+              "depends_on": [
+                "[[var:dependency_task_id_1]]",
+                "[[var:dependency_task_id_2]]"
+              ],
+              "description": "[[var:task_description]]",
+              "estimated_minutes": "[[var:estimated_minutes]]"
+            },
+            "system_message": "You are a CI/CD step executor. Run builds and tests, report results."
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": 3572,
+          "name": "tasking_rule_sample"
+        }
+      }
+    },
+    {
+      "type": "rule",
+      "name": "task_dependency_resolver",
+      "request": {
+        "method": "POST",
+        "url": "https://supabase.anyapp.cfd/rest/v1/rules",
+        "headers": {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        "body": {
+          "rule_id": "ff4ad548-4dfe-4f06-a412-ef529e705629",
+          "name": "task_dependency_resolver",
+          "namespace": "core",
+          "content": "task_dependency_resolver(TaskId, DependsOn) :- task(TaskId, _, _, Context), Context = _{task_template: _{depends_on: DependsOn}}.",
+          "description": "Resolves task dependencies from task context.",
+          "tags": [
+            "tasking",
+            "dependencies",
+            "core"
+          ],
+          "context": {
+            "max_retries": 3,
+            "dependency_source": "task_template.depends_on",
+            "resolution_strategy": "sequential"
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": 3573,
+          "name": "task_dependency_resolver"
+        }
+      }
+    },
+    {
+      "type": "term",
+      "name": "step_creation",
+      "request": {
+        "method": "POST",
+        "url": "https://supabase.anyapp.cfd/rest/v1/terms",
+        "headers": {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        "body": {
+          "term_id": "220ebb63-684a-456a-a73d-e24c54dde933",
+          "name": "step_creation",
+          "namespace": "core",
+          "content": {
+            "examples": [
+              "step_creation(step_123, flow_456, context)"
+            ],
+            "description": "A step is created from a task context.",
+            "system_message": "Use this term to define step creation from task context"
+          },
+          "description": "Term for step creation from task context",
+          "context": "translation",
+          "entity_type": "rule",
+          "is_active": true
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": 20,
+          "name": "step_creation"
+        }
+      }
+    },
+    {
+      "type": "term",
+      "name": "task_context",
+      "request": {
+        "method": "POST",
+        "url": "https://supabase.anyapp.cfd/rest/v1/terms",
+        "headers": {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        "body": {
+          "term_id": "6bf0c6aa-ed6e-457e-8f68-c3c6f9a31bc5",
+          "name": "task_context",
+          "namespace": "core",
+          "content": {
+            "examples": [
+              "task_context({refs: {shell_commands: [...], files: [...], endpoints: [...]}, task_template: {name: ..., description: ..., priority: ...}})"
+            ],
+            "description": "A task context contains refs (shell_commands, files, endpoints) and a task_template.",
+            "system_message": "Use this term to define what a task context looks like"
+          },
+          "description": "Term for task context structure",
+          "context": "translation",
+          "entity_type": "rule",
+          "is_active": true
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": 21,
+          "name": "task_context"
+        }
+      }
+    },
+    {
+      "type": "task",
+      "name": "task_with_placeholders",
+      "request": {
+        "method": "POST",
+        "url": "https://supabase.anyapp.cfd/rest/v1/tasks",
+        "headers": {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        "body": {
+          "id": "f0af7ef6-808b-41b2-96fa-5a7e5137c888",
+          "type": "step_creation",
+          "payload": {
+            "refs": {
+              "files": [
+                "/workspace/deepseek-agent/package.json",
+                "/workspace/deepseek-agent/tsconfig.json",
+                "[[var:source_file_path]]",
+                "[[var:test_file_path]]"
+              ],
+              "endpoints": [
+                {
+                  "url": "https://ai.anyapp.cfd/api/query",
+                  "name": "query_supabase"
+                },
+                {
+                  "url": "https://ai.anyapp.cfd/api/rules",
+                  "name": "create_rule"
+                },
+                {
+                  "url": "[[var:custom_endpoint_url]]",
+                  "name": "[[var:custom_endpoint_name]]"
+                }
+              ],
+              "shell_commands": [
+                "cd /workspace/deepseek-agent && git pull origin [[var:branch_name]]",
+                "cd /workspace/deepseek-agent && npm run build",
+                "cd /workspace/deepseek-agent && npm test -- --testPathPattern=[[var:test_pattern]]"
+              ]
+            },
+            "instructions": "Run the build and test commands. If tests fail, pause and report failures.",
+            "task_template": {
+              "name": "[[var:task_name]]",
+              "flow_id": "[[var:target_flow_id]]",
+              "priority": "[[var:task_priority]]",
+              "depends_on": [
+                "[[var:dependency_task_id_1]]",
+                "[[var:dependency_task_id_2]]"
+              ],
+              "description": "[[var:task_description]]",
+              "estimated_minutes": "[[var:estimated_minutes]]"
+            },
+            "system_message": "You are a CI/CD step executor. Run builds and tests, report results."
+          },
+          "status": "pending",
+          "priority": 1,
+          "depends_on": []
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": "f0af7ef6-808b-41b2-96fa-5a7e5137c888",
+          "type": "step_creation",
+          "status": "pending"
+        }
+      }
+    },
+    {
+      "type": "task",
+      "name": "task_with_resolved_values",
+      "request": {
+        "method": "POST",
+        "url": "https://supabase.anyapp.cfd/rest/v1/tasks",
+        "headers": {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        "body": {
+          "id": "800d6172-a750-42d8-92a3-9a5a7abbac95",
+          "type": "step_creation",
+          "payload": {
+            "refs": {
+              "files": [
+                "/workspace/deepseek-agent/package.json",
+                "/workspace/deepseek-agent/tsconfig.json",
+                "/workspace/deepseek-agent/src/execution/engine.ts",
+                "/workspace/deepseek-agent/src/execution/engine.test.ts"
+              ],
+              "endpoints": [
+                {
+                  "url": "https://ai.anyapp.cfd/api/query",
+                  "name": "query_supabase"
+                },
+                {
+                  "url": "https://ai.anyapp.cfd/api/rules",
+                  "name": "create_rule"
+                }
+              ],
+              "shell_commands": [
+                "cd /workspace/deepseek-agent && git pull origin main",
+                "cd /workspace/deepseek-agent && npm run build",
+                "cd /workspace/deepseek-agent && npm test -- --testPathPattern=engine"
+              ]
+            },
+            "instructions": "Run the build and test commands. If tests fail, pause and report failures.",
+            "task_template": {
+              "name": "Implement step creation flow",
+              "flow_id": "609e4f49-5c73-4d3f-ac4d-5021906c5022",
+              "priority": "high",
+              "depends_on": [],
+              "description": "Create the step creation flow that reads task context and creates steps dynamically",
+              "estimated_minutes": 120
+            },
+            "system_message": "You are a CI/CD step executor. Run builds and tests, report results."
+          },
+          "status": "pending",
+          "priority": 1,
+          "depends_on": []
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": "800d6172-a750-42d8-92a3-9a5a7abbac95",
+          "type": "step_creation",
+          "status": "pending"
+        }
+      }
+    }
+  ]
+}
