@@ -2225,3 +2225,202 @@ function zodSchemaFromSample(sample: any): z.ZodTypeAny {
   }
   return z.any();
 }
+
+/**
+ * Execute a single API action.
+ * Looks up the endpoint in the registry, validates, executes the HTTP request,
+ * stores the result as a variable, and returns structured result.
+ */
+async function executeAction(
+  action: any,
+  context: Record<string, any>,
+  stepRunId: string,
+  flowRunId: string,
+  step: any,
+): Promise<{ data?: any; error?: any; status?: string }> {
+  // Auto-fill type, method, and path from endpoint registry
+  if (action.endpoint && (!action.type || !action.method || !action.path)) {
+    const { data: endpoint } = await getSupabase()
+      .from('endpoint_registry')
+      .select('*')
+      .eq('name', action.endpoint)
+      .maybeSingle();
+    if (endpoint) {
+      if (!action.type) action.type = 'api';
+      if (!action.method) action.method = endpoint.method || 'GET';
+      if (!action.path) action.path = endpoint.url;
+    }
+  }
+
+  if (action.type !== 'api') return { data: null };
+
+  // Validate required fields
+  if (!action.endpoint) {
+    return { error: { message: `Invalid action: missing required field 'endpoint'`, action } };
+  }
+
+  // Look up endpoint in registry
+  const { data: endpoint } = await getSupabase()
+    .from('endpoint_registry')
+    .select('*')
+    .eq('name', action.endpoint)
+    .maybeSingle();
+
+  if (!endpoint && !action.path) {
+    return { error: { message: `Invalid action: missing required field 'path' (endpoint '${action.endpoint}' not found in registry)`, action } };
+  }
+  if (endpoint) {
+    if (!action.method) action.method = endpoint.method || 'GET';
+    if (!action.path) action.path = endpoint.url;
+  }
+
+  const actionMethod = (action.method || 'GET').toUpperCase();
+
+  if (endpoint) {
+    const endpointMethod = (endpoint.method || 'GET').toUpperCase();
+    if (actionMethod !== endpointMethod) {
+      return { error: { message: `Method mismatch for endpoint '${action.endpoint}': action uses '${actionMethod}', endpoint expects '${endpointMethod}'`, action } };
+    }
+    if (!endpoint.url.includes('[[var:') && action.path) {
+      const endpointBasePath = extractBasePath(endpoint.url);
+      const resolvedActionPath = resolveVariables(action.path, context);
+      const actionPathNoQuery = resolvedActionPath.split('?')[0];
+      const endpointUrlNoQuery = endpoint.url.split('?')[0];
+      const isRelativeMatch = resolvedActionPath.startsWith(endpointBasePath);
+      const isFullUrlMatch = actionPathNoQuery === endpointUrlNoQuery;
+      if (!isRelativeMatch && !isFullUrlMatch) {
+        return { error: { message: `Path mismatch for endpoint '${action.endpoint}': action path '${resolvedActionPath}' does not start with endpoint base path '${endpointBasePath}'`, action } };
+      }
+    }
+  }
+
+  // Validate output_var
+  if (action.output_var && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(action.output_var)) {
+    return { error: { message: `Invalid output_var '${action.output_var}' for endpoint '${action.endpoint}': must be a valid identifier`, action } };
+  }
+
+  // Validate payload against endpoint sample_request schema
+  if (endpoint?.sample_request != null) {
+    try {
+      const payloadSchema = zodSchemaFromSample(endpoint.sample_request);
+      if (action.payload) {
+        const resolvedPayload = resolveVariables(action.payload, context);
+        payloadSchema.parse(resolvedPayload);
+      } else if (actionMethod !== 'GET' && actionMethod !== 'HEAD') {
+        return { error: { message: `Missing payload for endpoint '${action.endpoint}': expected payload matching sample_request`, action } };
+      }
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        const details = err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+        return { error: { message: `Invalid payload for endpoint '${action.endpoint}': ${details}`, action } };
+      }
+      throw err;
+    }
+  }
+
+  // Resolve URL and headers
+  let url = normalizeValue(resolveVariables(action.endpoint, context));
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...normalizeValue(resolveVariables(action.headers || {}, context)),
+  };
+
+  if (endpoint) {
+    url = normalizeValue(resolveVariables(endpoint.url, context));
+    headers = { ...(endpoint.headers || {}), ...headers };
+  }
+
+  const httpMethod = actionMethod;
+  let mergedPayload: any = undefined;
+
+  if (httpMethod !== 'GET' && httpMethod !== 'HEAD') {
+    if (endpoint?.sample_request) {
+      mergedPayload = { ...endpoint.sample_request };
+    }
+    if (action.payload) {
+      const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
+      mergedPayload = mergedPayload ? deepMerge(mergedPayload, resolvedPayload) : resolvedPayload;
+    }
+  }
+
+  console.log(`[engine] executing action: ${httpMethod} ${url}`);
+
+  try {
+    let res: Response;
+    let responseBody: string | null = null;
+    try {
+      res = await fetch(url, {
+        method: httpMethod,
+        headers,
+        body: mergedPayload ? JSON.stringify(mergedPayload) : undefined,
+      });
+      try { responseBody = await res.text(); } catch { /* ignore read errors */ }
+    } catch (err: any) {
+      return { error: { message: err?.message || String(err), action, stack: err?.stack } };
+    }
+
+    // Persist to api_calls table
+    await getSupabase().from('api_calls').insert({
+      id: randomUUID(),
+      flow_run_id: flowRunId,
+      step_run_id: stepRunId,
+      endpoint_name: url,
+      http_method: httpMethod,
+      request_url: url,
+      request_headers: headers,
+      request_body: mergedPayload,
+      response_status: res.status,
+      response_body: responseBody,
+      success: res.ok,
+      error: res.ok ? null : `HTTP ${res.status}`,
+      created_at: new Date().toISOString(),
+    }).maybeSingle();
+
+    if (res.ok && responseBody) {
+      try {
+        const parsed = JSON.parse(responseBody);
+        const varName = `api_response_${action.endpoint}`;
+        await getSupabase().from('variables').insert({
+          id: randomUUID(),
+          flow_run_id: flowRunId,
+          step_run_id: stepRunId,
+          key: varName,
+          value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
+          scope: 'step_run',
+          created_at: new Date().toISOString(),
+        }).maybeSingle();
+        context[varName] = parsed;
+
+        if (action.output_var) {
+          await getSupabase().from('variables').insert({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: stepRunId,
+            key: action.output_var,
+            value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          }).maybeSingle();
+          context[action.output_var] = parsed;
+        }
+
+        return { data: parsed };
+      } catch {
+        return { data: responseBody };
+      }
+    }
+
+    if (!res.ok) {
+      const bodyStr = responseBody || '';
+      const shouldPause = await handleApiFailure(bodyStr, res.status, url, context, stepRunId, flowRunId, step);
+      if (shouldPause === 'paused') {
+        return { status: 'paused' };
+      }
+      return { error: { statusCode: res.status, body: bodyStr, url } };
+    }
+
+    return { data: null };
+  } catch (err: any) {
+    return { error: { message: err?.message || String(err), action, stack: err?.stack } };
+  }
+}
