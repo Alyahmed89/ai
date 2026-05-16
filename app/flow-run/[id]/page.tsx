@@ -425,6 +425,7 @@ export default function FlowRunPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [pendingUserMsg, setPendingUserMsg] = useState<string | null>(null)
+  const [pendingUserMsgTime, setPendingUserMsgTime] = useState<number | null>(null)
   const pendingUserMsgRef = useRef(pendingUserMsg)
   pendingUserMsgRef.current = pendingUserMsg
 
@@ -484,6 +485,7 @@ export default function FlowRunPage() {
         if (!found) return
       }
       setPendingUserMsg(null)
+      setPendingUserMsgTime(null)
     } catch (e) {
       console.error('Failed to fetch data', e)
       setLoadError(`Failed to fetch data: ${e instanceof Error ? e.message : 'Unknown error'}`)
@@ -881,7 +883,10 @@ export default function FlowRunPage() {
       }
       // Store the just-sent user message so it shows immediately in chat
       const sentMsg = inputs[allRequiredVars[0]] || ''
-      if (sentMsg) setPendingUserMsg(sentMsg)
+      if (sentMsg) {
+        setPendingUserMsg(sentMsg)
+        setPendingUserMsgTime(Date.now())
+      }
       setInputs({})
       setTimeout(fetchData, 500)
     } catch (e) {
@@ -1030,11 +1035,23 @@ export default function FlowRunPage() {
             {chatMessages.length === 0 && !transientStatus && (
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
-            {chatMessages.map((msg) => (
+            {chatMessages
+              .filter((m) => {
+                // When a message is pending hide step-runs created after send so
+                // the optimistic bubble appears as the most recent message.
+                if (!pendingUserMsgTime) return true
+                const step = steps.find((s) => s.id === m.id.replace(/-(resp|user)$/, ''))
+                return !step?.created_at || new Date(step.created_at).getTime() <= pendingUserMsgTime
+              })
+              .map((msg) => (
               <ChatBubble key={msg.id} msg={msg} />
             ))}
-            {/* Optimistic user bubble — only if the last real message is an assistant (avoids duplicate user bubbles) */}
-            {pendingUserMsg && chatMessages[chatMessages.length - 1]?.role === 'assistant' && (
+            {/* Optimistic user bubble — renders last, but only if the last visible message is an assistant */}
+            {pendingUserMsg && chatMessages.filter((m) => {
+              if (!pendingUserMsgTime) return true
+              const step = steps.find((s) => s.id === m.id.replace(/-(resp|user)$/, ''))
+              return !step?.created_at || new Date(step.created_at).getTime() <= pendingUserMsgTime
+            }).at(-1)?.role === 'assistant' && (
               <ChatBubble
                 key="pending-user"
                 msg={{ role: 'user', text: pendingUserMsg, data: {}, id: 'pending-user' }}
