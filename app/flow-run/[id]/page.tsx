@@ -424,6 +424,7 @@ export default function FlowRunPage() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
+  const [pendingUserMsg, setPendingUserMsg] = useState<string | null>(null)
 
   /* ── Fetch flow run + step runs + definitions ── */
   const fetchData = useCallback(async () => {
@@ -471,6 +472,7 @@ export default function FlowRunPage() {
       setLoadError(`Failed to fetch data: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
     setLoading(false)
+    setPendingUserMsg(null)
   }, [id])
 
   /* ── Poll events from /flow-runs/:id/events ── */
@@ -861,6 +863,9 @@ export default function FlowRunPage() {
           }),
         })
       }
+      // Store the just-sent user message so it shows immediately in chat
+      const sentMsg = inputs[allRequiredVars[0]] || ''
+      if (sentMsg) setPendingUserMsg(sentMsg)
       setInputs({})
       setTimeout(fetchData, 500)
     } catch (e) {
@@ -1012,6 +1017,13 @@ export default function FlowRunPage() {
             {chatMessages.map((msg) => (
               <ChatBubble key={msg.id} msg={msg} />
             ))}
+            {/* Optimistic user bubble — appears immediately on send, before backend confirms */}
+            {pendingUserMsg && (
+              <ChatBubble
+                key="pending-user"
+                msg={{ role: 'user', text: pendingUserMsg, data: {}, id: 'pending-user' }}
+              />
+            )}
             {/* Transient live status — appears while step executes, disappears on response */}
             {transientStatus && (
               <div className="flex justify-start">
