@@ -524,9 +524,15 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Re-run the paused step itself with the new user input.
-      // Do NOT advance to the next step by order_index.
-      currentStep = pausedStep;
+      // Advance directly to the next step by order_index.
+      // The paused step is already done — user provided the input.
+      const nextAfterPaused = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
+      if (!nextAfterPaused) {
+        console.log(`[engine] no step after order_index ${pausedStep.order_index}, completing flow`);
+        await updateFlowRun(flowRunId, { status: 'completed' });
+        return;
+      }
+      currentStep = nextAfterPaused;
       await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
     } else {
       // Fresh start
@@ -872,22 +878,41 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     schema: step.expected_response,
   });
 
-  // Skip LLM when the step has no input_ fields, no actions, AND no required
-  // output fields.  Such steps don't need AI output — they just advance.
+  // Skip LLM when:
+  // 1. All input_ fields in expected_response.required already have non-null
+  //    values in context (the user already provided them via resume), OR
+  // 2. The step has no input_ fields, no actions, AND no required output fields.
   let skipLlm = false;
-  const hasInputFields = Array.isArray(step.expected_response?.required) &&
-    step.expected_response.required.some((f: string) => f.startsWith('input_'));
-  const hasActions = Array.isArray(step.expected_response?.actions) &&
-    step.expected_response.actions.length > 0;
-  const hasOutputFields = Array.isArray(step.expected_response?.required) &&
-    step.expected_response.required.length > 0;
-  if (!hasInputFields && !hasActions && !hasOutputFields) {
-    skipLlm = true;
-    console.log(`[engine] step=${step.ref} has no input_/output fields and no actions, skipping LLM call`);
+  let skipReason = '';
+  const inputFields = Array.isArray(step.expected_response?.required)
+    ? step.expected_response.required.filter((f: string) => f.startsWith('input_'))
+    : [];
+  if (inputFields.length > 0) {
+    const allResolved = inputFields.every(
+      (f: string) => context[f] !== undefined && context[f] !== null && context[f] !== ''
+    );
+    if (allResolved) {
+      skipLlm = true;
+      skipReason = 'all_input_fields_already_resolved';
+      console.log(`[engine] step=${step.ref} all input_ fields already resolved in context, skipping LLM`);
+    }
+  }
+  if (!skipLlm) {
+    const hasActions = Array.isArray(step.expected_response?.actions) &&
+      step.expected_response.actions.length > 0;
+    const hasOutputFields = Array.isArray(step.expected_response?.required) &&
+      step.expected_response.required.length > 0;
+    if (inputFields.length === 0 && !hasActions && !hasOutputFields) {
+      skipLlm = true;
+      skipReason = 'no_input_output_fields_no_actions';
+      console.log(`[engine] step=${step.ref} has no input_/output fields and no actions, skipping LLM call`);
+    }
+  }
+  if (skipLlm) {
     await emitEvent(flowRunId, stepRunId, 'llm.skip', {
       step_id: step.id,
       step_ref: step.ref,
-      reason: 'no_input_output_fields_no_actions',
+      reason: skipReason,
     });
   }
 
@@ -901,8 +926,18 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     let llmError: string | null = null;
     try {
       if (skipLlm) {
-        // Generate a default empty response — zod passthrough will accept it
+        // Build a synthetic response: use context values for input_ fields,
+        // empty strings for other required fields.
         aiResponse = {};
+        if (Array.isArray(step.expected_response?.required)) {
+          for (const field of step.expected_response.required) {
+            if (field.startsWith('input_') && context[field] !== undefined) {
+              aiResponse[field] = context[field];
+            } else {
+              aiResponse[field] = '';
+            }
+          }
+        }
       } else {
         aiResponse = await callLlm(null, userPrompt);
       }
@@ -1435,6 +1470,20 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const resultData: Record<string, any> = {};
     if (nextStepIdFromOutput && typeof nextStepIdFromOutput === 'string' && nextStepIdFromOutput.trim() !== '') {
       resultData.next_step_id = nextStepIdFromOutput;
+    }
+
+    // Merge in all current flow_run variables so resume-stored values
+    // (e.g. input_user_prompt) appear in resolved_variables of the step run.
+    const { data: allFlowVars } = await getSupabase()
+      .from('variables')
+      .select('key, value')
+      .eq('flow_run_id', flowRunId);
+    if (allFlowVars) {
+      for (const v of allFlowVars) {
+        if (!(v.key in context)) {
+          context[v.key] = v.value;
+        }
+      }
     }
 
     await updateStepRun(stepRunId, {
