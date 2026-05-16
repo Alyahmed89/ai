@@ -201,7 +201,7 @@ async function callProCheckOnOutput(
       prologReachable = false;
     }
   } catch (err: any) {
-    console.warn('[engine] pro_check call failed:', err);
+    console.warn('[engine] pro_check call failed:', err?.message || err, 'status:', (err as any)?.status);
     prologReachable = false;
     // Store error in step run result
     const resultWithError = {
@@ -507,6 +507,17 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           }));
           if (inserts.length > 0) {
             await insertVariable(inserts);
+          }
+          if (!Object.keys(flatten(parsed)).includes(varKey)) {
+            await insertVariable({
+              id: randomUUID(),
+              flow_run_id: flowRunId,
+              step_run_id: stepRunId,
+              key: varKey,
+              value: String(Object.values(flatten(parsed))[0] ?? ''),
+              scope: 'flow_run',
+              created_at: new Date().toISOString(),
+            });
           }
         } else {
           // Scalar mode: use the inferred varKey from the step's expected_response
