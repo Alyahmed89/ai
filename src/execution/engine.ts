@@ -872,6 +872,23 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     schema: step.expected_response,
   });
 
+  // Skip LLM for steps that have no input_ fields and no actions.
+  // Such steps don't need AI output — they just resolve variables and advance.
+  let skipLlm = false;
+  const hasInputFields = Array.isArray(step.expected_response?.required) &&
+    step.expected_response.required.some((f: string) => f.startsWith('input_'));
+  const hasActions = Array.isArray(step.expected_response?.actions) &&
+    step.expected_response.actions.length > 0;
+  if (!hasInputFields && !hasActions) {
+    skipLlm = true;
+    console.log(`[engine] step=${step.ref} has no input_ fields and no actions, skipping LLM call`);
+    await emitEvent(flowRunId, stepRunId, 'llm.skip', {
+      step_id: step.id,
+      step_ref: step.ref,
+      reason: 'no_input_fields_no_actions',
+    });
+  }
+
   // Wrap AI call + action execution + post-processing in a timeout race
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error('Step execution timed out after 60s')), STEP_TIMEOUT_MS);
@@ -881,7 +898,12 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     let aiResponse: any;
     let llmError: string | null = null;
     try {
-      aiResponse = await callLlm(null, userPrompt);
+      if (skipLlm) {
+        // Generate a default empty response — zod passthrough will accept it
+        aiResponse = {};
+      } else {
+        aiResponse = await callLlm(null, userPrompt);
+      }
       await emitEvent(flowRunId, stepRunId, 'llm.response', {
         step_id: step.id,
         step_ref: step.ref,
@@ -1813,9 +1835,9 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
     Object.assign(context, flowRun.input_variables);
   }
 
-  // Fetch step_runs for this flow run to determine execution order.
-  // We need this so variables set by later step_runs take priority over
-  // earlier ones when the same key is used across multiple steps.
+  // Fetch step_runs for this flow run so we know which step runs exist.
+  // Variables are prioritized by created_at (most recent wins), not by
+  // step run order, so resume-stored values always take precedence.
   const { data: stepRuns } = await getSupabase()
     .from('step_runs')
     .select('id, created_at')
@@ -1857,14 +1879,12 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
       let chosen = null;
 
       if (stepRunEntries.length > 0) {
-        // Sort by step_run execution order (descending) so the latest step_run wins.
-        // Break ties by variable created_at (descending).
-        stepRunEntries.sort((a, b) => {
-          const orderA = stepRunOrder.get(a.step_run_id) ?? -1;
-          const orderB = stepRunOrder.get(b.step_run_id) ?? -1;
-          if (orderB !== orderA) return orderB - orderA;
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        });
+        // Sort by created_at (descending) so the most recently stored value wins.
+        // This ensures resume-stored variables (attached to the paused step_run_id)
+        // are picked up even when a newer step_run was created during re-run.
+        stepRunEntries.sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
         chosen = stepRunEntries[0];
       } else if (resumeEntries.length > 0) {
         // No step-run-scoped entry — use the most recent resume artifact
