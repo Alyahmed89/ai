@@ -172,7 +172,7 @@ async function callProCheckOnOutput(
     },
     previous_step_output,
     expected_response: step?.expected_response || null,
-    resolved_variables: stepRun.result?.resolved_variables || null,
+    resolved_variables: (stepRun as any).resolved_variables || stepRun.result?.resolved_variables || null,
     step_title: step?.title || null,
     step_order: step?.order_index ?? null,
   };
