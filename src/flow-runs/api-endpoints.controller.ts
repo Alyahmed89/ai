@@ -11,30 +11,25 @@ export class ApiEndpointsController {
   }
 
   @Post()
-  async create(@Body() body: { name: string; url: string; method: string; headers?: any; sample_request?: any; sample_response?: any }) {
+  async create(@Body() body: { name?: string; url: string; method: string; headers?: any; description?: string; sample_request?: any; sample_response?: any }) {
     const { data } = await getSupabase().from('endpoint_registry').insert({
-      id: crypto.randomUUID(),
-      name: body.name,
+      id: body.name || crypto.randomUUID(),
       url: body.url,
       method: body.method.toUpperCase(),
       headers: body.headers || null,
-      sample_request: body.sample_request || null,
-      sample_response: body.sample_response || null,
+      description: body.description || (body.sample_request || body.sample_response ? JSON.stringify({ sample_request: body.sample_request, sample_response: body.sample_response }) : null),
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     }).select().single();
     return data;
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: { name?: string; url?: string; method?: string; headers?: any; sample_request?: any; sample_response?: any }) {
-    const updates: any = { updated_at: new Date().toISOString() };
-    if (body.name !== undefined) updates.name = body.name;
+  async update(@Param('id') id: string, @Body() body: { url?: string; method?: string; headers?: any; description?: string }) {
+    const updates: any = {};
     if (body.url !== undefined) updates.url = body.url;
     if (body.method !== undefined) updates.method = body.method.toUpperCase();
     if (body.headers !== undefined) updates.headers = body.headers;
-    if (body.sample_request !== undefined) updates.sample_request = body.sample_request;
-    if (body.sample_response !== undefined) updates.sample_response = body.sample_response;
+    if (body.description !== undefined) updates.description = body.description;
     const { data } = await getSupabase().from('endpoint_registry').update(updates).eq('id', id).select().single();
     return data;
   }

@@ -17,7 +17,6 @@ export class ApiFlowsController {
       name: body.title,
       description: body.description || null,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     }).select().single();
     return data;
   }

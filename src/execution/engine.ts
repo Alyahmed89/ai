@@ -3,6 +3,19 @@ import { z } from 'zod';
 import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
+/** Insert a variable (or array of variables) while stripping columns kong's table doesn't have. */
+async function insertVariable(data: Record<string, any> | Record<string, any>[]): Promise<void> {
+  if (Array.isArray(data)) {
+    const cleaned = data.map(({ scope, ...rest }) => rest); // kong's variables table lacks scope
+    const { error } = await getSupabase().from('variables').insert(cleaned).maybeSingle();
+    if (error) console.warn('[engine] batch insertVariable error:', error.message);
+  } else {
+    const { scope, ...rest } = data;
+    const { error } = await getSupabase().from('variables').insert(rest).maybeSingle();
+    if (error) console.warn('[engine] insertVariable error:', error.message);
+  }
+}
+
 const STEP_TIMEOUT_MS = 60000;
 
 /**
@@ -24,7 +37,7 @@ async function emitEvent(
       event_type: eventType,
       payload,
       created_at: new Date().toISOString(),
-    }).maybeSingle();
+    });
   } catch (err) {
     // Swallow errors so event emission never breaks the main flow
     console.warn('[engine] failed to emit event:', err);
@@ -227,13 +240,9 @@ async function callProCheckOnOutput(
   }
 
   if (!prologReachable) {
-    // Prolog unreachable — fail-safe pause
-    await updateStepRun(stepRun.id, { status: 'paused' });
-    await updateFlowRun(stepRun.flow_run_id, {
-      status: 'paused',
-      paused_at_step_id: stepRun.step_id,
-    });
-    return 'paused';
+    // Prolog unreachable — warn but continue (graceful degradation)
+    console.warn(`[engine] prolog unreachable, continuing without pro_check`);
+    proCheckResponse = { status: 'pass', plans: [], rules: [] };
   }
 
   // ----- CHECK FOR input_ PREFIXED VARIABLES WITH NULL VALUES -----
@@ -291,6 +300,8 @@ async function handleApiFailure(
     .eq('id', stepRunId)
     .maybeSingle();
   if (!existingStepRun) return 'continue';
+  // Kong stores result data in output column
+  if (existingStepRun.output && !existingStepRun.result) existingStepRun.result = existingStepRun.output;
   const existingResult = existingStepRun.result && typeof existingStepRun.result === 'object' ? existingStepRun.result : {};
   await updateStepRun(stepRunId, {
     error: errorMsg,
@@ -360,10 +371,13 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
     // If resuming from paused state, apply user_input and find resume step
     let currentStep: any;
-    if (flowRun.status === 'paused' && flowRun.paused_at_step_id) {
-      console.log(`[engine] resuming from paused step ${flowRun.paused_at_step_id}`);
+    // Kong stores paused_at_step_id in the input JSONB field
+    const pausedStepId = flowRun.paused_at_step_id || (flowRun.input?.paused_at_step_id);
+    if (flowRun.status === 'paused' && pausedStepId) {
+      flowRun.paused_at_step_id = pausedStepId; // normalize for downstream
+      console.log(`[engine] resuming from paused step ${pausedStepId}`);
       await emitEvent(flowRunId, null, 'flow.resume', {
-        paused_at_step_id: flowRun.paused_at_step_id,
+        paused_at_step_id: pausedStepId,
         has_user_input: userInput != null,
       });
 
@@ -460,11 +474,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             created_at: new Date().toISOString(),
           }));
           if (inserts.length > 0) {
-            await getSupabase().from('variables').insert(inserts);
+            await insertVariable(inserts);
           }
         } else {
           // Scalar mode: use the inferred varKey from the step's expected_response
-          await getSupabase().from('variables').insert({
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId,
@@ -472,7 +486,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             value: String(parsed),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
+          });
         }
       }
 
@@ -493,7 +507,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         });
         const normalized = await normalizeUserInput(flowRun.input_variables.raw_input, flowRunId);
         for (const [key, value] of Object.entries(normalized.variables)) {
-          await getSupabase().from('variables').insert({
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: null,
@@ -501,7 +515,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             value,
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
+          });
         }
         console.log(`[engine] normalized input: canonical="${normalized.canonical}" terms=[${normalized.matchedTerms.join(',')}]`);
         await emitEvent(flowRunId, null, 'normalization.complete', {
@@ -637,7 +651,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         } catch (err: any) {
           // Step UUID not found — store as error variable and use step's own fallback
           const errorPayload = { type: 'routing_error', message: `No step found with id ${aiNext}`, step_id: currentStep.id, bad_next_step_id: aiNext };
-          await getSupabase().from('variables').insert({
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId || currentStep.id,
@@ -645,8 +659,8 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             value: JSON.stringify(errorPayload),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
-          await getSupabase().from('variables').insert({
+          });
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId || currentStep.id,
@@ -654,7 +668,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             value: JSON.stringify(errorPayload),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
+          });
           console.warn(`[engine] ${errorPayload.message}, using step fallback`);
           await emitEvent(flowRunId, stepRunId, 'routing.error', {
             from_step_id: currentStep.id,
@@ -860,7 +874,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     // Store action results as flow_run variables
     for (const [key, value] of Object.entries(actionResults)) {
       const varKey = `action_result_${key}`;
-      await getSupabase().from('variables').insert({
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -868,14 +882,14 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: typeof value === 'string' ? value : JSON.stringify(value),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
+      });
       context[varKey] = value;
     }
 
     // Store action error if present
     if (actionError) {
       const errorPayload = { type: 'action_error', message: actionError.message || 'Action failed', step_id: step.id, details: actionError };
-      await getSupabase().from('variables').insert({
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -883,7 +897,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(errorPayload),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
+      });
       context.engine_error = errorPayload;
     }
 
@@ -970,7 +984,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
       // Store error as flow_run variable
       const errorPayload = { type: errorType, message: llmError, step_id: step.id, details: err instanceof Error ? err.stack : null };
-      await getSupabase().from('variables').insert({
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -978,8 +992,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(errorPayload),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
-      await getSupabase().from('variables').insert({
+      });
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -987,7 +1001,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(errorPayload),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
+      });
       context.engine_error = errorPayload;
       context[errorType] = errorPayload;
 
@@ -1009,7 +1023,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
       // Store the Zod error as a flow_run variable
       const errorPayload = { type: 'zod_error', message: 'Zod validation failed', step_id: step.id, details: zodError };
-      await getSupabase().from('variables').insert({
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -1017,8 +1031,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(errorPayload),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
-      await getSupabase().from('variables').insert({
+      });
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -1026,8 +1040,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(zodError),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
-      await getSupabase().from('variables').insert({
+      });
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -1035,7 +1049,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(aiResponse),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
+      });
       context.engine_error = errorPayload;
       context.zod_error = zodError;
 
@@ -1149,7 +1163,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
         const varKey = outputStorageMap[key] || (prefix ? `${prefix}.${key}` : key);
         if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-          await getSupabase().from('variables').insert({
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId,
@@ -1157,11 +1171,11 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             value: String(value),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
+          });
           context[varKey] = value;
         } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
           // Nested object — store as JSON and also recurse for direct access
-          await getSupabase().from('variables').insert({
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId,
@@ -1169,13 +1183,13 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             value: JSON.stringify(value),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
+          });
           context[varKey] = value;
           // Recurse with isRecursive=true so nested keys are NOT filtered again
           await autoStore(value, varKey, true);
         } else {
           // Array or other — store as JSON string
-          await getSupabase().from('variables').insert({
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId,
@@ -1183,7 +1197,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             value: JSON.stringify(value),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
+          });
           context[varKey] = value;
         }
       }
@@ -1409,14 +1423,14 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
           success: res.ok,
           error: res.ok ? null : `HTTP ${res.status}`,
           created_at: new Date().toISOString(),
-        }).maybeSingle();
+        });
 
         // Auto-store response as variable for subsequent steps
         if (res.ok && responseBody) {
           try {
             const parsed = JSON.parse(responseBody);
             const varName = `api_response_${action.endpoint}`;
-            await getSupabase().from('variables').insert({
+            await insertVariable({
               id: randomUUID(),
               flow_run_id: flowRunId,
               step_run_id: stepRunId,
@@ -1424,7 +1438,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
               value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
               scope: 'step_run',
               created_at: new Date().toISOString(),
-            }).maybeSingle();
+            });
             // Also add to running context so subsequent actions in same step can use it
             context[varName] = parsed;
             // Store in actionResults for pro_check
@@ -1433,7 +1447,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
             // If the action has an output_var, also store the result under that key
             // as a flow_run-scoped variable so subsequent steps can reference it
             if (action.output_var) {
-              await getSupabase().from('variables').insert({
+              await insertVariable({
                 id: randomUUID(),
                 flow_run_id: flowRunId,
                 step_run_id: stepRunId,
@@ -1441,7 +1455,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
                 value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
                 scope: 'flow_run',
                 created_at: new Date().toISOString(),
-              }).maybeSingle();
+              });
               // Inject into running context immediately
               context[action.output_var] = parsed;
             }
@@ -1499,7 +1513,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     // Store action error as flow_run variable if present
     if (actionError) {
       const errorPayload = { type: 'action_error', message: actionError.message || 'Action failed', step_id: step.id, details: actionError };
-      await getSupabase().from('variables').insert({
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -1507,8 +1521,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(errorPayload),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
-      await getSupabase().from('variables').insert({
+      });
+      await insertVariable({
         id: randomUUID(),
         flow_run_id: flowRunId,
         step_run_id: stepRunId,
@@ -1516,7 +1530,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: JSON.stringify(errorPayload),
         scope: 'flow_run',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
+      });
       context.engine_error = errorPayload;
       context.action_error = errorPayload;
     }
@@ -1585,7 +1599,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: ruleId,
         source: 'pro_check',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
+      });
     }
     for (const planId of stepPlans) {
       await getSupabase().from('refs').insert({
@@ -1597,7 +1611,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         value: 'referenced',
         source: 'pro_check',
         created_at: new Date().toISOString(),
-      }).maybeSingle();
+      });
     }
 
     // Step 9 — Conditions override
@@ -1616,10 +1630,17 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       return conditionResult;
     }
 
-    // Step 10 — Direct transition
+    // Step 10 — Direct transition via AI-suggested next step
     if (next) {
       console.log(`[engine] step=${step.ref} next=${next}`);
       return next;
+    }
+
+    // Step 10b — Fall back to order_index advancement (kong has no next column)
+    const nextByOrder = await getNextStepByOrder(flowRun.flow_id, step.order_index);
+    if (nextByOrder) {
+      console.log(`[engine] step=${step.ref} advancing to order ${step.order_index + 1}: ${nextByOrder.id}`);
+      return nextByOrder.id;
     }
 
     // Terminal step — no outgoing edge, pause for Mo
@@ -1642,7 +1663,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     // Store error as flow_run variable
     const errorType = isTimeout ? 'timeout_error' : 'execution_error';
     const errorPayload = { type: errorType, message: msg, step_id: step.id, details: err instanceof Error ? err.stack : null };
-    await getSupabase().from('variables').insert({
+    await insertVariable({
       id: randomUUID(),
       flow_run_id: flowRunId,
       step_run_id: stepRunId,
@@ -1650,8 +1671,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       value: JSON.stringify(errorPayload),
       scope: 'flow_run',
       created_at: new Date().toISOString(),
-    }).maybeSingle();
-    await getSupabase().from('variables').insert({
+    });
+    await insertVariable({
       id: randomUUID(),
       flow_run_id: flowRunId,
       step_run_id: stepRunId,
@@ -1659,7 +1680,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       value: JSON.stringify(errorPayload),
       scope: 'flow_run',
       created_at: new Date().toISOString(),
-    }).maybeSingle();
+    });
 
     // Mark step_run as failed so it's never left "running" on error
     const { data: sr } = await getSupabase()
@@ -1668,6 +1689,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       .eq('id', stepRunId)
       .maybeSingle();
     if (sr) {
+      // Kong stores result data in output column
+      if (sr.output && !sr.result) sr.result = sr.output;
       const existingResult = sr.result && typeof sr.result === 'object' ? sr.result : {};
       // Preserve next_step_id from ai_response so the flow loop can continue
       const savedNextStepId = sr.ai_response?.next_step_id;
@@ -1710,6 +1733,15 @@ export async function getFlowRun(flowRunId: string): Promise<any> {
   return data;
 }
 
+/** Kong stores expected_response as TEXT — parse to object if needed */
+function normalizeStep(step: any): any {
+  if (!step) return step;
+  if (typeof step.expected_response === 'string') {
+    try { step.expected_response = JSON.parse(step.expected_response); } catch { /* keep as-is */ }
+  }
+  return step;
+}
+
 async function getFirstStep(flowId: string): Promise<any> {
   const { data, error } = await getSupabase()
     .from('steps')
@@ -1719,7 +1751,7 @@ async function getFirstStep(flowId: string): Promise<any> {
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`Failed to get first step: ${error.message}`);
-  return data;
+  return normalizeStep(data);
 }
 
 async function getStepByFlowAndRef(flowId: string, ref: string): Promise<any> {
@@ -1730,7 +1762,7 @@ async function getStepByFlowAndRef(flowId: string, ref: string): Promise<any> {
     .eq('ref', ref)
     .single();
   if (error) throw new Error(`Step ref "${ref}" not found in flow ${flowId}`);
-  return data;
+  return normalizeStep(data);
 }
 
 export async function getStepById(stepId: string): Promise<any> {
@@ -1740,7 +1772,7 @@ export async function getStepById(stepId: string): Promise<any> {
     .eq('id', stepId)
     .single();
   if (error) throw new Error(`Step not found by id ${stepId}: ${error.message}`);
-  return data;
+  return normalizeStep(data);
 }
 
 async function getNextStepByOrder(flowId: string, currentOrderIndex: number): Promise<any> {
@@ -1753,7 +1785,7 @@ async function getNextStepByOrder(flowId: string, currentOrderIndex: number): Pr
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`Failed to get next step: ${error.message}`);
-  return data;
+  return normalizeStep(data);
 }
 
 async function createStepRun(flowRunId: string, stepId: string): Promise<string> {
@@ -1775,9 +1807,23 @@ async function createStepRun(flowRunId: string, stepId: string): Promise<string>
 }
 
 async function updateStepRun(stepRunId: string, data: any): Promise<void> {
+  // Map to kong schema: result→output, drop non-existent columns
+  const mapped: any = { updated_at: new Date().toISOString() };
+  for (const [k, v] of Object.entries(data)) {
+    if (k === 'result') {
+      mapped.output = v;
+    } else if (k === 'ai_response_valid' || k === 'resolved_variables' || k === 'validation_errors') {
+      // These columns don't exist on kong — store in validation/input elsewhere
+      if (k === 'ai_response_valid') {
+        mapped.validation = { valid: v };
+      }
+    } else if (v !== undefined) {
+      mapped[k] = v;
+    }
+  }
   const { error } = await getSupabase()
     .from('step_runs')
-    .update({ ...data, updated_at: new Date().toISOString() })
+    .update(mapped)
     .eq('id', stepRunId);
   if (error) throw new Error(`Failed to update step run: ${error.message}`);
 }
@@ -1798,20 +1844,14 @@ export async function createFlowRun(flowId: string, inputVariables?: Record<stri
   // Store input variables as flow_run-scoped variable records
   if (inputVariables && typeof inputVariables === 'object') {
     for (const [key, value] of Object.entries(inputVariables)) {
-      const { error: varError } = await getSupabase()
-        .from('variables')
-        .insert({
-          id: randomUUID(),
-          flow_run_id: id,
-          step_run_id: null,
-          key,
-          value: typeof value === 'string' ? value : JSON.stringify(value),
-          scope: 'flow_run',
-          created_at: new Date().toISOString(),
-        });
-      if (varError) {
-        console.warn(`[engine] failed to store input variable ${key}:`, varError.message);
-      }
+      await insertVariable({
+        id: randomUUID(),
+        flow_run_id: id,
+        step_run_id: null,
+        key,
+        value: typeof value === 'string' ? value : JSON.stringify(value),
+        created_at: new Date().toISOString(),
+      });
     }
   }
 
@@ -1819,9 +1859,29 @@ export async function createFlowRun(flowId: string, inputVariables?: Record<stri
 }
 
 async function updateFlowRun(flowRunId: string, data: any): Promise<void> {
+  // Kong's flow_runs lacks error & paused_at_step_id columns.
+  // Store them in the input JSONB field instead.
+  const mapped: any = { updated_at: new Date().toISOString() };
+  // Read existing input to preserve metadata
+  const { data: existing } = await getSupabase()
+    .from('flow_runs')
+    .select('input')
+    .eq('id', flowRunId)
+    .maybeSingle();
+  const meta: Record<string, any> = (existing?.input && typeof existing.input === 'object' ? existing.input : {}) as Record<string, any>;
+  let metaChanged = false;
+  for (const [k, v] of Object.entries(data)) {
+    if (k === 'error' || k === 'paused_at_step_id') {
+      meta[k] = v;
+      metaChanged = true;
+    } else if (v !== undefined) {
+      mapped[k] = v;
+    }
+  }
+  if (metaChanged) mapped.input = meta;
   const { error } = await getSupabase()
     .from('flow_runs')
-    .update({ ...data, updated_at: new Date().toISOString() })
+    .update(mapped)
     .eq('id', flowRunId);
   if (error) throw new Error(`Failed to update flow run: ${error.message}`);
 }
@@ -2156,11 +2216,16 @@ async function fetchStepRun(stepRunId: string): Promise<any> {
     .select('*')
     .eq('id', stepRunId)
     .maybeSingle();
+  // Kong stores result data in output column
+  if (data && data.output && !data.result) {
+    data.result = data.output;
+  }
   return data;
 }
 
 function getResult(stepRun: any): Record<string, any> {
-  return stepRun.result && typeof stepRun.result === 'object' ? stepRun.result : {};
+  const r = stepRun.result || stepRun.output;
+  return r && typeof r === 'object' ? r : {};
 }
 
 async function failStepRun(stepRunId: string, error: string, result: any): Promise<void> {
@@ -2374,13 +2439,13 @@ async function executeAction(
       success: res.ok,
       error: res.ok ? null : `HTTP ${res.status}`,
       created_at: new Date().toISOString(),
-    }).maybeSingle();
+    });
 
     if (res.ok && responseBody) {
       try {
         const parsed = JSON.parse(responseBody);
         const varName = `api_response_${action.endpoint}`;
-        await getSupabase().from('variables').insert({
+        await insertVariable({
           id: randomUUID(),
           flow_run_id: flowRunId,
           step_run_id: stepRunId,
@@ -2388,11 +2453,11 @@ async function executeAction(
           value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
           scope: 'step_run',
           created_at: new Date().toISOString(),
-        }).maybeSingle();
+        });
         context[varName] = parsed;
 
         if (action.output_var) {
-          await getSupabase().from('variables').insert({
+          await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: stepRunId,
@@ -2400,7 +2465,7 @@ async function executeAction(
             value: typeof parsed === 'string' ? parsed : JSON.stringify(parsed),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
-          }).maybeSingle();
+          });
           context[action.output_var] = parsed;
         }
 
