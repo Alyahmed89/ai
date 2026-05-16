@@ -259,6 +259,18 @@ async function callProCheckOnOutput(
     return 'paused';
   }
 
+  // ----- ROUTING VIA PRO_CHECK -----
+  // If pro_check returned a next_step_id, store it on the step run result
+  // so the main loop routes there (pro_check owns all routing).
+  if (proCheckResponse.next_step_id && typeof proCheckResponse.next_step_id === 'string' && proCheckResponse.next_step_id.trim() !== '') {
+    const resultWithProCheckNext = {
+      ...stepRun.result,
+      procheck_next_step_id: proCheckResponse.next_step_id,
+    };
+    await updateStepRun(stepRun.id, { result: resultWithProCheckNext });
+    stepRun.result = resultWithProCheckNext;
+  }
+
   return 'continue';
 }
 
@@ -621,7 +633,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
 
       if (!stepResult) break;
 
-      // Follow the AI's next_step_id if present
+      // Fetch the step run to read routing signals
       const { data: stepRun } = await getSupabase()
         .from('step_runs')
         .select('id, result, step_id')
@@ -630,8 +642,33 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const aiNext = (stepRun?.result as any)?.next_step_id;
       const stepRunId = stepRun?.id;
+
+      // Pro_check routing takes priority — if pro_check specified a next step, use it
+      const procheckNext = (stepRun?.result as any)?.procheck_next_step_id;
+      if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== stepRun?.step_id) {
+        try {
+          const next = await getStepById(procheckNext);
+          if (next) {
+            visited.delete(procheckNext);
+            await emitEvent(flowRunId, stepRunId, 'routing.procheck', {
+              from_step_id: currentStep.id,
+              from_step_ref: currentStep.ref,
+              to_step_id: procheckNext,
+              to_step_ref: next.ref,
+              to_step_title: next.title,
+              reason: 'procheck_next_step_id',
+            });
+            currentStep = next;
+            continue;
+          }
+        } catch (err: any) {
+          console.warn(`[engine] procheck_next_step_id ${procheckNext} not found, falling through to AI routing`);
+        }
+      }
+
+      // Follow the AI's next_step_id if present
+      const aiNext = (stepRun?.result as any)?.next_step_id;
       if (aiNext && typeof aiNext === 'string' && aiNext.length > 0 && aiNext !== stepRun?.step_id) {
         try {
           const next = await getStepById(aiNext);
