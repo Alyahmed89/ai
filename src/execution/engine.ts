@@ -547,6 +547,8 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         await updateFlowRun(flowRunId, { status: 'completed' });
         return;
       }
+      // Small delay to ensure DB write propagates before buildContext reads
+      await new Promise(resolve => setTimeout(resolve, 500));
       currentStep = nextAfterPaused;
       await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
     } else {
