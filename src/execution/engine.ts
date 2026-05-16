@@ -463,80 +463,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Apply user_input as flow_run-scoped variables associated with the paused step's step_run.
-      // When the frontend sends an object, each key is stored as its own variable,
-      // so the step can reference any of them by name (e.g. [[var:input_user_confirmation]]).
+      // Store user input as flow_run.input so step actions can handle
+      // variable storage via API calls instead of engine-internal logic.
       if (userInput != null) {
-        // Normalize: handle plain string, JSON string, or JSON object
-        let parsed = userInput;
-        if (typeof parsed === 'string') {
-          try { parsed = JSON.parse(parsed); } catch {}
-        }
-
-        // Find the step_run for the paused step so the resume value is
-        // associated with that step_run, ensuring proper step_run scoping.
-        const { data: pausedStepRun } = await getSupabase()
-          .from('step_runs')
-          .select('id')
-          .eq('flow_run_id', flowRunId)
-          .eq('step_id', flowRun.paused_at_step_id)
-          .order('created_at', { ascending: false })
-          .maybeSingle();
-
-        const stepRunId = pausedStepRun?.id ?? null;
-
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          // Object mode: flatten nested keys with dot notation so that
-          // { memory: { input_user_input: "hi" } } becomes
-          // key="memory.input_user_input", value="hi".
-          // This matches what resolveVariables() expects for [[var:memory.input_user_input]].
-          const flatten = (obj: Record<string, any>, prefix = ''): Record<string, string> => {
-            const result: Record<string, string> = {};
-            for (const [k, v] of Object.entries(obj)) {
-              const flatKey = prefix ? `${prefix}.${k}` : k;
-              if (v && typeof v === 'object' && !Array.isArray(v)) {
-                Object.assign(result, flatten(v, flatKey));
-              } else {
-                result[flatKey] = String(v ?? '');
-              }
-            }
-            return result;
-          };
-          const inserts = Object.entries(flatten(parsed)).map(([key, val]) => ({
-            id: randomUUID(),
-            flow_run_id: flowRunId,
-            step_run_id: stepRunId,
-            key,
-            value: val,
-            scope: 'flow_run',
-            created_at: new Date().toISOString(),
-          }));
-          if (inserts.length > 0) {
-            await insertVariable(inserts);
-          }
-          if (!Object.keys(flatten(parsed)).includes(varKey)) {
-            await insertVariable({
-              id: randomUUID(),
-              flow_run_id: flowRunId,
-              step_run_id: stepRunId,
-              key: varKey,
-              value: String(Object.values(flatten(parsed))[0] ?? ''),
-              scope: 'flow_run',
-              created_at: new Date().toISOString(),
-            });
-          }
-        } else {
-          // Scalar mode: use the inferred varKey from the step's expected_response
-          await insertVariable({
-            id: randomUUID(),
-            flow_run_id: flowRunId,
-            step_run_id: stepRunId,
-            key: varKey,
-            value: String(parsed),
-            scope: 'flow_run',
-            created_at: new Date().toISOString(),
-          });
-        }
+        const currentInput = flowRun.input && typeof flowRun.input === 'object' ? flowRun.input : {};
+        await updateFlowRun(flowRunId, { input: { ...currentInput, user_input: userInput } });
       }
 
       // Advance directly to the next step by order_index.
