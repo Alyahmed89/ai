@@ -391,10 +391,8 @@ function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any
     }
   }
 
-  // Use passthrough() when additionalProperties is true, so extra fields are accepted
-  const usePassthrough = stepExpectedResponse.additionalProperties === true;
   const schema = z.object(shape);
-  return usePassthrough ? schema.passthrough() : schema;
+  return schema.passthrough();
 }
 
 export async function runFlow(flowRunId: string, userInput?: Record<string, any>): Promise<void> {
