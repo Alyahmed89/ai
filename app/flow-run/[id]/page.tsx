@@ -1041,7 +1041,8 @@ export default function FlowRunPage() {
                 // the optimistic bubble appears as the most recent message.
                 if (!pendingUserMsgTime) return true
                 const step = steps.find((s) => s.id === m.id.replace(/-(resp|user)$/, ''))
-                return !(step as Record<string, unknown>)?.created_at || new Date((step as Record<string, unknown>).created_at as string).getTime() <= pendingUserMsgTime
+                const createdAt = (step as unknown as Record<string, unknown>)?.created_at as string | undefined
+                return !createdAt || new Date(createdAt).getTime() <= pendingUserMsgTime
               })
               .map((msg) => (
               <ChatBubble key={msg.id} msg={msg} />
@@ -1050,7 +1051,8 @@ export default function FlowRunPage() {
             {pendingUserMsg && chatMessages.filter((m) => {
               if (!pendingUserMsgTime) return true
               const step = steps.find((s) => s.id === m.id.replace(/-(resp|user)$/, ''))
-              return !(step as Record<string, unknown>)?.created_at || new Date((step as Record<string, unknown>).created_at as string).getTime() <= pendingUserMsgTime
+              const createdAt = (step as unknown as Record<string, unknown>)?.created_at as string | undefined
+              return !createdAt || new Date(createdAt).getTime() <= pendingUserMsgTime
             }).at(-1)?.role === 'assistant' && (
               <ChatBubble
                 key="pending-user"
