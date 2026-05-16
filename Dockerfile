@@ -12,6 +12,9 @@ RUN npm install
 
 COPY . .
 
+ARG CACHEBUST=1
+RUN echo "$CACHEBUST"
+
 RUN npm run build
 
 EXPOSE 9090
