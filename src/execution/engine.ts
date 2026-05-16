@@ -347,6 +347,9 @@ async function handleApiFailure(
   const plans: string[] = [];
   if (context.plan_id) plans.push(context.plan_id);
 
+  // Attach resolved_variables since it's not persisted in DB
+  (existingStepRun as any).resolved_variables = context;
+
   // Let pro_check decide if the step should pause or fail
   return callProCheckOnOutput(existingStepRun, apiError, rules, plans);
 }
@@ -1001,6 +1004,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         const rules: string[] = [];
         const plans: string[] = [];
         if (context.plan_id) plans.push(context.plan_id);
+        // Attach resolved_variables since it's not persisted in DB
+        (stepRunForProCheck as any).resolved_variables = context;
         const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, zodFailureOutput, rules, plans);
         if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
       }
@@ -1429,6 +1434,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       const rules: string[] = [];
       const plans: string[] = [];
       if (context.plan_id) plans.push(context.plan_id);
+      // Attach resolved_variables since it's not persisted in DB
+      (stepRunForProCheck as any).resolved_variables = context;
       const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, mergedOutput, rules, plans);
       if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
     }
