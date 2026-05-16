@@ -1879,12 +1879,15 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
       let chosen = null;
 
       if (stepRunEntries.length > 0) {
-        // Sort by created_at (descending) so the most recently stored value wins.
-        // This ensures resume-stored variables (attached to the paused step_run_id)
-        // are picked up even when a newer step_run was created during re-run.
-        stepRunEntries.sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
+        // Sort: non-null values first, then by created_at descending.
+        // This ensures resume-stored values (user input, non-null) win over
+        // LLM-produced nulls even when the LLM null was stored more recently.
+        stepRunEntries.sort((a, b) => {
+          const aVal = a.value === 'null' || a.value === null || a.value === undefined ? 0 : 1;
+          const bVal = b.value === 'null' || b.value === null || b.value === undefined ? 0 : 1;
+          if (bVal !== aVal) return bVal - aVal;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
         chosen = stepRunEntries[0];
       } else if (resumeEntries.length > 0) {
         // No step-run-scoped entry — use the most recent resume artifact
