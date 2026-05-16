@@ -684,8 +684,17 @@ export default function FlowRunPage() {
       let data: Record<string, unknown> = {}
       if (s.ai_response) {
         if (typeof s.ai_response === 'string') {
-          assistantMsg = s.ai_response
-          data = { response: s.ai_response }
+          // Try parsing as JSON — if it parses, extract only chat_message
+          try {
+            const parsed = JSON.parse(s.ai_response) as Record<string, unknown>
+            assistantMsg = (parsed.chat_message as string) || ''
+            data = { ...parsed }
+            delete data.chat_message
+          } catch {
+            // Not JSON — use as plain text
+            assistantMsg = s.ai_response
+            data = { response: s.ai_response }
+          }
         } else if (typeof s.ai_response === 'object' && s.ai_response !== null) {
           const resp = s.ai_response as Record<string, unknown>
           assistantMsg = (resp.chat_message as string) || ''
