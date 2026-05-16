@@ -422,6 +422,8 @@ export default function FlowRunPage() {
   const [context, setContext] = useState<FlowContext | null>(null)
   const [transientStatus, setTransientStatus] = useState<string | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [isAtBottom, setIsAtBottom] = useState(true)
 
   /* ── Fetch flow run + step runs + definitions ── */
   const fetchData = useCallback(async () => {
@@ -639,6 +641,7 @@ export default function FlowRunPage() {
    *  True only when there is no paused step — i.e. the flow is actively running. */
   const isProcessing = (() => {
     if (steps.length === 0) return false
+    if (flowRun?.status === 'completed' || flowRun?.status === 'failed') return false
     return !steps.some((s) => s.status === 'paused')
   })()
 
@@ -774,12 +777,24 @@ export default function FlowRunPage() {
     setTransientStatus(derivedStatus)
   }, [derivedStatus])
 
-  /** Auto-scroll to bottom only when the flow is actively processing */
+  /** Track whether the user is scrolled to the bottom of the chat */
   useEffect(() => {
-    if (chatMode && isProcessing && chatEndRef.current) {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const handleScroll = () => {
+      const threshold = 100 // px from bottom
+      setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < threshold)
+    }
+    el.addEventListener('scroll', handleScroll)
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [chatMode])
+
+  /** Auto-scroll to bottom only when user is already at bottom and a new message appears */
+  useEffect(() => {
+    if (chatMode && isAtBottom && chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [steps, chatMode, isProcessing])
+  }, [steps, chatMode, isProcessing, isAtBottom])
 
   const handleInputChange = (name: string, value: string) => {
     setInputs((prev) => ({ ...prev, [name]: value }))
@@ -981,7 +996,7 @@ export default function FlowRunPage() {
            * NO execution traces, NO bullets, NO JSON, NO variables, NO debug panels.
            * Feels like ChatGPT — conversation only.
            */
-          <div className="space-y-4">
+          <div ref={scrollContainerRef} className="space-y-4">
             {chatMessages.length === 0 && !transientStatus && (
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
@@ -1013,29 +1028,6 @@ export default function FlowRunPage() {
             {/* Execution trace (collapsible, always visible in debug mode when running) */}
             {isProcessing && <ExecutionTrace events={events} />}
 
-            {/* Context variables (collapsible) */}
-            {context?.available_variables && context.available_variables.length > 0 && (
-              <CollapsibleSection label={`Context Variables (${context.available_variables.length})`} defaultOpen={false}>
-                <div className="divide-y divide-neutral-800">
-                  {context.available_variables.map((v) => (
-                    <div key={v.name} className="px-3 py-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{v.display?.label || v.name}</span>
-                        {v.display?.ui_display && (
-                          <span className="text-[9px] text-neutral-700 bg-neutral-900 rounded px-1">{v.display.ui_display}</span>
-                        )}
-                      </div>
-                      {v.value !== undefined ? (
-                        <DisplayValue value={v.value} display={v.display?.ui_display} />
-                      ) : (
-                        <span className="text-xs text-neutral-600">(no value)</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CollapsibleSection>
-            )}
-
             {steps.length === 0 ? (
               <p className="text-neutral-600">no steps yet</p>
             ) : (
@@ -1058,7 +1050,7 @@ export default function FlowRunPage() {
                           <span className="text-[10px] text-neutral-600 ml-auto">{step.status}</span>
                         </span>
                       }
-                      defaultOpen={false}
+                      defaultOpen={true}
                     >
                       {step.definition?.instructions && (
                         <p className="text-xs text-neutral-400 mb-3 italic">{step.definition.instructions}</p>
