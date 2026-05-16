@@ -938,7 +938,7 @@ export default function FlowRunPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white font-mono">
-        <div className="max-w-3xl mx-auto px-6 py-12">
+        <div className="px-6 py-12">
           <button onClick={() => router.push('/')} className="text-neutral-600 hover:text-white mb-8 block">
             &larr; back
           </button>
@@ -963,7 +963,7 @@ export default function FlowRunPage() {
 
   return (
     <div className="min-h-screen bg-black text-white font-mono">
-      <div className="max-w-3xl mx-auto px-6 py-12 pb-28">
+      <div className="px-6 py-12 pb-28">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -1232,8 +1232,8 @@ export default function FlowRunPage() {
       </div>
 
       {/* ── Fixed Input Footer ── */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur border-t border-neutral-800">
-        <div className="max-w-3xl mx-auto px-6 py-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur">
+        <div className="px-6 py-4">
           <form
             onSubmit={(e) => { e.preventDefault(); handleSend() }}
             className="flex items-center gap-3"
@@ -1256,12 +1256,16 @@ export default function FlowRunPage() {
                         <DisplayValue value={ctxVar?.value} display={display} />
                       </div>
                     ) : (
-                      <input
-                        type="text"
+                      <textarea
                         value={inputs[v] || ''}
                         onChange={(e) => handleInputChange(v, e.target.value)}
                         placeholder={chatMode ? 'Type a message…' : `enter ${label}...`}
-                        className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700"
+                        className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none overflow-y-auto"
+                        onInput={(e) => {
+                          const el = e.currentTarget
+                          el.style.height = 'auto'
+                          el.style.height = el.scrollHeight + 'px'
+                        }}
                       />
                     )}
                   </div>
