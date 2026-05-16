@@ -1944,36 +1944,28 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
 
       let chosen = null;
 
-      if (stepRunEntries.length > 0) {
-        // Sort: non-null values first, then by created_at descending.
-        // This ensures resume-stored values (user input, non-null) win over
-        // LLM-produced nulls even when the LLM null was stored more recently.
-        stepRunEntries.sort((a, b) => {
-          const aVal = a.value === 'null' || a.value === null || a.value === undefined ? 0 : 1;
-          const bVal = b.value === 'null' || b.value === null || b.value === undefined ? 0 : 1;
-          if (bVal !== aVal) return bVal - aVal;
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        });
+      // First pass: find a valid (non-null, non-"null", non-empty) value
+      // across ALL entries regardless of step_run_id scope.  Prefer the
+      // most recent valid entry.  This ensures a resume-stored value like
+      // "saudi is a country" always wins over an older "null" string even
+      // when both share the same step_run_id.
+      const isValid = (v: any) =>
+        v !== null && v !== undefined && v !== 'null' && v !== '';
+      const allSorted = [...entries].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      const validEntry = allSorted.find(e => isValid(e.value));
+      if (validEntry) {
+        chosen = validEntry;
+      } else if (stepRunEntries.length > 0) {
+        // No valid value exists — use most recent step-run entry (even if null)
+        stepRunEntries.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
         chosen = stepRunEntries[0];
-        // If the best step-run-scoped entry is null/empty, check resume
-        // artifacts for a non-null value.  Resume values (e.g. user input)
-        // are often stored under the same step_run_id as the paused step,
-        // so they land in stepRunEntries.  But in some code paths the
-        // step_run_id may be null, putting them in resumeEntries.  Check
-        // both to guarantee a non-null value wins when one exists.
-        if ((chosen.value === 'null' || chosen.value === null || chosen.value === undefined) && resumeEntries.length > 0) {
-          resumeEntries.sort((a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-          const bestResume = resumeEntries[0];
-          if (bestResume.value !== 'null' && bestResume.value !== null && bestResume.value !== undefined) {
-            chosen = bestResume;
-          }
-        }
       } else if (resumeEntries.length > 0) {
-        // No step-run-scoped entry — use the most recent resume artifact
-        resumeEntries.sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        resumeEntries.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
         chosen = resumeEntries[0];
       }
