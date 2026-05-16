@@ -1033,8 +1033,8 @@ export default function FlowRunPage() {
             {chatMessages.map((msg) => (
               <ChatBubble key={msg.id} msg={msg} />
             ))}
-            {/* Optimistic user bubble — appears immediately on send, before backend confirms */}
-            {pendingUserMsg && (
+            {/* Optimistic user bubble — only if the last real message is an assistant (avoids duplicate user bubbles) */}
+            {pendingUserMsg && chatMessages[chatMessages.length - 1]?.role === 'assistant' && (
               <ChatBubble
                 key="pending-user"
                 msg={{ role: 'user', text: pendingUserMsg, data: {}, id: 'pending-user' }}
