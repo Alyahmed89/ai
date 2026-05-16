@@ -55,6 +55,8 @@ export async function callLlm(
     if (schemaHint?.properties) {
       const result: Record<string, any> = {};
       for (const [key, prop] of Object.entries(schemaHint.properties) as [string, any][]) {
+        // Return null for input_ fields to trigger pause-and-resume during testing
+        if (key.startsWith('input_')) { result[key] = null; continue; }
         const type = prop.type || 'string';
         if (type === 'string') result[key] = `mock_${key}`;
         else if (type === 'array') result[key] = prop.items?.type === 'string' ? ['mock_item'] : [];

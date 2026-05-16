@@ -872,20 +872,22 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     schema: step.expected_response,
   });
 
-  // Skip LLM for steps that have no input_ fields and no actions.
-  // Such steps don't need AI output — they just resolve variables and advance.
+  // Skip LLM when the step has no input_ fields, no actions, AND no required
+  // output fields.  Such steps don't need AI output — they just advance.
   let skipLlm = false;
   const hasInputFields = Array.isArray(step.expected_response?.required) &&
     step.expected_response.required.some((f: string) => f.startsWith('input_'));
   const hasActions = Array.isArray(step.expected_response?.actions) &&
     step.expected_response.actions.length > 0;
-  if (!hasInputFields && !hasActions) {
+  const hasOutputFields = Array.isArray(step.expected_response?.required) &&
+    step.expected_response.required.length > 0;
+  if (!hasInputFields && !hasActions && !hasOutputFields) {
     skipLlm = true;
-    console.log(`[engine] step=${step.ref} has no input_ fields and no actions, skipping LLM call`);
+    console.log(`[engine] step=${step.ref} has no input_/output fields and no actions, skipping LLM call`);
     await emitEvent(flowRunId, stepRunId, 'llm.skip', {
       step_id: step.id,
       step_ref: step.ref,
-      reason: 'no_input_fields_no_actions',
+      reason: 'no_input_output_fields_no_actions',
     });
   }
 
