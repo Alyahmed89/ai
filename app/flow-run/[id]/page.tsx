@@ -425,6 +425,8 @@ export default function FlowRunPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [pendingUserMsg, setPendingUserMsg] = useState<string | null>(null)
+  const pendingUserMsgRef = useRef(pendingUserMsg)
+  pendingUserMsgRef.current = pendingUserMsg
 
   /* ── Fetch flow run + step runs + definitions ── */
   const fetchData = useCallback(async () => {
@@ -454,10 +456,11 @@ export default function FlowRunPage() {
         defs = Array.isArray(defsData) ? defsData : Array.isArray(defsData?.data) ? defsData.data : []
       }
 
+      let parsed: StepRunWithDef[] = []
       if (stepsRes.ok) {
         const stepsData = await stepsRes.json()
         const rawSteps = Array.isArray(stepsData) ? stepsData : Array.isArray(stepsData?.data) ? stepsData.data : []
-        const parsed: StepRunWithDef[] = rawSteps.map(
+        parsed = rawSteps.map(
           (s: StepRun) => ({
             ...s,
             definition: defs.find((d) => d.id === s.step_id),
@@ -467,12 +470,25 @@ export default function FlowRunPage() {
           setSteps(parsed)
         }
       }
+
+      // Only clear pending user msg if the real data now contains it
+      const pm = pendingUserMsgRef.current
+      if (pm) {
+        const found = parsed.some((s) => {
+          const rv = s.resolved_variables as Record<string, unknown> | null
+          if (!rv) return false
+          return Object.entries(rv).some(
+            ([k, v]) => k.startsWith('input_') && v === pm
+          )
+        })
+        if (!found) return
+      }
+      setPendingUserMsg(null)
     } catch (e) {
       console.error('Failed to fetch data', e)
       setLoadError(`Failed to fetch data: ${e instanceof Error ? e.message : 'Unknown error'}`)
     }
     setLoading(false)
-    setPendingUserMsg(null)
   }, [id])
 
   /* ── Poll events from /flow-runs/:id/events ── */
