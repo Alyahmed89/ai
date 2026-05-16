@@ -158,11 +158,17 @@ async function callProCheckOnOutput(
     // Gracefully degrade if fetch fails
   }
 
+  // Ensure step_run_id is never empty — prolog scoring depends on it
+  const proCheckStepRunId = stepRun?.id;
+  if (!proCheckStepRunId) {
+    console.warn('[engine] pro_check called without a valid step_run.id, using step_run_id from stepRun');
+  }
+
   const proCheckRequest = {
     response: output,
     rules,
     plans,
-    step_run_id: stepRun.id,
+    step_run_id: proCheckStepRunId,
     validation_errors: validationErrors,
     contract_failures: output.contract_failures || [],
     required_inputs: step?.required_inputs || [],
@@ -1949,6 +1955,21 @@ async function buildContext(flowRunId: string, stepRunId: string, flowRun: any):
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         });
         chosen = stepRunEntries[0];
+        // If the best step-run-scoped entry is null/empty, check resume
+        // artifacts for a non-null value.  Resume values (e.g. user input)
+        // are often stored under the same step_run_id as the paused step,
+        // so they land in stepRunEntries.  But in some code paths the
+        // step_run_id may be null, putting them in resumeEntries.  Check
+        // both to guarantee a non-null value wins when one exists.
+        if ((chosen.value === 'null' || chosen.value === null || chosen.value === undefined) && resumeEntries.length > 0) {
+          resumeEntries.sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          const bestResume = resumeEntries[0];
+          if (bestResume.value !== 'null' && bestResume.value !== null && bestResume.value !== undefined) {
+            chosen = bestResume;
+          }
+        }
       } else if (resumeEntries.length > 0) {
         // No step-run-scoped entry — use the most recent resume artifact
         resumeEntries.sort((a, b) =>
