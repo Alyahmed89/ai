@@ -46,14 +46,9 @@ export class ApiFlowStepsController {
   async create(@Body() body: {
     flow_id: string;
     title: string;
-    ref?: string;
-    system_message?: string;
     instructions: string;
     expected_response: any;
-    actions?: any[];
     order_index?: number;
-    guaranteed_outputs?: Record<string, any>;
-    output_storage?: Record<string, string>;
     required_inputs?: string[];
     variable_aliases?: Record<string, string[]>;
   }) {
@@ -64,13 +59,9 @@ export class ApiFlowStepsController {
       id: randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
-      ref: body.ref || randomUUID(),
-      system_message: body.system_message || null,
+      ref: randomUUID(),
       instructions: body.instructions,
       expected_response: body.expected_response,
-      actions: body.actions || null,
-      guaranteed_outputs: body.guaranteed_outputs || null,
-      output_storage: body.output_storage || null,
       required_inputs: body.required_inputs || null,
       variable_aliases: body.variable_aliases || null,
       order_index: body.order_index ?? 0,
@@ -86,26 +77,18 @@ export class ApiFlowStepsController {
   async update(@Param('id') id: string, @Body() body: {
     title?: string;
     ref?: string;
-    system_message?: string;
     instructions?: string;
     expected_response?: any;
-    actions?: any[];
     order_index?: number;
-    guaranteed_outputs?: Record<string, any>;
-    output_storage?: Record<string, string>;
     required_inputs?: string[];
     variable_aliases?: Record<string, string[]>;
   }) {
     const updates: any = { updated_at: new Date().toISOString() };
     if (body.title !== undefined) updates.title = body.title;
     if (body.ref !== undefined) updates.ref = body.ref;
-    if (body.system_message !== undefined) updates.system_message = body.system_message;
     if (body.instructions !== undefined) updates.instructions = body.instructions;
     if (body.expected_response !== undefined) updates.expected_response = body.expected_response;
-    if (body.actions !== undefined) updates.actions = body.actions;
     if (body.order_index !== undefined) updates.order_index = body.order_index;
-    if (body.guaranteed_outputs !== undefined) updates.guaranteed_outputs = body.guaranteed_outputs;
-    if (body.output_storage !== undefined) updates.output_storage = body.output_storage;
     if (body.required_inputs !== undefined) updates.required_inputs = body.required_inputs;
     if (body.variable_aliases !== undefined) updates.variable_aliases = body.variable_aliases;
     const data = await supabaseFetch(`steps?id=eq.${id}`, { method: 'PATCH', body: updates, params: { select: '*' } });

@@ -42,22 +42,6 @@ export interface TermSchema {
 export interface StepContract {
   /** Variables that must be present in context before this step runs */
   required_inputs?: string[];
-  /** Keys the AI response must include for this step */
-  guaranteed_outputs?: Record<string, any>;
-  /** Conditions that trigger a pause (e.g. missing user input) */
-  pause_conditions?: Array<{
-    field: string;
-    operator: 'is_null' | 'equals' | 'not_equals';
-    value?: any;
-  }>;
-  /** Conditions that trigger a hard failure (e.g. invalid state) */
-  blocking_conditions?: Array<{
-    field: string;
-    operator: 'is_null' | 'equals' | 'not_equals';
-    value?: any;
-  }>;
   /** Variable name aliases for canonical normalization */
   variable_aliases?: Record<string, string[]>;
-  /** Explicit mapping of AI output keys to variable storage keys */
-  output_storage?: Record<string, string>;
 }

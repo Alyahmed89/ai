@@ -59,25 +59,9 @@ async function callProCheckOnOutput(
 
   // --- Local validation before Prolog call ---
   const validationErrors: string[] = [];
-
-  // 1. Check for hallucinated outputs (keys not in guaranteed_outputs)
   const step = await getStepById(stepRun.step_id).catch(() => null);
-  const guaranteedOutputs = step?.guaranteed_outputs;
-  if (guaranteedOutputs && typeof guaranteedOutputs === 'object') {
-    const allowedKeys = new Set([
-      ...Object.keys(guaranteedOutputs),
-      'next_step_id', 'actions', 'chat_message', 'next', 'pro_check',
-      'action_results', 'action_error', 'contract_failures', 'zod_validation_error',
-    ]);
-    for (const key of Object.keys(output)) {
-      if (key === 'action_results' || key === 'action_error' || key === 'contract_failures' || key === 'zod_validation_error') continue;
-      if (!allowedKeys.has(key)) {
-        validationErrors.push(`Hallucinated output key: ${key} (not in guaranteed_outputs)`);
-      }
-    }
-  }
 
-  // 2. Check for unresolved refs
+  // 1. Check for unresolved refs
   if (output.refs && Array.isArray(output.refs)) {
     for (const ref of output.refs) {
       const { data: existingRef } = await getSupabase()
@@ -165,12 +149,10 @@ async function callProCheckOnOutput(
     step_run_id: stepRun.id,
     validation_errors: validationErrors,
     contract_failures: output.contract_failures || [],
-    guaranteed_outputs: step?.guaranteed_outputs || {},
     required_inputs: step?.required_inputs || [],
     normalized_vars: normalizedVars,
     step_contracts: {
       required_inputs: step?.required_inputs,
-      guaranteed_outputs: step?.guaranteed_outputs,
     },
   };
 
@@ -321,11 +303,9 @@ async function handleApiFailure(
   });
   existingStepRun.result = { ...existingResult, ...apiError };
 
-  // Collect rules and plans from step metadata
+  // Collect rules and plans from context
   const rules: string[] = [];
   const plans: string[] = [];
-  if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-  if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
   if (context.plan_id) plans.push(context.plan_id);
 
   // Let pro_check decide if the step should pause or fail
@@ -809,63 +789,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     }
   }
 
-  // Check blocking_conditions
-  if (Array.isArray(step.blocking_conditions)) {
-    for (const condition of step.blocking_conditions) {
-      const value = context[condition.field];
-      let triggered = false;
-      if (condition.operator === 'is_null') triggered = value === undefined || value === null || value === '';
-      else if (condition.operator === 'equals') triggered = value === condition.value;
-      else if (condition.operator === 'not_equals') triggered = value !== condition.value;
-      if (triggered) {
-        const msg = `Blocking condition triggered: ${condition.field} ${condition.operator} ${condition.value || 'null'}`;
-        console.log(`[engine] ${msg}`);
-        await emitEvent(flowRunId, stepRunId, 'contract.blocking_condition', {
-          condition,
-          resolved_value: value,
-          step_id: step.id,
-        });
-        await updateStepRun(stepRunId, {
-          status: 'failed',
-          error: msg,
-          result: { blocking_condition: condition, resolved_value: value },
-        });
-        await updateFlowRun(flowRunId, {
-          status: 'failed',
-          error: msg,
-          paused_at_step_id: step.id,
-        });
-        return { status: 'failed', stepRunId };
-      }
-    }
-  }
-
-  // Check pause_conditions
-  if (Array.isArray(step.pause_conditions)) {
-    for (const condition of step.pause_conditions) {
-      const value = context[condition.field];
-      let triggered = false;
-      if (condition.operator === 'is_null') triggered = value === undefined || value === null || value === '';
-      else if (condition.operator === 'equals') triggered = value === condition.value;
-      if (triggered) {
-        console.log(`[engine] pause condition triggered: ${condition.field} is null, pausing`);
-        await emitEvent(flowRunId, stepRunId, 'contract.pause_condition', {
-          condition,
-          step_id: step.id,
-        });
-        await updateStepRun(stepRunId, {
-          status: 'paused',
-          result: { pause_reason: 'pause_condition_triggered', condition },
-        });
-        await updateFlowRun(flowRunId, {
-          status: 'paused',
-          paused_at_step_id: step.id,
-        });
-        return { status: 'paused', stepRunId };
-      }
-    }
-  }
-
   // Step 1 — Resolve variables in instructions
   let renderedInstructions: string | null = null;
   try {
@@ -875,90 +798,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     renderedInstructions = step.instructions || null;
   }
   console.log(`[engine] rendered_instructions:`, renderedInstructions);
-
-  // Check if this is an action-only step (no expected_response = no AI call).
-  // Action-only steps execute actions directly and put the result in chat_message.
-  const isActionOnly = !step.expected_response && Array.isArray(step.actions) && step.actions.length > 0;
-
-  if (isActionOnly) {
-    console.log(`[engine] action-only step, skipping AI call`);
-    // Execute actions directly without AI
-    const stepActions = Array.isArray(step.actions) ? step.actions : [];
-    const actionResults: Record<string, any> = {};
-    let actionError: any = null;
-    for (const action of stepActions) {
-      const result = await executeAction(action, context, stepRunId, flowRunId, step);
-      if (result && result.status === 'paused') return { status: 'paused', stepRunId };
-      if (result && result.error) {
-        actionError = result.error;
-        break;
-      }
-      if (result && result.data !== undefined) {
-        actionResults[action.endpoint || 'action'] = result.data;
-      }
-    }
-
-    // Build synthetic validated response from action results
-    const chatMessage = actionError
-      ? `Action error: ${actionError.message || JSON.stringify(actionError)}`
-      : Object.values(actionResults)[0] || 'Action completed';
-
-    const validated = {
-      chat_message: typeof chatMessage === 'string' ? chatMessage : JSON.stringify(chatMessage),
-      actions: stepActions,
-    };
-
-    // Store action results as flow_run variables
-    for (const [key, value] of Object.entries(actionResults)) {
-      const varKey = `action_result_${key}`;
-      await insertVariable({
-        id: randomUUID(),
-        flow_run_id: flowRunId,
-        step_run_id: stepRunId,
-        key: varKey,
-        value: typeof value === 'string' ? value : JSON.stringify(value),
-        scope: 'flow_run',
-        created_at: new Date().toISOString(),
-      });
-      context[varKey] = value;
-    }
-
-    // Store action error if present
-    if (actionError) {
-      const errorPayload = { type: 'action_error', message: actionError.message || 'Action failed', step_id: step.id, details: actionError };
-      await insertVariable({
-        id: randomUUID(),
-        flow_run_id: flowRunId,
-        step_run_id: stepRunId,
-        key: 'engine_error',
-        value: JSON.stringify(errorPayload),
-        scope: 'flow_run',
-        created_at: new Date().toISOString(),
-      });
-      context.engine_error = errorPayload;
-    }
-
-    // Store chat_message in context
-    context.chat_message = validated.chat_message;
-
-    // Persist step run result
-    await updateStepRun(stepRunId, {
-      ai_response: validated,
-      ai_response_valid: true,
-      rendered_instructions: renderedInstructions,
-      resolved_variables: context,
-      result: {},
-    });
-
-    // Mark step completed
-    const trace = {
-      step: 'completed',
-      action_only: true,
-    };
-    await updateStepRun(stepRunId, { trace });
-    await updateFlowRun(flowRunId, { status: 'active' });
-    return null; // signal success, continue to next step
-  }
 
   // Step 2 — Build LLM prompt with endpoint samples
   const schemaJson = JSON.stringify(step.expected_response, null, 2);
@@ -987,7 +826,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
   await emitEvent(flowRunId, stepRunId, 'llm.call', {
     step_id: step.id,
     step_ref: step.ref,
-    system_message: step.system_message,
     user_prompt: userPrompt,
     schema: step.expected_response,
   });
@@ -1001,7 +839,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     let aiResponse: any;
     let llmError: string | null = null;
     try {
-      aiResponse = await callLlm(step.system_message || null, userPrompt);
+      aiResponse = await callLlm(null, userPrompt);
       await emitEvent(flowRunId, stepRunId, 'llm.response', {
         step_id: step.id,
         step_ref: step.ref,
@@ -1123,8 +961,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       if (stepRunForProCheck) {
         const rules: string[] = [];
         const plans: string[] = [];
-        if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-        if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
         if (context.plan_id) plans.push(context.plan_id);
         const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, zodFailureOutput, rules, plans);
         if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
@@ -1142,63 +978,15 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     const validated = zodResult.data!;
     const next = validated.next ?? null;
     const actions = Array.isArray(validated.actions) ? validated.actions : [];
-    const stepActions = Array.isArray(step.actions) ? step.actions : [];
-    const allActions = [...actions, ...stepActions];
 
-    // Step 3.5 — Validate guaranteed_outputs
     const contractFailures: string[] = [];
-    if (step.guaranteed_outputs && typeof step.guaranteed_outputs === 'object') {
-      for (const [key] of Object.entries<any>(step.guaranteed_outputs)) {
-        if (!(key in validated) || validated[key] === undefined || validated[key] === null) {
-          contractFailures.push(`Missing guaranteed output: ${key}`);
-        }
-      }
-      if (contractFailures.length > 0) {
-        console.log(`[engine] contract validation failures: ${contractFailures.join(', ')}`);
-        await emitEvent(flowRunId, stepRunId, 'contract.missing_outputs', {
-          failures: contractFailures,
-          guaranteed_outputs: step.guaranteed_outputs,
-          step_id: step.id,
-        });
-        await updateStepRun(stepRunId, {
-          result: { contract_failures: contractFailures, ai_response: validated },
-        });
-      }
-    }
 
-    // Auto-store fields from AI response as flow_run variables.
-    // ONLY stores keys that are:
-    //   1. In step.guaranteed_outputs (the contract)
-    //   2. In step.output_storage (explicit storage map)
-    //   3. Engine-reserved keys (chat_message, step_goal, chat_memory, structured_memory)
-    //   4. Nested keys under an already-authorized parent (recursive persistence)
-    // This prevents AI from creating arbitrary variables (variable drift).
+    // Auto-store all fields from AI response as flow_run variables.
+    // Every key the AI returns is stored as a flow_run variable.
     const autoStore = async (obj: Record<string, any>, prefix?: string, isRecursive?: boolean) => {
-      // Build allowed key set from contracts (only at top level)
-      const guaranteedKeys = new Set<string>();
-      if (!isRecursive && step.guaranteed_outputs && typeof step.guaranteed_outputs === 'object') {
-        for (const k of Object.keys(step.guaranteed_outputs)) {
-          guaranteedKeys.add(k);
-        }
-      }
-      const outputStorageMap: Record<string, string> = {};
-      if (!isRecursive && step.output_storage && typeof step.output_storage === 'object') {
-        for (const [k, v] of Object.entries(step.output_storage)) {
-          outputStorageMap[k] = v as string;
-          guaranteedKeys.add(k);
-        }
-      }
-      const engineReserved = new Set(['chat_message', 'step_goal', 'chat_memory', 'structured_memory', 'actions']);
-
       for (const [key, value] of Object.entries(obj)) {
-        // Skip non-contract, non-reserved keys (only check at top level;
-        // recursive calls inherit authorization from parent key)
-        if (!isRecursive && !guaranteedKeys.has(key) && !engineReserved.has(key)) {
-          console.log(`[engine] autoStore skipping non-contract key: ${key} (not in guaranteed_outputs or output_storage)`);
-          continue;
-        }
-        if (key === 'next' || key === 'actions' || key === 'pro_check') continue;
-        const varKey = outputStorageMap[key] || (prefix ? `${prefix}.${key}` : key);
+        if (key === 'next' || key === 'actions' || key === 'pro_check' || key === 'chat_message') continue;
+        const varKey = prefix ? `${prefix}.${key}` : key;
         if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
           await insertVariable({
             id: randomUUID(),
@@ -1244,7 +1032,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         // Step 5 — Execute actions (before pro_check so results are included)
     const actionResults: Record<string, any> = {};
     let actionError: any = null;
-    for (const action of allActions) {
+    for (const action of actions) {
       // Auto-fill type, method, and path from endpoint registry before any checks.
       // This allows actions with just {"endpoint":"prolog_rules","output_var":"rules"}.
       if (action.endpoint && (!action.type || !action.method || !action.path)) {
@@ -1601,8 +1389,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     if (stepRunForProCheck) {
       const rules: string[] = [];
       const plans: string[] = [];
-      if (step.rules && Array.isArray(step.rules)) rules.push(...step.rules);
-      if (step.plans && Array.isArray(step.plans)) plans.push(...step.plans);
       if (context.plan_id) plans.push(context.plan_id);
       const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, mergedOutput, rules, plans);
       if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
@@ -1619,13 +1405,11 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       status: 'completed',
     });
 
-    // Write refs entries for rules and plans from step metadata
+    // Write refs entries for rules and plans from pro_check response
     const stepRules: string[] = [];
     const stepPlans: string[] = [];
     if (validated.pro_check?.rules) stepRules.push(...validated.pro_check.rules);
     if (validated.pro_check?.plans) stepPlans.push(...validated.pro_check.plans);
-    if (step.rules && Array.isArray(step.rules)) stepRules.push(...step.rules);
-    if (step.plans && Array.isArray(step.plans)) stepPlans.push(...step.plans);
     for (const ruleId of stepRules) {
       await getSupabase().from('refs').insert({
         id: randomUUID(),
@@ -2271,8 +2055,6 @@ async function failStepRun(stepRunId: string, error: string, result: any): Promi
 
 function getRulesAndPlans(step: any, context: Record<string, any>): string[] {
   const items: string[] = [];
-  if (step.rules && Array.isArray(step.rules)) items.push(...step.rules);
-  if (step.plans && Array.isArray(step.plans)) items.push(...step.plans);
   if (context.plan_id) items.push(context.plan_id);
   return items;
 }
