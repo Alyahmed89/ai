@@ -142,6 +142,22 @@ async function callProCheckOnOutput(
     }
   }
 
+  // Fetch previous step output for context (most recent completed step before current)
+  let previous_step_output: any = null;
+  try {
+    const { data: prevSteps } = await getSupabase()
+      .from('step_runs')
+      .select('ai_response, step_id')
+      .eq('flow_run_id', stepRun.flow_run_id)
+      .order('created_at', { ascending: false })
+      .limit(2);
+    if (prevSteps && prevSteps.length > 1) {
+      previous_step_output = prevSteps[1]?.ai_response || null;
+    }
+  } catch {
+    // Gracefully degrade if fetch fails
+  }
+
   const proCheckRequest = {
     response: output,
     rules,
@@ -154,6 +170,11 @@ async function callProCheckOnOutput(
     step_contracts: {
       required_inputs: step?.required_inputs,
     },
+    previous_step_output,
+    expected_response: step?.expected_response || null,
+    resolved_variables: stepRun.result?.resolved_variables || null,
+    step_title: step?.title || null,
+    step_order: step?.order_index ?? null,
   };
 
   // ----- STORE REQUEST IMMEDIATELY -----
@@ -198,6 +219,24 @@ async function callProCheckOnOutput(
   };
   await updateStepRun(stepRun.id, { result: resultWithResponse });
   stepRun.result = resultWithResponse;
+
+  // ----- HANDLE SCORE EVENT -----
+  if (proCheckResponse.score !== undefined && proCheckResponse.score !== null) {
+    await emitEvent(stepRun.flow_run_id, stepRun.id, 'procheck.score', {
+      score: proCheckResponse.score,
+      score_reason: proCheckResponse.score_reason || null,
+      quarantined: proCheckResponse.quarantined || false,
+    });
+  }
+
+  // ----- HANDLE QUARANTINED FLAG -----
+  // Do NOT stop the flow — just emit the event for monitoring
+  if (proCheckResponse.quarantined === true) {
+    await emitEvent(stepRun.flow_run_id, stepRun.id, 'procheck.quarantined', {
+      score: proCheckResponse.score,
+      score_reason: proCheckResponse.score_reason || null,
+    });
+  }
 
   // ----- HANDLE STOP -----
   // NOTE: next_step_id does NOT override pro_check. The AI never decides
