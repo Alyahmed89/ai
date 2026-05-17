@@ -482,13 +482,17 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       if (userInput != null) {
         const currentInput = flowRun.input && typeof flowRun.input === 'object' ? flowRun.input : {};
         await updateFlowRun(flowRunId, { input: { ...currentInput, user_input: userInput } });
-        // Insert each key as a variable so buildContext picks it up
-        for (const [k, v] of Object.entries(userInput)) {
+        // Normalize: if userInput is a plain string, wrap with detected varKey
+        const vars = typeof userInput === 'string' ? { [varKey]: userInput } : userInput;
+        // Insert each key as a variable so buildContext picks it up.
+        // Remap generic "user_input" key to the schema-detected varKey when they differ.
+        for (const [k, v] of Object.entries(vars)) {
+          const effectiveKey = k === 'user_input' && varKey !== 'user_input' ? varKey : k;
           await insertVariable({
             id: randomUUID(),
             flow_run_id: flowRunId,
             step_run_id: null,
-            key: k,
+            key: effectiveKey,
             value: typeof v === 'string' ? v : JSON.stringify(v),
             scope: 'flow_run',
             created_at: new Date().toISOString(),
