@@ -640,9 +640,10 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       if (!stepResult) break;
 
       // Fetch the step run to read routing signals
+      // Note: updateStepRun maps result→output for Kong schema
       const { data: stepRun } = await getSupabase()
         .from('step_runs')
-        .select('id, result, step_id')
+        .select('id, output, step_id')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', currentStep.id)
         .order('created_at', { ascending: false })
@@ -651,7 +652,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       const stepRunId = stepRun?.id;
 
       // Pro_check routing takes priority — if pro_check specified a next step, use it
-      const procheckNext = (stepRun?.result as any)?.procheck_next_step_id;
+      const procheckNext = (stepRun?.output as any)?.procheck_next_step_id;
       if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== stepRun?.step_id) {
         try {
           const next = await getStepById(procheckNext);
@@ -674,7 +675,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       }
 
       // Follow the AI's next_step_id if present
-      const aiNext = (stepRun?.result as any)?.next_step_id;
+      const aiNext = (stepRun?.output as any)?.next_step_id;
       if (aiNext && typeof aiNext === 'string' && aiNext.length > 0 && aiNext !== stepRun?.step_id) {
         try {
           const next = await getStepById(aiNext);
