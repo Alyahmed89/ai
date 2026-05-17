@@ -166,8 +166,9 @@ async function callProCheckOnOutput(
 
   const proCheckRequest = {
     response: output,
-    rules,
-    plans,
+    rules: [],
+    plans: [],
+    flow_run_id: stepRun.flow_run_id,
     step_run_id: proCheckStepRunId,
     validation_errors: validationErrors,
     contract_failures: output.contract_failures || [],
@@ -242,6 +243,23 @@ async function callProCheckOnOutput(
       score: proCheckResponse.score,
       score_reason: proCheckResponse.score_reason || null,
     });
+  }
+
+  // ----- HANDLE PROVIDED VARIABLES -----
+  if (proCheckResponse.provided_variables && Array.isArray(proCheckResponse.provided_variables)) {
+    for (const v of proCheckResponse.provided_variables) {
+      if (v.key && v.value !== undefined && v.value !== null) {
+        await insertVariable({
+          id: randomUUID(),
+          flow_run_id: stepRun.flow_run_id,
+          step_run_id: stepRun.id,
+          key: v.key,
+          value: typeof v.value === 'string' ? v.value : JSON.stringify(v.value),
+          scope: 'flow_run',
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
   }
 
   // ----- HANDLE STOP -----
@@ -348,16 +366,11 @@ async function handleApiFailure(
   });
   existingStepRun.result = { ...existingResult, ...apiError };
 
-  // Collect rules and plans from context
-  const rules: string[] = [];
-  const plans: string[] = [];
-  if (context.plan_id) plans.push(context.plan_id);
-
   // Attach resolved_variables since it's not persisted in DB
   (existingStepRun as any).resolved_variables = context;
 
   // Let pro_check decide if the step should pause or fail
-  return callProCheckOnOutput(existingStepRun, apiError, rules, plans);
+  return callProCheckOnOutput(existingStepRun, apiError, [], []);
 }
 
 function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any> {
@@ -1025,12 +1038,9 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         .eq('id', stepRunId)
         .maybeSingle();
       if (stepRunForProCheck) {
-        const rules: string[] = [];
-        const plans: string[] = [];
-        if (context.plan_id) plans.push(context.plan_id);
         // Attach resolved_variables since it's not persisted in DB
         (stepRunForProCheck as any).resolved_variables = context;
-        const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, zodFailureOutput, rules, plans);
+        const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, zodFailureOutput, [], []);
         if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
       }
 
@@ -1469,12 +1479,9 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       .eq('id', stepRunId)
       .maybeSingle();
     if (stepRunForProCheck) {
-      const rules: string[] = [];
-      const plans: string[] = [];
-      if (context.plan_id) plans.push(context.plan_id);
       // Attach resolved_variables since it's not persisted in DB
       (stepRunForProCheck as any).resolved_variables = context;
-      const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, mergedOutput, rules, plans);
+      const proCheckResult = await callProCheckOnOutput(stepRunForProCheck, mergedOutput, [], []);
       if (proCheckResult === 'paused') return { status: 'paused', stepRunId };
     }
 
@@ -1613,7 +1620,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         sr.result = { ...sr.result, next_step_id: savedNextStepId };
       }
       // Trigger pro_check so correction flow can be started
-      await callProCheckOnOutput(sr, { type: errorType, message: msg }, getRulesAndPlans(step, context), []);
+      await callProCheckOnOutput(sr, { type: errorType, message: msg }, [], []);
     }
 
     if (isTimeout) {
