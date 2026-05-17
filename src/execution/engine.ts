@@ -463,11 +463,24 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Store user input as flow_run.input so step actions can handle
-      // variable storage via API calls instead of engine-internal logic.
+      // Store user input as flow_run.input (legacy) AND as individual
+      // variables in the variables table so [[var:key:key=key]] resolves
+      // via buildContext (same pattern as the test variable flow).
       if (userInput != null) {
         const currentInput = flowRun.input && typeof flowRun.input === 'object' ? flowRun.input : {};
         await updateFlowRun(flowRunId, { input: { ...currentInput, user_input: userInput } });
+        // Insert each key as a variable so buildContext picks it up
+        for (const [k, v] of Object.entries(userInput)) {
+          await insertVariable({
+            id: randomUUID(),
+            flow_run_id: flowRunId,
+            step_run_id: null,
+            key: k,
+            value: typeof v === 'string' ? v : JSON.stringify(v),
+            scope: 'flow_run',
+            created_at: new Date().toISOString(),
+          });
+        }
       }
 
       // Advance directly to the next step by order_index.
