@@ -519,7 +519,13 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             ? JSON.parse(pausedStepRun.output) : pausedStepRun.output;
           const pausedProcheckNext = pausedOutput.procheck_next_step_id || pausedOutput.pro_check?.next_step_id;
           if (pausedProcheckNext && typeof pausedProcheckNext === 'string' && pausedProcheckNext !== pausedStepId) {
-            nextAfterPaused = await getStepById(pausedProcheckNext).catch(() => null);
+            const candidateStep = await getStepById(pausedProcheckNext).catch(() => null);
+            // Only use procheck route if the target step is a real executable step
+            // with a valid order_index. Terminal markers (e.g. "step-8-no-further-steps")
+            // have null order_index and must not be executed.
+            if (candidateStep && candidateStep.order_index != null) {
+              nextAfterPaused = candidateStep;
+            }
           }
         } catch {
           // Invalid JSON in output — fall through to order_index
