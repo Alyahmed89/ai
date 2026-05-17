@@ -696,6 +696,21 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         return;
       }
 
+      // Plain string step ID returned from runStep (order_index fallback) — route directly
+      if (typeof stepResult === 'string' && stepResult !== '__PAUSED__' && stepResult.length > 0) {
+        const nextStep = await getStepById(stepResult).catch(() => null);
+        if (nextStep) {
+          await emitEvent(flowRunId, null, 'routing.procheck', {
+            from_step_id: currentStep.id,
+            to_step_id: nextStep.id,
+            to_step_title: nextStep.title,
+            reason: 'procheck_next_step_id',
+          });
+          currentStep = nextStep;
+          continue;
+        }
+      }
+
       if (!stepResult) break;
 
       // Fetch the step run to read routing signals
