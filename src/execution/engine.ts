@@ -807,8 +807,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     if (endpointNames.length > 0) {
       const { data: endpoints } = await getSupabase()
         .from('endpoint_registry')
-        .select('name, url, method, headers, sample_request, sample_response')
-        .in('name', endpointNames);
+        .select('id, url, method, headers, sample_request, sample_response')
+        .in('id', endpointNames);
       if (endpoints) {
         endpointSamples = '\n\nAvailable endpoint samples:\n' + JSON.stringify(endpoints, null, 2);
         endpointSamples += '\n\nFor each action, use the endpoint sample_request as a guide for the payload shape. Fill in the actual values for the keys you decide. The engine will merge your payload with the endpoint defaults.';
@@ -1094,7 +1094,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         const { data: endpoint } = await getSupabase()
           .from('endpoint_registry')
           .select('*')
-          .eq('name', action.endpoint)
+          .eq('id', action.endpoint)
           .maybeSingle();
         if (endpoint) {
           if (!action.type) action.type = 'api';
@@ -1125,7 +1125,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       const { data: endpoint } = await getSupabase()
         .from('endpoint_registry')
         .select('*')
-        .eq('name', action.endpoint)
+        .eq('id', action.endpoint)
         .maybeSingle();
 
       if (!endpoint) {
@@ -2277,7 +2277,7 @@ async function executeAction(
     const { data: endpoint } = await getSupabase()
       .from('endpoint_registry')
       .select('*')
-      .eq('name', action.endpoint)
+      .eq('id', action.endpoint)
       .maybeSingle();
     if (endpoint) {
       if (!action.type) action.type = 'api';
@@ -2297,7 +2297,7 @@ async function executeAction(
   const { data: endpoint } = await getSupabase()
     .from('endpoint_registry')
     .select('*')
-    .eq('name', action.endpoint)
+    .eq('id', action.endpoint)
     .maybeSingle();
 
   if (!endpoint && !action.path) {
