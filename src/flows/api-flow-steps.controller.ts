@@ -83,7 +83,7 @@ export class ApiFlowStepsController {
     required_inputs?: string[];
     variable_aliases?: Record<string, string[]>;
   }) {
-    const updates: any = {};
+    const updates: any = { updated_at: new Date().toISOString() };
     if (body.title !== undefined) updates.title = body.title;
     if (body.ref !== undefined) updates.ref = body.ref;
     if (body.instructions !== undefined) updates.instructions = body.instructions;
