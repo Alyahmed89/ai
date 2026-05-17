@@ -735,28 +735,21 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         try {
           const next = await getStepById(procheckNext);
           if (next) {
-            // Look up the winning rule's context and store it as a flow variable
-            // so the destination step (e.g. step-8) can read it and execute actions
+            // Store the matched rules' accumulated context (from prolog API)
+            // as a flow variable so the destination step reads and executes its actions
             const proCheckResult = stepOutput.pro_check || stepRunResult.pro_check || {};
-            const winningRuleId = proCheckResult.winning_rule;
-            if (winningRuleId) {
-              const { data: rule } = await getSupabase()
-                .from('rules')
-                .select('context')
-                .eq('rule_id', winningRuleId)
-                .maybeSingle();
-              if (rule?.context) {
-                const ctxVal = typeof rule.context === 'string' ? rule.context : JSON.stringify(rule.context);
-                await insertVariable({
-                  id: randomUUID(),
-                  flow_run_id: flowRunId,
-                  step_run_id: stepRunId || currentStep.id,
-                  key: 'routing_rule_context',
-                  value: ctxVal,
-                  scope: 'flow_run',
-                  created_at: new Date().toISOString(),
-                });
-              }
+            const accumulatedCtx = proCheckResult.accumulated_context;
+            if (accumulatedCtx) {
+              const ctxVal = typeof accumulatedCtx === 'string' ? accumulatedCtx : JSON.stringify(accumulatedCtx);
+              await insertVariable({
+                id: randomUUID(),
+                flow_run_id: flowRunId,
+                step_run_id: stepRunId || currentStep.id,
+                key: 'routing_rule_context',
+                value: ctxVal,
+                scope: 'flow_run',
+                created_at: new Date().toISOString(),
+              });
             }
 
             visited.delete(procheckNext);
