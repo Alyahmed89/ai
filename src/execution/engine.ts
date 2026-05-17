@@ -735,12 +735,30 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         try {
           const next = await getStepById(procheckNext);
           if (next) {
-            // Terminal markers (null order_index) signal flow completion
-            if (next.order_index == null) {
-              console.log(`[engine] procheck routed to terminal marker ${procheckNext}, completing flow`);
-              await emitEvent(flowRunId, null, 'flow.complete', { reason: 'terminal_marker', step_id: currentStep.id, terminal_step: procheckNext });
-              break;
+            // Look up the winning rule's context and store it as a flow variable
+            // so the destination step (e.g. step-8) can read it and execute actions
+            const proCheckResult = stepOutput.pro_check || stepRunResult.pro_check || {};
+            const winningRuleId = proCheckResult.winning_rule;
+            if (winningRuleId) {
+              const { data: rule } = await getSupabase()
+                .from('rules')
+                .select('context')
+                .eq('rule_id', winningRuleId)
+                .maybeSingle();
+              if (rule?.context) {
+                const ctxVal = typeof rule.context === 'string' ? rule.context : JSON.stringify(rule.context);
+                await insertVariable({
+                  id: randomUUID(),
+                  flow_run_id: flowRunId,
+                  step_run_id: stepRunId || currentStep.id,
+                  key: 'routing_rule_context',
+                  value: ctxVal,
+                  scope: 'flow_run',
+                  created_at: new Date().toISOString(),
+                });
+              }
             }
+
             visited.delete(procheckNext);
             await emitEvent(flowRunId, stepRunId, 'routing.procheck', {
               from_step_id: currentStep.id,
@@ -1617,13 +1635,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     if (next) {
       console.log(`[engine] step=${step.ref} next=${next}`);
       return next;
-    }
-
-    // Step 10b — Fall back to order_index advancement (kong has no next column)
-    const nextByOrder = await getNextStepByOrder(flowRun.flow_id, step.order_index);
-    if (nextByOrder) {
-      console.log(`[engine] step=${step.ref} advancing to order ${step.order_index + 1}: ${nextByOrder.id}`);
-      return nextByOrder.id;
     }
 
     // Terminal step — no outgoing edge, pause for Mo
