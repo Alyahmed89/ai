@@ -502,11 +502,13 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Check if the paused step's pro_check response specified a next_step_id.
-      // If so, route there instead of blindly advancing by order_index.
+      // On resume, re-call pro_check with the user input merged into the paused
+      // step's output. The initial pro_check response was generated before the
+      // user provided input, so its routing decision is stale. Re-evaluating
+      // with the complete data gives the routing rules a chance to fire.
       const { data: pausedStepRun } = await getSupabase()
         .from('step_runs')
-        .select('output')
+        .select('id, step_id, output')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', pausedStepId)
         .order('created_at', { ascending: false })
@@ -517,22 +519,47 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         try {
           const pausedOutput = typeof pausedStepRun.output === 'string'
             ? JSON.parse(pausedStepRun.output) : pausedStepRun.output;
-          const pausedProcheckNext = pausedOutput.procheck_next_step_id || pausedOutput.pro_check?.next_step_id;
-          if (pausedProcheckNext && typeof pausedProcheckNext === 'string' && pausedProcheckNext !== pausedStepId) {
-            const candidateStep = await getStepById(pausedProcheckNext).catch(() => null);
-            // Only use procheck route if the target step has a valid
-            // order_index — terminal markers (e.g. "step-8-no-further-steps")
-            // have null order_index and signal flow completion.
-            if (candidateStep && candidateStep.order_index != null) {
-              nextAfterPaused = candidateStep;
+          // Merge user input into the paused step's output so pro_check
+          // can re-evaluate with input_user_prompt filled in
+          const updatedOutput = { ...pausedOutput, ...(userInput || {}) };
+          const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
+          const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              response: updatedOutput,
+              flow_run_id: flowRunId,
+              step_run_id: pausedStepRun.id,
+              rules: [],
+              plans: [],
+              validation_errors: [],
+              contract_failures: updatedOutput.contract_failures || [],
+              required_inputs: pausedStep?.required_inputs || [],
+              normalized_vars: {},
+              step_contracts: { required_inputs: pausedStep?.required_inputs },
+              previous_step_output: null,
+              expected_response: pausedStep?.expected_response || null,
+              resolved_variables: null,
+              step_title: pausedStep?.title || null,
+              step_order: pausedStep?.order_index ?? null,
+            }),
+          });
+          if (prologRes.ok) {
+            const freshProCheck = await prologRes.json();
+            const freshNext = freshProCheck.next_step_id;
+            if (freshNext && typeof freshNext === 'string' && freshNext !== pausedStepId) {
+              const candidateStep = await getStepById(freshNext).catch(() => null);
+              if (candidateStep && candidateStep.order_index != null) {
+                nextAfterPaused = candidateStep;
+              }
             }
           }
         } catch {
-          // Invalid JSON in output — skip
+          // pro_check call failed — fall through to completion
         }
       }
       if (!nextAfterPaused) {
-        // No valid route from pro_check — complete the flow
+        // No valid route from fresh pro_check — complete the flow
         console.log(`[engine] no valid route from pro_check after resume, completing flow`);
         await updateFlowRun(flowRunId, { status: 'completed' });
         return;
