@@ -850,10 +850,10 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       step.expected_response.actions.length > 0;
     const hasOutputFields = Array.isArray(step.expected_response?.required) &&
       step.expected_response.required.length > 0;
-    if (inputFields.length === 0 && !hasActions && !hasOutputFields) {
+    if (inputFields.length === 0 && !hasOutputFields) {
       skipLlm = true;
-      skipReason = 'no_input_output_fields_no_actions';
-      console.log(`[engine] step=${step.ref} has no input_/output fields and no actions, skipping LLM call`);
+      skipReason = skipReason || 'no_input_output_fields_no_actions';
+      console.log(`[engine] step=${step.ref} has no input_/output fields, skipping LLM call`);
     }
   }
   if (skipLlm) {
