@@ -502,9 +502,33 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Advance directly to the next step by order_index.
-      // The paused step is already done — user provided the input.
-      const nextAfterPaused = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
+      // Check if the paused step's pro_check response specified a next_step_id.
+      // If so, route there instead of blindly advancing by order_index.
+      const { data: pausedStepRun } = await getSupabase()
+        .from('step_runs')
+        .select('output')
+        .eq('flow_run_id', flowRunId)
+        .eq('step_id', pausedStepId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      let nextAfterPaused: any = null;
+      if (pausedStepRun?.output) {
+        try {
+          const pausedOutput = typeof pausedStepRun.output === 'string'
+            ? JSON.parse(pausedStepRun.output) : pausedStepRun.output;
+          const pausedProcheckNext = pausedOutput.procheck_next_step_id || pausedOutput.pro_check?.next_step_id;
+          if (pausedProcheckNext && typeof pausedProcheckNext === 'string' && pausedProcheckNext !== pausedStepId) {
+            nextAfterPaused = await getStepById(pausedProcheckNext).catch(() => null);
+          }
+        } catch {
+          // Invalid JSON in output — fall through to order_index
+        }
+      }
+      // Fallback to order_index if no valid route from pro_check
+      if (!nextAfterPaused) {
+        nextAfterPaused = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
+      }
       if (!nextAfterPaused) {
         console.log(`[engine] no step after order_index ${pausedStep.order_index}, completing flow`);
         await updateFlowRun(flowRunId, { status: 'completed' });
@@ -654,7 +678,10 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       const stepRunId = stepRun?.id;
 
       // Pro_check routing takes priority — if pro_check specified a next step, use it
-      const procheckNext = (stepRun?.output as any)?.procheck_next_step_id;
+      // Check both procheck_next_step_id (stored by callProCheckOnOutput)
+      // and pro_check.next_step_id (direct read from stored pro_check response)
+      const stepOutput = (stepRun?.output as any) || {};
+      const procheckNext = stepOutput.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
       if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== stepRun?.step_id) {
         try {
           const next = await getStepById(procheckNext);
