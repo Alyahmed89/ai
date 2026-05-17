@@ -788,7 +788,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
   // Step 1 — Resolve variables in instructions
   let renderedInstructions: string | null = null;
   try {
-    renderedInstructions = step.instructions ? resolveVariables(step.instructions, context) : null;
+    renderedInstructions = step.instructions ? await resolveVariables(step.instructions, context) : null;
   } catch (err: any) {
     console.warn(`[engine] warning: failed to resolve variables in instructions: ${err.message}. Using raw instructions.`);
     renderedInstructions = step.instructions || null;
@@ -1164,7 +1164,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
           // Validate path: accept relative paths (starting with endpoint base path)
           // or full URLs that match the registered endpoint URL (ignoring query string)
           const endpointBasePath = extractBasePath(endpoint.url);
-          const resolvedActionPath = resolveVariables(action.path, context);
+          const resolvedActionPath = await resolveVariables(action.path, context);
           const actionPathNoQuery = resolvedActionPath.split('?')[0];
           const endpointUrlNoQuery = endpoint.url.split('?')[0];
           const isRelativeMatch = resolvedActionPath.startsWith(endpointBasePath);
@@ -1191,7 +1191,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
         try {
           const payloadSchema = zodSchemaFromSample(endpoint.sample_request);
           if (action.payload) {
-            const resolvedPayload = resolveVariables(action.payload, context);
+            const resolvedPayload = await resolveVariables(action.payload, context);
             payloadSchema.parse(resolvedPayload);
           } else if (actionMethod !== 'GET' && actionMethod !== 'HEAD') {
             const errorMsg = `Missing payload for endpoint '${action.endpoint}': expected payload matching sample_request`;
@@ -1215,14 +1215,14 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
       // Resolve variables just before each action so subsequent actions
       // can use variables set by previous actions in the same step
-      let url = normalizeValue(resolveVariables(action.endpoint, context));
+      let url = normalizeValue(await resolveVariables(action.endpoint, context));
       let headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        ...normalizeValue(resolveVariables(action.headers || {}, context)),
+        ...normalizeValue(await resolveVariables(action.headers || {}, context)),
       };
 
       if (endpoint) {
-        url = normalizeValue(resolveVariables(endpoint.url, context));
+        url = normalizeValue(await resolveVariables(endpoint.url, context));
         headers = { ...(endpoint.headers || {}), ...headers };
       }
 
@@ -1238,7 +1238,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
         // Apply AI payload (override defaults)
         if (action.payload) {
-          const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
+          const resolvedPayload = normalizeValue(await resolveVariables(action.payload, context));
           mergedPayload = mergedPayload
             ? deepMerge(mergedPayload, resolvedPayload)
             : resolvedPayload;
@@ -2026,31 +2026,102 @@ export async function normalizeUserInput(
   return { canonical: symbolic, symbolic, matchedTerms: uniqueTerms, variables };
 }
 
-function resolveVariables(input: any, context: Record<string, any>): any {
+/**
+ * Parse a [[var:key:param=value:...]] tag string into its parts.
+ * Returns { key, params } where params is a record of filter key→value pairs.
+ */
+function parseVarTag(tag: string): { key: string; params: Record<string, string> } {
+  const parts = tag.split(':').map(s => s.trim());
+  const key = parts[0];
+  const params: Record<string, string> = {};
+  for (let i = 1; i < parts.length; i++) {
+    const eqIdx = parts[i].indexOf('=');
+    if (eqIdx > 0) {
+      params[parts[i].slice(0, eqIdx)] = parts[i].slice(eqIdx + 1);
+    }
+  }
+  return { key, params };
+}
+
+/**
+ * Resolve [[var:key]] and [[var:key:filter=value]] tags.
+ *
+ * Simple tags (no filters) are resolved from the in-memory context.
+ * Parameterised tags that are NOT in context are resolved by querying
+ * the Supabase `variables` table with the supplied filter pairs.
+ * Falls back to leaving the tag literal if nothing is found.
+ */
+async function resolveVariables(input: any, context: Record<string, any>): Promise<any> {
   if (typeof input === 'string') {
-    return input.replace(/\[\[var:([^\]]+)\]\]/g, (_match, key) => {
-      const trimmed = key.trim();
-      if (!(trimmed in context)) {
-        console.warn(`Variable '[[var:${trimmed}]]' not found in context, leaving as-is`);
-        return _match;
+    // ---- First pass: extract all tags, resolve from context or collect DB queries ----
+    const regex = /\[\[var:([^\]]+)\]\]/g;
+    const segments: string[] = [];
+    let lastIdx = 0;
+    let m: RegExpExecArray | null;
+    interface DbQuery { tag: string; key: string; params: Record<string, string>; segIdx: number }
+    const dbQueries: DbQuery[] = [];
+
+    while ((m = regex.exec(input)) !== null) {
+      segments.push(input.slice(lastIdx, m.index));
+      const fullMatch = m[0];
+      const { key, params } = parseVarTag(m[1]);
+
+      if (key in context) {
+        const val = context[key];
+        segments.push(typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val));
+      } else if (Object.keys(params).length > 0) {
+        // Has filters — resolve via Supabase
+        dbQueries.push({ tag: fullMatch, key, params, segIdx: segments.length });
+        segments.push(''); // placeholder
+      } else {
+        // Simple tag not in context — leave literal
+        segments.push(fullMatch);
       }
-      const val = context[trimmed];
-      if (typeof val === 'object' && val !== null) {
-        return JSON.stringify(val);
+      lastIdx = regex.lastIndex;
+    }
+    segments.push(input.slice(lastIdx));
+
+    // ---- Second pass: resolve all DB queries in parallel ----
+    if (dbQueries.length > 0) {
+      const results = await Promise.all(
+        dbQueries.map(async ({ key, params }) => {
+          try {
+            let query = getSupabase().from('variables').select('value').eq('key', key);
+            for (const [k, v] of Object.entries(params)) {
+              query = query.eq(k, v);
+            }
+            const { data } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
+            return data?.value ?? null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      for (let i = 0; i < dbQueries.length; i++) {
+        if (results[i] !== null && results[i] !== undefined) {
+          segments[dbQueries[i].segIdx] = String(results[i]);
+        } else {
+          // Query returned nothing — leave original tag literal
+          segments[dbQueries[i].segIdx] = dbQueries[i].tag;
+        }
       }
-      return String(val);
-    });
+    }
+
+    return segments.join('');
   }
 
   if (Array.isArray(input)) {
-    return input.map(item => resolveVariables(item, context));
+    return Promise.all(input.map(item => resolveVariables(item, context)));
   }
 
   if (input && typeof input === 'object') {
     const result: Record<string, any> = {};
-    for (const [k, v] of Object.entries(input)) {
-      result[k] = resolveVariables(v, context);
-    }
+    await Promise.all(
+      Object.entries(input).map(async ([k, v]) => {
+        result[k] = await resolveVariables(v, context);
+      }),
+    );
     return result;
   }
 
@@ -2242,7 +2313,7 @@ async function executeAction(
     }
     if (!endpoint.url.includes('[[var:') && action.path) {
       const endpointBasePath = extractBasePath(endpoint.url);
-      const resolvedActionPath = resolveVariables(action.path, context);
+      const resolvedActionPath = await resolveVariables(action.path, context);
       const actionPathNoQuery = resolvedActionPath.split('?')[0];
       const endpointUrlNoQuery = endpoint.url.split('?')[0];
       const isRelativeMatch = resolvedActionPath.startsWith(endpointBasePath);
@@ -2263,7 +2334,7 @@ async function executeAction(
     try {
       const payloadSchema = zodSchemaFromSample(endpoint.sample_request);
       if (action.payload) {
-        const resolvedPayload = resolveVariables(action.payload, context);
+        const resolvedPayload = await resolveVariables(action.payload, context);
         payloadSchema.parse(resolvedPayload);
       } else if (actionMethod !== 'GET' && actionMethod !== 'HEAD') {
         return { error: { message: `Missing payload for endpoint '${action.endpoint}': expected payload matching sample_request`, action } };
@@ -2278,14 +2349,14 @@ async function executeAction(
   }
 
   // Resolve URL and headers
-  let url = normalizeValue(resolveVariables(action.endpoint, context));
+  let url = normalizeValue(await resolveVariables(action.endpoint, context));
   let headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...normalizeValue(resolveVariables(action.headers || {}, context)),
+    ...normalizeValue(await resolveVariables(action.headers || {}, context)),
   };
 
   if (endpoint) {
-    url = normalizeValue(resolveVariables(endpoint.url, context));
+    url = normalizeValue(await resolveVariables(endpoint.url, context));
     headers = { ...(endpoint.headers || {}), ...headers };
   }
 
@@ -2297,7 +2368,7 @@ async function executeAction(
       mergedPayload = { ...endpoint.sample_request };
     }
     if (action.payload) {
-      const resolvedPayload = normalizeValue(resolveVariables(action.payload, context));
+      const resolvedPayload = normalizeValue(await resolveVariables(action.payload, context));
       mergedPayload = mergedPayload ? deepMerge(mergedPayload, resolvedPayload) : resolvedPayload;
     }
   }
