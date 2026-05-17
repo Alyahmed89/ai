@@ -875,7 +875,8 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     try {
       if (skipLlm) {
         // Build a synthetic response: use context values for input_ fields,
-        // empty strings for other required fields.
+        // empty strings for other required fields.  Inherit actions from
+        // the step config so action-only steps execute their actions.
         aiResponse = {};
         if (Array.isArray(step.expected_response?.required)) {
           for (const field of step.expected_response.required) {
@@ -885,6 +886,9 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
               aiResponse[field] = '';
             }
           }
+        }
+        if (Array.isArray(step.expected_response?.actions)) {
+          aiResponse.actions = step.expected_response.actions;
         }
       } else {
         aiResponse = await callLlm(null, userPrompt);
