@@ -520,23 +520,20 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           const pausedProcheckNext = pausedOutput.procheck_next_step_id || pausedOutput.pro_check?.next_step_id;
           if (pausedProcheckNext && typeof pausedProcheckNext === 'string' && pausedProcheckNext !== pausedStepId) {
             const candidateStep = await getStepById(pausedProcheckNext).catch(() => null);
-            // Only use procheck route if the target step is a real executable step
-            // with a valid order_index. Terminal markers (e.g. "step-8-no-further-steps")
-            // have null order_index and must not be executed.
+            // Only use procheck route if the target step has a valid
+            // order_index — terminal markers (e.g. "step-8-no-further-steps")
+            // have null order_index and signal flow completion.
             if (candidateStep && candidateStep.order_index != null) {
               nextAfterPaused = candidateStep;
             }
           }
         } catch {
-          // Invalid JSON in output — fall through to order_index
+          // Invalid JSON in output — skip
         }
       }
-      // Fallback to order_index if no valid route from pro_check
       if (!nextAfterPaused) {
-        nextAfterPaused = await getNextStepByOrder(flowRun.flow_id, pausedStep.order_index);
-      }
-      if (!nextAfterPaused) {
-        console.log(`[engine] no step after order_index ${pausedStep.order_index}, completing flow`);
+        // No valid route from pro_check — complete the flow
+        console.log(`[engine] no valid route from pro_check after resume, completing flow`);
         await updateFlowRun(flowRunId, { status: 'completed' });
         return;
       }
@@ -692,6 +689,12 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         try {
           const next = await getStepById(procheckNext);
           if (next) {
+            // Terminal markers (null order_index) signal flow completion
+            if (next.order_index == null) {
+              console.log(`[engine] procheck routed to terminal marker ${procheckNext}, completing flow`);
+              await emitEvent(flowRunId, null, 'flow.complete', { reason: 'terminal_marker', step_id: currentStep.id, terminal_step: procheckNext });
+              break;
+            }
             visited.delete(procheckNext);
             await emitEvent(flowRunId, stepRunId, 'routing.procheck', {
               from_step_id: currentStep.id,
@@ -768,22 +771,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // Fall through to order_index advancement if no valid next_step_id
-      const nextStep = await getNextStepByOrder(flowRun.flow_id, currentStep.order_index);
-      if (!nextStep) {
-        console.log(`[engine] no step after order_index ${currentStep.order_index}, completing flow`);
-        await emitEvent(flowRunId, null, 'flow.complete', { reason: 'no_next_step_by_order', step_id: currentStep.id });
-        break;
-      }
-      await emitEvent(flowRunId, null, 'routing.order', {
-        from_step_id: currentStep.id,
-        from_step_ref: currentStep.ref,
-        to_step_id: nextStep.id,
-        to_step_ref: nextStep.ref,
-        to_step_title: nextStep.title,
-        reason: 'order_index_advance',
-      });
-      currentStep = nextStep;
+      // No procheck or AI route — complete the flow.
+      // order_index advancement is removed: pro_check is the sole routing authority.
+      console.log(`[engine] no routing signal for step ${currentStep.id}, completing flow`);
+      await emitEvent(flowRunId, null, 'flow.complete', { reason: 'no_routing_signal', step_id: currentStep.id });
+      break;
     }
 
     await updateFlowRun(flowRunId, { status: 'completed' });
