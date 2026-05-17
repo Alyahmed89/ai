@@ -153,6 +153,9 @@ async function callProCheckOnOutput(
       .limit(2);
     if (prevSteps && prevSteps.length > 1) {
       previous_step_output = prevSteps[1]?.ai_response || null;
+      if (typeof previous_step_output === 'string') {
+        try { previous_step_output = JSON.parse(previous_step_output); } catch {}
+      }
     }
   } catch {
     // Gracefully degrade if fetch fails
