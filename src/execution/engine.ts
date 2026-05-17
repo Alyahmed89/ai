@@ -290,6 +290,20 @@ async function callProCheckOnOutput(
     proCheckResponse = { status: 'pass', plans: [], rules: [] };
   }
 
+  // ----- ROUTING VIA PRO_CHECK -----
+  // If pro_check returned a next_step_id, store it on the step run result
+  // so the main loop routes there (pro_check owns all routing).
+  // This MUST run before the input_ variable check so the route is persisted
+  // even when the step pauses for user input.
+  if (proCheckResponse.next_step_id && typeof proCheckResponse.next_step_id === 'string' && proCheckResponse.next_step_id.trim() !== '') {
+    const resultWithProCheckNext = {
+      ...stepRun.result,
+      procheck_next_step_id: proCheckResponse.next_step_id,
+    };
+    await updateStepRun(stepRun.id, { result: resultWithProCheckNext });
+    stepRun.result = resultWithProCheckNext;
+  }
+
   // ----- CHECK FOR input_ PREFIXED VARIABLES WITH NULL VALUES -----
   // Any variable whose name starts with "input_" and has a null/empty value
   // triggers a pause so the user can fill it in via /resume.
@@ -302,18 +316,6 @@ async function callProCheckOnOutput(
       paused_at_step_id: stepRun.step_id,
     });
     return 'paused';
-  }
-
-  // ----- ROUTING VIA PRO_CHECK -----
-  // If pro_check returned a next_step_id, store it on the step run result
-  // so the main loop routes there (pro_check owns all routing).
-  if (proCheckResponse.next_step_id && typeof proCheckResponse.next_step_id === 'string' && proCheckResponse.next_step_id.trim() !== '') {
-    const resultWithProCheckNext = {
-      ...stepRun.result,
-      procheck_next_step_id: proCheckResponse.next_step_id,
-    };
-    await updateStepRun(stepRun.id, { result: resultWithProCheckNext });
-    stepRun.result = resultWithProCheckNext;
   }
 
   return 'continue';
