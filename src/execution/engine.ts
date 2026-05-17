@@ -1015,7 +1015,6 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       // Mark step run with validation error
       await updateStepRun(stepRunId, {
         validation_errors: [zodError],
-        trace: { ai_response: aiResponse, zod_result: zodError, step: 'zod_validation' },
       });
 
       // Do NOT build synthetic response. Do NOT continue normally.
@@ -1491,13 +1490,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
     }
 
     // Step 8 — Mark step completed
-    const trace = {
-      zod_result: 'valid',
-      step: 'completed',
-    };
-
     await updateStepRun(stepRunId, {
-      trace,
       status: 'completed',
     });
 
