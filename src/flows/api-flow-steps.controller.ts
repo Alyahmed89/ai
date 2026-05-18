@@ -59,14 +59,10 @@ export class ApiFlowStepsController {
       id: randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
-      ref: randomUUID(),
       instructions: body.instructions,
       expected_response: body.expected_response,
-      required_inputs: body.required_inputs || null,
-      variable_aliases: body.variable_aliases || null,
       order_index: body.order_index ?? 0,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     };
     const data = await supabaseFetch('steps', { method: 'POST', body: record, params: { select: '*' } });
     console.log('INSERT DATA:', data);
