@@ -563,8 +563,10 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       }
       if (!nextAfterPaused) {
         // Fallback: check the stored procheck_next_step_id from the step's original execution
-        const storedOutput = typeof pausedStepRun.output === 'string'
-          ? JSON.parse(pausedStepRun.output) : pausedStepRun.output;
+        const storedOutput = pausedStepRun?.output
+          ? (typeof pausedStepRun.output === 'string'
+            ? JSON.parse(pausedStepRun.output) : pausedStepRun.output)
+          : null;
         const storedNext = storedOutput?.procheck_next_step_id;
         if (storedNext && storedNext !== pausedStepId) {
           const candidateStep = await getStepById(storedNext).catch(() => null);
