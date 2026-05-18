@@ -569,9 +569,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             ? JSON.parse(pausedStepRun.output) : pausedStepRun.output)
           : null;
         const storedNext = storedOutput?.procheck_next_step_id;
+        console.log(`[engine] resume fallback: fresh pro_check no route, storedNext=${storedNext} pausedStepId=${pausedStepId}`);
         if (storedNext && storedNext !== pausedStepId) {
           const candidateStep = await getStepById(storedNext).catch(() => null);
           if (candidateStep && candidateStep.order_index != null) {
+            console.log(`[engine] resume fallback: using stored procheck_next_step_id=${storedNext}`);
             nextAfterPaused = candidateStep;
           }
         }
@@ -716,10 +718,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           const stepOutput = (pausedStepRun.output as any) || {};
           const stepRunResult = (pausedStepRun.result as any) || {};
           const procheckNext = stepOutput.procheck_next_step_id || stepRunResult.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
+          console.log(`[engine] __PAUSED__ check: step=${currentStep.id} procheckNext=${procheckNext} step_id=${pausedStepRun.step_id}`);
           if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== pausedStepRun.step_id) {
             const next = await getStepById(procheckNext).catch(() => null);
             if (next) {
-              console.log(`[engine] step ${currentStep.id} paused but pro_check routes to ${procheckNext}, continuing`);
+              console.log(`[engine] __PAUSED__ auto-continue: step ${currentStep.id} -> ${procheckNext}`);
               currentStep = next;
               await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
               continue;
