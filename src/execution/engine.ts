@@ -1629,26 +1629,15 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
 
     // Step 10 — Direct transition via AI-suggested next step
     if (next) {
-      // If the AI suggests routing to itself, that's a loop — skip it
-      // and let prolog routing or terminal handling take over.
-      if (next === step.id) {
-        console.log(`[engine] step=${step.ref} AI suggested self-loop, skipping`);
-      } else {
-        console.log(`[engine] step=${step.ref} next=${next}`);
-        return next;
-      }
+      console.log(`[engine] step=${step.ref} next=${next}`);
+      return next;
     }
 
     // Step 11 — Prolog routing (procheck_next_step_id) takes priority
     const procheckRoute = stepRunForProCheck?.result?.procheck_next_step_id;
     if (procheckRoute && typeof procheckRoute === 'string' && procheckRoute.trim() !== '') {
-      // Skip self-loop from prolog routing too
-      if (procheckRoute === step.id) {
-        console.log(`[engine] step=${step.ref} prolog self-loop, skipping`);
-      } else {
-        console.log(`[engine] step=${step.ref} prolog route=${procheckRoute}`);
-        return procheckRoute;
-      }
+      console.log(`[engine] step=${step.ref} prolog route=${procheckRoute}`);
+      return procheckRoute;
     }
 
     // Terminal step — no outgoing edge, pause for Mo
