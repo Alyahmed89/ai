@@ -562,10 +562,21 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
       if (!nextAfterPaused) {
-        // No valid route from fresh pro_check — complete the flow
-        console.log(`[engine] no valid route from pro_check after resume, completing flow`);
-        await updateFlowRun(flowRunId, { status: 'completed' });
-        return;
+        // Fallback: check the stored procheck_next_step_id from the step's original execution
+        const storedOutput = typeof pausedStepRun.output === 'string'
+          ? JSON.parse(pausedStepRun.output) : pausedStepRun.output;
+        const storedNext = storedOutput?.procheck_next_step_id;
+        if (storedNext && storedNext !== pausedStepId) {
+          const candidateStep = await getStepById(storedNext).catch(() => null);
+          if (candidateStep && candidateStep.order_index != null) {
+            nextAfterPaused = candidateStep;
+          }
+        }
+        if (!nextAfterPaused) {
+          console.log(`[engine] no valid route from pro_check after resume, completing flow`);
+          await updateFlowRun(flowRunId, { status: 'completed' });
+          return;
+        }
       }
       // Small delay to ensure DB write propagates before buildContext reads
       await new Promise(resolve => setTimeout(resolve, 500));
