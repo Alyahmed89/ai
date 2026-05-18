@@ -699,11 +699,33 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       }
 
       if (stepResult === '__PAUSED__') {
-        // Step paused itself — stop immediately.
-        // Do NOT auto-continue by order_index or AI next_step_id.
-        // Flow only resumes through explicit /resume endpoint, which re-runs the SAME paused step.
-        // The AI's next_step_id from a paused response is stale and MUST NOT be followed;
-        // the step will generate a fresh response when re-run after resume.
+        // Check if pro_check already stored a valid route — if so, follow it
+        // instead of pausing. The step may be terminal only because the AI
+        // response didn't include a `next` field, even though pro_check
+        // successfully routed to the next step.
+        const { data: pausedStepRun } = await getSupabase()
+          .from('step_runs')
+          .select('id, output, result, step_id')
+          .eq('flow_run_id', flowRunId)
+          .eq('step_id', currentStep.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (pausedStepRun) {
+          const stepOutput = (pausedStepRun.output as any) || {};
+          const stepRunResult = (pausedStepRun.result as any) || {};
+          const procheckNext = stepOutput.procheck_next_step_id || stepRunResult.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
+          if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== pausedStepRun.step_id) {
+            const next = await getStepById(procheckNext).catch(() => null);
+            if (next) {
+              console.log(`[engine] step ${currentStep.id} paused but pro_check routes to ${procheckNext}, continuing`);
+              currentStep = next;
+              await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
+              continue;
+            }
+          }
+        }
+        // No valid route — pause for resume
         console.log(`[engine] flow paused at step ${currentStep.id}`);
         await emitEvent(flowRunId, null, 'flow.paused', { reason: 'step_paused', step_id: currentStep.id });
         return;
