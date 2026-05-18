@@ -420,9 +420,10 @@ function buildExpectedResponseSchema(stepExpectedResponse: any): z.ZodObject<any
 }
 
 export async function runFlow(flowRunId: string, userInput?: Record<string, any>): Promise<void> {
-  console.log(`[engine] runFlow start flowRunId=${flowRunId}`);
+  console.log(`[engine] runFlow start flowRunId=${flowRunId} userInput=${JSON.stringify(userInput)}`);
   try {
     const flowRun = await getFlowRun(flowRunId);
+    console.log(`[engine] runFlow flowRun status=${flowRun?.status} paused_at_step_id=${flowRun?.paused_at_step_id || flowRun?.input?.paused_at_step_id}`);
     if (!flowRun?.flow_id) throw new Error(`Flow run ${flowRunId} has no flow_id`);
 
     // If resuming from paused state, apply user_input and find resume step
