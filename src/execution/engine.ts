@@ -333,9 +333,6 @@ function findInputVarsWithNullValue(obj: any, prefix = ''): string[] {
   if (!obj || typeof obj !== 'object') return results;
   for (const [key, value] of Object.entries(obj)) {
     const fullKey = prefix ? `${prefix}.${key}` : key;
-    // Skip pro_check_request — it contains resolved_variables from previous
-    // steps whose input_ fields should not trigger a pause on the current step.
-    if (key === 'pro_check_request') continue;
     if (key.startsWith('input_') && (value === null || value === undefined || value === '' || value === 'null')) {
       results.push(fullKey);
     } else if (typeof value === 'object' && !Array.isArray(value)) {
