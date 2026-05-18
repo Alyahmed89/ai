@@ -1633,6 +1633,13 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
       return next;
     }
 
+    // Step 11 — Prolog routing (procheck_next_step_id) takes priority
+    const procheckRoute = stepRunForProCheck?.result?.procheck_next_step_id;
+    if (procheckRoute && typeof procheckRoute === 'string' && procheckRoute.trim() !== '') {
+      console.log(`[engine] step=${step.ref} prolog route=${procheckRoute}`);
+      return procheckRoute;
+    }
+
     // Terminal step — no outgoing edge, pause for Mo
     console.log(`[engine] step=${step.ref} is terminal, pausing for Mo`);
     await updateFlowRun(flowRunId, {
