@@ -708,16 +708,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         // successfully routed to the next step.
         const { data: pausedStepRun } = await getSupabase()
           .from('step_runs')
-          .select('id, output, result, step_id')
+          .select('id, output, step_id')
           .eq('flow_run_id', flowRunId)
-          .eq('step_id', currentStep.id)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (pausedStepRun) {
           const stepOutput = (pausedStepRun.output as any) || {};
-          const stepRunResult = (pausedStepRun.result as any) || {};
-          const procheckNext = stepOutput.procheck_next_step_id || stepRunResult.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
+          const procheckNext = stepOutput.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
           console.log(`[engine] __PAUSED__ check: step=${currentStep.id} procheckNext=${procheckNext} step_id=${pausedStepRun.step_id}`);
           if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== pausedStepRun.step_id) {
             const next = await getStepById(procheckNext).catch(() => null);
@@ -756,7 +754,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       // Note: updateStepRun maps result→output for Kong schema
       const { data: stepRun } = await getSupabase()
         .from('step_runs')
-        .select('id, output, result, step_id')
+        .select('id, output, step_id')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', currentStep.id)
         .order('created_at', { ascending: false })
@@ -768,15 +766,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       // Check both procheck_next_step_id (stored by callProCheckOnOutput)
       // and pro_check.next_step_id (direct read from stored pro_check response)
       const stepOutput = (stepRun?.output as any) || {};
-      const stepRunResult = (stepRun?.result as any) || {};
-      const procheckNext = stepOutput.procheck_next_step_id || stepRunResult.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
+      const procheckNext = stepOutput.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
       if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== stepRun?.step_id) {
         try {
           const next = await getStepById(procheckNext);
           if (next) {
             // Store the matched rules' accumulated context (from prolog API)
             // as a flow variable so the destination step reads and executes its actions
-            const proCheckResult = stepOutput.pro_check || stepRunResult.pro_check || {};
+            const proCheckResult = stepOutput.pro_check || {};
             const accumulatedCtx = proCheckResult.accumulated_context;
             if (accumulatedCtx) {
               const ctxVal = typeof accumulatedCtx === 'string' ? accumulatedCtx : JSON.stringify(accumulatedCtx);
