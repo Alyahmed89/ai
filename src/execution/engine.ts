@@ -896,6 +896,7 @@ export async function runStep(step: any, flowRunId: string, flowRun: any): Promi
   console.log(`[engine] runStep stepRunId=${stepRunId}`);
 
   // Build variable context
+  if (flowRun && flowRun.input && flowRun.input.user_input) { flowRun.input_variables = { ...flowRun.input_variables, ...flowRun.input.user_input }; }
   const context = await buildContext(flowRunId, stepRunId, flowRun);
 
   // Apply canonical variable normalization if step has aliases.
