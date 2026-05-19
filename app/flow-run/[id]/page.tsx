@@ -425,8 +425,6 @@ export default function FlowRunPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [pendingUserMsgs, setPendingUserMsgs] = useState<string[]>([])
-  const pendingUserMsgsRef = useRef(pendingUserMsgs)
-  pendingUserMsgsRef.current = pendingUserMsgs
 
   /* ── Fetch flow run + step runs + definitions ── */
   const fetchData = useCallback(async () => {
@@ -439,10 +437,11 @@ export default function FlowRunPage() {
         fetch('/api/proxy/api/flow-steps'),
       ])
 
+      let fr: FlowRun | null = null
       if (flowRunRes.ok) {
         const flowRunData = await flowRunRes.json()
         // Handle both direct object and { data: ... } wrapper
-        const fr = flowRunData?.data ?? flowRunData
+        fr = flowRunData?.data ?? flowRunData
         if (fr && typeof fr === 'object' && fr.id) {
           setFlowRun(fr as FlowRun)
         }
@@ -471,22 +470,10 @@ export default function FlowRunPage() {
         }
       }
 
-      // Remove confirmed messages from the pending queue
-      const pms = pendingUserMsgsRef.current
-      if (pms.length > 0) {
-        const confirmed = new Set<string>()
-        for (const s of parsed) {
-          const rv = s.resolved_variables as Record<string, unknown> | null
-          if (!rv) continue
-          for (const [, v] of Object.entries(rv)) {
-            if (typeof v === 'string' && pms.includes(v)) {
-              confirmed.add(v)
-            }
-          }
-        }
-        if (confirmed.size > 0) {
-          setPendingUserMsgs((prev) => prev.filter((m) => !confirmed.has(m)))
-        }
+      // Only clear pending messages when the flow has completed
+      const isFlowDone = fr?.status === 'completed' || fr?.status === 'failed' || fr?.completed_at != null
+      if (isFlowDone) {
+        setPendingUserMsgs([])
       }
     } catch (e) {
       console.error('Failed to fetch data', e)
@@ -849,6 +836,7 @@ export default function FlowRunPage() {
 
   const handleSend = async () => {
     setSending(true)
+    const sentMsg = allRequiredVars.length > 0 ? (inputs[allRequiredVars[0]] || '') : ''
     try {
       if (steps.length === 0 && flowId) {
         // No flow run yet — start the flow
@@ -863,18 +851,16 @@ export default function FlowRunPage() {
           }),
         })
       } else if (id && steps.length > 0) {
-        // Flow run exists — resume
-        const prompt = inputs[allRequiredVars[0]] || ''
-        await fetch(`/api/proxy/flow-runs/${id}/resume`, {
+        // Flow run exists — resume (fire & forget, don't block)
+        fetch(`/api/proxy/flow-runs/${id}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_input: { input_user_prompt: prompt },
+            user_input: { input_user_prompt: sentMsg },
           }),
-        })
+        }).catch(console.error)
       }
-      // Store the just-sent user message so it shows immediately in chat
-      const sentMsg = inputs[allRequiredVars[0]] || ''
+      // Show pending message immediately and clear input
       if (sentMsg) {
         setPendingUserMsgs((prev) => [...prev, sentMsg])
       }
