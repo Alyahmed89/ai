@@ -216,7 +216,7 @@ async function callProCheckOnOutput(
 
   const proCheckRequest = {
     response: output,
-    rules: activeRules,
+    rules: activeRules.map(r => r.content),
     plans: [],
     flow_run_id: stepRun.flow_run_id,
     step_run_id: proCheckStepRunId,
@@ -315,6 +315,20 @@ async function callProCheckOnOutput(
     }
   }
 
+  // ----- ROUTING VIA PRO_CHECK -----
+  // If pro_check returned a next_step_id, store it on the step run result
+  // so the main loop routes there (pro_check owns all routing).
+  // This MUST run BEFORE any pause/stop check so the route is persisted
+  // even when the step pauses.
+  if (proCheckResponse.next_step_id && typeof proCheckResponse.next_step_id === 'string' && proCheckResponse.next_step_id.trim() !== '') {
+    const resultWithProCheckNext = {
+      ...stepRun.result,
+      procheck_next_step_id: proCheckResponse.next_step_id,
+    };
+    await updateStepRun(stepRun.id, { result: resultWithProCheckNext });
+    stepRun.result = resultWithProCheckNext;
+  }
+
   // ----- HANDLE STOP -----
   // NOTE: next_step_id does NOT override pro_check. The AI never decides
   // execution structure — pro_check is authoritative for all transitions.
@@ -341,20 +355,6 @@ async function callProCheckOnOutput(
     // Prolog unreachable — warn but continue (graceful degradation)
     console.warn(`[engine] prolog unreachable, continuing without pro_check`);
     proCheckResponse = { status: 'pass', plans: [], rules: [] };
-  }
-
-  // ----- ROUTING VIA PRO_CHECK -----
-  // If pro_check returned a next_step_id, store it on the step run result
-  // so the main loop routes there (pro_check owns all routing).
-  // This MUST run before the input_ variable check so the route is persisted
-  // even when the step pauses for user input.
-  if (proCheckResponse.next_step_id && typeof proCheckResponse.next_step_id === 'string' && proCheckResponse.next_step_id.trim() !== '') {
-    const resultWithProCheckNext = {
-      ...stepRun.result,
-      procheck_next_step_id: proCheckResponse.next_step_id,
-    };
-    await updateStepRun(stepRun.id, { result: resultWithProCheckNext });
-    stepRun.result = resultWithProCheckNext;
   }
 
   // ----- CHECK FOR input_ PREFIXED VARIABLES WITH NULL VALUES -----
@@ -488,7 +488,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         has_user_input: userInput != null,
       });
 
-      // Find the step after paused_at_step_id by order_index
+      // Find the step after paused_at_step_id
       const pausedStep = await getStepById(flowRun.paused_at_step_id);
       if (!pausedStep) throw new Error(`Paused step ${flowRun.paused_at_step_id} not found`);
 
@@ -592,7 +592,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
               response: updatedOutput,
               flow_run_id: flowRunId,
               step_run_id: pausedStepRun.id,
-              rules: activeRules,
+              rules: activeRules.map(r => r.content),
               plans: [],
               validation_errors: [],
               contract_failures: updatedOutput.contract_failures || [],
@@ -613,7 +613,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             const freshNext = freshProCheck.next_step_id;
             if (freshNext && typeof freshNext === 'string' && freshNext !== pausedStepId) {
               const candidateStep = await getStepById(freshNext).catch(() => null);
-              if (candidateStep && candidateStep.order_index != null) {
+              if (candidateStep) {
                 nextAfterPaused = candidateStep;
               }
             }
@@ -628,11 +628,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           ? (typeof pausedStepRun.output === 'string'
             ? JSON.parse(pausedStepRun.output) : pausedStepRun.output)
           : null;
-        const storedNext = storedOutput?.procheck_next_step_id;
+        const storedNext = storedOutput?.procheck_next_step_id || storedOutput?.pro_check?.next_step_id;
         console.log(`[engine] resume fallback: fresh pro_check no route, storedNext=${storedNext} pausedStepId=${pausedStepId}`);
-        if (storedNext && storedNext !== pausedStepId) {
+        if (storedNext && typeof storedNext === 'string' && storedNext !== pausedStepId) {
           const candidateStep = await getStepById(storedNext).catch(() => null);
-          if (candidateStep && candidateStep.order_index != null) {
+          if (candidateStep) {
             console.log(`[engine] resume fallback: using stored procheck_next_step_id=${storedNext}`);
             nextAfterPaused = candidateStep;
           }
@@ -793,7 +793,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         return;
       }
 
-      // Plain string step ID returned from runStep (order_index fallback) — route directly
+      // Plain string step ID returned from runStep — route directly
       if (typeof stepResult === 'string' && stepResult !== '__PAUSED__' && stepResult.length > 0) {
         const nextStep = await getStepById(stepResult).catch(() => null);
         if (nextStep) {
@@ -1831,7 +1831,7 @@ async function getFirstStep(flowId: string): Promise<any> {
     .from('steps')
     .select('*')
     .eq('flow_id', flowId)
-    .order('order_index', { ascending: true })
+    .order('id', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`Failed to get first step: ${error.message}`);
@@ -1856,19 +1856,6 @@ export async function getStepById(stepId: string): Promise<any> {
     .eq('id', stepId)
     .single();
   if (error) throw new Error(`Step not found by id ${stepId}: ${error.message}`);
-  return normalizeStep(data);
-}
-
-async function getNextStepByOrder(flowId: string, currentOrderIndex: number): Promise<any> {
-  const { data, error } = await getSupabase()
-    .from('steps')
-    .select('*')
-    .eq('flow_id', flowId)
-    .gt('order_index', currentOrderIndex)
-    .order('order_index', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`Failed to get next step: ${error.message}`);
   return normalizeStep(data);
 }
 
