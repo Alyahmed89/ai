@@ -864,22 +864,12 @@ export default function FlowRunPage() {
         })
       } else if (id && steps.length > 0) {
         // Flow run exists — resume
-        // Build user_input from allRequiredVars, supporting dotted paths for nested objects
-        const inputVars: Record<string, unknown> = {}
-        for (const v of allRequiredVars) {
-          const val = inputs[v]
-          if (v.includes('.')) {
-            setNested(inputVars, v.split('.'), val ?? '')
-          } else {
-            inputVars[v] = val ?? ''
-          }
-        }
-        await fetch('/api/proxy/resume', {
+        const prompt = inputs[allRequiredVars[0]] || ''
+        await fetch(`/api/proxy/flow-runs/${id}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            flowRunId: id,
-            user_input: inputVars,
+            user_input: { input_user_prompt: prompt },
           }),
         })
       }
