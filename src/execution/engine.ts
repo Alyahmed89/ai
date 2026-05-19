@@ -3,6 +3,40 @@ import { z } from 'zod';
 import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
 
+/**
+ * Fetch active routing rules from Supabase to include in pro_check requests.
+ * This makes prolog stateless — it doesn't need to cache or refresh rules.
+ */
+async function getActiveRoutingRules(): Promise<any[]> {
+  try {
+    const { data } = await getSupabase()
+      .from('rules')
+      .select('*')
+      .eq('namespace', 'routing')
+      .eq('is_active', true);
+    return data || [];
+  } catch (err) {
+    console.warn('[engine] failed to fetch active routing rules:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch all step IDs for a flow, used to validate pro_check routing targets.
+ */
+async function getFlowStepIds(flowId: string): Promise<string[]> {
+  try {
+    const { data } = await getSupabase()
+      .from('steps')
+      .select('id')
+      .eq('flow_id', flowId);
+    return (data || []).map(s => s.id);
+  } catch (err) {
+    console.warn('[engine] failed to fetch flow step IDs:', err);
+    return [];
+  }
+}
+
 /** Insert a variable (or array of variables) while stripping columns kong's table doesn't have. */
 async function insertVariable(data: Record<string, any> | Record<string, any>[]): Promise<void> {
   if (Array.isArray(data)) {
@@ -167,9 +201,22 @@ async function callProCheckOnOutput(
     console.warn('[engine] pro_check called without a valid step_run.id, using step_run_id from stepRun');
   }
 
+  // Fetch active routing rules and flow step IDs so prolog is stateless
+  const activeRules = await getActiveRoutingRules();
+  // Try to get flow_id for step validation
+  let allStepIds: string[] = [];
+  try {
+    const flowId = step?.flow_id;
+    if (flowId) {
+      allStepIds = await getFlowStepIds(flowId);
+    }
+  } catch {
+    // non-critical, continue without step IDs
+  }
+
   const proCheckRequest = {
     response: output,
-    rules: [],
+    rules: activeRules,
     plans: [],
     flow_run_id: stepRun.flow_run_id,
     step_run_id: proCheckStepRunId,
@@ -185,6 +232,9 @@ async function callProCheckOnOutput(
     resolved_variables: (stepRun as any).resolved_variables || stepRun.result?.resolved_variables || null,
     step_title: step?.title || null,
     step_order: step?.order_index ?? null,
+    all_step_ids: allStepIds,
+    flow_input: null,
+    current_step_id: stepRun.step_id,
   };
 
   // ----- STORE REQUEST IMMEDIATELY -----
@@ -526,6 +576,14 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           // Merge user input into the paused step's output so pro_check
           // can re-evaluate with input_user_prompt filled in
           const updatedOutput = { ...pausedOutput, ...(userInput || {}) };
+          const activeRules = await getActiveRoutingRules();
+          let allStepIds: string[] = [];
+          try {
+            const flowId = pausedStep?.flow_id;
+            if (flowId) {
+              allStepIds = await getFlowStepIds(flowId);
+            }
+          } catch { /* non-critical */ }
           const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
           const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
             method: 'POST',
@@ -534,7 +592,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
               response: updatedOutput,
               flow_run_id: flowRunId,
               step_run_id: pausedStepRun.id,
-              rules: [],
+              rules: activeRules,
               plans: [],
               validation_errors: [],
               contract_failures: updatedOutput.contract_failures || [],
@@ -546,6 +604,8 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
               resolved_variables: null,
               step_title: pausedStep?.title || null,
               step_order: pausedStep?.order_index ?? null,
+              all_step_ids: allStepIds,
+              current_step_id: pausedStepRun.step_id,
             }),
           });
           if (prologRes.ok) {
