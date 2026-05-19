@@ -1277,6 +1277,12 @@ export default function FlowRunPage() {
                       <textarea
                         value={inputs[v] || ''}
                         onChange={(e) => handleInputChange(v, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            handleSend()
+                          }
+                        }}
                         placeholder={chatMode ? 'Type a message…' : `enter ${label}...`}
                         className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none overflow-y-auto"
                         onInput={(e) => {
