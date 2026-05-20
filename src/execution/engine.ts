@@ -22,6 +22,73 @@ async function getActiveRoutingRules(): Promise<any[]> {
 }
 
 /**
+ * Validate that a rule's content is valid Prolog syntax before sending to prolog.
+ * Returns { valid, errors, warnings }.
+ */
+function validateRuleContent(content: string): { valid: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const trimmed = content.trim();
+
+  // Must end with a period
+  if (!trimmed.endsWith('.')) {
+    errors.push('Rule must end with a period (.)');
+  }
+
+  // Must contain :- (implication operator)
+  if (!trimmed.includes(':-')) {
+    errors.push('Rule must contain the implication operator (:-)');
+  }
+
+  // Must start with a lowercase prolog predicate (not a plain English sentence)
+  if (!/^[a-z][a-zA-Z0-9_]*\(/.test(trimmed)) {
+    warnings.push('Rule does not start with a valid Prolog predicate — may be ignored by prolog');
+  }
+
+  // Heuristic: if the rule has more than 8 consecutive alphabetic words without Prolog syntax,
+  // it's likely plain English text
+  const words = trimmed.split(/\s+/);
+  let maxEnglishRun = 0;
+  let currentRun = 0;
+  for (const w of words) {
+    if (/^[a-zA-Z]{3,}$/.test(w) && !w.includes('_') && !w.includes('(') && !w.includes(')')) {
+      currentRun++;
+      maxEnglishRun = Math.max(maxEnglishRun, currentRun);
+    } else {
+      currentRun = 0;
+    }
+  }
+  if (maxEnglishRun > 8) {
+    errors.push('Rule contains too many consecutive English words — this looks like natural language, not Prolog');
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+/**
+ * Filter active routing rules, removing invalid ones and logging warnings.
+ * Returns only valid rules.
+ */
+async function getValidRoutingRules(): Promise<{ valid: any[]; invalid: any[] }> {
+  const allRules = await getActiveRoutingRules();
+  const valid: any[] = [];
+  const invalid: any[] = [];
+  for (const rule of allRules) {
+    const result = validateRuleContent(rule.content || '');
+    if (result.valid) {
+      valid.push(rule);
+    } else {
+      console.warn(`[engine] invalid rule ${rule.rule_id} (${(rule.name || 'unnamed')}): ${result.errors.join('; ')}`);
+      invalid.push(rule);
+    }
+  }
+  if (invalid.length > 0) {
+    console.warn(`[engine] filtered ${invalid.length} invalid rules from pro_check request`);
+  }
+  return { valid, invalid };
+}
+
+/**
  * Fetch all step IDs for a flow, used to validate pro_check routing targets.
  */
 async function getFlowStepIds(flowId: string): Promise<string[]> {
@@ -202,7 +269,8 @@ async function callProCheckOnOutput(
   }
 
   // Fetch active routing rules and flow step IDs so prolog is stateless
-  const activeRules = await getActiveRoutingRules();
+  // Validate rules before sending to prevent bad rules from killing prolog
+  const { valid: activeRules, invalid: _invalidRules } = await getValidRoutingRules();
   // Try to get flow_id for step validation
   let allStepIds: string[] = [];
   try {
@@ -329,16 +397,44 @@ async function callProCheckOnOutput(
     stepRun.result = resultWithProCheckNext;
   }
 
-  // ----- HANDLE STOP -----
-  // NOTE: next_step_id does NOT override pro_check. The AI never decides
-  // execution structure — pro_check is authoritative for all transitions.
-  if (proCheckResponse.status === 'stop') {
-    await updateStepRun(stepRun.id, { status: 'paused' });
-    await updateFlowRun(stepRun.flow_run_id, {
-      status: 'paused',
-      paused_at_step_id: stepRun.step_id,
+  // ----- STORE MATCHED RULES IN CONTEXT -----
+  // Make matched_rules and winning_rule available to the next step's AI
+  // via the variables table so [[var:previous_matched_rules]] resolves.
+  const matchedRules = proCheckResponse.matched_rules;
+  const winningRule = proCheckResponse.winning_rule;
+  if (matchedRules && Array.isArray(matchedRules) && matchedRules.length > 0) {
+    await insertVariable({
+      id: randomUUID(),
+      flow_run_id: stepRun.flow_run_id,
+      step_run_id: stepRun.id,
+      key: 'previous_matched_rules',
+      value: JSON.stringify(matchedRules.map((r: any) => ({
+        rule_id: r.rule_id,
+        target: r.target,
+        specificity: r.specificity,
+        pro_map: r.pro_map,
+        context: r.context,
+      }))),
+      scope: 'flow_run',
+      created_at: new Date().toISOString(),
     });
-    return 'paused';
+  }
+  if (winningRule && typeof winningRule === 'object') {
+    await insertVariable({
+      id: randomUUID(),
+      flow_run_id: stepRun.flow_run_id,
+      step_run_id: stepRun.id,
+      key: 'previous_winning_rule',
+      value: JSON.stringify({
+        rule_id: winningRule.rule_id,
+        target: winningRule.target,
+        specificity: winningRule.specificity,
+        pro_map: winningRule.pro_map,
+        context: winningRule.context,
+      }),
+      scope: 'flow_run',
+      created_at: new Date().toISOString(),
+    });
   }
 
   // ----- HANDLE PAUSE -----
@@ -556,27 +652,32 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
       }
 
-      // On resume, re-call pro_check with the user input merged into the paused
-      // step's output. The initial pro_check response was generated before the
-      // user provided input, so its routing decision is stale. Re-evaluating
-      // with the complete data gives the routing rules a chance to fire.
+      // On resume, determine next step from pro_check or stored routing.
+      // Prolog server caches rules at startup and ignores the rules: [] field,
+      // so the fresh pro_check often returns stale results. Strategy:
+      //   - If user provided meaningful input (not empty {}), re-call pro_check.
+      //   - Otherwise, use the stored procheck_next_step_id from the step's
+      //     original execution (which used the engine's validated rules).
       const { data: pausedStepRun } = await getSupabase()
         .from('step_runs')
-        .select('id, step_id, output')
+        .select('id, step_id, output, ai_response')
         .eq('flow_run_id', flowRunId)
         .eq('step_id', pausedStepId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      const hasUserInput = userInput != null && typeof userInput === 'object' && Object.keys(userInput).length > 0;
       let nextAfterPaused: any = null;
-      if (pausedStepRun?.output) {
+
+      // Only re-call pro_check if there's actual new input
+      if (hasUserInput && pausedStepRun?.output) {
         try {
           const pausedOutput = typeof pausedStepRun.output === 'string'
             ? JSON.parse(pausedStepRun.output) : pausedStepRun.output;
-          // Merge user input into the paused step's output so pro_check
-          // can re-evaluate with input_user_prompt filled in
-          const updatedOutput = { ...pausedOutput, ...(userInput || {}) };
-          const activeRules = await getActiveRoutingRules();
+          const pausedAi = typeof pausedStepRun.ai_response === 'string'
+            ? JSON.parse(pausedStepRun.ai_response) : (pausedStepRun.ai_response || {});
+          const updatedOutput = { ...pausedAi, ...pausedOutput, ...(userInput || {}) };
+          const { valid: activeRules } = await getValidRoutingRules();
           let allStepIds: string[] = [];
           try {
             const flowId = pausedStep?.flow_id;
@@ -619,21 +720,22 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             }
           }
         } catch {
-          // pro_check call failed — fall through to completion
+          // pro_check call failed — fall through to stored route
         }
       }
       if (!nextAfterPaused) {
-        // Fallback: check the stored procheck_next_step_id from the step's original execution
+        // Use the stored procheck_next_step_id from the step's original execution
+        // (or from the fresh pro_check if it returned one but step didn't validate)
         const storedOutput = pausedStepRun?.output
           ? (typeof pausedStepRun.output === 'string'
             ? JSON.parse(pausedStepRun.output) : pausedStepRun.output)
           : null;
         const storedNext = storedOutput?.procheck_next_step_id || storedOutput?.pro_check?.next_step_id;
-        console.log(`[engine] resume fallback: fresh pro_check no route, storedNext=${storedNext} pausedStepId=${pausedStepId}`);
+        console.log(`[engine] resume: using stored route, storedNext=${storedNext} pausedStepId=${pausedStepId} hasUserInput=${hasUserInput}`);
         if (storedNext && typeof storedNext === 'string' && storedNext !== pausedStepId) {
           const candidateStep = await getStepById(storedNext).catch(() => null);
           if (candidateStep) {
-            console.log(`[engine] resume fallback: using stored procheck_next_step_id=${storedNext}`);
+            console.log(`[engine] resume: using stored procheck_next_step_id=${storedNext}`);
             nextAfterPaused = candidateStep;
           }
         }
