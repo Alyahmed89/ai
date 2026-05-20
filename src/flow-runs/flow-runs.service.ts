@@ -7,4 +7,9 @@ export class FlowRunsService {
     await runFlow(id, userInput);
     return { status: 'resumed' };
   }
+
+  async runStep(id: string) {
+    await runFlow(id);
+    return { status: 'run' };
+  }
 }

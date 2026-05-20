@@ -22,6 +22,11 @@ export class FlowRunsController {
     return this.flowRunsService.resume(id, body.user_input);
   }
 
+  @Get(':id/run')
+  async run(@Param('id') id: string) {
+    return this.flowRunsService.runStep(id);
+  }
+
   @Get(':id/trace')
   async trace(@Param('id') id: string, @Res() res: Response) {
     const flowRun = await getSupabase()
