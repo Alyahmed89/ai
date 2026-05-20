@@ -754,32 +754,10 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       const stepResult = await runStep(currentStep, flowRunId, flowRun);
       console.log(`[engine] step done ref=${currentStep.ref} stepResult=${JSON.stringify(stepResult)}`);
 
-      // Handle paused signal (from pro_check stop/pause or API failure)
-      // Check if pro_check already stored a valid route — if so, follow it
-      // instead of pausing. pro_check owns all routing.
+      // Handle paused signal (from pro_check stop/pause, input_ null, or API failure)
+      // Always pause regardless of stored procheck_next_step_id.
+      // The resume flow will re-evaluate pro_check with user input merged in.
       if (stepResult && typeof stepResult === 'object' && 'status' in stepResult && stepResult.status === 'paused') {
-        const { data: pausedStepRun } = await getSupabase()
-          .from('step_runs')
-          .select('id, output, step_id')
-          .eq('flow_run_id', flowRunId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (pausedStepRun) {
-          const stepOutput = (pausedStepRun.output as any) || {};
-          const procheckNext = stepOutput.procheck_next_step_id || stepOutput.pro_check?.next_step_id;
-          console.log(`[engine] paused signal check: step=${currentStep.id} procheckNext=${procheckNext} step_id=${pausedStepRun.step_id}`);
-          if (procheckNext && typeof procheckNext === 'string' && procheckNext.length > 0 && procheckNext !== pausedStepRun.step_id) {
-            const next = await getStepById(procheckNext).catch(() => null);
-            if (next) {
-              console.log(`[engine] paused auto-continue: step ${currentStep.id} -> ${procheckNext}`);
-              currentStep = next;
-              await updateFlowRun(flowRunId, { status: 'running', paused_at_step_id: null });
-              continue;
-            }
-          }
-        }
-        // No valid route — pause for resume
         console.log(`[engine] flow paused at step ${currentStep.id}`);
         await emitEvent(flowRunId, null, 'flow.paused', { reason: 'step_paused', step_id: currentStep.id });
         return;
