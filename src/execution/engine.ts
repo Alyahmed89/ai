@@ -2,21 +2,21 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getSupabase } from '../supabase';
 import { callLlm } from './llm';
+import { buildRuleIR, compileRuleProgram } from '../rules/compiler';
 
 /**
- * Fetch active routing rules from Supabase to include in pro_check requests.
+ * Fetch active rules from all namespaces for the RuleIR compiler pipeline.
  * This makes prolog stateless — it doesn't need to cache or refresh rules.
  */
-async function getActiveRoutingRules(): Promise<any[]> {
+async function getAllActiveRules(): Promise<any[]> {
   try {
     const { data } = await getSupabase()
       .from('rules')
       .select('*')
-      .eq('namespace', 'routing')
       .eq('is_active', true);
     return data || [];
   } catch (err) {
-    console.warn('[engine] failed to fetch active routing rules:', err);
+    console.warn('[engine] failed to fetch active rules:', err);
     return [];
   }
 }
@@ -25,28 +25,49 @@ async function getActiveRoutingRules(): Promise<any[]> {
  * Validate that a rule's content is valid Prolog syntax before sending to prolog.
  * Returns { valid, errors, warnings }.
  */
-function validateRuleContent(content: string): { valid: boolean; errors: string[]; warnings: string[] } {
+function validateRuleContent(content: string, namespace?: string): { valid: boolean; errors: string[]; warnings: string[] } {
+  if (namespace === "predicate_mapping") {
+    return { valid: true, errors: [], warnings: [] };
+  }
+
   const errors: string[] = [];
   const warnings: string[] = [];
   const trimmed = content.trim();
 
-  // Must end with a period
-  if (!trimmed.endsWith('.')) {
-    errors.push('Rule must end with a period (.)');
+  if (!trimmed) {
+    errors.push('Rule content is empty');
+    return { valid: false, errors, warnings };
   }
 
-  // Must contain :- (implication operator)
-  if (!trimmed.includes(':-')) {
-    errors.push('Rule must contain the implication operator (:-)');
+  if (namespace === "fact") {
+    if (!trimmed.endsWith(".")) errors.push("Fact must end with a period (.)");
+    return { valid: errors.length === 0, errors, warnings };
   }
 
-  // Must start with a lowercase prolog predicate (not a plain English sentence)
-  if (!/^[a-z][a-zA-Z0-9_]*\(/.test(trimmed)) {
-    warnings.push('Rule does not start with a valid Prolog predicate — may be ignored by prolog');
+  if (namespace === "clause") {
+    if (!trimmed.endsWith('.')) errors.push('Clause rule must end with a period (.)');
+    if (!trimmed.includes(':-')) errors.push('Clause rule must contain the implication operator (:-)');
+    if (!/^[a-z][a-zA-Z0-9_]*\(/.test(trimmed))
+      errors.push('Clause rule must start with a valid Prolog predicate');
+    return { valid: errors.length === 0, errors, warnings };
   }
 
-  // Heuristic: if the rule has more than 8 consecutive alphabetic words without Prolog syntax,
-  // it's likely plain English text
+  if (namespace === "routing") {
+    if (!trimmed.endsWith('.')) errors.push('Routing rule must end with a period (.)');
+    // Routing rules may be fact-style (e.g. "next_step(S, X).") or clause-style with :-.
+    // Fact-style rules simply assert the head predicate as always true.
+    if (!trimmed.includes(':-') && !/^[a-z][a-zA-Z0-9_]*\(/.test(trimmed))
+      errors.push('Routing rule must start with a valid Prolog predicate');
+    if (!trimmed.toLowerCase().includes('step_output') && trimmed.includes(':-'))
+      warnings.push('Routing rule body does not reference step_output — may never match during pro_check');
+    return { valid: errors.length === 0, errors, warnings };
+  }
+
+  // Fallback for unknown namespaces — strict generic validation
+  if (!trimmed.endsWith('.')) errors.push('Rule must end with a period (.)');
+  if (!trimmed.includes(':-')) errors.push('Rule must contain the implication operator (:-)');
+  if (!/^[a-z][a-zA-Z0-9_]*\(/.test(trimmed))
+    warnings.push('Rule does not start with a valid Prolog predicate');
   const words = trimmed.split(/\s+/);
   let maxEnglishRun = 0;
   let currentRun = 0;
@@ -66,15 +87,15 @@ function validateRuleContent(content: string): { valid: boolean; errors: string[
 }
 
 /**
- * Filter active routing rules, removing invalid ones and logging warnings.
+ * Filter active rules, removing invalid ones and logging warnings.
  * Returns only valid rules.
  */
-async function getValidRoutingRules(): Promise<{ valid: any[]; invalid: any[] }> {
-  const allRules = await getActiveRoutingRules();
+async function getAllValidRules(): Promise<{ valid: any[]; invalid: any[] }> {
+  const allRules = await getAllActiveRules();
   const valid: any[] = [];
   const invalid: any[] = [];
   for (const rule of allRules) {
-    const result = validateRuleContent(rule.content || '');
+    const result = validateRuleContent(rule.content || '', rule.namespace);
     if (result.valid) {
       valid.push(rule);
     } else {
@@ -142,6 +163,95 @@ async function emitEvent(
   } catch (err) {
     // Swallow errors so event emission never breaks the main flow
     console.warn('[engine] failed to emit event:', err);
+  }
+}
+
+
+/**
+ * Fetch predicate mapping rules from Supabase.
+ */
+async function getPredicateMappings(): Promise<any[]> {
+  try {
+    const { data } = await getSupabase()
+      .from('rules').select('*').eq('namespace', 'predicate_mapping').eq('is_active', true);
+    return data || [];
+  } catch (err) {
+    console.warn('[engine] failed to fetch predicate mappings:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch active routing clauses from Supabase.
+ */
+async function getActiveClauses(): Promise<any[]> {
+  try {
+    const { data } = await getSupabase()
+      .from('rules').select('*').eq('namespace', 'clause').eq('is_active', true);
+    return data || [];
+  } catch (err) {
+    console.warn('[engine] failed to fetch active clauses:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch active facts from Supabase.
+ */
+async function getActiveFacts(): Promise<any[]> {
+  try {
+    const { data } = await getSupabase()
+      .from('rules').select('*').eq('namespace', 'fact').eq('is_active', true);
+    return data || [];
+  } catch (err) {
+    console.warn('[engine] failed to fetch active facts:', err);
+    return [];
+  }
+}
+
+/**
+ * Normalize AI output into typed predicates and emit runtime_predicates event.
+ */
+async function normalizeAIOutput(flowRunId: string, stepRunId: string, output: any): Promise<any[]> {
+  const predicates: any[] = [];
+  try {
+    if (output && typeof output === 'object') {
+      if (output.next_step_id) predicates.push({ type: 'routing', predicate: 'next_step', value: output.next_step_id });
+      if (output.next_flow_id) predicates.push({ type: 'routing', predicate: 'next_flow', value: output.next_flow_id });
+      if (output.actions && Array.isArray(output.actions)) {
+        predicates.push({ type: 'action', predicate: 'has_actions', value: true, count: output.actions.length });
+        for (const a of output.actions) predicates.push({ type: 'action', predicate: 'action_type', value: a.type || 'unknown', endpoint: a.endpoint });
+      }
+      if (output.variables && typeof output.variables === 'object') {
+        for (const k of Object.keys(output.variables)) predicates.push({ type: 'variable', predicate: k, value: output.variables[k] });
+      }
+      if (output.intent) predicates.push({ type: 'intent', predicate: 'intent', value: output.intent });
+      if (output.refs && Array.isArray(output.refs)) predicates.push({ type: 'ref', predicate: 'has_refs', value: true, count: output.refs.length });
+      if (output.task_ids && Array.isArray(output.task_ids)) predicates.push({ type: 'task', predicate: 'task_ids', value: output.task_ids });
+    }
+    await emitEvent(flowRunId, stepRunId, 'runtime_predicates', { predicates, output_summary: output ? Object.keys(output) : [] });
+  } catch (err) {
+    console.warn('[engine] normalizeAIOutput error:', err);
+  }
+  return predicates;
+}
+
+/**
+ * Write evaluation log entry to execution_events.
+ */
+async function writeEvaluationLog(flowRunId: string, stepRunId: string, ctx: Record<string, any>): Promise<void> {
+  try {
+    await emitEvent(flowRunId, stepRunId, 'evaluation_log', {
+      context_signature: {
+        step_run_id: stepRunId, flow_run_id: flowRunId, timestamp: new Date().toISOString(),
+        has_predicate_mappings: ctx.has_predicate_mappings || false,
+        has_clauses: ctx.has_clauses || false, has_facts: ctx.has_facts || false,
+        predicate_count: ctx.predicate_count || 0, clause_count: ctx.clause_count || 0, fact_count: ctx.fact_count || 0,
+      },
+      evaluation: ctx.evaluation || {},
+    });
+  } catch (err) {
+    console.warn('[engine] writeEvaluationLog error:', err);
   }
 }
 
@@ -268,9 +378,9 @@ async function callProCheckOnOutput(
     console.warn('[engine] pro_check called without a valid step_run.id, using step_run_id from stepRun');
   }
 
-  // Fetch active routing rules and flow step IDs so prolog is stateless
+  // Fetch active rules and flow step IDs so prolog is stateless
   // Validate rules before sending to prevent bad rules from killing prolog
-  const { valid: activeRules, invalid: _invalidRules } = await getValidRoutingRules();
+  const { valid: activeRules, invalid: _invalidRules } = await getAllValidRules();
   // Try to get flow_id for step validation
   let allStepIds: string[] = [];
   try {
@@ -282,9 +392,13 @@ async function callProCheckOnOutput(
     // non-critical, continue without step IDs
   }
 
+  // Compile rules into deterministic Prolog program via RuleIR pipeline
+  const compiledProgram = compileRuleProgram(buildRuleIR(activeRules));
+
   const proCheckRequest = {
     response: output,
     rules: activeRules.map(r => r.content),
+    prolog_program: compiledProgram,
     plans: [],
     flow_run_id: stepRun.flow_run_id,
     step_run_id: proCheckStepRunId,
@@ -363,6 +477,19 @@ async function callProCheckOnOutput(
     await emitEvent(stepRun.flow_run_id, stepRun.id, 'procheck.quarantined', {
       score: proCheckResponse.score,
       score_reason: proCheckResponse.score_reason || null,
+    });
+  }
+
+  // Write evaluation log after pro_check completes
+  if (proCheckResponse.score !== undefined) {
+    await writeEvaluationLog(stepRun.flow_run_id, stepRun.id, {
+      has_predicate_mappings: activeRules.filter(r => r.namespace === 'predicate_mapping').length > 0,
+      has_clauses: activeRules.filter(r => r.namespace === 'clause').length > 0,
+      has_facts: activeRules.filter(r => r.namespace === 'fact').length > 0,
+      predicate_count: activeRules.filter(r => r.namespace === 'predicate_mapping').length,
+      clause_count: activeRules.filter(r => r.namespace === 'clause').length,
+      fact_count: activeRules.filter(r => r.namespace === 'fact').length,
+      evaluation: { predicates: [], score: proCheckResponse.score, next_step: proCheckResponse.next_step_id || null },
     });
   }
 
@@ -575,7 +702,27 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
     // If resuming from paused state, apply user_input and find resume step
     let currentStep: any;
     // Kong stores paused_at_step_id in the input JSONB field
-    const pausedStepId = flowRun.paused_at_step_id || (flowRun.input?.paused_at_step_id);
+    let pausedStepId = flowRun.paused_at_step_id || (flowRun.input?.paused_at_step_id);
+
+    // Fallback: if paused_at_step_id is missing from JSONB but user input
+    // was provided and the flow has already started, recover from the
+    // latest step_run's step_id (survives JSONB data loss and race condition
+    // where the pause write hasn't committed before resume reads).
+    if (!pausedStepId && userInput && flowRun.status !== 'pending') {
+      const { data: lastPaused } = await getSupabase()
+        .from('step_runs')
+        .select('step_id')
+        .eq('flow_run_id', flowRunId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastPaused?.step_id) {
+        pausedStepId = lastPaused.step_id;
+        flowRun.status = 'paused';
+        console.log(`[engine] recovered paused_step_id from step_runs: ${pausedStepId}`);
+      }
+    }
+
     if (flowRun.status === 'paused' && pausedStepId) {
       flowRun.paused_at_step_id = pausedStepId; // normalize for downstream
       console.log(`[engine] resuming from paused step ${pausedStepId}`);
@@ -677,7 +824,8 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           const pausedAi = typeof pausedStepRun.ai_response === 'string'
             ? JSON.parse(pausedStepRun.ai_response) : (pausedStepRun.ai_response || {});
           const updatedOutput = { ...pausedAi, ...pausedOutput, ...(userInput || {}) };
-          const { valid: activeRules } = await getValidRoutingRules();
+          const { valid: activeRules } = await getAllValidRules();
+          const compiledResumeProgram = compileRuleProgram(buildRuleIR(activeRules));
           let allStepIds: string[] = [];
           try {
             const flowId = pausedStep?.flow_id;
@@ -693,7 +841,8 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
               response: updatedOutput,
               flow_run_id: flowRunId,
               step_run_id: pausedStepRun.id,
-              rules: activeRules.map(r => r.content),
+              rules: activeRules.map((r: any) => r.content),
+              prolog_program: compiledResumeProgram,
               plans: [],
               validation_errors: [],
               contract_failures: updatedOutput.contract_failures || [],
@@ -711,16 +860,17 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           });
           if (prologRes.ok) {
             const freshProCheck = await prologRes.json();
+            console.log(`[engine] resume: fresh pro_check ok, freshNext=${freshProCheck.next_step_id}`);
             const freshNext = freshProCheck.next_step_id;
-            if (freshNext && typeof freshNext === 'string' && freshNext !== pausedStepId) {
+            if (freshNext && typeof freshNext === 'string' && freshNext !== pausedStepId && freshNext !== '__fallback__') {
               const candidateStep = await getStepById(freshNext).catch(() => null);
               if (candidateStep) {
                 nextAfterPaused = candidateStep;
               }
             }
           }
-        } catch {
-          // pro_check call failed — fall through to stored route
+        } catch (e: any) {
+          console.log(`[engine] resume: fresh pro_check fetch failed: ${e?.message || e}`);
         }
       }
       if (!nextAfterPaused) {
@@ -732,7 +882,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           : null;
         const storedNext = storedOutput?.procheck_next_step_id || storedOutput?.pro_check?.next_step_id;
         console.log(`[engine] resume: using stored route, storedNext=${storedNext} pausedStepId=${pausedStepId} hasUserInput=${hasUserInput}`);
-        if (storedNext && typeof storedNext === 'string' && storedNext !== pausedStepId) {
+        if (storedNext && typeof storedNext === 'string' && storedNext !== pausedStepId && storedNext !== '__fallback__') {
           const candidateStep = await getStepById(storedNext).catch(() => null);
           if (candidateStep) {
             console.log(`[engine] resume: using stored procheck_next_step_id=${storedNext}`);
@@ -740,6 +890,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           }
         }
         if (!nextAfterPaused) {
+          if (hasUserInput) {
+            console.log(`[engine] resume: fresh pro_check returned __fallback__ with user input, keeping paused`);
+            await updateFlowRun(flowRunId, { status: 'paused', paused_at_step_id: pausedStepId });
+            return;
+          }
           console.log(`[engine] no valid route from pro_check after resume, completing flow`);
           await updateFlowRun(flowRunId, { status: 'completed' });
           return;
