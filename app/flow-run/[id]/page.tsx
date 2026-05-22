@@ -864,6 +864,7 @@ export default function FlowRunPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            flowRunId: id,
             user_input: { input_user_query: sentMsg },
           }),
         }).catch(console.error)
