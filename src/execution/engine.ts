@@ -863,21 +863,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             console.log(`[engine] resume: fresh pro_check ok, freshNext=${freshProCheck.next_step_id}`);
             const freshNext = freshProCheck.next_step_id;
             if (freshNext && typeof freshNext === 'string' && freshNext !== pausedStepId && freshNext !== '__fallback__') {
-              let candidateStep = await getStepById(freshNext).catch(() => null);
-              if (!candidateStep) {
-                // Try resolving ref name (e.g. step-12-show-context) to step by order_index
-                const refMatch = freshNext.match(/^step-(\d+)/);
-                if (refMatch && flowId) {
-                  const refOrder = parseInt(refMatch[1], 10);
-                  const { data: refStep } = await getSupabase()
-                    .from('steps')
-                    .select('*')
-                    .eq('flow_id', flowId)
-                    .eq('order_index', refOrder)
-                    .maybeSingle();
-                  if (refStep) candidateStep = normalizeStep(refStep);
-                }
-              }
+              const candidateStep = await getStepById(freshNext).catch(() => null);
               if (candidateStep) {
                 nextAfterPaused = candidateStep;
               }
@@ -2124,10 +2110,9 @@ export async function getStepById(stepId: string): Promise<any> {
     .from('steps')
     .select('*')
     .eq('id', stepId)
-    .maybeSingle();
+    .single();
   if (error) throw new Error(`Step not found by id ${stepId}: ${error.message}`);
-  if (data) return normalizeStep(data);
-  return null;
+  return normalizeStep(data);
 }
 
 async function createStepRun(flowRunId: string, stepId: string): Promise<string> {
