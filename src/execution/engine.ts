@@ -432,20 +432,10 @@ async function callProCheckOnOutput(
   let proCheckResponse: any = { status: 'pass' };
   let prologReachable = true;
   try {
-    const evaluateBody = {
-      prolog_program: compiledProgram,
-      response: output,
-      step_context: {
-        step_run_id: proCheckStepRunId,
-        flow_run_id: stepRun.flow_run_id,
-        step_id: stepRun.step_id,
-        resolved_variables: stepRun.result?.resolved_variables || {},
-      },
-    };
-    const prologRes = await fetch(`${prologUrl}/api/v1/evaluate`, {
+    const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(evaluateBody),
+      body: JSON.stringify(proCheckRequest),
     });
     if (prologRes.ok) {
       proCheckResponse = await prologRes.json();
@@ -472,14 +462,10 @@ async function callProCheckOnOutput(
   await updateStepRun(stepRun.id, { result: resultWithResponse });
   stepRun.result = resultWithResponse;
 
-  // Extract evaluate results for downstream use
-  const evaluateScore = typeof proCheckResponse.score === 'number' ? proCheckResponse.score : (proCheckResponse.procheck_raw?.score || 0);
-  const evaluateNextStep = proCheckResponse.next_step_id || proCheckResponse.procheck_raw?.next_step_id || null;
-
   // ----- HANDLE SCORE EVENT -----
-  if (evaluateScore !== undefined && evaluateScore !== null) {
+  if (proCheckResponse.score !== undefined && proCheckResponse.score !== null) {
     await emitEvent(stepRun.flow_run_id, stepRun.id, 'procheck.score', {
-      score: evaluateScore,
+      score: proCheckResponse.score,
       score_reason: proCheckResponse.score_reason || null,
       quarantined: proCheckResponse.quarantined || false,
     });
@@ -487,9 +473,9 @@ async function callProCheckOnOutput(
 
   // ----- HANDLE QUARANTINED FLAG -----
   // Do NOT stop the flow — just emit the event for monitoring
-  if ((proCheckResponse.quarantined || proCheckResponse.procheck_raw?.quarantined) === true) {
+  if (proCheckResponse.quarantined === true) {
     await emitEvent(stepRun.flow_run_id, stepRun.id, 'procheck.quarantined', {
-      score: evaluateScore,
+      score: proCheckResponse.score,
       score_reason: proCheckResponse.score_reason || null,
     });
   }
@@ -503,7 +489,7 @@ async function callProCheckOnOutput(
       predicate_count: activeRules.filter(r => r.namespace === 'predicate_mapping').length,
       clause_count: activeRules.filter(r => r.namespace === 'clause').length,
       fact_count: activeRules.filter(r => r.namespace === 'fact').length,
-      evaluation: { predicates: [], score: evaluateScore, next_step: evaluateNextStep || null },
+      evaluation: { predicates: [], score: proCheckResponse.score, next_step: proCheckResponse.next_step_id || null },
     });
   }
 
@@ -529,10 +515,10 @@ async function callProCheckOnOutput(
   // so the main loop routes there (pro_check owns all routing).
   // This MUST run BEFORE any pause/stop check so the route is persisted
   // even when the step pauses.
-  if (evaluateNextStep && typeof evaluateNextStep === 'string' && evaluateNextStep.trim() !== '') {
+  if (proCheckResponse.next_step_id && typeof proCheckResponse.next_step_id === 'string' && proCheckResponse.next_step_id.trim() !== '') {
     const resultWithProCheckNext = {
       ...stepRun.result,
-      procheck_next_step_id: evaluateNextStep,
+      procheck_next_step_id: proCheckResponse.next_step_id,
     };
     await updateStepRun(stepRun.id, { result: resultWithProCheckNext });
     stepRun.result = resultWithProCheckNext;
@@ -830,7 +816,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
       const hasUserInput = userInput != null && typeof userInput === 'object' && Object.keys(userInput).length > 0;
       let nextAfterPaused: any = null;
 
-      // Only re-call evaluate if there's actual new input
+      // Only re-call pro_check if there's actual new input
       if (hasUserInput && pausedStepRun?.output) {
         try {
           const pausedOutput = typeof pausedStepRun.output === 'string'
@@ -838,32 +824,43 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           const pausedAi = typeof pausedStepRun.ai_response === 'string'
             ? JSON.parse(pausedStepRun.ai_response) : (pausedStepRun.ai_response || {});
           const updatedOutput = { ...pausedAi, ...pausedOutput, ...(userInput || {}) };
-          // Strip null values — userInput must win over nulls from paused step
-          for (const [k, v] of Object.entries(userInput || {})) {
-            if (v !== null && v !== undefined) {
-              updatedOutput[k] = v;
-            }
-          }
           const { valid: activeRules } = await getAllValidRules();
           const compiledResumeProgram = compileRuleProgram(buildRuleIR(activeRules));
+          let allStepIds: string[] = [];
+          try {
+            const flowId = pausedStep?.flow_id;
+            if (flowId) {
+              allStepIds = await getFlowStepIds(flowId);
+            }
+          } catch { /* non-critical */ }
           const prologUrl = process.env.PROLOG_URL || 'https://prolog.anyapp.cfd';
-          const prologRes = await fetch(`${prologUrl}/api/v1/evaluate`, {
+          const prologRes = await fetch(`${prologUrl}/api/v1/pro_check`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              prolog_program: compiledResumeProgram,
               response: updatedOutput,
-              step_context: {
-                step_run_id: pausedStepRun.id,
-                flow_run_id: flowRunId,
-                step_id: pausedStepRun.step_id,
-                resolved_variables: {},
-              },
+              flow_run_id: flowRunId,
+              step_run_id: pausedStepRun.id,
+              rules: activeRules.map((r: any) => r.content),
+              prolog_program: compiledResumeProgram,
+              plans: [],
+              validation_errors: [],
+              contract_failures: updatedOutput.contract_failures || [],
+              required_inputs: pausedStep?.required_inputs || [],
+              normalized_vars: {},
+              step_contracts: { required_inputs: pausedStep?.required_inputs },
+              previous_step_output: null,
+              expected_response: pausedStep?.expected_response || null,
+              resolved_variables: null,
+              step_title: pausedStep?.title || null,
+              step_order: pausedStep?.order_index ?? null,
+              all_step_ids: allStepIds,
+              current_step_id: pausedStepRun.step_id,
             }),
           });
           if (prologRes.ok) {
             const freshProCheck = await prologRes.json();
-            console.log(`[engine] resume: fresh evaluate ok, freshNext=${freshProCheck.next_step_id}`);
+            console.log(`[engine] resume: fresh pro_check ok, freshNext=${freshProCheck.next_step_id}`);
             const freshNext = freshProCheck.next_step_id;
             if (freshNext && typeof freshNext === 'string' && freshNext !== pausedStepId && freshNext !== '__fallback__') {
               const candidateStep = await getStepById(freshNext).catch(() => null);
@@ -873,7 +870,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
             }
           }
         } catch (e: any) {
-          console.log(`[engine] resume: fresh evaluate fetch failed: ${e?.message || e}`);
+          console.log(`[engine] resume: fresh pro_check fetch failed: ${e?.message || e}`);
         }
       }
       if (!nextAfterPaused) {
@@ -883,7 +880,7 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
           ? (typeof pausedStepRun.output === 'string'
             ? JSON.parse(pausedStepRun.output) : pausedStepRun.output)
           : null;
-        const storedNext = storedOutput?.procheck_next_step_id || storedOutput?.pro_check?.next_step_id || null; // fallback with stored route
+        const storedNext = storedOutput?.procheck_next_step_id || storedOutput?.pro_check?.next_step_id;
         console.log(`[engine] resume: using stored route, storedNext=${storedNext} pausedStepId=${pausedStepId} hasUserInput=${hasUserInput}`);
         if (storedNext && typeof storedNext === 'string' && storedNext !== pausedStepId && storedNext !== '__fallback__') {
           const candidateStep = await getStepById(storedNext).catch(() => null);
@@ -894,11 +891,11 @@ export async function runFlow(flowRunId: string, userInput?: Record<string, any>
         }
         if (!nextAfterPaused) {
           if (hasUserInput) {
-            console.log(`[engine] resume: fresh evaluate returned __fallback__ with user input, keeping paused`);
+            console.log(`[engine] resume: fresh pro_check returned __fallback__ with user input, keeping paused`);
             await updateFlowRun(flowRunId, { status: 'paused', paused_at_step_id: pausedStepId });
             return;
           }
-          console.log(`[engine] no valid route from evaluate after resume, completing flow`);
+          console.log(`[engine] no valid route from pro_check after resume, completing flow`);
           await updateFlowRun(flowRunId, { status: 'completed' });
           return;
         }
@@ -2090,7 +2087,7 @@ async function getFirstStep(flowId: string): Promise<any> {
     .from('steps')
     .select('*')
     .eq('flow_id', flowId)
-    .order('order_index', { ascending: true, nullsFirst: false })
+    .order('id', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`Failed to get first step: ${error.message}`);
@@ -2113,14 +2110,9 @@ export async function getStepById(stepId: string): Promise<any> {
     .from('steps')
     .select('*')
     .eq('id', stepId)
-    .maybeSingle();
-  if (data) return data;
-  const { data: refData } = await getSupabase()
-    .from('steps')
-    .select('*')
-    .eq('ref', stepId)
-    .maybeSingle();
-  return refData || null;
+    .single();
+  if (error) throw new Error(`Step not found by id ${stepId}: ${error.message}`);
+  return normalizeStep(data);
 }
 
 async function createStepRun(flowRunId: string, stepId: string): Promise<string> {
@@ -2222,7 +2214,48 @@ async function updateFlowRun(flowRunId: string, data: any): Promise<void> {
 }
 
 async function evaluateConditions(stepId: string, expected: any): Promise<string | null> {
-  // step_conditions table has been removed; conditions no longer evaluated
+  const { data, error } = await getSupabase()
+    .from('step_conditions')
+    .select('*')
+    .eq('step_id', stepId);
+
+  if (error) throw new Error(`Failed to get conditions: ${error.message}`);
+  if (!data || data.length === 0) return null;
+
+  for (const c of data) {
+    // c.type is the field name in the AI response to check (e.g. "var_plan_id")
+    if (!(c.type in expected)) continue;
+
+    if (expected[c.type] === c.value) {
+      // next_flow_id takes priority — jump to another flow
+      if (c.next_flow_id) {
+        const firstStep = await getFirstStep(c.next_flow_id);
+        if (!firstStep) throw new Error(`No steps found in target flow ${c.next_flow_id}`);
+        return firstStep.ref;
+      }
+
+      // next_step_id — continue in the same flow
+      if (c.next_step_id) {
+        const step = await getStepById(c.next_step_id);
+        if (!step?.ref) {
+          throw new Error(`Step ${c.next_step_id} has no ref`);
+        }
+        return step.ref;
+      }
+
+      // No next_step_id or next_flow_id — pause for Mo intervention.
+      // If resume_step_id is set, store it so resume knows where to go.
+      if (c.resume_step_id) {
+        // The caller (runStep) will handle the pause; we signal by returning '__PAUSED__'
+        // and the resume_step_id is stored on the condition for the resume logic to use.
+        return '__PAUSED__';
+      }
+
+      // No next edge at all — pause
+      return '__PAUSED__';
+    }
+  }
+
   return null;
 }
 

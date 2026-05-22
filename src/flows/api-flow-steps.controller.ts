@@ -47,7 +47,6 @@ export class ApiFlowStepsController {
     flow_id: string;
     title: string;
     instructions: string;
-    id?: string;
     expected_response: any;
     order_index?: number;
     required_inputs?: string[];
@@ -57,7 +56,7 @@ export class ApiFlowStepsController {
       throw new Error('flow_id is required');
     }
     const record = {
-      id: body.id || randomUUID(),
+      id: randomUUID(),
       flow_id: body.flow_id,
       title: body.title,
       instructions: body.instructions,
