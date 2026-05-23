@@ -892,6 +892,196 @@ export default function FlowRunPage() {
     )
   }
 
+  /** Shared step rendering used in both chat and debug mode.
+   *  @param visibilityField - 'chat_visible' or 'debug_visible' */
+  function renderSteps(visibilityField: 'chat_visible' | 'debug_visible') {
+    const filtered = steps
+      .filter((s) => s.definition?.[visibilityField] !== false)
+      .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+
+    return filtered.map((step) => (
+      <CollapsibleSection
+        key={step.id}
+        label={
+          <span className="flex items-center gap-2">
+            <span className="text-xs text-neutral-500">#{step.order_index}</span>
+            {step.definition?.ref && (
+              <span className="text-xs text-amber-400/70">{step.definition.ref}</span>
+            )}
+            {step.definition?.title && (
+              <span className="text-sm text-white font-semibold">{step.definition.title}</span>
+            )}
+            <span className="text-[10px] text-neutral-600 ml-auto">{step.status}</span>
+          </span>
+        }
+        defaultOpen={true}
+      >
+        {step.definition?.instructions && (
+          <p className="text-xs text-neutral-400 mb-3 italic">{step.definition.instructions}</p>
+        )}
+
+        {step.ai_response && (
+          <div className="mb-2">
+            <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+              ai response
+              <ContextChatTrigger
+                label="ai_response"
+                value={step.ai_response}
+                stepRunId={step.id}
+                flowRunId={id}
+              />
+            </span>
+            <JsonBlock
+              value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
+              stepId={step.id}
+              field="ai_response"
+              editingKey={editingKey}
+              editValue={editValue}
+              onStartEdit={startEdit}
+              onSave={saveEdit}
+              onChange={setEditValue}
+            />
+          </div>
+        )}
+
+        {step.resolved_variables && Object.keys(step.resolved_variables).length > 0 && (
+          <div>
+            <span className="text-[10px] text-neutral-600 uppercase tracking-wider">resolved variables</span>
+            <div className="space-y-1">
+              {Object.entries(step.resolved_variables).map(([key, val]) => (
+                <div key={key} className="flex items-start gap-2 text-xs">
+                  <span className="text-neutral-500 shrink-0">{key}:</span>
+                  <span className="text-neutral-400 break-all">
+                    {typeof val === 'string' ? val : formatJson(JSON.stringify(val))}
+                    <ContextChatTrigger
+                      label={key}
+                      value={val}
+                      stepRunId={step.id}
+                      flowRunId={id}
+                    />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Pro Check Request */}
+        {step.result?.pro_check_request && (
+          <div className="mb-2">
+            <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+              pro check request
+              <ContextChatTrigger
+                label="pro_check_request"
+                value={step.result.pro_check_request}
+                stepRunId={step.id}
+                flowRunId={id}
+                relatedRules={step.result.pro_check_request.rules}
+              />
+            </span>
+            <JsonBlock
+              value={JSON.stringify(step.result.pro_check_request)}
+              stepId={step.id}
+              field="result.pro_check_request"
+              editingKey={editingKey}
+              editValue={editValue}
+              onStartEdit={startEdit}
+              onSave={saveEdit}
+              onChange={setEditValue}
+            />
+          </div>
+        )}
+
+        {/* Pro Check */}
+        {step.result?.pro_check && (
+          <div className="mb-2">
+            <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
+              pro check
+              <ContextChatTrigger
+                label="pro_check"
+                value={step.result.pro_check}
+                stepRunId={step.id}
+                flowRunId={id}
+              />
+            </span>
+            <div className={`text-xs font-mono whitespace-pre-wrap ${
+              step.result.pro_check.status === 'stop'
+                ? 'text-red-400/80'
+                : step.result.pro_check.status === 'approve'
+                ? 'text-green-400/80'
+                : 'text-neutral-400'
+            }`}>
+              {formatJson(JSON.stringify(step.result.pro_check))}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        {(() => {
+          const actions = step.result?.pro_check_request?.response?.actions
+          if (!Array.isArray(actions) || actions.length === 0) return null
+          return (
+            <div className="mb-2">
+              <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
+                actions ({actions.length})
+              </span>
+              <div className="space-y-2">
+                {actions.map((action: unknown, i: number) => (
+                  <ActionBlock
+                    key={i}
+                    action={action as Record<string, unknown>}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Completed Actions */}
+        {(() => {
+          const completed = step.result?.actions_completed
+          if (!Array.isArray(completed) || completed.length === 0) return null
+          return (
+            <div className="mb-2">
+              <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
+                completed actions ({completed.length})
+              </span>
+              <div className="space-y-2">
+                {completed.map((action: unknown, i: number) => (
+                  <CompletedActionBlock
+                    key={i}
+                    action={action as Record<string, unknown>}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Correction Flow Button */}
+        {step.result?.pro_check?.status === 'stop' &&
+          step.result.pro_check.correction_flow?.flow_id && (
+          <div className="mt-3 pt-3 border-t border-neutral-800">
+            <button
+              onClick={() => startCorrectionFlow(step)}
+              disabled={correctionStarting === step.id}
+              className="text-xs text-amber-400/70 hover:text-amber-300
+                         disabled:opacity-30 transition-colors"
+            >
+              {correctionStarting === step.id
+                ? 'starting...'
+                : 'Start Correction Flow →'}
+            </button>
+          </div>
+        )}
+
+        {step.error && (
+          <p className="text-xs text-red-500 mt-2">{step.error}</p>
+        )}
+      </CollapsibleSection>
+    ))
+  }
+
   return (
     <div className="min-h-screen bg-black text-white font-mono">
       <div className="px-6 py-12 pb-28">
@@ -932,58 +1122,15 @@ export default function FlowRunPage() {
 
         {chatMode ? (
           /* ── Chat Mode ──
-           * Uses same step iteration as debug mode, filtered by chat_visible.
-           * Styled as a simple conversation — no collapsible sections, no internals.
+           * Same debug component, filtered by chat_visible.
+           * Shows pending messages and transient status at the bottom.
            */
           <div ref={scrollContainerRef} className="space-y-4">
             {steps.length === 0 && pendingUserMsgs.length === 0 && !transientStatus && (
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
 
-            {steps
-              .filter((s) => s.definition?.chat_visible !== false)
-              .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-              .map((step) => {
-                const rv = step.resolved_variables as Record<string, unknown> | null
-                // User message from resolved_variables
-                const userEntry = rv && Object.entries(rv).find(
-                  ([k, v]) => k.startsWith('input_') && v && typeof v === 'string' && v.trim()
-                )
-                // AI response text
-                let aiText = ''
-                if (step.ai_response) {
-                  if (typeof step.ai_response === 'string') {
-                    try {
-                      const parsed = JSON.parse(step.ai_response) as Record<string, unknown>
-                      aiText = (parsed.chat_message as string) || ''
-                    } catch { aiText = step.ai_response }
-                  } else if (typeof step.ai_response === 'object') {
-                    aiText = ((step.ai_response as Record<string, unknown>).chat_message as string) || ''
-                  }
-                }
-                if (!aiText && step.result?.pro_check_request?.response?.chat_message) {
-                  aiText = step.result.pro_check_request.response.chat_message as string
-                }
-
-                return (
-                  <div key={step.id} className="space-y-2">
-                    {userEntry && (
-                      <div className="flex justify-end">
-                        <div className="max-w-[80%] bg-neutral-100 text-neutral-900 rounded-lg px-4 py-2.5 text-sm leading-relaxed rounded-br-sm">
-                          <div>{userEntry[1] as string}</div>
-                        </div>
-                      </div>
-                    )}
-                    {aiText && (
-                      <div className="flex justify-start">
-                        <div className="max-w-[80%] bg-neutral-800 text-neutral-200 rounded-lg px-4 py-2.5 text-sm leading-relaxed rounded-bl-sm">
-                          <div>{aiText}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+            {renderSteps('chat_visible')}
 
             {/* Optimistic user bubbles — one for each pending (unconfirmed) message */}
             {pendingUserMsgs.map((text, i) => (
@@ -1023,190 +1170,7 @@ export default function FlowRunPage() {
               <p className="text-neutral-600">no steps yet</p>
             ) : (
               <div className="space-y-8">
-                {steps
-                  .filter((s) => s.definition?.debug_visible !== false)
-                  .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-                  .map((step) => (
-                    <CollapsibleSection
-                      key={step.id}
-                      label={
-                        <span className="flex items-center gap-2">
-                          <span className="text-xs text-neutral-500">#{step.order_index}</span>
-                          {step.definition?.ref && (
-                            <span className="text-xs text-amber-400/70">{step.definition.ref}</span>
-                          )}
-                          {step.definition?.title && (
-                            <span className="text-sm text-white font-semibold">{step.definition.title}</span>
-                          )}
-                          <span className="text-[10px] text-neutral-600 ml-auto">{step.status}</span>
-                        </span>
-                      }
-                      defaultOpen={true}
-                    >
-                      {step.definition?.instructions && (
-                        <p className="text-xs text-neutral-400 mb-3 italic">{step.definition.instructions}</p>
-                      )}
-
-                      {step.ai_response && (
-                        <div className="mb-2">
-                          <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
-                            ai response
-                            <ContextChatTrigger
-                              label="ai_response"
-                              value={step.ai_response}
-                              stepRunId={step.id}
-                              flowRunId={id}
-                            />
-                          </span>
-                          <JsonBlock
-                            value={typeof step.ai_response === 'string' ? step.ai_response : JSON.stringify(step.ai_response)}
-                            stepId={step.id}
-                            field="ai_response"
-                            editingKey={editingKey}
-                            editValue={editValue}
-                            onStartEdit={startEdit}
-                            onSave={saveEdit}
-                            onChange={setEditValue}
-                          />
-                        </div>
-                      )}
-
-                      {step.resolved_variables && Object.keys(step.resolved_variables).length > 0 && (
-                        <div>
-                          <span className="text-[10px] text-neutral-600 uppercase tracking-wider">resolved variables</span>
-                          <div className="space-y-1">
-                            {Object.entries(step.resolved_variables).map(([key, val]) => (
-                              <div key={key} className="flex items-start gap-2 text-xs">
-                                <span className="text-neutral-500 shrink-0">{key}:</span>
-                                <span className="text-neutral-400 break-all">
-                                  {typeof val === 'string' ? val : formatJson(JSON.stringify(val))}
-                                  <ContextChatTrigger
-                                    label={key}
-                                    value={val}
-                                    stepRunId={step.id}
-                                    flowRunId={id}
-                                  />
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Pro Check Request */}
-                      {step.result?.pro_check_request && (
-                        <div className="mb-2">
-                          <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
-                            pro check request
-                            <ContextChatTrigger
-                              label="pro_check_request"
-                              value={step.result.pro_check_request}
-                              stepRunId={step.id}
-                              flowRunId={id}
-                              relatedRules={step.result.pro_check_request.rules}
-                            />
-                          </span>
-                          <JsonBlock
-                            value={JSON.stringify(step.result.pro_check_request)}
-                            stepId={step.id}
-                            field="result.pro_check_request"
-                            editingKey={editingKey}
-                            editValue={editValue}
-                            onStartEdit={startEdit}
-                            onSave={saveEdit}
-                            onChange={setEditValue}
-                          />
-                        </div>
-                      )}
-
-                      {/* Pro Check */}
-                      {step.result?.pro_check && (
-                        <div className="mb-2">
-                          <span className="text-[10px] text-neutral-600 uppercase tracking-wider">
-                            pro check
-                            <ContextChatTrigger
-                              label="pro_check"
-                              value={step.result.pro_check}
-                              stepRunId={step.id}
-                              flowRunId={id}
-                            />
-                          </span>
-                          <div className={`text-xs font-mono whitespace-pre-wrap ${
-                            step.result.pro_check.status === 'stop'
-                              ? 'text-red-400/80'
-                              : step.result.pro_check.status === 'approve'
-                              ? 'text-green-400/80'
-                              : 'text-neutral-400'
-                          }`}>
-                            {formatJson(JSON.stringify(step.result.pro_check))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      {(() => {
-                        const actions = step.result?.pro_check_request?.response?.actions
-                        if (!Array.isArray(actions) || actions.length === 0) return null
-                        return (
-                          <div className="mb-2">
-                            <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
-                              actions ({actions.length})
-                            </span>
-                            <div className="space-y-2">
-                              {actions.map((action: unknown, i: number) => (
-                                <ActionBlock
-                                  key={i}
-                                  action={action as Record<string, unknown>}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Completed Actions */}
-                      {(() => {
-                        const completed = step.result?.actions_completed
-                        if (!Array.isArray(completed) || completed.length === 0) return null
-                        return (
-                          <div className="mb-2">
-                            <span className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2 block">
-                              completed actions ({completed.length})
-                            </span>
-                            <div className="space-y-2">
-                              {completed.map((action: unknown, i: number) => (
-                                <CompletedActionBlock
-                                  key={i}
-                                  action={action as Record<string, unknown>}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Correction Flow Button */}
-                      {step.result?.pro_check?.status === 'stop' &&
-                        step.result.pro_check.correction_flow?.flow_id && (
-                        <div className="mt-3 pt-3 border-t border-neutral-800">
-                          <button
-                            onClick={() => startCorrectionFlow(step)}
-                            disabled={correctionStarting === step.id}
-                            className="text-xs text-amber-400/70 hover:text-amber-300
-                                       disabled:opacity-30 transition-colors"
-                          >
-                            {correctionStarting === step.id
-                              ? 'starting...'
-                              : 'Start Correction Flow →'}
-                          </button>
-                        </div>
-                      )}
-
-                      {step.error && (
-                        <p className="text-xs text-red-500 mt-2">{step.error}</p>
-                      )}
-                    </CollapsibleSection>
-                  ))}
+                {renderSteps('debug_visible')}
               </div>
             )}
           </>
@@ -1245,8 +1209,9 @@ export default function FlowRunPage() {
                             handleSend()
                           }
                         }}
-                        placeholder={`enter ${label}...`}
-                        className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none overflow-y-auto"
+                        placeholder={steps.length === 0 ? 'waiting for first step...' : `enter ${label}...`}
+                        disabled={steps.length === 0}
+                        className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none overflow-y-auto disabled:opacity-30 disabled:cursor-not-allowed"
                         onInput={(e) => {
                           const el = e.currentTarget
                           el.style.height = 'auto'
@@ -1260,7 +1225,7 @@ export default function FlowRunPage() {
             </div>
             <button
               type="submit"
-              disabled={sending}
+              disabled={sending || steps.length === 0}
               className="shrink-0 text-sm text-neutral-200 hover:text-white transition-colors disabled:text-neutral-600 disabled:cursor-not-allowed"
             >
               {sending ? (
