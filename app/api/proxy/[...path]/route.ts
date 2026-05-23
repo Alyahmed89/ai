@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 export const runtime = 'edge';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://ai.anyapp.cfd';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://kong.anyapp.cfd';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -29,12 +31,15 @@ export async function GET(
     // Construct the backend URL
     const backendPath = `/${path.join('/')}`;
     const queryString = searchParams.toString();
-    const backendUrl = `${BACKEND_URL}${backendPath}${queryString ? `?${queryString}` : ''}`;
+    const isSupabase = backendPath.startsWith('/rest/');
+    const baseUrl = isSupabase ? SUPABASE_URL : BACKEND_URL;
+    const backendUrl = `${baseUrl}${backendPath}${queryString ? `?${queryString}` : ''}`;
     
     // Forward the request to the backend
     const response = await fetch(backendUrl, {
       headers: {
         'Content-Type': 'application/json',
+        ...(isSupabase ? { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } : {}),
       },
     });
     

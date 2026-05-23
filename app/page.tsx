@@ -37,7 +37,9 @@ export default function Home() {
     const fetchData = async () => {
       try {
         const [flowsRes, flowRunsRes] = await Promise.all([
-          fetch('/api/proxy/api/query', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({table:'knowledge', select:'*', filters:{namespace:'flow', is_active:true}}) }),
+          fetch('/api/proxy/rest/v1/knowledge?namespace=eq.flow&is_active=eq.true', {
+            headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}` }
+          }),
           fetch('/api/proxy/flow-runs'),
         ])
         let flowsList: Flow[] = []
