@@ -135,26 +135,39 @@ export default function FlowRunPage() {
     return () => { clearTimeout(loadingTimer); clearInterval(interval) }
   }, [fetchData, id])
 
-  /* ── Derive chat messages from step executions ── */
-  const chatMessages = stepExecs
-    .filter(s => s.output || s.input)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .flatMap(s => {
-      const out = s.output as Record<string, unknown>
-      const inp = s.input as Record<string, unknown>
-      const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
-      const userText = (inp?.input_user_prompt ?? inp?.input_user_query ?? out?.input_user_prompt ?? out?.input_user_query ?? '') as string
-      const aiText = (out?.chat_message ?? out?.assistant_message ?? '') as string
-      if (userText && !userText.startsWith('[[var:')) msgs.push({ role: 'user', text: userText, id: `${s.id}-u` })
-      if (aiText) msgs.push({ role: 'assistant', text: aiText, id: `${s.id}-a` })
-      return msgs
-    })
-
-  /* ── Derive memory map ── */
+  /* ── Build memory map keyed by memory key, preserving insertion order ── */
   const memoryMap = memory.reduce((acc, row) => {
     acc[row.key] = row.value
     return acc
   }, {} as Record<string, string>)
+
+  /* ── Derive chat messages from step executions and memory ── */
+  // User message comes from memory where key=input_user_prompt
+  const userPrompt = memoryMap['input_user_prompt'] ?? memoryMap['input_user_query'] ?? ''
+
+  // AI response: find first step output that has any meaningful text key
+  const AI_KEYS = ['chat_message', 'assistant_message', 'rules', 'summary', 'response', 'result', 'answer', 'output']
+  const aiStep = [...stepExecs]
+    .filter(s => s.status === 'completed' && s.output)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .find(s => AI_KEYS.some(k => k in (s.output as Record<string, unknown>)))
+
+  const aiRaw = aiStep
+    ? (() => {
+        const out = aiStep.output as Record<string, unknown>
+        const key = AI_KEYS.find(k => k in out)!
+        const val = out[key]
+        return Array.isArray(val) ? val.join('\n') : String(val)
+      })()
+    : ''
+
+  const chatMessages: { role: 'user' | 'assistant'; text: string; id: string }[] = []
+  if (userPrompt && !userPrompt.startsWith('[[var:')) {
+    chatMessages.push({ role: 'user', text: userPrompt, id: 'mem-user' })
+  }
+  if (aiRaw) {
+    chatMessages.push({ role: 'assistant', text: aiRaw, id: aiStep!.id + '-a' })
+  }
 
   /* ── Is flow paused waiting for input ── */
   const isPaused = flowExec?.status === 'paused'
