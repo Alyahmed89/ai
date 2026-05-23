@@ -37,13 +37,18 @@ export default function Home() {
     const fetchData = async () => {
       try {
         const [flowsRes, flowRunsRes] = await Promise.all([
-          fetch('/api/proxy/api/flows'),
+          fetch('/api/proxy/api/query', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({table:'knowledge', select:'*', filters:{namespace:'flow', is_active:true}}) }),
           fetch('/api/proxy/flow-runs'),
         ])
         let flowsList: Flow[] = []
         if (flowsRes.ok) {
           const data = await flowsRes.json()
-          flowsList = Array.isArray(data) ? data : []
+          const raw = Array.isArray(data) ? data : []
+          flowsList = raw.map((k: Record<string,unknown>) => ({
+            id: (k.context as Record<string,unknown>)?.flow_id ?? k.id,
+            name: k.name as string,
+            description: k.readable as string ?? null,
+          }))
           setFlows(flowsList)
         }
         const flowMap = new Map(flowsList.map((f) => [f.id, f.name]))
