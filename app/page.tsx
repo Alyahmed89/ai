@@ -47,8 +47,8 @@ export default function Home() {
           flowsList = raw
             .filter((k: Record<string,unknown>) => k.namespace === 'flow')
             .map((k: Record<string,unknown>) => ({
-              id: (k.context as Record<string,unknown>)?.flow_id ?? k.id,
-              name: k.name as string,
+              id: String((k.context as Record<string,unknown>)?.flow_id ?? k.id),
+              name: String(k.name),
               description: (k.readable ?? null) as string | null,
             }))
           setFlows(flowsList)
