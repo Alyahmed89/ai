@@ -937,9 +937,12 @@ export default function FlowRunPage() {
               .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
               .map((step) => {
                 const rv = step.resolved_variables as Record<string, unknown> | null
-                // Find first input_* value in resolved_variables
+                // Find first input_* value (handles dotted keys like memory.input_user_query)
                 const prompt = rv && Object.entries(rv).find(
-                  ([k, v]) => k.startsWith('input_') && v && typeof v === 'string' && v.trim()
+                  ([k, v]) => {
+                    const last = k.includes('.') ? k.split('.').pop()! : k
+                    return last.startsWith('input_') && v && typeof v === 'string' && v.trim()
+                  }
                 )
                 const promptText = prompt ? prompt[1] as string : null
                 let aiText = ''
