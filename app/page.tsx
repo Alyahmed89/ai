@@ -113,8 +113,12 @@ export default function Home() {
         body: JSON.stringify({ flowId }),
       })
       const data = await res.json()
-      if (data.flowRunId) {
-        router.push(`/flow-run/${data.flowRunId}?flowId=${flowId}`)
+      console.log('start response:', JSON.stringify(data))
+      const runId = data.flowRunId ?? data.id ?? data.flow_run_id ?? data.runId ?? data.executionId
+      if (runId) {
+        router.push(`/flow-run/${runId}?flowId=${flowId}`)
+      } else {
+        console.error('no run id in response', data)
       }
     } catch (e) {
       console.error('Failed to start flow', e)
