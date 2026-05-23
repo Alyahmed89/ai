@@ -424,7 +424,6 @@ export default function FlowRunPage() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
-  const [pendingUserMsgs, setPendingUserMsgs] = useState<string[]>([])
 
   /* ── Fetch flow run + step runs + definitions ── */
   const fetchData = useCallback(async () => {
@@ -470,11 +469,7 @@ export default function FlowRunPage() {
         }
       }
 
-      // Only clear pending messages when the flow has completed
-      const isFlowDone = fr?.status === 'completed' || fr?.status === 'failed' || fr?.completed_at != null
-      if (isFlowDone) {
-        setPendingUserMsgs([])
-      }
+      // All data comes from backend — nothing to clear on frontend
     } catch (e) {
       console.error('Failed to fetch data', e)
       setLoadError(`Failed to fetch data: ${e instanceof Error ? e.message : 'Unknown error'}`)
@@ -739,7 +734,7 @@ export default function FlowRunPage() {
     if (chatMode && isAtBottom && chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [steps, chatMode, isProcessing, isAtBottom, pendingUserMsgs])
+  }, [chatMode, isAtBottom, steps, isProcessing])
 
   const handleInputChange = (name: string, value: string) => {
     setInputs((prev) => ({ ...prev, [name]: value }))
@@ -788,10 +783,7 @@ export default function FlowRunPage() {
           }),
         }).catch(console.error)
       }
-      // Show pending message immediately and clear input
-      if (sentMsg) {
-        setPendingUserMsgs((prev) => [...prev, sentMsg])
-      }
+      // Clear input
       setInputs({})
       setTimeout(fetchData, 500)
     } catch (e) {
@@ -932,11 +924,11 @@ export default function FlowRunPage() {
 
         {chatMode ? (
           /* ── Chat Mode ──
-           * Uses same step iteration as debug mode, filtered by chat_visible.
-           * Styled as a simple conversation — no collapsible sections, no internals.
+           * Prompts and responses come from backend step data only
+           * (resolved_variables for user, ai_response for assistant).
            */
           <div ref={scrollContainerRef} className="space-y-4">
-            {steps.length === 0 && pendingUserMsgs.length === 0 && !transientStatus && (
+            {steps.length === 0 && !transientStatus && (
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
 
@@ -945,11 +937,11 @@ export default function FlowRunPage() {
               .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
               .map((step) => {
                 const rv = step.resolved_variables as Record<string, unknown> | null
-                // User message from resolved_variables
+                // User prompt from resolved_variables (backend)
                 const userEntry = rv && Object.entries(rv).find(
                   ([k, v]) => k.startsWith('input_') && v && typeof v === 'string' && v.trim()
                 )
-                // AI response text
+                // AI response from ai_response (backend)
                 let aiText = ''
                 if (step.ai_response) {
                   if (typeof step.ai_response === 'string') {
@@ -984,14 +976,6 @@ export default function FlowRunPage() {
                   </div>
                 )
               })}
-
-            {/* Optimistic user bubbles — one for each pending (unconfirmed) message */}
-            {pendingUserMsgs.map((text, i) => (
-              <ChatBubble
-                key={`pending-user-${i}`}
-                msg={{ role: 'user', text, data: {}, id: `pending-user-${i}` }}
-              />
-            ))}
 
             {/* Transient live status — appears while step executes, disappears on response */}
             {transientStatus && (
@@ -1245,8 +1229,9 @@ export default function FlowRunPage() {
                             handleSend()
                           }
                         }}
-                        placeholder={`enter ${label}...`}
-                        className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none overflow-y-auto"
+                        placeholder={steps.length === 0 ? 'waiting for first step...' : `enter ${label}...`}
+                        disabled={steps.length === 0}
+                        className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none overflow-y-auto disabled:opacity-30 disabled:cursor-not-allowed"
                         onInput={(e) => {
                           const el = e.currentTarget
                           el.style.height = 'auto'
@@ -1260,7 +1245,7 @@ export default function FlowRunPage() {
             </div>
             <button
               type="submit"
-              disabled={sending}
+              disabled={sending || steps.length === 0}
               className="shrink-0 text-sm text-neutral-200 hover:text-white transition-colors disabled:text-neutral-600 disabled:cursor-not-allowed"
             >
               {sending ? (
