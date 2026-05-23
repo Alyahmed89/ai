@@ -957,7 +957,7 @@ export default function FlowRunPage() {
 
                 return (
                   <div key={step.id} className="space-y-2">
-                    {promptText && (
+                    {promptText && promptText !== '[[var:input_user_query]]' && (
                       <div className="flex justify-end">
                         <div className="max-w-[80%] bg-neutral-100 text-neutral-900 rounded-lg px-4 py-2.5 text-sm leading-relaxed rounded-br-sm">
                           <div>{promptText}</div>
