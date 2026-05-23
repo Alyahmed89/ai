@@ -30,7 +30,10 @@ export async function GET(
     
     // Construct the backend URL
     const backendPath = `/${path.join('/')}`;
-    const queryString = searchParams.toString();
+    // Strip Cloudflare-injected params from catch-all routes
+    const cleanParams = new URLSearchParams(searchParams);
+    cleanParams.delete('path');
+    const queryString = cleanParams.toString();
     const isSupabase = backendPath.startsWith('/rest/');
     const baseUrl = isSupabase ? SUPABASE_URL : BACKEND_URL;
     const backendUrl = `${baseUrl}${backendPath}${queryString ? `?${queryString}` : ''}`;
