@@ -666,100 +666,7 @@ export default function FlowRunPage() {
     return !steps.some((s) => s.status === 'paused')
   })()
 
-  /** Build chat messages from step runs.
-   *  Order: user message that triggered the step, then AI response.
-   *  - User messages: from resolved_variables (input_* fields, or fallback
-   *    to the first non-empty string value).
-   *  - Assistant messages: from ai_response.chat_message, falling back to
-   *    result.pro_check_request.response.chat_message for older step runs.
-   *
-   *  Steps with silent=true or chat_visible=false are excluded from chat rendering. */
-  const chatMessages = (() => {
-    const msgs: { role: 'user' | 'assistant'; text: string; data: Record<string, unknown>; id: string }[] = []
-    const sorted = [...steps]
-      .filter((s) => !s.definition?.silent && s.definition?.chat_visible !== false)
-      .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    const seenAssistant = new Set<string>()
-    const seenUserText = new Set<string>()
-
-    /** Extract user message from a step run's resolved_variables.
-     *  Looks for input_* fields first, falls back to the first non-empty
-     *  string value (e.g. `goal` from the initial start). */
-    function getUserMsg(s: StepRunWithDef): { text: string; data: Record<string, unknown> } | null {
-      const rv = s.resolved_variables as Record<string, unknown> | null
-      if (!rv) return null
-      const inputFields: Record<string, unknown> = {}
-      let userText = ''
-      for (const [k, v] of Object.entries(rv)) {
-        if (k.startsWith('input_') && v && typeof v === 'string' && v.trim()) {
-          inputFields[k] = v
-          if (!userText) userText = v
-        }
-      }
-      // Fallback: no input_* found, use the first non-empty string value
-      if (!userText) {
-        for (const [, v] of Object.entries(rv)) {
-          if (v && typeof v === 'string' && v.trim()) {
-            userText = v
-            break
-          }
-        }
-      }
-      if (!userText || seenUserText.has(userText)) return null
-      seenUserText.add(userText)
-      return { text: userText, data: inputFields }
-    }
-
-    /** Extract assistant message from a step run. */
-    function getAssistantMsg(s: StepRunWithDef): { text: string; data: Record<string, unknown> } | null {
-      let assistantMsg = ''
-      let data: Record<string, unknown> = {}
-      if (s.ai_response) {
-        if (typeof s.ai_response === 'string') {
-          // Try parsing as JSON — if it parses, extract only chat_message
-          try {
-            const parsed = JSON.parse(s.ai_response) as Record<string, unknown>
-            assistantMsg = (parsed.chat_message as string) || ''
-            data = { ...parsed }
-            delete data.chat_message
-          } catch {
-            // Not JSON — use as plain text
-            assistantMsg = s.ai_response
-            data = { response: s.ai_response }
-          }
-        } else if (typeof s.ai_response === 'object' && s.ai_response !== null) {
-          const resp = s.ai_response as Record<string, unknown>
-          assistantMsg = (resp.chat_message as string) || ''
-          data = { ...resp }
-          delete data.chat_message
-        }
-      }
-      // Fallback: pro_check_request.response.chat_message for older step runs
-      if (!assistantMsg && s.result?.pro_check_request?.response?.chat_message) {
-        assistantMsg = s.result.pro_check_request.response.chat_message as string
-        data = { ...(s.result.pro_check_request.response as Record<string, unknown>) }
-        delete data.chat_message
-      }
-      if (!assistantMsg || seenAssistant.has(assistantMsg)) return null
-      seenAssistant.add(assistantMsg)
-      return { text: assistantMsg, data }
-    }
-
-    for (let i = 0; i < sorted.length; i++) {
-      const s = sorted[i]
-      // User message that triggered this step (from resolved_variables)
-      const user = getUserMsg(s)
-      if (user) {
-        msgs.push({ role: 'user', text: user.text, data: user.data, id: `${s.id}-user` })
-      }
-      // AI response for this step
-      const assistant = getAssistantMsg(s)
-      if (assistant) {
-        msgs.push({ role: 'assistant', text: assistant.text, data: assistant.data, id: `${s.id}-resp` })
-      }
-    }
-    return msgs
-  })()
+  /* Chat messages are rendered inline from steps — no separate computation needed. */
 
   /**
    * Derive a transient status string from the latest events and step definitions.
@@ -1025,17 +932,14 @@ export default function FlowRunPage() {
 
         {chatMode ? (
           /* ── Chat Mode ──
-           * Only shows: user messages, assistant messages, and transient live status.
-           * NO execution traces, NO bullets, NO JSON, NO variables, NO debug panels.
-           * Feels like ChatGPT — conversation only.
+           * Uses same step iteration as debug mode, filtered by chat_visible.
+           * Styled as a simple conversation — no collapsible sections, no internals.
            */
           <div ref={scrollContainerRef} className="space-y-4">
-            {chatMessages.length === 0 && pendingUserMsgs.length === 0 && !transientStatus && (
+            {steps.length === 0 && pendingUserMsgs.length === 0 && !transientStatus && (
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
-            {chatMessages.map((msg) => (
-              <ChatBubble key={msg.id} msg={msg} />
-            ))}
+
             {/* Optimistic user bubbles — one for each pending (unconfirmed) message */}
             {pendingUserMsgs.map((text, i) => (
               <ChatBubble
@@ -1043,6 +947,7 @@ export default function FlowRunPage() {
                 msg={{ role: 'user', text, data: {}, id: `pending-user-${i}` }}
               />
             ))}
+
             {/* Transient live status — appears while step executes, disappears on response */}
             {transientStatus && (
               <div className="flex justify-start">
@@ -1056,6 +961,52 @@ export default function FlowRunPage() {
                 </div>
               </div>
             )}
+
+            {steps
+              .filter((s) => s.definition?.chat_visible !== false)
+              .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+              .map((step) => {
+                const rv = step.resolved_variables as Record<string, unknown> | null
+                // User message from resolved_variables
+                const userEntry = rv && Object.entries(rv).find(
+                  ([k, v]) => k.startsWith('input_') && v && typeof v === 'string' && v.trim()
+                )
+                // AI response text
+                let aiText = ''
+                if (step.ai_response) {
+                  if (typeof step.ai_response === 'string') {
+                    try {
+                      const parsed = JSON.parse(step.ai_response) as Record<string, unknown>
+                      aiText = (parsed.chat_message as string) || ''
+                    } catch { aiText = step.ai_response }
+                  } else if (typeof step.ai_response === 'object') {
+                    aiText = ((step.ai_response as Record<string, unknown>).chat_message as string) || ''
+                  }
+                }
+                if (!aiText && step.result?.pro_check_request?.response?.chat_message) {
+                  aiText = step.result.pro_check_request.response.chat_message as string
+                }
+
+                return (
+                  <div key={step.id} className="space-y-2">
+                    {userEntry && (
+                      <div className="flex justify-end">
+                        <div className="max-w-[80%] bg-neutral-100 text-neutral-900 rounded-lg px-4 py-2.5 text-sm leading-relaxed rounded-br-sm">
+                          <div>{userEntry[1] as string}</div>
+                        </div>
+                      </div>
+                    )}
+                    {aiText && (
+                      <div className="flex justify-start">
+                        <div className="max-w-[80%] bg-neutral-800 text-neutral-200 rounded-lg px-4 py-2.5 text-sm leading-relaxed rounded-bl-sm">
+                          <div>{aiText}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
             <div ref={chatEndRef} />
           </div>
         ) : (
