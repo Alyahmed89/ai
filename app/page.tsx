@@ -45,9 +45,9 @@ export default function Home() {
           const data = await flowsRes.json()
           const raw = Array.isArray(data) ? data : []
           flowsList = raw.map((k: Record<string,unknown>) => ({
-            id: (k.context as Record<string,unknown>)?.flow_id ?? k.id,
-            name: k.name as string,
-            description: k.readable as string ?? null,
+            id: String((k.context as Record<string,unknown>)?.flow_id ?? k.id),
+            name: String(k.name),
+            description: typeof k.readable === 'string' ? k.readable : null,
           }))
           setFlows(flowsList)
         }
