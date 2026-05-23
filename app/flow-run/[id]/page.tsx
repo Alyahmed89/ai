@@ -937,11 +937,7 @@ export default function FlowRunPage() {
               .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
               .map((step) => {
                 const rv = step.resolved_variables as Record<string, unknown> | null
-                // User prompt from resolved_variables (backend)
-                const userEntry = rv && Object.entries(rv).find(
-                  ([k, v]) => k.startsWith('input_') && v && typeof v === 'string' && v.trim()
-                )
-                // AI response from ai_response (backend)
+                const prompt = rv?.input_user_query as string | undefined
                 let aiText = ''
                 if (step.ai_response) {
                   if (typeof step.ai_response === 'string') {
@@ -953,16 +949,13 @@ export default function FlowRunPage() {
                     aiText = ((step.ai_response as Record<string, unknown>).chat_message as string) || ''
                   }
                 }
-                if (!aiText && step.result?.pro_check_request?.response?.chat_message) {
-                  aiText = step.result.pro_check_request.response.chat_message as string
-                }
 
                 return (
                   <div key={step.id} className="space-y-2">
-                    {userEntry && (
+                    {!!prompt && (
                       <div className="flex justify-end">
                         <div className="max-w-[80%] bg-neutral-100 text-neutral-900 rounded-lg px-4 py-2.5 text-sm leading-relaxed rounded-br-sm">
-                          <div>{userEntry[1] as string}</div>
+                          <div>{prompt}</div>
                         </div>
                       </div>
                     )}
