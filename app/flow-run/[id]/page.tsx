@@ -137,13 +137,14 @@ export default function FlowRunPage() {
 
   /* ── Derive chat messages from step executions ── */
   const chatMessages = stepExecs
-    .filter(s => s.status === 'completed' && s.output)
+    .filter(s => s.output || s.input)
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     .flatMap(s => {
       const out = s.output as Record<string, unknown>
+      const inp = s.input as Record<string, unknown>
       const msgs: { role: 'user' | 'assistant'; text: string; id: string }[] = []
-      const userText = out?.input_user_prompt as string || out?.input_user_query as string || ''
-      const aiText = out?.chat_message as string || ''
+      const userText = (inp?.input_user_prompt ?? inp?.input_user_query ?? out?.input_user_prompt ?? out?.input_user_query ?? '') as string
+      const aiText = (out?.chat_message ?? out?.assistant_message ?? '') as string
       if (userText && !userText.startsWith('[[var:')) msgs.push({ role: 'user', text: userText, id: `${s.id}-u` })
       if (aiText) msgs.push({ role: 'assistant', text: aiText, id: `${s.id}-a` })
       return msgs
@@ -158,7 +159,7 @@ export default function FlowRunPage() {
   /* ── Is flow paused waiting for input ── */
   const isPaused = flowExec?.status === 'paused'
   const isRunning = flowExec?.status === 'running'
-  const isProcessing = isRunning
+  const isProcessing = isRunning && !isPaused
 
   /* ── Transient status from events ── */
   useEffect(() => {
@@ -370,8 +371,8 @@ export default function FlowRunPage() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
               }}
-              placeholder={isPaused || stepExecs.length === 0 ? 'type your message...' : 'waiting...'}
-              disabled={sending || isProcessing}
+              placeholder={isPaused || stepExecs.length === 0 ? 'type your message...' : isProcessing ? 'thinking...' : 'type your message...'}
+              disabled={sending || (isProcessing && !isPaused)}
               className="flex-1 bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none disabled:opacity-30 disabled:cursor-not-allowed"
               rows={1}
               onInput={(e) => {
