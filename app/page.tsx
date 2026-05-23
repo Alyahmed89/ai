@@ -88,15 +88,12 @@ export default function Home() {
               const ctx = await ctxRes.json()
               const vars = ctx.available_variables ?? []
               const firstVal = vars.find((v: unknown) => {
-                const val = typeof v === 'object' && v !== null ? (v as Record<string, unknown>).value : undefined
-                return val !== undefined && val !== null && String(val).trim()
+                const str = typeof v === 'string' ? v : typeof v === 'object' && v !== null ? String((v as Record<string,unknown>).value ?? '') : ''
+                return str.trim().length > 0
               })
-              if (firstVal) {
-                const val = typeof firstVal === 'object' ? (firstVal as Record<string, unknown>).value : null
-                if (val) {
-                  const title = String(val).replace(/\s+/g, ' ').trim().slice(0, 60)
-                  setFlowRuns((prev) => prev.map((r) => r.id === run.id ? { ...r, title } : r))
-                }
+              if (firstVal !== undefined) {
+                const title = (typeof firstVal === 'string' ? firstVal : String((firstVal as Record<string,unknown>).value ?? '')).replace(/\s+/g, ' ').trim().slice(0, 60)
+                if (title) setFlowRuns((prev) => prev.map((r) => r.id === run.id ? { ...r, title } : r))
               }
             }
           } catch {

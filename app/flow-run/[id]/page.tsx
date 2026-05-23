@@ -141,32 +141,38 @@ export default function FlowRunPage() {
     return acc
   }, {} as Record<string, string>)
 
-  /* ── Derive chat messages from step executions and memory ── */
-  // User message comes from memory where key=input_user_prompt
-  const userPrompt = memoryMap['input_user_prompt'] ?? memoryMap['input_user_query'] ?? ''
-
-  // AI response: find first step output that has any meaningful text key
+  /* ── Derive chat messages from step executions ── */
   const AI_KEYS = ['chat_message', 'assistant_message', 'rules', 'summary', 'response', 'result', 'answer', 'output']
-  const aiStep = [...stepExecs]
-    .filter(s => s.status === 'completed' && s.output)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .find(s => AI_KEYS.some(k => k in (s.output as Record<string, unknown>)))
-
-  const aiRaw = aiStep
-    ? (() => {
-        const out = aiStep.output as Record<string, unknown>
-        const key = AI_KEYS.find(k => k in out)!
-        const val = out[key]
-        return Array.isArray(val) ? val.join('\n') : String(val)
-      })()
-    : ''
 
   const chatMessages: { role: 'user' | 'assistant'; text: string; id: string }[] = []
-  if (userPrompt && !userPrompt.startsWith('[[var:')) {
-    chatMessages.push({ role: 'user', text: userPrompt, id: 'mem-user' })
-  }
-  if (aiRaw) {
-    chatMessages.push({ role: 'assistant', text: aiRaw, id: aiStep!.id + '-a' })
+  const seenIds = new Set<string>()
+
+  const sorted = [...stepExecs]
+    .filter(s => s.output || s.input)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+  for (const s of sorted) {
+    const out = s.output as Record<string, unknown>
+    const inp = s.input as Record<string, unknown>
+
+    const userText = (
+      (inp?.input_user_prompt ?? inp?.input_user_query ?? out?.input_user_prompt ?? out?.input_user_query) as string | undefined
+    ) ?? ''
+
+    if (userText && !userText.startsWith('[[var:') && !seenIds.has(userText)) {
+      seenIds.add(userText)
+      chatMessages.push({ role: 'user', text: userText, id: s.id + '-u' })
+    }
+
+    const aiKey = AI_KEYS.find(k => k in out)
+    if (aiKey) {
+      const val = out[aiKey]
+      const aiText = Array.isArray(val) ? val.join('\n') : String(val)
+      if (aiText && !seenIds.has(s.id + '-a')) {
+        seenIds.add(s.id + '-a')
+        chatMessages.push({ role: 'assistant', text: aiText, id: s.id + '-a' })
+      }
+    }
   }
 
   /* ── Is flow paused waiting for input ── */
