@@ -43,10 +43,11 @@ export async function GET(
       },
     });
     
+    let bodyText = await response.text();
     if (!response.ok) {
       // Return the error response with proper CORS headers
       return Response.json(
-        { error: `Backend request failed: ${response.status} ${response.statusText}` },
+        { error: `Backend request failed: ${response.status} ${response.statusText}`, detail: bodyText.slice(0, 500) },
         { 
           status: response.status,
           headers: {
@@ -58,7 +59,8 @@ export async function GET(
       );
     }
     
-    const data = await response.json();
+    let data;
+    try { data = JSON.parse(bodyText); } catch { data = bodyText; }
     return Response.json(data, {
       headers: {
         'Access-Control-Allow-Origin': '*',
