@@ -98,6 +98,9 @@ export default function FlowRunPage() {
   const [sending, setSending] = useState(false)
   const [input, setInput] = useState('')
   const [transientStatus, setTransientStatus] = useState<string | null>(null)
+  const [optimisticMsgs, setOptimisticMsgs] = useState<
+    { role: 'user'; text: string; id: string }[]
+  >([])
   const chatEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -205,10 +208,22 @@ export default function FlowRunPage() {
     }
   }, [chatMode, isAtBottom, chatMessages, isProcessing])
 
+  /** Clear optimistic messages when new step data arrives from polling */
+  useEffect(() => {
+    if (stepExecs.length > 0) {
+      setOptimisticMsgs([])
+    }
+  }, [stepExecs])
+
   /* ── Send ── */
   const handleSend = async () => {
-    if (!input.trim()) return
+    const typedText = input.trim()
+    if (!typedText) return
     setSending(true)
+    setOptimisticMsgs((prev) => [
+      ...prev,
+      { role: 'user' as const, text: typedText, id: `optimistic-${Date.now()}` },
+    ])
     try {
       if (stepExecs.length === 0 && flowId) {
         // start new flow
@@ -282,7 +297,7 @@ export default function FlowRunPage() {
         {chatMode ? (
           /* ── Chat Mode ── */
           <div ref={scrollContainerRef} className="space-y-4">
-            {chatMessages.length === 0 && !transientStatus && (
+            {chatMessages.length === 0 && optimisticMsgs.length === 0 && !transientStatus && (
               <p className="text-neutral-600 text-sm text-center py-12">no messages yet</p>
             )}
             {chatMessages.map(msg => (
@@ -292,6 +307,13 @@ export default function FlowRunPage() {
                     ? 'bg-neutral-100 text-neutral-900 rounded-br-sm'
                     : 'bg-neutral-800 text-neutral-200 rounded-bl-sm'
                 }`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {optimisticMsgs.map(msg => (
+              <div key={msg.id} className="flex justify-end">
+                <div className="max-w-[80%] rounded-lg px-4 py-2.5 text-sm leading-relaxed bg-neutral-100 text-neutral-900 rounded-br-sm opacity-70">
                   {msg.text}
                 </div>
               </div>

@@ -49,7 +49,7 @@ This document summarizes how step nodes in the AI workflow system save input end
 - **Field**: `use_endpoints` (JSON string)
 - **Example CURL**:
   ```bash
-  curl -X PUT "https://deepseek-agent.alghamdimo89.workers.dev/api/flow-steps/step-1775175873355-s1isncz0k" \
+  curl -X PUT "https://ai.anyapp.cfd/api/flow-steps/step-1775175873355-s1isncz0k" \
     -H "Content-Type: application/json" \
     -d '{
       "use_endpoints": "[{\"endpoint_id\": \"endpoint_1773851144837\", \"phase\": \"input\", \"map\": {\"response.title\": \"post_title\", \"response.body\": \"post_body\"}}]"
@@ -69,7 +69,7 @@ Endpoints can be referenced in step instructions using template syntax:
 
 ### Backend Integration
 - Proxy API routes through `/app/api/proxy/[...path]/route.ts`
-- Backend URL: `https://deepseek-agent.alghamdimo89.workers.dev`
+- Backend URL: `https://ai.anyapp.cfd`
 - Database field: `use_endpoints` column in flow_steps table
 
 ### Current Branch Status
