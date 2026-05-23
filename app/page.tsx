@@ -45,7 +45,7 @@ export default function Home() {
           const data = await flowsRes.json()
           const raw = Array.isArray(data) ? data : []
           flowsList = raw
-            .filter((k: Record<string,unknown>) => k.namespace === 'flow')
+            .filter((k: Record<string,unknown>) => k.namespace === 'flow' || (k.context as Record<string,unknown>)?.flow_id)
             .map((k: Record<string,unknown>) => ({
               id: String((k.context as Record<string,unknown>)?.flow_id ?? k.id),
               name: String(k.name),
