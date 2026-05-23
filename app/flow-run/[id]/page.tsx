@@ -612,6 +612,18 @@ export default function FlowRunPage() {
     return ['user_input']
   })()
 
+  // Sort allRequiredVars to match the order keys appear in resolved_variables
+  // (debug mode order), so chat mode input order matches debug mode.
+  const sortedRequiredVars = (() => {
+    const rvKeys = pausedStep?.resolved_variables
+      ? Object.keys(pausedStep.resolved_variables)
+      : []
+    if (rvKeys.length === 0) return allRequiredVars
+    const inOrder = allRequiredVars.filter((v) => rvKeys.includes(v))
+    const rest = allRequiredVars.filter((v) => !rvKeys.includes(v))
+    return [...inOrder, ...rest]
+  })()
+
   /** Available variables from context that are user inputs (used for display metadata) */
   const inputVariables = normalizedVars.filter(
     (v) => v.display?.ui_input || v.name.startsWith('input_')
@@ -627,7 +639,7 @@ export default function FlowRunPage() {
     setInputs((prev) => {
       const next = { ...prev }
       let changed = false
-      for (const key of allRequiredVars) {
+      for (const key of sortedRequiredVars) {
         if (key === 'chat_message') continue // never auto-seed the user's message
         // For dotted keys like memory.input_user_input, look up nested value
         const val = key.includes('.')
@@ -644,7 +656,7 @@ export default function FlowRunPage() {
       }
       return changed ? next : prev
     })
-  }, [pausedStep, allRequiredVars])
+  }, [pausedStep, sortedRequiredVars])
 
   /** Whether the flow is currently processing (waiting for assistant reply).
    *  True only when there is no paused step — i.e. the flow is actively running. */
@@ -844,7 +856,7 @@ export default function FlowRunPage() {
 
   const handleSend = async () => {
     setSending(true)
-    const sentMsg = allRequiredVars.length > 0 ? (inputs[allRequiredVars[0]] || '') : ''
+    const sentMsg = sortedRequiredVars.length > 0 ? (inputs[sortedRequiredVars[0]] || '') : ''
     try {
       if (steps.length === 0 && flowId) {
         // No flow run yet — start the flow
@@ -1258,7 +1270,7 @@ export default function FlowRunPage() {
             className="flex items-center gap-3"
           >
             <div className="flex-1 space-y-2">
-              {allRequiredVars.map((v) => {
+              {sortedRequiredVars.map((v) => {
                 const ctxVar = inputVariables.find((iv) => iv.name === v)
                 const display = ctxVar?.display?.ui_display
                 // Use display label, or last segment of dotted path, or full name
