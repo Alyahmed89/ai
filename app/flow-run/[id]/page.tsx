@@ -936,24 +936,22 @@ export default function FlowRunPage() {
               .filter((s) => s.definition?.chat_visible !== false)
               .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
               .map((step) => {
-                const rv = step.resolved_variables as Record<string, unknown> | null
-                // Find first input_* value (handles dotted keys like memory.input_user_query)
-                const prompt = rv && Object.entries(rv).find(
-                  ([k, v]) => {
-                    const last = k.includes('.') ? k.split('.').pop()! : k
-                    return last.startsWith('input_') && v && typeof v === 'string' && v.trim()
-                  }
-                )
-                const promptText = prompt ? prompt[1] as string : null
+                // Extract from ai_response the same way for both
+                let promptText = ''
                 let aiText = ''
                 if (step.ai_response) {
                   if (typeof step.ai_response === 'string') {
                     try {
                       const parsed = JSON.parse(step.ai_response) as Record<string, unknown>
+                      promptText = (parsed.input_user_query as string) || ''
                       aiText = (parsed.chat_message as string) || ''
-                    } catch { aiText = step.ai_response }
+                    } catch {
+                      aiText = step.ai_response
+                    }
                   } else if (typeof step.ai_response === 'object') {
-                    aiText = ((step.ai_response as Record<string, unknown>).chat_message as string) || ''
+                    const obj = step.ai_response as Record<string, unknown>
+                    promptText = (obj.input_user_query as string) || ''
+                    aiText = (obj.chat_message as string) || ''
                   }
                 }
 
