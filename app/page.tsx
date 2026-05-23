@@ -44,11 +44,13 @@ export default function Home() {
         if (flowsRes.ok) {
           const data = await flowsRes.json()
           const raw = Array.isArray(data) ? data : []
-          flowsList = raw.map((k: Record<string,unknown>) => ({
-            id: String((k.context as Record<string,unknown>)?.flow_id ?? k.id),
-            name: String(k.name),
-            description: typeof k.readable === 'string' ? k.readable : null,
-          }))
+          flowsList = raw
+            .filter((k: Record<string,unknown>) => k.namespace === 'flow')
+            .map((k: Record<string,unknown>) => ({
+              id: (k.context as Record<string,unknown>)?.flow_id ?? k.id,
+              name: k.name as string,
+              description: (k.readable ?? null) as string | null,
+            }))
           setFlows(flowsList)
         }
         const flowMap = new Map(flowsList.map((f) => [f.id, f.name]))
