@@ -4,7 +4,7 @@ export const runtime = 'edge';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'https://ai.anyapp.cfd';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://kong.anyapp.cfd';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
