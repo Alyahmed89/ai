@@ -35,10 +35,14 @@ export async function GET(
     const baseUrl = isSupabase ? SUPABASE_URL : BACKEND_URL;
     const backendUrl = `${baseUrl}${backendPath}${queryString ? `?${queryString}` : ''}`;
     
+    // Debug: log the constructed URL
+    console.error('PROXY DEBUG:', { backendPath, queryString, isSupabase, baseUrl, backendUrl });
+
     // Forward the request to the backend
     const response = await fetch(backendUrl, {
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         ...(isSupabase ? { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } : {}),
       },
     });
@@ -47,7 +51,7 @@ export async function GET(
     if (!response.ok) {
       // Return the error response with proper CORS headers
       return Response.json(
-        { error: `Backend request failed: ${response.status} ${response.statusText}`, detail: bodyText.slice(0, 500) },
+        { error: `Backend request failed: ${response.status} ${response.statusText}`, detail: bodyText.slice(0, 500), debug: { backendUrl, backendPath, isSupabase } },
         { 
           status: response.status,
           headers: {
