@@ -40,7 +40,7 @@ export default function Home() {
           fetch('/api/proxy/rest/v1/knowledge?namespace=eq.flow&is_active=eq.true', {
             headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}` }
           }),
-          fetch('/api/proxy/flow-runs'),
+          fetch('/api/proxy/flow-runs?limit=30'),
         ])
         let flowsList: Flow[] = []
         if (flowsRes.ok) {
@@ -60,7 +60,8 @@ export default function Home() {
         let runs: FlowRun[] = []
         if (flowRunsRes.ok) {
           const data = await flowRunsRes.json()
-          runs = Array.isArray(data) ? data : []
+          const raw = Array.isArray(data) ? data : (data?.data ?? data?.rows ?? [])
+          runs = Array.isArray(raw) ? raw : []
         }
 
         // Show latest 30 runs, sorted by created_at desc

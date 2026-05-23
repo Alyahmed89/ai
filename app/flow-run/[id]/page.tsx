@@ -159,8 +159,8 @@ export default function FlowRunPage() {
       (inp?.input_user_prompt ?? inp?.input_user_query ?? out?.input_user_prompt ?? out?.input_user_query) as string | undefined
     ) ?? ''
 
-    if (userText && !userText.startsWith('[[var:') && !seenIds.has(userText)) {
-      seenIds.add(userText)
+    if (userText && !userText.startsWith('[[var:') && !seenIds.has(s.id + '-u')) {
+      seenIds.add(s.id + '-u')
       chatMessages.push({ role: 'user', text: userText, id: s.id + '-u' })
     }
 
