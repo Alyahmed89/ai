@@ -1277,11 +1277,9 @@ export default function FlowRunPage() {
                 const label = ctxVar?.display?.label || (v.includes('.') ? v.split('.').pop()! : v)
                 return (
                   <div key={v}>
-                    {!chatMode && (
-                      <label className="text-[10px] text-neutral-600 uppercase tracking-wider block mb-1">
-                        {label}
-                      </label>
-                    )}
+                    <label className="text-[10px] text-neutral-600 uppercase tracking-wider block mb-1">
+                      {label}
+                    </label>
                     {display === 'table' || display === 'json' || display === 'html' || display === 'code' ? (
                       <div className="border border-neutral-800 rounded px-3 py-2 text-xs">
                         <DisplayValue value={ctxVar?.value} display={display} />
@@ -1296,7 +1294,7 @@ export default function FlowRunPage() {
                             handleSend()
                           }
                         }}
-                        placeholder={chatMode ? 'Type a message…' : `enter ${label}...`}
+                        placeholder={`enter ${label}...`}
                         className="w-full bg-transparent text-white border border-neutral-800 rounded px-3 py-2 text-sm outline-none focus:border-neutral-600 placeholder-neutral-700 resize-none overflow-y-auto"
                         onInput={(e) => {
                           const el = e.currentTarget
