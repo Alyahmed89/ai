@@ -50,11 +50,15 @@ async function pro_check(output: any, flowExecutionId: string, stepRunId: string
     const knowledge = await getAllKnowledge();
     const routingClauses = knowledge.filter(k => k.namespace === 'routing');
     const program = compileProgram(routingClauses);
+    const outputFacts = Object.entries(output || {}).map(([k, v]) =>
+      `step_output('${stepRunId}', '${k}', '${String(v).replace(/'/g, "\'")}').`
+    ).join('\n');
+    const fullProgram = outputFacts ? outputFacts + '\n' + program : program;
     const resp = await fetch(`${PROLOG_URL}/api/v1/evaluate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prolog_program: program,
+        prolog_program: fullProgram,
         response: output,
         memory: await getMemory(flowExecutionId),
         step_context: { step_run_id: stepRunId, flow_run_id: flowExecutionId },
@@ -218,7 +222,7 @@ export async function runStep(stepKnowledge: any, flowExecutionId: string, flowE
     const method = (ep.method as string || "POST").toUpperCase();
     const rawPayload = ctx.payload || ep.payload || {};
     const payload: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(rawPayload)) { payload[k] = typeof v === "string" ? resolveVariables(v, context) : v; }
+    for (const [k, v] of Object.entries(rawPayload)) { payload[k] = typeof v === 'string' ? await resolveVariables(v, context) : v; }
     const baseUrl = process.env.BACKEND_URL || "https://ai.anyapp.cfd";
     const fullUrl = url.startsWith("http") ? url : baseUrl + url;
     const actionResp = await fetch(fullUrl, { method, headers: { "Content-Type": "application/json" }, body: method !== "GET" ? JSON.stringify(payload) : undefined });
