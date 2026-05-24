@@ -218,7 +218,7 @@ export async function runStep(stepKnowledge: any, flowExecutionId: string, flowE
     const method = (ep.method as string || "POST").toUpperCase();
     const rawPayload = ctx.payload || ep.payload || {};
     const payload: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(rawPayload)) { payload[k] = typeof v === "string" ? resolveVariables(v, context) : v; }
+    for (const [k, v] of Object.entries(rawPayload)) { payload[k] = typeof v === "string" ? await resolveVariables(v, context) : v; }
     const baseUrl = process.env.BACKEND_URL || "https://ai.anyapp.cfd";
     const fullUrl = url.startsWith("http") ? url : baseUrl + url;
     const actionResp = await fetch(fullUrl, { method, headers: { "Content-Type": "application/json" }, body: method !== "GET" ? JSON.stringify(payload) : undefined });
