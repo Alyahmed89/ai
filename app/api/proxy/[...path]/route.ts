@@ -104,7 +104,8 @@ export async function POST(
     const backendUrl = `${BACKEND_URL}${backendPath}`;
     
     // Get the request body
-    const body = await request.json();
+    let body = {};
+    try { body = await request.json(); } catch {}
     
     // Forward the request to the backend
     const response = await fetch(backendUrl, {
@@ -167,7 +168,8 @@ export async function PATCH(
     const backendUrl = `${BACKEND_URL}${backendPath}`;
     
     // Get the request body
-    const body = await request.json();
+    let body = {};
+    try { body = await request.json(); } catch {}
     
     // Forward the request to the backend
     const response = await fetch(backendUrl, {
@@ -230,7 +232,8 @@ export async function PUT(
     const backendUrl = `${BACKEND_URL}${backendPath}`;
     
     // Get the request body
-    const body = await request.json();
+    let body = {};
+    try { body = await request.json(); } catch {}
     
     // Forward the request to the backend
     const response = await fetch(backendUrl, {

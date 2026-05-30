@@ -1,0 +1,50 @@
+services:
+    krxm736mmykbhulaqe38k3yi-164447877430:
+        image: 'krxm736mmykbhulaqe38k3yi:2271e82735ac804debb085c93c366a3bcaa67c60'
+        container_name: krxm736mmykbhulaqe38k3yi-164447877430
+        restart: unless-stopped
+        expose:
+            - '3033'
+        networks:
+            coolify:
+                aliases:
+                    - krxm736mmykbhulaqe38k3yi-164447877430
+        mem_limit: '0'
+        memswap_limit: '0'
+        mem_swappiness: 60
+        mem_reservation: '0'
+        cpus: 0.0
+        cpu_shares: 1024
+        env_file:
+            - .env
+        labels:
+            - traefik.enable=true
+            - traefik.http.middlewares.gzip.compress=true
+            - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+            - traefik.http.routers.http-0-krxm736mmykbhulaqe38k3yi.entryPoints=http
+            - traefik.http.routers.http-0-krxm736mmykbhulaqe38k3yi.middlewares=gzip
+            - 'traefik.http.routers.http-0-krxm736mmykbhulaqe38k3yi.rule=Host(`ui.anyapp.cfd`) && PathPrefix(`/`)'
+            - traefik.http.routers.http-0-krxm736mmykbhulaqe38k3yi.service=http-0-krxm736mmykbhulaqe38k3yi
+            - traefik.http.services.http-0-krxm736mmykbhulaqe38k3yi.loadbalancer.server.port=3033
+            - 'caddy_0.encode=zstd gzip'
+            - 'caddy_0.handle_path.0_reverse_proxy={{upstreams 3033}}'
+            - 'caddy_0.handle_path=/*'
+            - caddy_0.header=-Server
+            - 'caddy_0.try_files={path} /index.html /index.php'
+            - 'caddy_0=http://ui.anyapp.cfd'
+            - caddy_ingress_network=coolify
+            - coolify.managed=true
+            - coolify.version=4.0.0
+            - coolify.applicationId=4
+            - coolify.type=application
+            - coolify.name=krxm736mmykbhulaqe38k3yi
+            - coolify.resourceName=aiui
+            - coolify.projectName=code
+            - coolify.serviceName=aiui
+            - coolify.environmentName=production
+            - coolify.pullRequestId=0
+networks:
+    coolify:
+        external: true
+        name: coolify
+        attachable: true
