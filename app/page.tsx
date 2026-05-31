@@ -9,7 +9,7 @@ export default function Home() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/proxy/rest/v1/knowledge?id=like.flow-*&select=id,prolog").then(r => r.json()),
+      fetch("/api/proxy/rest/v1/knowledge?prolog=ilike.*flow(*&prolog=not.ilike.*execution(*&prolog=not.ilike.*step_type(*&select=id,prolog").then(r => r.json()),
       fetch("/api/proxy/rest/v1/knowledge?prolog=ilike.*execution(*&order=id.desc&limit=30").then(r => r.json()),
     ]).then(([f, r]) => {
       setFlows(Array.isArray(f) ? f : []);
