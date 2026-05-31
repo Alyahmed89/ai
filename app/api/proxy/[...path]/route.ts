@@ -2,7 +2,9 @@ import { NextRequest } from 'next/server';
 
 export const runtime = 'edge';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'https://deepseek-agent.alghamdimo89.workers.dev';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://ai.anyapp.cfd';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://kong.anyapp.cfd';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -10,7 +12,7 @@ export async function OPTIONS() {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Max-Age': '86400',
     },
@@ -28,36 +30,48 @@ export async function GET(
     
     // Construct the backend URL
     const backendPath = `/${path.join('/')}`;
-    const queryString = searchParams.toString();
-    const backendUrl = `${BACKEND_URL}${backendPath}${queryString ? `?${queryString}` : ''}`;
+    // Strip Cloudflare-injected params from catch-all routes
+    const cleanParams = new URLSearchParams(searchParams);
+    cleanParams.delete('path');
+    const queryString = cleanParams.toString();
+    const isSupabase = backendPath.startsWith('/rest/');
+    const baseUrl = isSupabase ? SUPABASE_URL : BACKEND_URL;
+    const backendUrl = `${baseUrl}${backendPath}${queryString ? `?${queryString}` : ''}`;
     
+    // Debug: log the constructed URL
+    console.error('PROXY DEBUG:', { backendPath, queryString, isSupabase, baseUrl, backendUrl });
+
     // Forward the request to the backend
     const response = await fetch(backendUrl, {
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...(isSupabase ? { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } : {}),
       },
     });
     
+    let bodyText = await response.text();
     if (!response.ok) {
       // Return the error response with proper CORS headers
       return Response.json(
-        { error: `Backend request failed: ${response.status} ${response.statusText}` },
+        { error: `Backend request failed: ${response.status} ${response.statusText}`, detail: bodyText.slice(0, 500), debug: { backendUrl, backendPath, isSupabase } },
         { 
           status: response.status,
           headers: {
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           }
         }
       );
     }
     
-    const data = await response.json();
+    let data;
+    try { data = JSON.parse(bodyText); } catch { data = bodyText; }
     return Response.json(data, {
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       }
     });
@@ -69,7 +83,7 @@ export async function GET(
         status: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         }
       }
@@ -90,7 +104,8 @@ export async function POST(
     const backendUrl = `${BACKEND_URL}${backendPath}`;
     
     // Get the request body
-    const body = await request.json();
+    let body = {};
+    try { body = await request.json(); } catch {}
     
     // Forward the request to the backend
     const response = await fetch(backendUrl, {
@@ -109,7 +124,7 @@ export async function POST(
           status: response.status,
           headers: {
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           }
         }
@@ -120,7 +135,7 @@ export async function POST(
     return Response.json(data, {
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       }
     });
@@ -132,7 +147,71 @@ export async function POST(
         status: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        }
+      }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> }
+) {
+  try {
+    const params = await context.params;
+    const { path } = params;
+    
+    // Construct the backend URL
+    const backendPath = `/${path.join('/')}`;
+    const backendUrl = `${BACKEND_URL}${backendPath}`;
+    
+    // Get the request body
+    let body = {};
+    try { body = await request.json(); } catch {}
+    
+    // Forward the request to the backend
+    const response = await fetch(backendUrl, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      // Return the error response with proper CORS headers
+      return Response.json(
+        { error: `Backend request failed: ${response.status} ${response.statusText}` },
+        { 
+          status: response.status,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
+      );
+    }
+    
+    const data = await response.json();
+    return Response.json(data, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      }
+    });
+  } catch (error) {
+    console.error('Error in proxy API PATCH:', error);
+    return Response.json(
+      { error: 'Failed to update data on backend' },
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         }
       }
@@ -153,7 +232,8 @@ export async function PUT(
     const backendUrl = `${BACKEND_URL}${backendPath}`;
     
     // Get the request body
-    const body = await request.json();
+    let body = {};
+    try { body = await request.json(); } catch {}
     
     // Forward the request to the backend
     const response = await fetch(backendUrl, {
@@ -172,7 +252,7 @@ export async function PUT(
           status: response.status,
           headers: {
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           }
         }
@@ -183,7 +263,7 @@ export async function PUT(
     return Response.json(data, {
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       }
     });
@@ -195,7 +275,7 @@ export async function PUT(
         status: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         }
       }

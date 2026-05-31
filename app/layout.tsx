@@ -1,14 +1,13 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 
-export const runtime = 'edge';
-
-const inter = Inter({ subsets: ['latin'] })
+const geistSans = Geist({ subsets: ['latin'] })
+const geistMono = Geist_Mono({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Documentation System',
-  description: 'Unified documentation management system',
+  title: 'AI Flow',
+  description: 'Flow runner',
 }
 
 export default function RootLayout({
@@ -18,10 +17,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-black`}>
-        <div className="min-h-screen">
-          {children}
-        </div>
+      <body className={`${geistSans.className} ${geistMono.className} bg-black text-white`}>
+        {children}
       </body>
     </html>
   )
